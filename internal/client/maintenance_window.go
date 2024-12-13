@@ -7,49 +7,38 @@ import (
 
 // MaintenanceWindow represents a maintenance window
 type MaintenanceWindow struct {
-	ID          int64    `json:"id"`
-	Name        string   `json:"name"`
-	Type        string   `json:"type"`
-	Status      int      `json:"status"`
-	StartTime   int64    `json:"start_time"`
-	Duration    int      `json:"duration"`
-	Monitors    []int64  `json:"monitors"`
-	Repeat      string   `json:"repeat,omitempty"`
-	RepeatDays  []string `json:"repeat_days,omitempty"`
-	WeekDay     int      `json:"week_day,omitempty"`
-	MonthDay    int      `json:"month_day,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
+	ID              int64  `json:"id"`
+	Name            string `json:"name"`
+	Interval        string `json:"interval"`
+	Date            string `json:"date"`
+	Time            string `json:"time"`
+	Duration        int    `json:"duration"`
+	AutoAddMonitors bool   `json:"autoAddMonitors"`
+	Days            []int  `json:"days"`
+	Status          string `json:"status"`
+	Created         string `json:"created"`
 }
 
 // CreateMaintenanceWindowRequest represents the request to create a new maintenance window
 type CreateMaintenanceWindowRequest struct {
-	Name        string   `json:"name"`
-	Type        string   `json:"type"`
-	StartTime   int64    `json:"start_time"`
-	Duration    int      `json:"duration"`
-	Monitors    []int64  `json:"monitors"`
-	Repeat      string   `json:"repeat,omitempty"`
-	RepeatDays  []string `json:"repeat_days,omitempty"`
-	WeekDay     int      `json:"week_day,omitempty"`
-	MonthDay    int      `json:"month_day,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
+	Name            string `json:"name"`
+	Interval        string `json:"interval"`
+	Date            string `json:"date"`
+	Time            string `json:"time"`
+	Duration        int    `json:"duration"`
+	AutoAddMonitors bool   `json:"autoAddMonitors"`
+	Days            []int  `json:"days"`
 }
 
 // UpdateMaintenanceWindowRequest represents the request to update an existing maintenance window
 type UpdateMaintenanceWindowRequest struct {
-	Name        string   `json:"name,omitempty"`
-	Type        string   `json:"type,omitempty"`
-	StartTime   int64    `json:"start_time,omitempty"`
-	Duration    int      `json:"duration,omitempty"`
-	Monitors    []int64  `json:"monitors,omitempty"`
-	Repeat      string   `json:"repeat,omitempty"`
-	RepeatDays  []string `json:"repeat_days,omitempty"`
-	WeekDay     int      `json:"week_day,omitempty"`
-	MonthDay    int      `json:"month_day,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
+	Name            string `json:"name,omitempty"`
+	Interval        string `json:"interval,omitempty"`
+	Date            string `json:"date,omitempty"`
+	Time            string `json:"time,omitempty"`
+	Duration        int    `json:"duration,omitempty"`
+	AutoAddMonitors bool   `json:"autoAddMonitors,omitempty"`
+	Days            []int  `json:"days,omitempty"`
 }
 
 // CreateMaintenanceWindow creates a new maintenance window
@@ -60,7 +49,7 @@ func (c *Client) CreateMaintenanceWindow(req *CreateMaintenanceWindowRequest) (*
 	}
 
 	var result struct {
-		MaintenanceWindow *MaintenanceWindow `json:"maintenance_window"`
+		MaintenanceWindow *MaintenanceWindow `json:"maintenanceWindow"`
 	}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, err
@@ -77,7 +66,7 @@ func (c *Client) GetMaintenanceWindow(id int64) (*MaintenanceWindow, error) {
 	}
 
 	var result struct {
-		MaintenanceWindow *MaintenanceWindow `json:"maintenance_window"`
+		MaintenanceWindow *MaintenanceWindow `json:"maintenanceWindow"`
 	}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, err
@@ -94,7 +83,7 @@ func (c *Client) UpdateMaintenanceWindow(id int64, req *UpdateMaintenanceWindowR
 	}
 
 	var result struct {
-		MaintenanceWindow *MaintenanceWindow `json:"maintenance_window"`
+		MaintenanceWindow *MaintenanceWindow `json:"maintenanceWindow"`
 	}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, err

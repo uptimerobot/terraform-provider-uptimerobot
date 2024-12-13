@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -31,20 +32,61 @@ type pspResource struct {
 
 // pspResourceModel maps the resource schema data.
 type pspResourceModel struct {
-	ID            types.String `tfsdk:"id"`
-	Name          types.String `tfsdk:"name"`
-	Type          types.String `tfsdk:"type"`
-	Monitors      types.List   `tfsdk:"monitors"`
-	CustomDomain  types.String `tfsdk:"custom_domain"`
-	Password      types.String `tfsdk:"password"`
-	Sort          types.String `tfsdk:"sort"`
-	Theme         types.String `tfsdk:"theme"`
-	HideURLs      types.Bool   `tfsdk:"hide_urls"`
-	AllTimeUptime types.Bool   `tfsdk:"all_time_uptime"`
-	CustomCSS     types.String `tfsdk:"custom_css"`
-	CustomHTML    types.String `tfsdk:"custom_html"`
-	Tags          types.List   `tfsdk:"tags"`
-	Status        types.Int64  `tfsdk:"status"`
+	ID                         types.String         `tfsdk:"id"`
+	Name                       types.String         `tfsdk:"name"`
+	CustomDomain               types.String         `tfsdk:"custom_domain"`
+	IsPasswordSet              types.Bool           `tfsdk:"is_password_set"`
+	MonitorIDs                 types.List           `tfsdk:"monitor_ids"`
+	MonitorsCount              types.Int64          `tfsdk:"monitors_count"`
+	Status                     types.String         `tfsdk:"status"`
+	URLKey                     types.String         `tfsdk:"url_key"`
+	HomepageLink               types.String         `tfsdk:"homepage_link"`
+	GACode                     types.String         `tfsdk:"ga_code"`
+	ShareAnalyticsConsent      types.Bool           `tfsdk:"share_analytics_consent"`
+	UseSmallCookieConsentModal types.Bool           `tfsdk:"use_small_cookie_consent_modal"`
+	Icon                       types.String         `tfsdk:"icon"`
+	NoIndex                    types.Bool           `tfsdk:"no_index"`
+	Logo                       types.String         `tfsdk:"logo"`
+	HideURLLinks               types.Bool           `tfsdk:"hide_url_links"`
+	Subscription               types.Bool           `tfsdk:"subscription"`
+	ShowCookieBar              types.Bool           `tfsdk:"show_cookie_bar"`
+	PinnedAnnouncementID       types.Int64          `tfsdk:"pinned_announcement_id"`
+	CustomSettings             *customSettingsModel `tfsdk:"custom_settings"`
+}
+
+type customSettingsModel struct {
+	Font     *fontSettingsModel    `tfsdk:"font"`
+	Page     *pageSettingsModel    `tfsdk:"page"`
+	Colors   *colorSettingsModel   `tfsdk:"colors"`
+	Features *featureSettingsModel `tfsdk:"features"`
+}
+
+type fontSettingsModel struct {
+	Family types.String `tfsdk:"family"`
+}
+
+type pageSettingsModel struct {
+	Layout  types.String `tfsdk:"layout"`
+	Theme   types.String `tfsdk:"theme"`
+	Density types.String `tfsdk:"density"`
+}
+
+type colorSettingsModel struct {
+	Main types.String `tfsdk:"main"`
+	Text types.String `tfsdk:"text"`
+	Link types.String `tfsdk:"link"`
+}
+
+type featureSettingsModel struct {
+	ShowBars             types.String `tfsdk:"show_bars"`
+	ShowUptimePercentage types.String `tfsdk:"show_uptime_percentage"`
+	EnableFloatingStatus types.String `tfsdk:"enable_floating_status"`
+	ShowOverallUptime    types.String `tfsdk:"show_overall_uptime"`
+	ShowOutageUpdates    types.String `tfsdk:"show_outage_updates"`
+	ShowOutageDetails    types.String `tfsdk:"show_outage_details"`
+	EnableDetailsPage    types.String `tfsdk:"enable_details_page"`
+	ShowMonitorURL       types.String `tfsdk:"show_monitor_url"`
+	HidePausedMonitors   types.String `tfsdk:"hide_paused_monitors"`
 }
 
 // Configure adds the provider configured client to the resource.
@@ -86,67 +128,184 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Description: "Name of the PSP",
 				Required:    true,
 			},
-			"type": schema.StringAttribute{
-				Description: "Type of PSP",
-				Required:    true,
-			},
-			"monitors": schema.ListAttribute{
-				Description: "List of monitor IDs",
-				Required:    true,
-				ElementType: types.Int64Type,
-			},
 			"custom_domain": schema.StringAttribute{
 				Description: "Custom domain for the PSP",
 				Optional:    true,
 			},
-			"password": schema.StringAttribute{
-				Description: "Password protection for the PSP",
-				Optional:    true,
-				Sensitive:   true,
+			"is_password_set": schema.BoolAttribute{
+				Description: "Whether a password is set for the PSP",
+				Computed:    true,
 			},
-			"sort": schema.StringAttribute{
-				Description: "Sort order for monitors",
+			"monitor_ids": schema.ListAttribute{
+				Description: "List of monitor IDs",
 				Required:    true,
+				ElementType: types.Int64Type,
 			},
-			"theme": schema.StringAttribute{
-				Description: "Theme for the PSP",
-				Optional:    true,
-			},
-			"hide_urls": schema.BoolAttribute{
-				Description: "Whether to hide URLs in the PSP",
-				Optional:    true,
+			"monitors_count": schema.Int64Attribute{
+				Description: "Number of monitors in the PSP",
 				Computed:    true,
-				Default:     booldefault.StaticBool(false),
 			},
-			"all_time_uptime": schema.BoolAttribute{
-				Description: "Whether to show all-time uptime",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(false),
-			},
-			"custom_css": schema.StringAttribute{
-				Description: "Custom CSS for the PSP",
-				Optional:    true,
-			},
-			"custom_html": schema.StringAttribute{
-				Description: "Custom HTML for the PSP",
-				Optional:    true,
-			},
-			"tags": schema.ListAttribute{
-				Description: "Tags for the PSP",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-			"status": schema.Int64Attribute{
+			"status": schema.StringAttribute{
 				Description: "Status of the PSP",
 				Computed:    true,
+			},
+			"url_key": schema.StringAttribute{
+				Description: "URL key for the PSP",
+				Computed:    true,
+			},
+			"homepage_link": schema.StringAttribute{
+				Description: "Homepage link for the PSP",
+				Computed:    true,
+			},
+			"ga_code": schema.StringAttribute{
+				Description: "Google Analytics code",
+				Optional:    true,
+			},
+			"share_analytics_consent": schema.BoolAttribute{
+				Description: "Whether analytics sharing is consented",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
+			},
+			"use_small_cookie_consent_modal": schema.BoolAttribute{
+				Description: "Whether to use small cookie consent modal",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
+			},
+			"icon": schema.StringAttribute{
+				Description: "Icon for the PSP",
+				Optional:    true,
+			},
+			"no_index": schema.BoolAttribute{
+				Description: "Whether to prevent indexing",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
+			},
+			"logo": schema.StringAttribute{
+				Description: "Logo for the PSP",
+				Optional:    true,
+			},
+			"hide_url_links": schema.BoolAttribute{
+				Description: "Whether to hide URL links",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
+			},
+			"subscription": schema.BoolAttribute{
+				Description: "Whether subscription is enabled",
+				Computed:    true,
+			},
+			"show_cookie_bar": schema.BoolAttribute{
+				Description: "Whether to show cookie bar",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
+			},
+			"pinned_announcement_id": schema.Int64Attribute{
+				Description: "ID of pinned announcement",
+				Optional:    true,
+			},
+			"custom_settings": schema.SingleNestedAttribute{
+				Description: "Custom settings for the PSP",
+				Optional:    true,
+				Attributes: map[string]schema.Attribute{
+					"font": schema.SingleNestedAttribute{
+						Description: "Font settings",
+						Optional:    true,
+						Attributes: map[string]schema.Attribute{
+							"family": schema.StringAttribute{
+								Description: "Font family",
+								Optional:    true,
+							},
+						},
+					},
+					"page": schema.SingleNestedAttribute{
+						Description: "Page settings",
+						Optional:    true,
+						Attributes: map[string]schema.Attribute{
+							"layout": schema.StringAttribute{
+								Description: "Page layout",
+								Optional:    true,
+							},
+							"theme": schema.StringAttribute{
+								Description: "Page theme",
+								Optional:    true,
+							},
+							"density": schema.StringAttribute{
+								Description: "Page density",
+								Optional:    true,
+							},
+						},
+					},
+					"colors": schema.SingleNestedAttribute{
+						Description: "Color settings",
+						Optional:    true,
+						Attributes: map[string]schema.Attribute{
+							"main": schema.StringAttribute{
+								Description: "Main color",
+								Optional:    true,
+							},
+							"text": schema.StringAttribute{
+								Description: "Text color",
+								Optional:    true,
+							},
+							"link": schema.StringAttribute{
+								Description: "Link color",
+								Optional:    true,
+							},
+						},
+					},
+					"features": schema.SingleNestedAttribute{
+						Description: "Feature settings",
+						Optional:    true,
+						Attributes: map[string]schema.Attribute{
+							"show_bars": schema.StringAttribute{
+								Description: "Whether to show bars",
+								Optional:    true,
+							},
+							"show_uptime_percentage": schema.StringAttribute{
+								Description: "Whether to show uptime percentage",
+								Optional:    true,
+							},
+							"enable_floating_status": schema.StringAttribute{
+								Description: "Whether to enable floating status",
+								Optional:    true,
+							},
+							"show_overall_uptime": schema.StringAttribute{
+								Description: "Whether to show overall uptime",
+								Optional:    true,
+							},
+							"show_outage_updates": schema.StringAttribute{
+								Description: "Whether to show outage updates",
+								Optional:    true,
+							},
+							"show_outage_details": schema.StringAttribute{
+								Description: "Whether to show outage details",
+								Optional:    true,
+							},
+							"enable_details_page": schema.StringAttribute{
+								Description: "Whether to enable details page",
+								Optional:    true,
+							},
+							"show_monitor_url": schema.StringAttribute{
+								Description: "Whether to show monitor URL",
+								Optional:    true,
+							},
+							"hide_paused_monitors": schema.StringAttribute{
+								Description: "Whether to hide paused monitors",
+								Optional:    true,
+							},
+						},
+					},
+				},
 			},
 		},
 	}
 }
 
 func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	// Retrieve values from plan
 	var plan pspResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -156,52 +315,70 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	// Create new PSP
 	psp := &client.CreatePSPRequest{
-		Name: plan.Name.ValueString(),
-		Type: plan.Type.ValueString(),
-		Sort: plan.Sort.ValueString(),
+		Name:                       plan.Name.ValueString(),
+		CustomDomain:               plan.CustomDomain.ValueString(),
+		GACode:                     plan.GACode.ValueString(),
+		ShareAnalyticsConsent:      plan.ShareAnalyticsConsent.ValueBool(),
+		UseSmallCookieConsentModal: plan.UseSmallCookieConsentModal.ValueBool(),
+		Icon:                       plan.Icon.ValueString(),
+		NoIndex:                    plan.NoIndex.ValueBool(),
+		Logo:                       plan.Logo.ValueString(),
+		HideURLLinks:               plan.HideURLLinks.ValueBool(),
+		ShowCookieBar:              plan.ShowCookieBar.ValueBool(),
 	}
 
-	// Convert monitors from int64 to []int64
-	var monitorsInt64 []int64
-	diags = plan.Monitors.ElementsAs(ctx, &monitorsInt64, false)
+	// Convert monitor IDs
+	var monitorIDs []int64
+	diags = plan.MonitorIDs.ElementsAs(ctx, &monitorIDs, false)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	psp.Monitors = monitorsInt64
+	psp.MonitorIDs = monitorIDs
 
-	// Add optional fields if set
-	if !plan.CustomDomain.IsNull() {
-		psp.CustomDomain = plan.CustomDomain.ValueString()
-	}
-	if !plan.Password.IsNull() {
-		psp.Password = plan.Password.ValueString()
-	}
-	if !plan.Theme.IsNull() {
-		psp.Theme = plan.Theme.ValueString()
-	}
-	if !plan.CustomCSS.IsNull() {
-		psp.CustomCSS = plan.CustomCSS.ValueString()
-	}
-	if !plan.CustomHTML.IsNull() {
-		psp.CustomHTML = plan.CustomHTML.ValueString()
-	}
+	// Handle custom settings if set
+	if plan.CustomSettings != nil {
+		customSettings := client.CustomSettings{}
 
-	psp.HideURLs = plan.HideURLs.ValueBool()
-	psp.AllTimeUptime = plan.AllTimeUptime.ValueBool()
-
-	// Handle tags if set
-	if !plan.Tags.IsNull() {
-		var tags []string
-		diags = plan.Tags.ElementsAs(ctx, &tags, false)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
+		if plan.CustomSettings.Font != nil {
+			customSettings.Font = &client.FontSettings{
+				Family: plan.CustomSettings.Font.Family.ValueString(),
+			}
 		}
-		psp.Tags = tags
+
+		if plan.CustomSettings.Page != nil {
+			customSettings.Page = &client.PageSettings{
+				Layout:  plan.CustomSettings.Page.Layout.ValueString(),
+				Theme:   plan.CustomSettings.Page.Theme.ValueString(),
+				Density: plan.CustomSettings.Page.Density.ValueString(),
+			}
+		}
+
+		if plan.CustomSettings.Colors != nil {
+			customSettings.Colors = &client.ColorSettings{
+				Main: plan.CustomSettings.Colors.Main.ValueString(),
+				Text: plan.CustomSettings.Colors.Text.ValueString(),
+				Link: plan.CustomSettings.Colors.Link.ValueString(),
+			}
+		}
+
+		if plan.CustomSettings.Features != nil {
+			customSettings.Features = &client.FeatureSettings{
+				ShowBars:             plan.CustomSettings.Features.ShowBars.ValueString(),
+				ShowUptimePercentage: plan.CustomSettings.Features.ShowUptimePercentage.ValueString(),
+				EnableFloatingStatus: plan.CustomSettings.Features.EnableFloatingStatus.ValueString(),
+				ShowOverallUptime:    plan.CustomSettings.Features.ShowOverallUptime.ValueString(),
+				ShowOutageUpdates:    plan.CustomSettings.Features.ShowOutageUpdates.ValueString(),
+				ShowOutageDetails:    plan.CustomSettings.Features.ShowOutageDetails.ValueString(),
+				EnableDetailsPage:    plan.CustomSettings.Features.EnableDetailsPage.ValueString(),
+				ShowMonitorURL:       plan.CustomSettings.Features.ShowMonitorURL.ValueString(),
+				HidePausedMonitors:   plan.CustomSettings.Features.HidePausedMonitors.ValueString(),
+			}
+		}
+
+		psp.CustomSettings = customSettings
 	}
 
-	// Create PSP
 	newPSP, err := r.client.CreatePSP(psp)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -213,7 +390,12 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	// Map response body to schema and populate Computed attribute values
 	plan.ID = types.StringValue(strconv.FormatInt(newPSP.ID, 10))
-	plan.Status = types.Int64Value(int64(newPSP.Status))
+	plan.IsPasswordSet = types.BoolValue(newPSP.IsPasswordSet)
+	plan.MonitorsCount = types.Int64Value(int64(newPSP.MonitorsCount))
+	plan.Status = types.StringValue(newPSP.Status)
+	plan.URLKey = types.StringValue(newPSP.URLKey)
+	plan.HomepageLink = types.StringValue(newPSP.HomepageLink)
+	plan.Subscription = types.BoolValue(newPSP.Subscription)
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -253,25 +435,73 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 
 	// Map response body to schema and populate Computed attribute values
 	state.Name = types.StringValue(psp.Name)
-	state.Type = types.StringValue(psp.Type)
 	state.CustomDomain = types.StringValue(psp.CustomDomain)
-	state.Password = types.StringValue(psp.Password)
-	state.Sort = types.StringValue(psp.Sort)
-	state.Theme = types.StringValue(psp.Theme)
-	state.HideURLs = types.BoolValue(psp.HideURLs)
-	state.AllTimeUptime = types.BoolValue(psp.AllTimeUptime)
-	state.CustomCSS = types.StringValue(psp.CustomCSS)
-	state.CustomHTML = types.StringValue(psp.CustomHTML)
-	state.Status = types.Int64Value(int64(psp.Status))
+	state.IsPasswordSet = types.BoolValue(psp.IsPasswordSet)
 
-	// Handle list attributes
-	monitors, diags := types.ListValueFrom(ctx, types.Int64Type, psp.Monitors)
-	resp.Diagnostics.Append(diags...)
-	state.Monitors = monitors
+	// Convert []int64 to []attr.Value for MonitorIDs
+	monitorIDValues := make([]attr.Value, len(psp.MonitorIDs))
+	for i, id := range psp.MonitorIDs {
+		monitorIDValues[i] = types.Int64Value(id)
+	}
+	state.MonitorIDs = types.ListValueMust(types.Int64Type, monitorIDValues)
 
-	tags, diags := types.ListValueFrom(ctx, types.StringType, psp.Tags)
-	resp.Diagnostics.Append(diags...)
-	state.Tags = tags
+	state.MonitorsCount = types.Int64Value(int64(psp.MonitorsCount))
+	state.Status = types.StringValue(psp.Status)
+	state.URLKey = types.StringValue(psp.URLKey)
+	state.HomepageLink = types.StringValue(psp.HomepageLink)
+	state.GACode = types.StringValue(psp.GACode)
+	state.ShareAnalyticsConsent = types.BoolValue(psp.ShareAnalyticsConsent)
+	state.UseSmallCookieConsentModal = types.BoolValue(psp.UseSmallCookieConsentModal)
+	state.Icon = types.StringValue(psp.Icon)
+	state.NoIndex = types.BoolValue(psp.NoIndex)
+	state.Logo = types.StringValue(psp.Logo)
+	state.HideURLLinks = types.BoolValue(psp.HideURLLinks)
+	state.Subscription = types.BoolValue(psp.Subscription)
+	state.ShowCookieBar = types.BoolValue(psp.ShowCookieBar)
+	state.PinnedAnnouncementID = types.Int64Value(int64(psp.PinnedAnnouncementID))
+
+	// Handle custom settings if set
+	if psp.CustomSettings != nil {
+		customSettings := &customSettingsModel{}
+
+		if psp.CustomSettings.Font != nil {
+			customSettings.Font = &fontSettingsModel{
+				Family: types.StringValue(psp.CustomSettings.Font.Family),
+			}
+		}
+
+		if psp.CustomSettings.Page != nil {
+			customSettings.Page = &pageSettingsModel{
+				Layout:  types.StringValue(psp.CustomSettings.Page.Layout),
+				Theme:   types.StringValue(psp.CustomSettings.Page.Theme),
+				Density: types.StringValue(psp.CustomSettings.Page.Density),
+			}
+		}
+
+		if psp.CustomSettings.Colors != nil {
+			customSettings.Colors = &colorSettingsModel{
+				Main: types.StringValue(psp.CustomSettings.Colors.Main),
+				Text: types.StringValue(psp.CustomSettings.Colors.Text),
+				Link: types.StringValue(psp.CustomSettings.Colors.Link),
+			}
+		}
+
+		if psp.CustomSettings.Features != nil {
+			customSettings.Features = &featureSettingsModel{
+				ShowBars:             types.StringValue(psp.CustomSettings.Features.ShowBars),
+				ShowUptimePercentage: types.StringValue(psp.CustomSettings.Features.ShowUptimePercentage),
+				EnableFloatingStatus: types.StringValue(psp.CustomSettings.Features.EnableFloatingStatus),
+				ShowOverallUptime:    types.StringValue(psp.CustomSettings.Features.ShowOverallUptime),
+				ShowOutageUpdates:    types.StringValue(psp.CustomSettings.Features.ShowOutageUpdates),
+				ShowOutageDetails:    types.StringValue(psp.CustomSettings.Features.ShowOutageDetails),
+				EnableDetailsPage:    types.StringValue(psp.CustomSettings.Features.EnableDetailsPage),
+				ShowMonitorURL:       types.StringValue(psp.CustomSettings.Features.ShowMonitorURL),
+				HidePausedMonitors:   types.StringValue(psp.CustomSettings.Features.HidePausedMonitors),
+			}
+		}
+
+		state.CustomSettings = customSettings
+	}
 
 	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)
@@ -300,50 +530,75 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	// Generate API request body from plan
+	shareAnalyticsConsent := plan.ShareAnalyticsConsent.ValueBool()
+	useSmallCookieConsentModal := plan.UseSmallCookieConsentModal.ValueBool()
+	noIndex := plan.NoIndex.ValueBool()
+	hideURLLinks := plan.HideURLLinks.ValueBool()
+	showCookieBar := plan.ShowCookieBar.ValueBool()
+
 	updateReq := &client.UpdatePSPRequest{
-		Name: plan.Name.ValueString(),
-		Type: plan.Type.ValueString(),
-		Sort: plan.Sort.ValueString(),
+		Name:                       plan.Name.ValueString(),
+		CustomDomain:               plan.CustomDomain.ValueString(),
+		GACode:                     plan.GACode.ValueString(),
+		ShareAnalyticsConsent:      &shareAnalyticsConsent,
+		UseSmallCookieConsentModal: &useSmallCookieConsentModal,
+		Icon:                       plan.Icon.ValueString(),
+		NoIndex:                    &noIndex,
+		Logo:                       plan.Logo.ValueString(),
+		HideURLLinks:               &hideURLLinks,
+		ShowCookieBar:              &showCookieBar,
 	}
 
-	// Convert monitors from int64 to []int64
-	var monitorsInt64 []int64
-	diags = plan.Monitors.ElementsAs(ctx, &monitorsInt64, false)
+	// Convert monitor IDs
+	var monitorIDs []int64
+	diags = plan.MonitorIDs.ElementsAs(ctx, &monitorIDs, false)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	updateReq.Monitors = monitorsInt64
+	updateReq.MonitorIDs = monitorIDs
 
-	// Add optional fields if set
-	if !plan.CustomDomain.IsNull() {
-		updateReq.CustomDomain = plan.CustomDomain.ValueString()
-	}
-	if !plan.Password.IsNull() {
-		updateReq.Password = plan.Password.ValueString()
-	}
-	if !plan.Theme.IsNull() {
-		updateReq.Theme = plan.Theme.ValueString()
-	}
-	if !plan.CustomCSS.IsNull() {
-		updateReq.CustomCSS = plan.CustomCSS.ValueString()
-	}
-	if !plan.CustomHTML.IsNull() {
-		updateReq.CustomHTML = plan.CustomHTML.ValueString()
-	}
+	// Handle custom settings if set
+	if plan.CustomSettings != nil {
+		customSettings := &client.CustomSettings{}
 
-	updateReq.HideURLs = plan.HideURLs.ValueBool()
-	updateReq.AllTimeUptime = plan.AllTimeUptime.ValueBool()
-
-	// Handle tags if set
-	if !plan.Tags.IsNull() {
-		var tags []string
-		diags = plan.Tags.ElementsAs(ctx, &tags, false)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
+		if plan.CustomSettings.Font != nil {
+			customSettings.Font = &client.FontSettings{
+				Family: plan.CustomSettings.Font.Family.ValueString(),
+			}
 		}
-		updateReq.Tags = tags
+
+		if plan.CustomSettings.Page != nil {
+			customSettings.Page = &client.PageSettings{
+				Layout:  plan.CustomSettings.Page.Layout.ValueString(),
+				Theme:   plan.CustomSettings.Page.Theme.ValueString(),
+				Density: plan.CustomSettings.Page.Density.ValueString(),
+			}
+		}
+
+		if plan.CustomSettings.Colors != nil {
+			customSettings.Colors = &client.ColorSettings{
+				Main: plan.CustomSettings.Colors.Main.ValueString(),
+				Text: plan.CustomSettings.Colors.Text.ValueString(),
+				Link: plan.CustomSettings.Colors.Link.ValueString(),
+			}
+		}
+
+		if plan.CustomSettings.Features != nil {
+			customSettings.Features = &client.FeatureSettings{
+				ShowBars:             plan.CustomSettings.Features.ShowBars.ValueString(),
+				ShowUptimePercentage: plan.CustomSettings.Features.ShowUptimePercentage.ValueString(),
+				EnableFloatingStatus: plan.CustomSettings.Features.EnableFloatingStatus.ValueString(),
+				ShowOverallUptime:    plan.CustomSettings.Features.ShowOverallUptime.ValueString(),
+				ShowOutageUpdates:    plan.CustomSettings.Features.ShowOutageUpdates.ValueString(),
+				ShowOutageDetails:    plan.CustomSettings.Features.ShowOutageDetails.ValueString(),
+				EnableDetailsPage:    plan.CustomSettings.Features.EnableDetailsPage.ValueString(),
+				ShowMonitorURL:       plan.CustomSettings.Features.ShowMonitorURL.ValueString(),
+				HidePausedMonitors:   plan.CustomSettings.Features.HidePausedMonitors.ValueString(),
+			}
+		}
+
+		updateReq.CustomSettings = customSettings
 	}
 
 	// Update PSP
@@ -357,7 +612,12 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	// Update computed fields
-	plan.Status = types.Int64Value(int64(updatedPSP.Status))
+	plan.IsPasswordSet = types.BoolValue(updatedPSP.IsPasswordSet)
+	plan.MonitorsCount = types.Int64Value(int64(updatedPSP.MonitorsCount))
+	plan.Status = types.StringValue(updatedPSP.Status)
+	plan.URLKey = types.StringValue(updatedPSP.URLKey)
+	plan.HomepageLink = types.StringValue(updatedPSP.HomepageLink)
+	plan.Subscription = types.BoolValue(updatedPSP.Subscription)
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)

@@ -30,19 +30,16 @@ type maintenanceWindowResource struct {
 
 // maintenanceWindowResourceModel maps the resource schema data.
 type maintenanceWindowResourceModel struct {
-	ID          types.String `tfsdk:"id"`
-	Name        types.String `tfsdk:"name"`
-	Type        types.String `tfsdk:"type"`
-	Status      types.Int64  `tfsdk:"status"`
-	StartTime   types.Int64  `tfsdk:"start_time"`
-	Duration    types.Int64  `tfsdk:"duration"`
-	Monitors    types.List   `tfsdk:"monitors"`
-	Repeat      types.String `tfsdk:"repeat"`
-	RepeatDays  types.List   `tfsdk:"repeat_days"`
-	WeekDay     types.Int64  `tfsdk:"week_day"`
-	MonthDay    types.Int64  `tfsdk:"month_day"`
-	Description types.String `tfsdk:"description"`
-	Tags        types.List   `tfsdk:"tags"`
+	ID              types.String `tfsdk:"id"`
+	Name            types.String `tfsdk:"name"`
+	Interval        types.String `tfsdk:"interval"`
+	Date            types.String `tfsdk:"date"`
+	Time            types.String `tfsdk:"time"`
+	Duration        types.Int64  `tfsdk:"duration"`
+	AutoAddMonitors types.Bool   `tfsdk:"auto_add_monitors"`
+	Days            types.List   `tfsdk:"days"`
+	Status          types.String `tfsdk:"status"`
+	Created         types.String `tfsdk:"created"`
 }
 
 // Configure adds the provider configured client to the resource.
@@ -84,52 +81,38 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 				Description: "Name of the maintenance window",
 				Required:    true,
 			},
-			"type": schema.StringAttribute{
-				Description: "Type of maintenance window (once, daily, weekly, monthly)",
+			"interval": schema.StringAttribute{
+				Description: "Interval of maintenance window (once, daily, weekly, monthly)",
 				Required:    true,
 			},
-			"status": schema.Int64Attribute{
-				Description: "Status of the maintenance window",
-				Computed:    true,
+			"date": schema.StringAttribute{
+				Description: "Date of the maintenance window (format: YYYY-MM-DD)",
+				Required:    true,
 			},
-			"start_time": schema.Int64Attribute{
-				Description: "Start time of the maintenance window (Unix timestamp)",
+			"time": schema.StringAttribute{
+				Description: "Time of the maintenance window (format: HH:mm)",
 				Required:    true,
 			},
 			"duration": schema.Int64Attribute{
 				Description: "Duration of the maintenance window in minutes",
 				Required:    true,
 			},
-			"monitors": schema.ListAttribute{
-				Description: "List of monitor IDs",
-				Required:    true,
+			"auto_add_monitors": schema.BoolAttribute{
+				Description: "Automatically add new monitors to maintenance window",
+				Optional:    true,
+			},
+			"days": schema.ListAttribute{
+				Description: "Days to run maintenance window on (1-7, 1 = Monday)",
+				Optional:    true,
 				ElementType: types.Int64Type,
 			},
-			"repeat": schema.StringAttribute{
-				Description: "Repeat type (daily, weekly, monthly)",
-				Optional:    true,
+			"status": schema.StringAttribute{
+				Description: "Status of the maintenance window",
+				Computed:    true,
 			},
-			"repeat_days": schema.ListAttribute{
-				Description: "Days to repeat on",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-			"week_day": schema.Int64Attribute{
-				Description: "Day of the week (0-6, 0 = Sunday)",
-				Optional:    true,
-			},
-			"month_day": schema.Int64Attribute{
-				Description: "Day of the month (1-31)",
-				Optional:    true,
-			},
-			"description": schema.StringAttribute{
-				Description: "Description of the maintenance window",
-				Optional:    true,
-			},
-			"tags": schema.ListAttribute{
-				Description: "Tags for the maintenance window",
-				Optional:    true,
-				ElementType: types.StringType,
+			"created": schema.StringAttribute{
+				Description: "Creation date of the maintenance window",
+				Computed:    true,
 			},
 		},
 	}
@@ -146,54 +129,27 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 
 	// Create new maintenance window
 	mw := &client.CreateMaintenanceWindowRequest{
-		Name:      plan.Name.ValueString(),
-		Type:      plan.Type.ValueString(),
-		StartTime: plan.StartTime.ValueInt64(),
-		Duration:  int(plan.Duration.ValueInt64()),
+		Name:            plan.Name.ValueString(),
+		Interval:        plan.Interval.ValueString(),
+		Date:            plan.Date.ValueString(),
+		Time:            plan.Time.ValueString(),
+		Duration:        int(plan.Duration.ValueInt64()),
+		AutoAddMonitors: plan.AutoAddMonitors.ValueBool(),
 	}
 
-	// Convert monitors from int64 to []int64
-	var monitorsInt64 []int64
-	diags = plan.Monitors.ElementsAs(ctx, &monitorsInt64, false)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	mw.Monitors = monitorsInt64
-
-	// Add optional fields if set
-	if !plan.Repeat.IsNull() {
-		mw.Repeat = plan.Repeat.ValueString()
-	}
-	if !plan.Description.IsNull() {
-		mw.Description = plan.Description.ValueString()
-	}
-
-	if !plan.RepeatDays.IsNull() {
-		var repeatDays []string
-		diags = plan.RepeatDays.ElementsAs(ctx, &repeatDays, false)
+	// Convert days from int64 to []int
+	if !plan.Days.IsNull() {
+		var daysInt64 []int64
+		diags = plan.Days.ElementsAs(ctx, &daysInt64, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		mw.RepeatDays = repeatDays
-	}
-
-	if !plan.WeekDay.IsNull() {
-		mw.WeekDay = int(plan.WeekDay.ValueInt64())
-	}
-	if !plan.MonthDay.IsNull() {
-		mw.MonthDay = int(plan.MonthDay.ValueInt64())
-	}
-
-	if !plan.Tags.IsNull() {
-		var tags []string
-		diags = plan.Tags.ElementsAs(ctx, &tags, false)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
+		days := make([]int, len(daysInt64))
+		for i, d := range daysInt64 {
+			days[i] = int(d)
 		}
-		mw.Tags = tags
+		mw.Days = days
 	}
 
 	// Create maintenance window
@@ -208,7 +164,8 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 
 	// Map response body to schema and populate Computed attribute values
 	plan.ID = types.StringValue(strconv.FormatInt(newMW.ID, 10))
-	plan.Status = types.Int64Value(int64(newMW.Status))
+	plan.Status = types.StringValue(newMW.Status)
+	plan.Created = types.StringValue(newMW.Created)
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -241,34 +198,34 @@ func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadR
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading maintenance window",
-			"Could not read maintenance window ID "+state.ID.ValueString()+": "+err.Error(),
+			"Could not read maintenance window with ID "+state.ID.ValueString()+": "+err.Error(),
 		)
 		return
 	}
 
-	// Map response body to schema and populate Computed attribute values
+	// Map response body to schema
 	state.Name = types.StringValue(mw.Name)
-	state.Type = types.StringValue(mw.Type)
-	state.Status = types.Int64Value(int64(mw.Status))
-	state.StartTime = types.Int64Value(mw.StartTime)
+	state.Interval = types.StringValue(mw.Interval)
+	state.Date = types.StringValue(mw.Date)
+	state.Time = types.StringValue(mw.Time)
 	state.Duration = types.Int64Value(int64(mw.Duration))
-	state.Description = types.StringValue(mw.Description)
-	state.Repeat = types.StringValue(mw.Repeat)
-	state.WeekDay = types.Int64Value(int64(mw.WeekDay))
-	state.MonthDay = types.Int64Value(int64(mw.MonthDay))
+	state.AutoAddMonitors = types.BoolValue(mw.AutoAddMonitors)
+	state.Status = types.StringValue(mw.Status)
+	state.Created = types.StringValue(mw.Created)
 
-	// Handle list attributes
-	monitors, diags := types.ListValueFrom(ctx, types.Int64Type, mw.Monitors)
-	resp.Diagnostics.Append(diags...)
-	state.Monitors = monitors
-
-	repeatDays, diags := types.ListValueFrom(ctx, types.StringType, mw.RepeatDays)
-	resp.Diagnostics.Append(diags...)
-	state.RepeatDays = repeatDays
-
-	tags, diags := types.ListValueFrom(ctx, types.StringType, mw.Tags)
-	resp.Diagnostics.Append(diags...)
-	state.Tags = tags
+	// Convert days from []int to []int64
+	if len(mw.Days) > 0 {
+		daysInt64 := make([]int64, len(mw.Days))
+		for i, d := range mw.Days {
+			daysInt64[i] = int64(d)
+		}
+		days, diags := types.ListValueFrom(ctx, types.Int64Type, daysInt64)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		state.Days = days
+	}
 
 	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)
@@ -298,54 +255,27 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 
 	// Generate API request body from plan
 	updateReq := &client.UpdateMaintenanceWindowRequest{
-		Name:      plan.Name.ValueString(),
-		Type:      plan.Type.ValueString(),
-		StartTime: plan.StartTime.ValueInt64(),
-		Duration:  int(plan.Duration.ValueInt64()),
+		Name:            plan.Name.ValueString(),
+		Interval:        plan.Interval.ValueString(),
+		Date:            plan.Date.ValueString(),
+		Time:            plan.Time.ValueString(),
+		Duration:        int(plan.Duration.ValueInt64()),
+		AutoAddMonitors: plan.AutoAddMonitors.ValueBool(),
 	}
 
-	// Convert monitors from int64 to []int64
-	var monitorsInt64 []int64
-	diags = plan.Monitors.ElementsAs(ctx, &monitorsInt64, false)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	updateReq.Monitors = monitorsInt64
-
-	// Add optional fields if set
-	if !plan.Repeat.IsNull() {
-		updateReq.Repeat = plan.Repeat.ValueString()
-	}
-	if !plan.Description.IsNull() {
-		updateReq.Description = plan.Description.ValueString()
-	}
-
-	if !plan.RepeatDays.IsNull() {
-		var repeatDays []string
-		diags = plan.RepeatDays.ElementsAs(ctx, &repeatDays, false)
+	// Convert days from int64 to []int
+	if !plan.Days.IsNull() {
+		var daysInt64 []int64
+		diags = plan.Days.ElementsAs(ctx, &daysInt64, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		updateReq.RepeatDays = repeatDays
-	}
-
-	if !plan.WeekDay.IsNull() {
-		updateReq.WeekDay = int(plan.WeekDay.ValueInt64())
-	}
-	if !plan.MonthDay.IsNull() {
-		updateReq.MonthDay = int(plan.MonthDay.ValueInt64())
-	}
-
-	if !plan.Tags.IsNull() {
-		var tags []string
-		diags = plan.Tags.ElementsAs(ctx, &tags, false)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
+		days := make([]int, len(daysInt64))
+		for i, d := range daysInt64 {
+			days[i] = int(d)
 		}
-		updateReq.Tags = tags
+		updateReq.Days = days
 	}
 
 	// Update maintenance window
@@ -359,7 +289,8 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	}
 
 	// Update computed fields
-	plan.Status = types.Int64Value(int64(updatedMW.Status))
+	plan.Status = types.StringValue(updatedMW.Status)
+	plan.Created = types.StringValue(updatedMW.Created)
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)

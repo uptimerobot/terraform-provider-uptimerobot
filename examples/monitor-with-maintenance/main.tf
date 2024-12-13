@@ -10,34 +10,27 @@ resource "uptimerobot_maintenance_window" "weekly" {
 
 # Create a monitor with the maintenance window
 resource "uptimerobot_monitor" "example" {
-  name     = "My Website"
-  url      = "https://example.com"
-  type     = "http"
-  interval = 300  # 5 minutes
+  friendly_name = "My Website"
+  url          = "https://example.com"
+  type         = 1  # HTTP(s)
+  interval     = 300  # 5 minutes
 
-  # Reference the maintenance window ID
-  maintenance_windows = [
-    uptimerobot_maintenance_window.weekly.id
-  ]
-
-  # Other optional settings
+  # Optional settings
   http_method      = "GET"
   ignore_ssl_errors = false
   ssl_check_enabled = true
 }
 
-# Create a monitor with multiple maintenance windows
-resource "uptimerobot_monitor" "with_multiple_maintenance" {
-  name     = "Critical Service"
-  url      = "https://api.example.com"
-  type     = "http"
-  interval = 60  # 1 minute
-
-  # Reference multiple maintenance windows
-  maintenance_windows = [
-    uptimerobot_maintenance_window.weekly.id,
-    uptimerobot_maintenance_window.monthly.id
-  ]
+# Create a monitor with keyword checking
+resource "uptimerobot_monitor" "with_keyword" {
+  friendly_name = "Critical Service"
+  url          = "https://api.example.com"
+  type         = 1  # HTTP(s)
+  interval     = 60  # 1 minute
+  
+  # Keyword monitoring
+  keyword_type  = "exists"
+  keyword_value = "success"
 }
 
 # Monthly maintenance window

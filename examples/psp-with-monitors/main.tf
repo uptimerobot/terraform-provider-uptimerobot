@@ -1,23 +1,23 @@
 # Create monitors for different services
 resource "uptimerobot_monitor" "api" {
-  name     = "API Service"
-  url      = "https://api.example.com"
-  type     = "http"
-  interval = 300  # 5 minutes
+  friendly_name = "API Service"
+  url          = "https://api.example.com"
+  type         = 1  # HTTP(s)
+  interval     = 300  # 5 minutes
 }
 
 resource "uptimerobot_monitor" "web" {
-  name     = "Web Frontend"
-  url      = "https://www.example.com"
-  type     = "http"
-  interval = 300
+  friendly_name = "Web Frontend"
+  url          = "https://www.example.com"
+  type         = 1  # HTTP(s)
+  interval     = 300
 }
 
 resource "uptimerobot_monitor" "database" {
-  name     = "Database Health"
-  url      = "https://db.example.com"
-  type     = "http"
-  interval = 60  # 1 minute
+  friendly_name = "Database Health"
+  url          = "https://db.example.com"
+  type         = 1  # HTTP(s)
+  interval     = 60  # 1 minute
 }
 
 # Create a public status page for all services
