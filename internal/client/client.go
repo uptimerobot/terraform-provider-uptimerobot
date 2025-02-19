@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	defaultBaseURL = "https://api.uptimerobot.com/v2"
+	defaultBaseURL = "http://localhost:3000"
 	defaultTimeout = 10 * time.Second
 )
 
@@ -41,6 +41,9 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 			return nil, err
 		}
 		reqBody = bytes.NewBuffer(jsonBody)
+		// Debug logging
+		fmt.Printf("Request URL: %s%s\n", c.baseURL, path)
+		fmt.Printf("Request Body: %s\n", string(jsonBody))
 	}
 
 	req, err := http.NewRequest(method, c.baseURL+path, reqBody)

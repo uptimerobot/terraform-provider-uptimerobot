@@ -9,10 +9,10 @@ import (
 type MonitorType string
 
 const (
-	MonitorTypeHTTP    MonitorType = "http"
-	MonitorTypeKeyword MonitorType = "keyword"
-	MonitorTypePing    MonitorType = "ping"
-	MonitorTypePort    MonitorType = "port"
+	MonitorTypeHTTP    MonitorType = "HTTP"
+	MonitorTypeKeyword MonitorType = "KEYWORD"
+	MonitorTypePing    MonitorType = "PING"
+	MonitorTypePort    MonitorType = "PORT"
 )
 
 // CreateMonitorRequest represents the request to create a new monitor
@@ -81,9 +81,9 @@ type UpdateMonitorRequest struct {
 type Monitor struct {
 	Type                     string              `json:"type"`
 	Interval                 int                 `json:"interval"`
-	SSLBrand                 string              `json:"sslBrand"`
-	SSLExpiryDateTime        string              `json:"sslExpiryDateTime"`
-	DomainExpireDate         string              `json:"domainExpireDate"`
+	SSLBrand                 *string             `json:"sslBrand"`
+	SSLExpiryDateTime        *string             `json:"sslExpiryDateTime"`
+	DomainExpireDate         *string             `json:"domainExpireDate"`
 	CheckSSLErrors           bool                `json:"checkSSLErrors"`
 	SSLExpirationReminder    bool                `json:"sslExpirationReminder"`
 	DomainExpirationReminder bool                `json:"domainExpirationReminder"`
@@ -95,13 +95,13 @@ type Monitor struct {
 	HTTPMethodType           string              `json:"httpMethodType"`
 	SuccessHTTPResponseCodes []string            `json:"successHttpResponseCodes"`
 	Timeout                  int                 `json:"timeout"`
-	PostValueData            string              `json:"postValueData"`
-	PostValueType            string              `json:"postValueType"`
-	Port                     int                 `json:"port"`
+	PostValueData            *string             `json:"postValueData"`
+	PostValueType            *string             `json:"postValueType"`
+	Port                     *int                `json:"port"`
 	GracePeriod              int                 `json:"gracePeriod"`
 	KeywordValue             string              `json:"keywordValue"`
 	KeywordCaseType          int                 `json:"keywordCaseType"`
-	KeywordType              string              `json:"keywordType"`
+	KeywordType              *string             `json:"keywordType"`
 	MaintenanceWindows       []MaintenanceWindow `json:"maintenanceWindows"`
 	PSPs                     []PSP               `json:"psps"`
 	ID                       int64               `json:"id"`
@@ -109,7 +109,7 @@ type Monitor struct {
 	Status                   string              `json:"status"`
 	URL                      string              `json:"url"`
 	CurrentStateDuration     int                 `json:"currentStateDuration"`
-	LastIncidentID           int64               `json:"lastIncidentId"`
+	LastIncidentID           *int64              `json:"lastIncidentId"`
 	UserID                   int64               `json:"userId"`
 	Tags                     []Tag               `json:"tags"`
 	AssignedAlertContacts    []AlertContact      `json:"assignedAlertContacts"`
@@ -158,14 +158,12 @@ func (c *Client) CreateMonitor(req *CreateMonitorRequest) (*Monitor, error) {
 		return nil, err
 	}
 
-	var result struct {
-		Monitor *Monitor `json:"monitor"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, err
+	var monitor Monitor
+	if err := json.Unmarshal(resp, &monitor); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal monitor response: %v", err)
 	}
 
-	return result.Monitor, nil
+	return &monitor, nil
 }
 
 // GetMonitor retrieves a monitor by ID
@@ -175,14 +173,29 @@ func (c *Client) GetMonitor(id int64) (*Monitor, error) {
 		return nil, err
 	}
 
-	var result struct {
-		Monitor *Monitor `json:"monitor"`
+	var monitor Monitor
+	if err := json.Unmarshal(resp, &monitor); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal monitor response: %v", err)
 	}
-	if err := json.Unmarshal(resp, &result); err != nil {
+
+	return &monitor, nil
+}
+
+// GetMonitors retrieves all monitors
+func (c *Client) GetMonitors() ([]Monitor, error) {
+	resp, err := c.doRequest("GET", "/public/monitors", nil)
+	if err != nil {
 		return nil, err
 	}
 
-	return result.Monitor, nil
+	var response struct {
+		Monitors []Monitor `json:"monitors"`
+	}
+	if err := json.Unmarshal(resp, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal monitors response: %v", err)
+	}
+
+	return response.Monitors, nil
 }
 
 // UpdateMonitor updates an existing monitor
@@ -192,14 +205,12 @@ func (c *Client) UpdateMonitor(id int64, req *UpdateMonitorRequest) (*Monitor, e
 		return nil, err
 	}
 
-	var result struct {
-		Monitor *Monitor `json:"monitor"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, err
+	var monitor Monitor
+	if err := json.Unmarshal(resp, &monitor); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal monitor response: %v", err)
 	}
 
-	return result.Monitor, nil
+	return &monitor, nil
 }
 
 // DeleteMonitor deletes a monitor
@@ -212,4 +223,20 @@ func (c *Client) DeleteMonitor(id int64) error {
 func (c *Client) ResetMonitor(id int64) error {
 	_, err := c.doRequest("POST", fmt.Sprintf("/public/monitors/%d/reset", id), nil)
 	return err
+}
+
+// FindExistingMonitorByNameAndURL searches for a monitor with matching name and URL
+func (c *Client) FindExistingMonitorByNameAndURL(name, url string) (*Monitor, error) {
+	monitors, err := c.GetMonitors()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get monitors: %v", err)
+	}
+
+	for _, monitor := range monitors {
+		if monitor.Name == name && monitor.URL == url {
+			return &monitor, nil
+		}
+	}
+
+	return nil, nil
 }

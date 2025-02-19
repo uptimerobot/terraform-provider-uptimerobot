@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -10,19 +9,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
-)
-
-// Ensure the implementation satisfies the expected interfaces.
-var (
-	_ resource.Resource              = &monitorResource{}
-	_ resource.ResourceWithConfigure = &monitorResource{}
 )
 
 // NewMonitorResource is a helper function to simplify the provider implementation.
@@ -39,10 +35,6 @@ type monitorResource struct {
 type monitorResourceModel struct {
 	Type                     types.String `tfsdk:"type"`
 	Interval                 types.Int64  `tfsdk:"interval"`
-	SSLBrand                 types.String `tfsdk:"ssl_brand"`
-	SSLExpiryDateTime        types.String `tfsdk:"ssl_expiry_date_time"`
-	DomainExpireDate         types.String `tfsdk:"domain_expire_date"`
-	CheckSSLErrors           types.Bool   `tfsdk:"check_ssl_errors"`
 	SSLExpirationReminder    types.Bool   `tfsdk:"ssl_expiration_reminder"`
 	DomainExpirationReminder types.Bool   `tfsdk:"domain_expiration_reminder"`
 	FollowRedirections       types.Bool   `tfsdk:"follow_redirections"`
@@ -68,11 +60,8 @@ type monitorResourceModel struct {
 	Status                   types.String `tfsdk:"status"`
 	URL                      types.String `tfsdk:"url"`
 	CurrentStateDuration     types.Int64  `tfsdk:"current_state_duration"`
-	LastIncidentID           types.Int64  `tfsdk:"last_incident_id"`
-	UserID                   types.Int64  `tfsdk:"user_id"`
 	Tags                     types.List   `tfsdk:"tags"`
 	AssignedAlertContacts    types.List   `tfsdk:"assigned_alert_contacts"`
-	LastIncident             types.Object `tfsdk:"last_incident"`
 	LastDayUptimes           types.Object `tfsdk:"last_day_uptimes"`
 	CreateDateTime           types.String `tfsdk:"create_date_time"`
 	APIKey                   types.String `tfsdk:"api_key"`
@@ -106,31 +95,20 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 	resp.Schema = schema.Schema{
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Description: "Monitor identifier",
+				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"type": schema.StringAttribute{
-				Description: "Type of monitoring",
+				Description: "Type of monitoring. Must be one of: http, keyword, ping, port",
 				Required:    true,
 			},
 			"interval": schema.Int64Attribute{
 				Description: "Interval for checking the monitor",
 				Required:    true,
-			},
-			"ssl_brand": schema.StringAttribute{
-				Description: "SSL certificate brand",
-				Computed:    true,
-			},
-			"ssl_expiry_date_time": schema.StringAttribute{
-				Description: "SSL certificate expiry date and time",
-				Computed:    true,
-			},
-			"domain_expire_date": schema.StringAttribute{
-				Description: "Domain expiration date",
-				Computed:    true,
-			},
-			"check_ssl_errors": schema.BoolAttribute{
-				Description: "Whether to check for SSL errors",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(false),
 			},
 			"ssl_expiration_reminder": schema.BoolAttribute{
 				Description: "Whether to enable SSL expiration reminders",
@@ -151,27 +129,31 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Default:     booldefault.StaticBool(false),
 			},
 			"auth_type": schema.StringAttribute{
-				Description: "Type of authentication",
+				Description: "Authentication type for the monitor",
 				Optional:    true,
 				Computed:    true,
-				Default:     stringdefault.StaticString(""),
+				Default:     stringdefault.StaticString("HTTP_BASIC"),
 			},
 			"http_username": schema.StringAttribute{
 				Description: "Username for HTTP authentication",
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
 			"http_password": schema.StringAttribute{
 				Description: "Password for HTTP authentication",
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 				Sensitive:   true,
 			},
 			"custom_http_headers": schema.MapAttribute{
-				Description: "Custom HTTP headers",
+				Description: "Custom HTTP headers for the monitor",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
 			"http_method_type": schema.StringAttribute{
-				Description: "HTTP method to use",
+				Description: "HTTP method type for the monitor",
 				Optional:    true,
 				Computed:    true,
 				Default:     stringdefault.StaticString("HEAD"),
@@ -180,100 +162,116 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "HTTP status codes considered as successful",
 				Optional:    true,
 				ElementType: types.StringType,
+				Computed:    true,
 				Default: listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{
 					basetypes.NewStringValue("2xx"),
 					basetypes.NewStringValue("3xx"),
 				})),
 			},
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the monitor in seconds",
+				Description: "Timeout for the monitor",
 				Optional:    true,
 				Computed:    true,
 				Default:     int64default.StaticInt64(30),
 			},
 			"post_value_data": schema.StringAttribute{
-				Description: "POST data to send",
+				Description: "Post value data for the monitor",
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
 			"post_value_type": schema.StringAttribute{
-				Description: "Type of POST data",
+				Description: "Post value type for the monitor",
 				Optional:    true,
-				Default:     stringdefault.StaticString("KEY_VALUE"),
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
 			"port": schema.Int64Attribute{
-				Description: "Port to monitor",
+				Description: "Port number for the monitor",
 				Optional:    true,
 			},
 			"grace_period": schema.Int64Attribute{
-				Description: "Grace period in seconds",
+				Description: "Grace period for the monitor",
 				Optional:    true,
 				Computed:    true,
 				Default:     int64default.StaticInt64(30),
 			},
 			"keyword_value": schema.StringAttribute{
-				Description: "Keyword to monitor",
+				Description: "Keyword value for the monitor",
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
 			"keyword_case_type": schema.Int64Attribute{
-				Description: "Case sensitivity for keyword monitoring",
+				Description: "Case type for keyword monitoring",
 				Optional:    true,
+				Computed:    true,
 				Default:     int64default.StaticInt64(0),
 			},
 			"keyword_type": schema.StringAttribute{
-				Description: "Type of keyword monitoring",
+				Description: "Keyword type for the monitor",
 				Optional:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"maintenance_window_ids": schema.ListAttribute{
-				Description: "IDs of maintenance windows to assign",
+				Description: "IDs of assigned maintenance windows",
 				Optional:    true,
 				ElementType: types.Int64Type,
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"maintenance_windows": schema.ListAttribute{
-				Description: "Details of assigned maintenance windows",
-				Computed:    true,
-				ElementType: types.ObjectType{AttrTypes: map[string]attr.Type{
-					"id":              types.Int64Type,
-					"name":            types.StringType,
-					"interval":        types.StringType,
-					"created":         types.StringType,
-					"duration":        types.Int64Type,
-					"status":          types.StringType,
-					"autoAddMonitors": types.BoolType,
-					"date":            types.StringType,
-					"time":            types.StringType,
-					"days":            types.StringType,
-				}},
+				Description: "Details of assigned maintenance windows. Set by maintenance_window resource.",
+				Optional:    true,
+				ElementType: types.ObjectType{
+					AttrTypes: map[string]attr.Type{
+						"id":                types.Int64Type,
+						"name":              types.StringType,
+						"interval":          types.StringType,
+						"date":              types.StringType,
+						"time":              types.StringType,
+						"duration":          types.Int64Type,
+						"auto_add_monitors": types.BoolType,
+						"status":            types.StringType,
+						"created":           types.StringType,
+						"days":              types.ListType{ElemType: types.Int64Type},
+					},
+				},
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"psps": schema.ListAttribute{
 				Description: "Public Status pages",
-				Computed:    true,
-				ElementType: types.ObjectType{AttrTypes: map[string]attr.Type{
-					"id":                             types.Int64Type,
-					"friendly_name":                  types.StringType,
-					"custom_domain":                  types.StringType,
-					"is_password_set":                types.BoolType,
-					"monitor_ids":                    types.ListType{ElemType: types.Int64Type},
-					"monitors_count":                 types.Int64Type,
-					"status":                         types.StringType,
-					"url_key":                        types.StringType,
-					"homepage_link":                  types.StringType,
-					"ga_code":                        types.StringType,
-					"share_analytics_consent":        types.BoolType,
-					"use_small_cookie_consent_modal": types.BoolType,
-					"icon":                           types.StringType,
-					"no_index":                       types.BoolType,
-					"logo":                           types.StringType,
-					"hide_url_links":                 types.BoolType,
-					"subscription":                   types.BoolType,
-					"show_cookie_bar":                types.BoolType,
-					"pinned_announcement_id":         types.Int64Type,
-				}},
-			},
-			"id": schema.StringAttribute{
-				Description: "Monitor identifier",
-				Computed:    true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+				Optional:    true,
+				ElementType: types.ObjectType{
+					AttrTypes: map[string]attr.Type{
+						"id":                             types.Int64Type,
+						"name":                           types.StringType,
+						"custom_domain":                  types.StringType,
+						"is_password_set":                types.BoolType,
+						"monitor_ids":                    types.ListType{ElemType: types.Int64Type},
+						"monitors_count":                 types.Int64Type,
+						"status":                         types.StringType,
+						"url_key":                        types.StringType,
+						"homepage_link":                  types.StringType,
+						"ga_code":                        types.StringType,
+						"share_analytics_consent":        types.BoolType,
+						"use_small_cookie_consent_modal": types.BoolType,
+						"icon":                           types.StringType,
+						"no_index":                       types.BoolType,
+						"logo":                           types.StringType,
+						"hide_url_links":                 types.BoolType,
+						"subscription":                   types.BoolType,
+						"show_cookie_bar":                types.BoolType,
+						"pinned_announcement_id":         types.Int64Type,
+					},
+				},
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"name": schema.StringAttribute{
@@ -283,6 +281,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"status": schema.StringAttribute{
 				Description: "Status of the monitor",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"url": schema.StringAttribute{
 				Description: "URL to monitor",
@@ -291,14 +292,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"current_state_duration": schema.Int64Attribute{
 				Description: "Duration of current state in seconds",
 				Computed:    true,
-			},
-			"last_incident_id": schema.Int64Attribute{
-				Description: "ID of the last incident",
-				Computed:    true,
-			},
-			"user_id": schema.Int64Attribute{
-				Description: "User ID",
-				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"tags": schema.ListAttribute{
 				Description: "Tags for the monitor",
@@ -306,50 +302,51 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				ElementType: types.StringType,
 			},
 			"assigned_alert_contacts": schema.ListAttribute{
-				Description: "Assigned alert contacts",
+				Description: "List of assigned alert contacts. Set by alert_contact resource.",
 				Optional:    true,
-				ElementType: types.ObjectType{AttrTypes: map[string]attr.Type{
-					"alert_contact_id": types.StringType,
-					"threshold":        types.Int64Type,
-					"recurrence":       types.Int64Type,
-				}},
-			},
-			"last_incident": schema.ObjectAttribute{
-				Description: "Last incident information",
-				Computed:    true,
-				AttributeTypes: map[string]attr.Type{
-					"id":         types.Int64Type,
-					"status":     types.StringType,
-					"cause":      types.Int64Type,
-					"reason":     types.StringType,
-					"started_at": types.StringType,
-					"duration":   types.Int64Type,
-				},
+				ElementType: types.StringType,
 			},
 			"last_day_uptimes": schema.ObjectAttribute{
-				Description: "Last day uptime statistics",
+				Description: "Uptime statistics for the last day",
 				Computed:    true,
 				AttributeTypes: map[string]attr.Type{
-					"bucket_size": types.Int64Type,
+					"bucketSize": types.Int64Type,
 					"histogram": types.ListType{ElemType: types.ObjectType{AttrTypes: map[string]attr.Type{
 						"timestamp": types.Int64Type,
-						"uptime":    types.Int64Type,
+						"uptime":    types.Float64Type,
 					}}},
+				},
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"create_date_time": schema.StringAttribute{
 				Description: "Creation date and time",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"api_key": schema.StringAttribute{
-				Description: "API key",
+				Description: "API key for the monitor",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
 }
 
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	if r.client == nil {
+		resp.Diagnostics.AddError(
+			"Unconfigured Client",
+			"Expected a configured client. Please report this issue to the provider developers.",
+		)
+		return
+	}
+
 	// Retrieve values from plan
 	var plan monitorResourceModel
 	diags := req.Plan.Get(ctx, &plan)
@@ -362,6 +359,8 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	monitor := &client.CreateMonitorRequest{
 		Type:     client.MonitorType(plan.Type.ValueString()),
 		Interval: int(plan.Interval.ValueInt64()),
+		Name:     plan.Name.ValueString(),
+		URL:      plan.URL.ValueString(),
 	}
 
 	// Add optional fields if set
@@ -421,7 +420,40 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		monitor.Tags = tags
 	}
 
-	monitor.CheckSSLErrors = plan.CheckSSLErrors.ValueBool()
+	if !plan.PSPs.IsNull() {
+		var psps []attr.Value
+		diags = plan.PSPs.ElementsAs(ctx, &psps, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		// Since PSPs are now objects with id and name, we need to handle them differently
+		statePSPs := types.ListNull(types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"id":                             types.Int64Type,
+				"name":                           types.StringType,
+				"custom_domain":                  types.StringType,
+				"is_password_set":                types.BoolType,
+				"monitor_ids":                    types.ListType{ElemType: types.Int64Type},
+				"monitors_count":                 types.Int64Type,
+				"status":                         types.StringType,
+				"url_key":                        types.StringType,
+				"homepage_link":                  types.StringType,
+				"ga_code":                        types.StringType,
+				"share_analytics_consent":        types.BoolType,
+				"use_small_cookie_consent_modal": types.BoolType,
+				"icon":                           types.StringType,
+				"no_index":                       types.BoolType,
+				"logo":                           types.StringType,
+				"hide_url_links":                 types.BoolType,
+				"subscription":                   types.BoolType,
+				"show_cookie_bar":                types.BoolType,
+				"pinned_announcement_id":         types.Int64Type,
+			},
+		})
+		plan.PSPs = statePSPs
+	}
+
 	monitor.SSLExpirationReminder = plan.SSLExpirationReminder.ValueBool()
 	monitor.DomainExpirationReminder = plan.DomainExpirationReminder.ValueBool()
 	monitor.FollowRedirections = plan.FollowRedirections.ValueBool()
@@ -483,243 +515,324 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	// Map response body to schema and populate Computed attribute values
 	state.Type = types.StringValue(string(monitor.Type))
 	state.Interval = types.Int64Value(int64(monitor.Interval))
-	state.SSLBrand = types.StringValue(monitor.SSLBrand)
-	state.SSLExpiryDateTime = types.StringValue(monitor.SSLExpiryDateTime)
-	state.DomainExpireDate = types.StringValue(monitor.DomainExpireDate)
-	state.CheckSSLErrors = types.BoolValue(monitor.CheckSSLErrors)
-	state.SSLExpirationReminder = types.BoolValue(monitor.SSLExpirationReminder)
-	state.DomainExpirationReminder = types.BoolValue(monitor.DomainExpirationReminder)
 	state.FollowRedirections = types.BoolValue(monitor.FollowRedirections)
-	state.AuthType = types.StringValue(monitor.AuthType)
-	state.HTTPUsername = types.StringValue(monitor.HTTPUsername)
-	state.HTTPPassword = types.StringValue(monitor.HTTPPassword)
+	state.AuthType = types.StringValue(stringValue(&monitor.AuthType))
+	state.HTTPUsername = types.StringValue(stringValue(&monitor.HTTPUsername))
+	state.HTTPPassword = types.StringValue(stringValue(&monitor.HTTPPassword))
 
 	headers := make(map[string]attr.Value)
-	for k, v := range monitor.CustomHTTPHeaders {
-		headers[k] = types.StringValue(v)
+	if !state.CustomHTTPHeaders.IsNull() {
+		// Preserve existing headers if set
+		state.CustomHTTPHeaders.ElementsAs(ctx, &headers, false)
+	} else if monitor.CustomHTTPHeaders != nil && len(monitor.CustomHTTPHeaders) > 0 {
+		for k, v := range monitor.CustomHTTPHeaders {
+			headers[k] = types.StringValue(v)
+		}
+		state.CustomHTTPHeaders = types.MapValueMust(types.StringType, headers)
+	} else {
+		state.CustomHTTPHeaders = types.MapNull(types.StringType)
 	}
-	state.CustomHTTPHeaders = types.MapValueMust(types.StringType, headers)
 
-	state.HTTPMethodType = types.StringValue(monitor.HTTPMethodType)
+	state.HTTPMethodType = types.StringValue(stringValue(&monitor.HTTPMethodType))
+	state.PostValueType = types.StringValue(stringValue(monitor.PostValueType))
+	state.PostValueData = types.StringValue(stringValue(monitor.PostValueData))
+	if monitor.Port != nil {
+		state.Port = types.Int64Value(int64(*monitor.Port))
+	} else {
+		state.Port = types.Int64Null()
+	}
+	state.KeywordValue = types.StringValue(stringValue(&monitor.KeywordValue))
+	if monitor.KeywordType != nil {
+		state.KeywordType = types.StringValue(*monitor.KeywordType)
+	} else {
+		state.KeywordType = types.StringNull()
+	}
+	state.KeywordCaseType = types.Int64Value(int64(monitor.KeywordCaseType))
+	state.GracePeriod = types.Int64Value(int64(monitor.GracePeriod))
+	state.Name = types.StringValue(monitor.Name)
+	state.URL = types.StringValue(monitor.URL)
+	state.ID = types.StringValue(strconv.FormatInt(monitor.ID, 10))
+	state.Status = types.StringValue(monitor.Status)
+	state.CurrentStateDuration = types.Int64Value(int64(monitor.CurrentStateDuration))
 
-	// Convert []string to []attr.Value for SuccessHTTPResponseCodes
-	successCodes := make([]attr.Value, len(monitor.SuccessHTTPResponseCodes))
-	for i, code := range monitor.SuccessHTTPResponseCodes {
-		successCodes[i] = types.StringValue(code)
+	// For fields that should have a default value even when null
+	state.KeywordCaseType = types.Int64Value(int64(monitor.KeywordCaseType))
+
+	// Convert MaintenanceWindows to list
+	if monitor.MaintenanceWindows != nil && len(monitor.MaintenanceWindows) > 0 {
+		maintenanceWindows := make([]attr.Value, 0)
+		for _, window := range monitor.MaintenanceWindows {
+			windowMap := map[string]attr.Value{
+				"id":                types.Int64Value(window.ID),
+				"name":              types.StringValue(window.Name),
+				"interval":          types.StringValue(window.Interval),
+				"date":              types.StringValue(window.Date),
+				"time":              types.StringValue(window.Time),
+				"duration":          types.Int64Value(int64(window.Duration)),
+				"auto_add_monitors": types.BoolValue(window.AutoAddMonitors),
+				"status":            types.StringValue(window.Status),
+				"created":           types.StringValue(window.Created),
+			}
+
+			if window.Days != nil {
+				days := make([]attr.Value, 0, len(window.Days))
+				for _, day := range window.Days {
+					days = append(days, types.Int64Value(int64(day)))
+				}
+				windowMap["days"] = types.ListValueMust(types.Int64Type, days)
+			} else {
+				windowMap["days"] = types.ListNull(types.Int64Type)
+			}
+
+			windowObj, diags := types.ObjectValue(
+				map[string]attr.Type{
+					"id":                types.Int64Type,
+					"name":              types.StringType,
+					"interval":          types.StringType,
+					"date":              types.StringType,
+					"time":              types.StringType,
+					"duration":          types.Int64Type,
+					"auto_add_monitors": types.BoolType,
+					"status":            types.StringType,
+					"created":           types.StringType,
+					"days":              types.ListType{ElemType: types.Int64Type},
+				},
+				windowMap,
+			)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			maintenanceWindows = append(maintenanceWindows, windowObj)
+		}
+		state.MaintenanceWindows = types.ListValueMust(
+			types.ObjectType{
+				AttrTypes: map[string]attr.Type{
+					"id":                types.Int64Type,
+					"name":              types.StringType,
+					"interval":          types.StringType,
+					"date":              types.StringType,
+					"time":              types.StringType,
+					"duration":          types.Int64Type,
+					"auto_add_monitors": types.BoolType,
+					"status":            types.StringType,
+					"created":           types.StringType,
+					"days":              types.ListType{ElemType: types.Int64Type},
+				},
+			},
+			maintenanceWindows,
+		)
+	} else {
+		state.MaintenanceWindows = types.ListNull(
+			types.ObjectType{
+				AttrTypes: map[string]attr.Type{
+					"id":                types.Int64Type,
+					"name":              types.StringType,
+					"interval":          types.StringType,
+					"date":              types.StringType,
+					"time":              types.StringType,
+					"duration":          types.Int64Type,
+					"auto_add_monitors": types.BoolType,
+					"status":            types.StringType,
+					"created":           types.StringType,
+					"days":              types.ListType{ElemType: types.Int64Type},
+				},
+			},
+		)
+	}
+
+	// Handle tags
+	if monitor.Tags != nil && len(monitor.Tags) > 0 {
+		tagValues := make([]attr.Value, 0, len(monitor.Tags))
+		for _, tag := range monitor.Tags {
+			tagValues = append(tagValues, types.StringValue(tag.Name))
+		}
+		state.Tags = types.ListValueMust(types.StringType, tagValues)
+	} else {
+		state.Tags = types.ListNull(types.StringType)
+	}
+
+	// Convert PSPs to list
+	if monitor.PSPs != nil && len(monitor.PSPs) > 0 {
+		pspValues := make([]attr.Value, 0, len(monitor.PSPs))
+		for _, psp := range monitor.PSPs {
+			pspMap := map[string]attr.Value{
+				"id":                             types.Int64Value(psp.ID),
+				"name":                           types.StringValue(psp.Name),
+				"custom_domain":                  types.StringValue(psp.CustomDomain),
+				"is_password_set":                types.BoolValue(psp.IsPasswordSet),
+				"monitors_count":                 types.Int64Value(int64(psp.MonitorsCount)),
+				"status":                         types.StringValue(psp.Status),
+				"url_key":                        types.StringValue(psp.URLKey),
+				"homepage_link":                  types.StringValue(psp.HomepageLink),
+				"ga_code":                        types.StringValue(psp.GACode),
+				"share_analytics_consent":        types.BoolValue(psp.ShareAnalyticsConsent),
+				"use_small_cookie_consent_modal": types.BoolValue(psp.UseSmallCookieConsentModal),
+				"icon":                           types.StringValue(psp.Icon),
+				"no_index":                       types.BoolValue(psp.NoIndex),
+				"logo":                           types.StringValue(psp.Logo),
+				"hide_url_links":                 types.BoolValue(psp.HideURLLinks),
+				"subscription":                   types.BoolValue(psp.Subscription),
+				"show_cookie_bar":                types.BoolValue(psp.ShowCookieBar),
+				"pinned_announcement_id":         types.Int64Value(psp.PinnedAnnouncementID),
+			}
+
+			// Handle monitor_ids list
+			monitorIDValues := make([]attr.Value, 0, len(psp.MonitorIDs))
+			for _, id := range psp.MonitorIDs {
+				monitorIDValues = append(monitorIDValues, types.Int64Value(id))
+			}
+			pspMap["monitor_ids"] = types.ListValueMust(types.Int64Type, monitorIDValues)
+
+			pspValue, diags := types.ObjectValue(
+				map[string]attr.Type{
+					"id":                             types.Int64Type,
+					"name":                           types.StringType,
+					"custom_domain":                  types.StringType,
+					"is_password_set":                types.BoolType,
+					"monitor_ids":                    types.ListType{ElemType: types.Int64Type},
+					"monitors_count":                 types.Int64Type,
+					"status":                         types.StringType,
+					"url_key":                        types.StringType,
+					"homepage_link":                  types.StringType,
+					"ga_code":                        types.StringType,
+					"share_analytics_consent":        types.BoolType,
+					"use_small_cookie_consent_modal": types.BoolType,
+					"icon":                           types.StringType,
+					"no_index":                       types.BoolType,
+					"logo":                           types.StringType,
+					"hide_url_links":                 types.BoolType,
+					"subscription":                   types.BoolType,
+					"show_cookie_bar":                types.BoolType,
+					"pinned_announcement_id":         types.Int64Type,
+				},
+				pspMap,
+			)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			pspValues = append(pspValues, pspValue)
+		}
+		state.PSPs = types.ListValueMust(
+			types.ObjectType{
+				AttrTypes: map[string]attr.Type{
+					"id":                             types.Int64Type,
+					"name":                           types.StringType,
+					"custom_domain":                  types.StringType,
+					"is_password_set":                types.BoolType,
+					"monitor_ids":                    types.ListType{ElemType: types.Int64Type},
+					"monitors_count":                 types.Int64Type,
+					"status":                         types.StringType,
+					"url_key":                        types.StringType,
+					"homepage_link":                  types.StringType,
+					"ga_code":                        types.StringType,
+					"share_analytics_consent":        types.BoolType,
+					"use_small_cookie_consent_modal": types.BoolType,
+					"icon":                           types.StringType,
+					"no_index":                       types.BoolType,
+					"logo":                           types.StringType,
+					"hide_url_links":                 types.BoolType,
+					"subscription":                   types.BoolType,
+					"show_cookie_bar":                types.BoolType,
+					"pinned_announcement_id":         types.Int64Type,
+				},
+			},
+			pspValues,
+		)
+	} else {
+		state.PSPs = types.ListNull(types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"id":                             types.Int64Type,
+				"name":                           types.StringType,
+				"custom_domain":                  types.StringType,
+				"is_password_set":                types.BoolType,
+				"monitor_ids":                    types.ListType{ElemType: types.Int64Type},
+				"monitors_count":                 types.Int64Type,
+				"status":                         types.StringType,
+				"url_key":                        types.StringType,
+				"homepage_link":                  types.StringType,
+				"ga_code":                        types.StringType,
+				"share_analytics_consent":        types.BoolType,
+				"use_small_cookie_consent_modal": types.BoolType,
+				"icon":                           types.StringType,
+				"no_index":                       types.BoolType,
+				"logo":                           types.StringType,
+				"hide_url_links":                 types.BoolType,
+				"subscription":                   types.BoolType,
+				"show_cookie_bar":                types.BoolType,
+				"pinned_announcement_id":         types.Int64Type,
+			},
+		})
+	}
+
+	// Convert AssignedAlertContacts to list
+	if monitor.AssignedAlertContacts != nil && len(monitor.AssignedAlertContacts) > 0 {
+		alertContacts := make([]attr.Value, 0)
+		for _, contact := range monitor.AssignedAlertContacts {
+			alertContacts = append(alertContacts, types.StringValue(contact.AlertContactID))
+		}
+		state.AssignedAlertContacts = types.ListValueMust(types.StringType, alertContacts)
+	} else {
+		state.AssignedAlertContacts = types.ListNull(types.StringType)
+	}
+
+	// Convert SuccessHTTPResponseCodes to list
+	successCodes := make([]attr.Value, 0)
+	if monitor.SuccessHTTPResponseCodes != nil {
+		for _, code := range monitor.SuccessHTTPResponseCodes {
+			successCodes = append(successCodes, types.StringValue(code))
+		}
 	}
 	state.SuccessHTTPResponseCodes = types.ListValueMust(types.StringType, successCodes)
 
-	state.Timeout = types.Int64Value(int64(monitor.Timeout))
-	state.PostValueData = types.StringValue(monitor.PostValueData)
-	state.PostValueType = types.StringValue(monitor.PostValueType)
-	state.Port = types.Int64Value(int64(monitor.Port))
-	state.GracePeriod = types.Int64Value(int64(monitor.GracePeriod))
-	state.KeywordValue = types.StringValue(monitor.KeywordValue)
-	state.KeywordCaseType = types.Int64Value(int64(monitor.KeywordCaseType))
-	state.KeywordType = types.StringValue(monitor.KeywordType)
-
-	// Convert MaintenanceWindows to the new object structure
-	maintenanceWindowObjectType := types.ObjectType{
-		AttrTypes: map[string]attr.Type{
-			"id":              types.Int64Type,
-			"name":            types.StringType,
-			"interval":        types.StringType,
-			"created":         types.StringType,
-			"duration":        types.Int64Type,
-			"status":          types.StringType,
-			"autoAddMonitors": types.BoolType,
-			"date":            types.StringType,
-			"time":            types.StringType,
-			"days":            types.StringType,
-		},
+	// Convert LastDayUptimes to map[string]attr.Value
+	var lastDayUptimesMap map[string]attr.Value
+	lastDayUptimesMap = map[string]attr.Value{
+		"bucketSize": types.Int64Value(int64(monitor.LastDayUptimes.BucketSize)),
 	}
-	windows := make([]attr.Value, len(monitor.MaintenanceWindows))
-	for i, window := range monitor.MaintenanceWindows {
-		windowMap := map[string]attr.Value{
-			"id":              types.Int64Value(window.ID),
-			"name":            types.StringValue(window.Name),
-			"interval":        types.StringValue(window.Interval),
-			"created":         types.StringValue(window.Created),
-			"duration":        types.Int64Value(int64(window.Duration)),
-			"status":          types.StringValue(window.Status),
-			"autoAddMonitors": types.BoolValue(window.AutoAddMonitors),
-			"date":            types.StringValue(window.Date),
-			"time":            types.StringValue(window.Time),
-			"days":            types.StringValue(fmt.Sprintf("%v", window.Days)),
+	histogramElements := make([]attr.Value, 0, len(monitor.LastDayUptimes.Histogram))
+	for _, h := range monitor.LastDayUptimes.Histogram {
+		histogramMap := map[string]attr.Value{
+			"timestamp": types.Int64Value(int64(h.Timestamp)),
+			"uptime":    types.Float64Value(h.Uptime),
 		}
-		windows[i] = types.ObjectValueMust(maintenanceWindowObjectType.AttrTypes, windowMap)
-	}
-	state.MaintenanceWindows = types.ListValueMust(maintenanceWindowObjectType, windows)
-
-	// Convert PSPs to attr.Value
-	psps := make([]attr.Value, len(monitor.PSPs))
-	pspObjectType := types.ObjectType{AttrTypes: map[string]attr.Type{
-		"id":                             types.Int64Type,
-		"friendly_name":                  types.StringType,
-		"custom_domain":                  types.StringType,
-		"is_password_set":                types.BoolType,
-		"monitor_ids":                    types.ListType{ElemType: types.Int64Type},
-		"monitors_count":                 types.Int64Type,
-		"status":                         types.StringType,
-		"url_key":                        types.StringType,
-		"homepage_link":                  types.StringType,
-		"ga_code":                        types.StringType,
-		"share_analytics_consent":        types.BoolType,
-		"use_small_cookie_consent_modal": types.BoolType,
-		"icon":                           types.StringType,
-		"no_index":                       types.BoolType,
-		"logo":                           types.StringType,
-		"hide_url_links":                 types.BoolType,
-		"subscription":                   types.BoolType,
-		"show_cookie_bar":                types.BoolType,
-		"pinned_announcement_id":         types.Int64Type,
-	}}
-	for i, psp := range monitor.PSPs {
-		monitorIDs := make([]attr.Value, len(psp.MonitorIDs))
-		for j, id := range psp.MonitorIDs {
-			monitorIDs[j] = types.Int64Value(id)
+		histogramElement, diags := types.ObjectValue(
+			map[string]attr.Type{
+				"timestamp": types.Int64Type,
+				"uptime":    types.Float64Type,
+			},
+			histogramMap,
+		)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
 		}
-		pspMap := map[string]attr.Value{
-			"id":                             types.Int64Value(psp.ID),
-			"friendly_name":                  types.StringValue(psp.Name),
-			"custom_domain":                  types.StringValue(psp.CustomDomain),
-			"is_password_set":                types.BoolValue(psp.IsPasswordSet),
-			"monitor_ids":                    types.ListValueMust(types.Int64Type, monitorIDs),
-			"monitors_count":                 types.Int64Value(int64(psp.MonitorsCount)),
-			"status":                         types.StringValue(psp.Status),
-			"url_key":                        types.StringValue(psp.URLKey),
-			"homepage_link":                  types.StringValue(psp.HomepageLink),
-			"ga_code":                        types.StringValue(psp.GACode),
-			"share_analytics_consent":        types.BoolValue(psp.ShareAnalyticsConsent),
-			"use_small_cookie_consent_modal": types.BoolValue(psp.UseSmallCookieConsentModal),
-			"icon":                           types.StringValue(psp.Icon),
-			"no_index":                       types.BoolValue(psp.NoIndex),
-			"logo":                           types.StringValue(psp.Logo),
-			"hide_url_links":                 types.BoolValue(psp.HideURLLinks),
-			"subscription":                   types.BoolValue(psp.Subscription),
-			"show_cookie_bar":                types.BoolValue(psp.ShowCookieBar),
-			"pinned_announcement_id":         types.Int64Value(psp.PinnedAnnouncementID),
-		}
-		psps[i] = types.ObjectValueMust(pspObjectType.AttrTypes, pspMap)
-	}
-	state.PSPs = types.ListValueMust(pspObjectType, psps)
-
-	state.ID = types.StringValue(strconv.FormatInt(monitor.ID, 10))
-	state.Name = types.StringValue(monitor.Name)
-	state.Status = types.StringValue(monitor.Status)
-	state.URL = types.StringValue(monitor.URL)
-	state.CurrentStateDuration = types.Int64Value(int64(monitor.CurrentStateDuration))
-	state.LastIncidentID = types.Int64Value(int64(monitor.LastIncidentID))
-	state.UserID = types.Int64Value(int64(monitor.UserID))
-
-	// Convert []Tag to []attr.Value for Tags
-	tags := make([]attr.Value, len(monitor.Tags))
-	for i, tag := range monitor.Tags {
-		tags[i] = types.StringValue(tag.Name)
-	}
-	state.Tags = types.ListValueMust(types.StringType, tags)
-
-	alertContacts := make([]attr.Value, 0, len(monitor.AssignedAlertContacts))
-	for _, ac := range monitor.AssignedAlertContacts {
-		alertContact, _ := types.ObjectValueFrom(ctx, map[string]attr.Type{
-			"alert_contact_id": types.StringType,
-			"threshold":        types.Int64Type,
-			"recurrence":       types.Int64Type,
-		}, map[string]interface{}{
-			"alert_contact_id": ac.AlertContactID,
-			"threshold":        int64(ac.Threshold),
-			"recurrence":       int64(ac.Recurrence),
-		})
-		alertContacts = append(alertContacts, alertContact)
-	}
-	state.AssignedAlertContacts = types.ListValueMust(types.ObjectType{AttrTypes: map[string]attr.Type{
-		"alert_contact_id": types.StringType,
-		"threshold":        types.Int64Type,
-		"recurrence":       types.Int64Type,
-	}}, alertContacts)
-
-	// Convert LastIncident to map[string]attr.Value
-	var lastIncidentMap map[string]attr.Value
-	if monitor.LastIncident != nil {
-		lastIncidentMap = map[string]attr.Value{
-			"id":         types.Int64Value(monitor.LastIncident.ID),
-			"status":     types.StringValue(fmt.Sprintf("%v", monitor.LastIncident.Status)),
-			"cause":      types.Int64Value(int64(monitor.LastIncident.Cause)),
-			"reason":     types.StringValue(monitor.LastIncident.Reason),
-			"started_at": types.StringValue(fmt.Sprintf("%v", monitor.LastIncident.StartedAt)),
-		}
-		if monitor.LastIncident.Duration != nil {
-			lastIncidentMap["duration"] = types.Int64Value(int64(*monitor.LastIncident.Duration))
-		} else {
-			lastIncidentMap["duration"] = types.Int64Null()
-		}
-	} else {
-		// If LastIncident is nil, create a map with null values
-		lastIncidentMap = map[string]attr.Value{
-			"id":         types.Int64Null(),
-			"status":     types.StringNull(),
-			"cause":      types.Int64Null(),
-			"reason":     types.StringNull(),
-			"started_at": types.StringNull(),
-			"duration":   types.Int64Null(),
-		}
-	}
-	state.LastIncident = types.ObjectValueMust(map[string]attr.Type{
-		"id":         types.Int64Type,
-		"status":     types.StringType,
-		"cause":      types.Int64Type,
-		"reason":     types.StringType,
-		"started_at": types.StringType,
-		"duration":   types.Int64Type,
-	}, lastIncidentMap)
-
-	// Convert UptimeStats to Terraform values
-	var uptimeRecords []attr.Value
-	if monitor.LastDayUptimes != nil {
-		for _, record := range monitor.LastDayUptimes.Histogram {
-			recordMap := map[string]attr.Value{
-				"timestamp": types.Int64Value(int64(record.Timestamp)),
-				"uptime":    types.Int64Value(int64(record.Uptime)),
-			}
-			uptimeObj, _ := types.ObjectValue(
-				map[string]attr.Type{
-					"timestamp": types.Int64Type,
-					"uptime":    types.Int64Type,
-				},
-				recordMap,
-			)
-			uptimeRecords = append(uptimeRecords, uptimeObj)
-		}
+		histogramElements = append(histogramElements, histogramElement)
 	}
 
+	histogramList, diags := types.ListValue(
+		types.ObjectType{AttrTypes: map[string]attr.Type{
+			"timestamp": types.Int64Type,
+			"uptime":    types.Float64Type,
+		}},
+		histogramElements,
+	)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	lastDayUptimesMap["histogram"] = histogramList
 	state.LastDayUptimes = types.ObjectValueMust(
 		map[string]attr.Type{
-			"bucket_size": types.Int64Type,
+			"bucketSize": types.Int64Type,
 			"histogram": types.ListType{ElemType: types.ObjectType{AttrTypes: map[string]attr.Type{
 				"timestamp": types.Int64Type,
-				"uptime":    types.Int64Type,
+				"uptime":    types.Float64Type,
 			}}},
 		},
-		map[string]attr.Value{
-			"bucket_size": types.Int64Value(int64(monitor.LastDayUptimes.BucketSize)),
-			"histogram": func() attr.Value {
-				listValue, diags := types.ListValue(
-					types.ObjectType{AttrTypes: map[string]attr.Type{
-						"timestamp": types.Int64Type,
-						"uptime":    types.Int64Type,
-					}},
-					uptimeRecords,
-				)
-				if diags.HasError() {
-					resp.Diagnostics.Append(diags...)
-					return types.ListNull(types.ObjectType{AttrTypes: map[string]attr.Type{
-						"timestamp": types.Int64Type,
-						"uptime":    types.Int64Type,
-					}})
-				}
-				return listValue
-			}(),
-		},
+		lastDayUptimesMap,
 	)
 	state.CreateDateTime = types.StringValue(monitor.CreateDateTime)
 	state.APIKey = types.StringValue(monitor.APIKey)
@@ -754,6 +867,8 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq := &client.UpdateMonitorRequest{
 		Type:     client.MonitorType(plan.Type.ValueString()),
 		Interval: int(plan.Interval.ValueInt64()),
+		Name:     plan.Name.ValueString(),
+		URL:      plan.URL.ValueString(),
 	}
 
 	// Add optional fields if set
@@ -813,7 +928,40 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updateReq.Tags = tags
 	}
 
-	updateReq.CheckSSLErrors = plan.CheckSSLErrors.ValueBool()
+	if !plan.PSPs.IsNull() {
+		var psps []attr.Value
+		diags = plan.PSPs.ElementsAs(ctx, &psps, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		// Since PSPs are now objects with id and name, we need to handle them differently
+		statePSPs := types.ListNull(types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"id":                             types.Int64Type,
+				"name":                           types.StringType,
+				"custom_domain":                  types.StringType,
+				"is_password_set":                types.BoolType,
+				"monitor_ids":                    types.ListType{ElemType: types.Int64Type},
+				"monitors_count":                 types.Int64Type,
+				"status":                         types.StringType,
+				"url_key":                        types.StringType,
+				"homepage_link":                  types.StringType,
+				"ga_code":                        types.StringType,
+				"share_analytics_consent":        types.BoolType,
+				"use_small_cookie_consent_modal": types.BoolType,
+				"icon":                           types.StringType,
+				"no_index":                       types.BoolType,
+				"logo":                           types.StringType,
+				"hide_url_links":                 types.BoolType,
+				"subscription":                   types.BoolType,
+				"show_cookie_bar":                types.BoolType,
+				"pinned_announcement_id":         types.Int64Type,
+			},
+		})
+		plan.PSPs = statePSPs
+	}
+
 	updateReq.SSLExpirationReminder = plan.SSLExpirationReminder.ValueBool()
 	updateReq.DomainExpirationReminder = plan.DomainExpirationReminder.ValueBool()
 	updateReq.FollowRedirections = plan.FollowRedirections.ValueBool()
@@ -869,4 +1017,12 @@ func (r *monitorResource) Delete(ctx context.Context, req resource.DeleteRequest
 		)
 		return
 	}
+}
+
+// Helper functions for handling pointer types
+func stringValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
