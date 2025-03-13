@@ -108,14 +108,12 @@ func (c *Client) CreatePSP(req *CreatePSPRequest) (*PSP, error) {
 		return nil, err
 	}
 
-	var result struct {
-		PSP *PSP `json:"psp"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
+	var psp PSP
+	if err := json.Unmarshal(resp, &psp); err != nil {
 		return nil, err
 	}
 
-	return result.PSP, nil
+	return &psp, nil
 }
 
 // GetPSP retrieves a PSP by ID
@@ -125,14 +123,12 @@ func (c *Client) GetPSP(id int64) (*PSP, error) {
 		return nil, err
 	}
 
-	var result struct {
-		PSP *PSP `json:"psp"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
+	var psp PSP
+	if err := json.Unmarshal(resp, &psp); err != nil {
 		return nil, err
 	}
 
-	return result.PSP, nil
+	return &psp, nil
 }
 
 // UpdatePSP updates an existing PSP
@@ -142,14 +138,12 @@ func (c *Client) UpdatePSP(id int64, req *UpdatePSPRequest) (*PSP, error) {
 		return nil, err
 	}
 
-	var result struct {
-		PSP *PSP `json:"psp"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
+	var psp PSP
+	if err := json.Unmarshal(resp, &psp); err != nil {
 		return nil, err
 	}
 
-	return result.PSP, nil
+	return &psp, nil
 }
 
 // DeletePSP deletes a PSP

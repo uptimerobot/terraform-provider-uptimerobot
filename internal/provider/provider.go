@@ -26,8 +26,8 @@ type UptimeRobotProvider struct {
 
 // UptimeRobotProviderModel describes the provider data model.
 type UptimeRobotProviderModel struct {
-	Endpoint types.String `tfsdk:"endpoint"`
 	APIKey   types.String `tfsdk:"api_key"`
+	Endpoint types.String `tfsdk:"endpoint"`
 }
 
 func (p *UptimeRobotProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -38,14 +38,14 @@ func (p *UptimeRobotProvider) Metadata(ctx context.Context, req provider.Metadat
 func (p *UptimeRobotProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "API endpoint URL",
-				Optional:            true,
-			},
 			"api_key": schema.StringAttribute{
 				MarkdownDescription: "API key for authentication",
 				Required:            true,
 				Sensitive:           true,
+			},
+			"endpoint": schema.StringAttribute{
+				MarkdownDescription: "Optional API endpoint URL. If not specified, the default endpoint will be used.",
+				Optional:            true,
 			},
 		},
 	}
@@ -69,6 +69,11 @@ func (p *UptimeRobotProvider) Configure(ctx context.Context, req provider.Config
 
 	// Create a new client using the configuration
 	client := client.NewClient(config.APIKey.ValueString())
+
+	// Override the default endpoint if specified
+	if !config.Endpoint.IsNull() {
+		client.SetBaseURL(config.Endpoint.ValueString())
+	}
 
 	// Make the client available during DataSource and Resource Configure methods
 	resp.DataSourceData = client

@@ -39,7 +39,6 @@ type maintenanceWindowResourceModel struct {
 	AutoAddMonitors types.Bool   `tfsdk:"auto_add_monitors"`
 	Days            types.List   `tfsdk:"days"`
 	Status          types.String `tfsdk:"status"`
-	Created         types.String `tfsdk:"created"`
 }
 
 // Configure adds the provider configured client to the resource.
@@ -87,7 +86,7 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 			},
 			"date": schema.StringAttribute{
 				Description: "Date of the maintenance window (format: YYYY-MM-DD)",
-				Required:    true,
+				Optional:    true,
 			},
 			"time": schema.StringAttribute{
 				Description: "Time of the maintenance window (format: HH:mm)",
@@ -110,16 +109,11 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 				Description: "Status of the maintenance window",
 				Computed:    true,
 			},
-			"created": schema.StringAttribute{
-				Description: "Creation date of the maintenance window",
-				Computed:    true,
-			},
 		},
 	}
 }
 
 func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	// Retrieve values from plan
 	var plan maintenanceWindowResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -127,14 +121,27 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 		return
 	}
 
+	if r.client == nil {
+		resp.Diagnostics.AddError(
+			"Client not configured",
+			"Expected configured client. Please report this issue to the provider developers.",
+		)
+		return
+	}
+
 	// Create new maintenance window
 	mw := &client.CreateMaintenanceWindowRequest{
 		Name:            plan.Name.ValueString(),
 		Interval:        plan.Interval.ValueString(),
-		Date:            plan.Date.ValueString(),
 		Time:            plan.Time.ValueString(),
 		Duration:        int(plan.Duration.ValueInt64()),
 		AutoAddMonitors: plan.AutoAddMonitors.ValueBool(),
+	}
+
+	// Add date if it's set
+	if !plan.Date.IsNull() {
+		dateStr := plan.Date.ValueString()
+		mw.Date = &dateStr
 	}
 
 	// Convert days from int64 to []int
@@ -162,10 +169,29 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 		return
 	}
 
+	// Check if newMW is nil before accessing its properties
+	if newMW == nil {
+		resp.Diagnostics.AddError(
+			"Error creating maintenance window",
+			"Received nil response from API when creating maintenance window",
+		)
+		return
+	}
+
 	// Map response body to schema and populate Computed attribute values
 	plan.ID = types.StringValue(strconv.FormatInt(newMW.ID, 10))
-	plan.Status = types.StringValue(newMW.Status)
-	plan.Created = types.StringValue(newMW.Created)
+
+	// Set additional computed values if available
+	if newMW.Status != "" {
+		plan.Status = types.StringValue(newMW.Status)
+	}
+
+	// Handle Date field to avoid nil pointer dereference
+	if newMW.Date != nil {
+		plan.Date = types.StringValue(*newMW.Date)
+	} else {
+		plan.Date = types.StringNull()
+	}
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -206,12 +232,14 @@ func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadR
 	// Map response body to schema
 	state.Name = types.StringValue(mw.Name)
 	state.Interval = types.StringValue(mw.Interval)
-	state.Date = types.StringValue(mw.Date)
 	state.Time = types.StringValue(mw.Time)
 	state.Duration = types.Int64Value(int64(mw.Duration))
 	state.AutoAddMonitors = types.BoolValue(mw.AutoAddMonitors)
-	state.Status = types.StringValue(mw.Status)
-	state.Created = types.StringValue(mw.Created)
+
+	// Add date if it's set
+	if mw.Date != nil {
+		state.Date = types.StringValue(*mw.Date)
+	}
 
 	// Convert days from []int to []int64
 	if len(mw.Days) > 0 {
@@ -225,6 +253,11 @@ func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadR
 			return
 		}
 		state.Days = days
+	}
+
+	// Set additional computed values if available
+	if mw.Status != "" {
+		state.Status = types.StringValue(mw.Status)
 	}
 
 	// Set refreshed state
@@ -253,14 +286,19 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
-	// Generate API request body from plan
+	// Create update request
 	updateReq := &client.UpdateMaintenanceWindowRequest{
 		Name:            plan.Name.ValueString(),
 		Interval:        plan.Interval.ValueString(),
-		Date:            plan.Date.ValueString(),
 		Time:            plan.Time.ValueString(),
 		Duration:        int(plan.Duration.ValueInt64()),
 		AutoAddMonitors: plan.AutoAddMonitors.ValueBool(),
+	}
+
+	// Add date if it's set
+	if !plan.Date.IsNull() {
+		dateStr := plan.Date.ValueString()
+		updateReq.Date = &dateStr
 	}
 
 	// Convert days from int64 to []int
@@ -279,7 +317,7 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	}
 
 	// Update maintenance window
-	updatedMW, err := r.client.UpdateMaintenanceWindow(id, updateReq)
+	_, err = r.client.UpdateMaintenanceWindow(id, updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating maintenance window",
@@ -287,10 +325,6 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		)
 		return
 	}
-
-	// Update computed fields
-	plan.Status = types.StringValue(updatedMW.Status)
-	plan.Created = types.StringValue(updatedMW.Created)
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)

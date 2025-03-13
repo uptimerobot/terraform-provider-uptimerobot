@@ -59,14 +59,12 @@ func (c *Client) CreateIntegration(req *CreateIntegrationRequest) (*Integration,
 		return nil, err
 	}
 
-	var result struct {
-		Data *Integration `json:"data"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
+	var integration Integration
+	if err := json.Unmarshal(resp, &integration); err != nil {
 		return nil, err
 	}
 
-	return result.Data, nil
+	return &integration, nil
 }
 
 // GetIntegration retrieves an integration by ID
@@ -76,14 +74,12 @@ func (c *Client) GetIntegration(id int64) (*Integration, error) {
 		return nil, err
 	}
 
-	var result struct {
-		Data *Integration `json:"data"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
+	var integration Integration
+	if err := json.Unmarshal(resp, &integration); err != nil {
 		return nil, err
 	}
 
-	return result.Data, nil
+	return &integration, nil
 }
 
 // UpdateIntegration updates an existing integration
@@ -93,14 +89,12 @@ func (c *Client) UpdateIntegration(id int64, req *UpdateIntegrationRequest) (*In
 		return nil, err
 	}
 
-	var result struct {
-		Data *Integration `json:"data"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
+	var integration Integration
+	if err := json.Unmarshal(resp, &integration); err != nil {
 		return nil, err
 	}
 
-	return result.Data, nil
+	return &integration, nil
 }
 
 // DeleteIntegration deletes an integration

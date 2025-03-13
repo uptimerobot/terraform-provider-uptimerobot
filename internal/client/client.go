@@ -32,6 +32,11 @@ func NewClient(apiKey string) *Client {
 	}
 }
 
+// SetBaseURL sets the base URL for the client
+func (c *Client) SetBaseURL(url string) {
+	c.baseURL = url
+}
+
 // doRequest performs an HTTP request and returns the response
 func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error) {
 	var reqBody io.Reader
