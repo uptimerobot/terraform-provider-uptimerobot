@@ -7,7 +7,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -100,10 +104,14 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"follow_redirections": schema.BoolAttribute{
 				Description: "Whether to follow redirections",
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 			"auth_type": schema.StringAttribute{
 				Description: "The authentication type (HTTP_BASIC)",
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString("HTTP_BASIC"),
 			},
 			"http_username": schema.StringAttribute{
 				Description: "The username for HTTP authentication",
@@ -126,7 +134,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"success_http_response_codes": schema.ListAttribute{
 				Description: "The expected HTTP response codes",
 				Optional:    true,
+				Computed:    true,
 				ElementType: types.StringType,
+				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2xx"), types.StringValue("3xx")})),
 			},
 			"timeout": schema.Int64Attribute{
 				Description: "Timeout for the monitoring check (in seconds)",
@@ -147,6 +157,8 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"grace_period": schema.Int64Attribute{
 				Description: "The grace period (in seconds)",
 				Optional:    true,
+				Computed:    true,
+				Default:     int64default.StaticInt64(30),
 			},
 			"keyword_value": schema.StringAttribute{
 				Description: "The keyword to search for",
@@ -156,6 +168,10 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "The case sensitivity for keyword (CaseSensitive or CaseInsensitive). Default: CaseInsensitive",
 				Optional:    true,
 				Computed:    true,
+				Default:     stringdefault.StaticString("CaseInsensitive"),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"keyword_type": schema.StringAttribute{
 				Description: "The type of keyword check",
@@ -180,6 +196,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"status": schema.StringAttribute{
 				Description: "Status of the monitor",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"url": schema.StringAttribute{
 				Description: "URL to monitor",
@@ -251,6 +270,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	} else {
 		// Default to CaseInsensitive
 		createReq.KeywordCaseType = 1
+		plan.KeywordCaseType = types.StringValue("CaseInsensitive")
 	}
 	if !plan.KeywordType.IsNull() {
 		createReq.KeywordType = plan.KeywordType.ValueString()
@@ -330,13 +350,13 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	plan.Status = types.StringValue(newMonitor.Status)
 
 	// Handle keyword case type conversion from API numeric value to string enum
-	plan.KeywordCaseType = types.StringValue(func() string {
-		if newMonitor.KeywordCaseType == 0 {
-			return "CaseSensitive"
-		} else {
-			return "CaseInsensitive"
-		}
-	}())
+	var keywordCaseTypeValue string
+	if newMonitor.KeywordCaseType == 0 {
+		keywordCaseTypeValue = "CaseSensitive"
+	} else {
+		keywordCaseTypeValue = "CaseInsensitive"
+	}
+	plan.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -405,13 +425,14 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	} else {
 		state.KeywordType = types.StringNull()
 	}
-	state.KeywordCaseType = types.StringValue(func() string {
-		if monitor.KeywordCaseType == 0 {
-			return "CaseSensitive"
-		} else {
-			return "CaseInsensitive"
-		}
-	}())
+	// Handle keyword case type conversion from API numeric value to string enum
+	var keywordCaseTypeValue string
+	if monitor.KeywordCaseType == 0 {
+		keywordCaseTypeValue = "CaseSensitive"
+	} else {
+		keywordCaseTypeValue = "CaseInsensitive"
+	}
+	state.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
 	state.GracePeriod = types.Int64Value(int64(monitor.GracePeriod))
 	state.Name = types.StringValue(monitor.Name)
 	state.URL = types.StringValue(monitor.URL)
@@ -565,13 +586,14 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	plan.Status = types.StringValue(updatedMonitor.Status)
-	plan.KeywordCaseType = types.StringValue(func() string {
-		if updatedMonitor.KeywordCaseType == 0 {
-			return "CaseSensitive"
-		} else {
-			return "CaseInsensitive"
-		}
-	}())
+	// Handle keyword case type conversion from API numeric value to string enum
+	var keywordCaseTypeValue string
+	if updatedMonitor.KeywordCaseType == 0 {
+		keywordCaseTypeValue = "CaseSensitive"
+	} else {
+		keywordCaseTypeValue = "CaseInsensitive"
+	}
+	plan.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
 
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
