@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -96,10 +97,14 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"ssl_expiration_reminder": schema.BoolAttribute{
 				Description: "Whether to enable SSL expiration reminders",
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 			"domain_expiration_reminder": schema.BoolAttribute{
 				Description: "Whether to enable domain expiration reminders",
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 			"follow_redirections": schema.BoolAttribute{
 				Description: "Whether to follow redirections",
@@ -425,7 +430,6 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	} else {
 		state.KeywordType = types.StringNull()
 	}
-	// Handle keyword case type conversion from API numeric value to string enum
 	var keywordCaseTypeValue string
 	if monitor.KeywordCaseType == 0 {
 		keywordCaseTypeValue = "CaseSensitive"
@@ -467,6 +471,14 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 	state.SuccessHTTPResponseCodes = types.ListValueMust(types.StringType, successCodes)
 
+	state.SSLExpirationReminder = types.BoolValue(monitor.SSLExpirationReminder)
+	state.DomainExpirationReminder = types.BoolValue(monitor.DomainExpirationReminder)
+
+	if !state.MaintenanceWindowIDs.IsNull() {
+	} else {
+		state.MaintenanceWindowIDs = types.ListNull(types.Int64Type)
+	}
+
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -475,8 +487,13 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 }
 
 func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan monitorResourceModel
+	var plan, state monitorResourceModel
 	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	diags = req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -531,7 +548,6 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			return
 		}
 	} else {
-		// Default to CaseInsensitive
 		updateReq.KeywordCaseType = 1
 	}
 	if !plan.KeywordType.IsNull() {
@@ -585,17 +601,26 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	plan.Status = types.StringValue(updatedMonitor.Status)
-	// Handle keyword case type conversion from API numeric value to string enum
+	var updatedState monitorResourceModel = plan
+	updatedState.Status = types.StringValue(updatedMonitor.Status)
 	var keywordCaseTypeValue string
 	if updatedMonitor.KeywordCaseType == 0 {
 		keywordCaseTypeValue = "CaseSensitive"
 	} else {
 		keywordCaseTypeValue = "CaseInsensitive"
 	}
-	plan.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
+	updatedState.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
+	if updatedMonitor.Tags != nil && len(updatedMonitor.Tags) > 0 {
+		tagValues := make([]attr.Value, 0, len(updatedMonitor.Tags))
+		for _, tag := range updatedMonitor.Tags {
+			tagValues = append(tagValues, types.StringValue(tag.Name))
+		}
+		updatedState.Tags = types.ListValueMust(types.StringType, tagValues)
+	} else if plan.Tags.IsNull() {
+		updatedState.Tags = types.ListNull(types.StringType)
+	}
 
-	diags = resp.State.Set(ctx, plan)
+	diags = resp.State.Set(ctx, updatedState)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -626,6 +651,60 @@ func (r *monitorResource) Delete(ctx context.Context, req resource.DeleteRequest
 			"Could not delete monitor, unexpected error: "+err.Error(),
 		)
 		return
+	}
+}
+
+func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// If we don't have a plan or state, there's nothing to modify
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	// Retrieve values from plan and state
+	var plan, state monitorResourceModel
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Preserve null vs empty list consistency between state and plan for fields
+	// that might be returned differently by the API
+	modifyPlanForListField(ctx, &plan.Tags, &state.Tags, resp, "tags")
+	modifyPlanForListField(ctx, &plan.AssignedAlertContacts, &state.AssignedAlertContacts, resp, "assigned_alert_contacts")
+	modifyPlanForListField(ctx, &plan.MaintenanceWindowIDs, &state.MaintenanceWindowIDs, resp, "maintenance_window_ids")
+
+	// Ensure boolean defaults are consistently applied
+	if !plan.SSLExpirationReminder.IsNull() && !state.SSLExpirationReminder.IsNull() {
+		// If both values are present and equal, preserve the state value
+		if plan.SSLExpirationReminder.ValueBool() == state.SSLExpirationReminder.ValueBool() {
+			resp.Plan.SetAttribute(ctx, path.Root("ssl_expiration_reminder"), state.SSLExpirationReminder)
+		}
+	}
+
+	if !plan.DomainExpirationReminder.IsNull() && !state.DomainExpirationReminder.IsNull() {
+		// If both values are present and equal, preserve the state value
+		if plan.DomainExpirationReminder.ValueBool() == state.DomainExpirationReminder.ValueBool() {
+			resp.Plan.SetAttribute(ctx, path.Root("domain_expiration_reminder"), state.DomainExpirationReminder)
+		}
+	}
+}
+
+// modifyPlanForListField handles the special case for list fields that might be null vs empty lists
+func modifyPlanForListField(ctx context.Context, planField, stateField *types.List, resp *resource.ModifyPlanResponse, fieldName string) {
+	// If state has a null value but plan has an empty list or vice versa, make them consistent
+	if stateField.IsNull() && !planField.IsNull() && planField.ElementsAs(ctx, &[]string{}, false) == nil {
+		// If plan has an empty list but state is null, convert plan to null for consistency
+		resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.ListNull(planField.ElementType(ctx)))
+	} else if !stateField.IsNull() && planField.IsNull() {
+		// If plan is null but state has a non-null value (possibly an empty list),
+		// keep the state value to avoid unnecessary updates
+		resp.Plan.SetAttribute(ctx, path.Root(fieldName), *stateField)
 	}
 }
 
