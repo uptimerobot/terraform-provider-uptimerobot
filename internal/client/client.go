@@ -45,6 +45,30 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 		if err != nil {
 			return nil, err
 		}
+
+		// Fix null values in customSettings
+		if method == "POST" || method == "PATCH" {
+			var bodyMap map[string]interface{}
+			if err := json.Unmarshal(jsonBody, &bodyMap); err == nil {
+				if customSettings, ok := bodyMap["customSettings"].(map[string]interface{}); ok {
+					// Initialize empty objects for null fields
+					if customSettings["page"] == nil {
+						customSettings["page"] = map[string]interface{}{}
+					}
+					if customSettings["colors"] == nil {
+						customSettings["colors"] = map[string]interface{}{}
+					}
+					if customSettings["features"] == nil {
+						customSettings["features"] = map[string]interface{}{}
+					}
+					// Re-marshal the fixed body
+					if fixedBody, err := json.Marshal(bodyMap); err == nil {
+						jsonBody = fixedBody
+					}
+				}
+			}
+		}
+
 		reqBody = bytes.NewBuffer(jsonBody)
 		// Debug logging
 		fmt.Printf("Request URL: %s%s\n", c.baseURL, path)

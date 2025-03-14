@@ -90,7 +90,7 @@ type featureSettingsModel struct {
 }
 
 // Configure adds the provider configured client to the resource.
-func (r *pspResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *pspResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -306,6 +306,7 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 }
 
 func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	// Retrieve values from plan
 	var plan pspResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -316,69 +317,162 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	// Create new PSP
 	psp := &client.CreatePSPRequest{
 		Name:                       plan.Name.ValueString(),
-		CustomDomain:               plan.CustomDomain.ValueString(),
-		GACode:                     plan.GACode.ValueString(),
 		ShareAnalyticsConsent:      plan.ShareAnalyticsConsent.ValueBool(),
 		UseSmallCookieConsentModal: plan.UseSmallCookieConsentModal.ValueBool(),
-		Icon:                       plan.Icon.ValueString(),
 		NoIndex:                    plan.NoIndex.ValueBool(),
-		Logo:                       plan.Logo.ValueString(),
 		HideURLLinks:               plan.HideURLLinks.ValueBool(),
 		ShowCookieBar:              plan.ShowCookieBar.ValueBool(),
 	}
 
-	// Convert monitor IDs
-	var monitorIDs []int64
-	diags = plan.MonitorIDs.ElementsAs(ctx, &monitorIDs, false)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	if !plan.CustomDomain.IsNull() {
+		psp.CustomDomain = plan.CustomDomain.ValueStringPointer()
 	}
-	psp.MonitorIDs = monitorIDs
 
-	// Handle custom settings if set
+	if !plan.MonitorIDs.IsNull() {
+		var monitorIDs []int64
+		diags := plan.MonitorIDs.ElementsAs(ctx, &monitorIDs, false)
+		if diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+		psp.MonitorIDs = monitorIDs
+	}
+
+	if !plan.GACode.IsNull() {
+		psp.GACode = plan.GACode.ValueStringPointer()
+	}
+
+	if !plan.Icon.IsNull() {
+		psp.Icon = plan.Icon.ValueStringPointer()
+	}
+
+	if !plan.Logo.IsNull() {
+		psp.Logo = plan.Logo.ValueStringPointer()
+	}
+
+	// According to the API DTO, we should only include customSettings if needed
+	// The API expects customSettings.page, customSettings.colors, and customSettings.features to be objects, not null
+	
+	// Only add customSettings if we have custom settings to configure
 	if plan.CustomSettings != nil {
-		customSettings := client.CustomSettings{}
-
-		if plan.CustomSettings.Font != nil {
-			customSettings.Font = &client.FontSettings{
-				Family: plan.CustomSettings.Font.Family.ValueString(),
+		// Check if any of the customSettings fields have values
+		hasCustomSettings := false
+		
+		// Check font settings
+		if plan.CustomSettings.Font != nil && !plan.CustomSettings.Font.Family.IsNull() {
+			hasCustomSettings = true
+		}
+		
+		// Check page settings
+		if plan.CustomSettings.Page != nil && 
+		   (!plan.CustomSettings.Page.Layout.IsNull() || 
+		    !plan.CustomSettings.Page.Theme.IsNull() || 
+		    !plan.CustomSettings.Page.Density.IsNull()) {
+			hasCustomSettings = true
+		}
+		
+		// Check colors settings
+		if plan.CustomSettings.Colors != nil && 
+		   (!plan.CustomSettings.Colors.Main.IsNull() || 
+		    !plan.CustomSettings.Colors.Text.IsNull() || 
+		    !plan.CustomSettings.Colors.Link.IsNull()) {
+			hasCustomSettings = true
+		}
+		
+		// Check features settings
+		if plan.CustomSettings.Features != nil && 
+		   (!plan.CustomSettings.Features.ShowBars.IsNull() || 
+		    !plan.CustomSettings.Features.ShowUptimePercentage.IsNull() || 
+		    !plan.CustomSettings.Features.EnableFloatingStatus.IsNull() || 
+		    !plan.CustomSettings.Features.ShowOverallUptime.IsNull() || 
+		    !plan.CustomSettings.Features.ShowOutageUpdates.IsNull() || 
+		    !plan.CustomSettings.Features.ShowOutageDetails.IsNull() || 
+		    !plan.CustomSettings.Features.EnableDetailsPage.IsNull() || 
+		    !plan.CustomSettings.Features.ShowMonitorURL.IsNull() || 
+		    !plan.CustomSettings.Features.HidePausedMonitors.IsNull()) {
+			hasCustomSettings = true
+		}
+		
+		// Only include customSettings if there's at least one setting
+		if hasCustomSettings {
+			psp.CustomSettings = &client.CustomSettings{}
+			
+			// Add font settings if present
+			if plan.CustomSettings.Font != nil && !plan.CustomSettings.Font.Family.IsNull() {
+				psp.CustomSettings.Font = &client.FontSettings{
+					Family: plan.CustomSettings.Font.Family.ValueStringPointer(),
+				}
+			}
+			
+			// Always include these as empty objects rather than null to satisfy API requirements
+			psp.CustomSettings.Page = &client.PageSettings{}
+			psp.CustomSettings.Colors = &client.ColorSettings{}
+			psp.CustomSettings.Features = &client.FeatureSettings{}
+			
+			// Populate page settings if present
+			if plan.CustomSettings.Page != nil {
+				if !plan.CustomSettings.Page.Layout.IsNull() {
+					psp.CustomSettings.Page.Layout = plan.CustomSettings.Page.Layout.ValueString()
+				}
+				if !plan.CustomSettings.Page.Theme.IsNull() {
+					psp.CustomSettings.Page.Theme = plan.CustomSettings.Page.Theme.ValueString()
+				}
+				if !plan.CustomSettings.Page.Density.IsNull() {
+					psp.CustomSettings.Page.Density = plan.CustomSettings.Page.Density.ValueString()
+				}
+			}
+			
+			// Populate colors settings if present
+			if plan.CustomSettings.Colors != nil {
+				if !plan.CustomSettings.Colors.Main.IsNull() {
+					psp.CustomSettings.Colors.Main = plan.CustomSettings.Colors.Main.ValueStringPointer()
+				}
+				if !plan.CustomSettings.Colors.Text.IsNull() {
+					psp.CustomSettings.Colors.Text = plan.CustomSettings.Colors.Text.ValueStringPointer()
+				}
+				if !plan.CustomSettings.Colors.Link.IsNull() {
+					psp.CustomSettings.Colors.Link = plan.CustomSettings.Colors.Link.ValueStringPointer()
+				}
+			}
+			
+			// Populate features settings if present
+			if plan.CustomSettings.Features != nil {
+				if !plan.CustomSettings.Features.ShowBars.IsNull() {
+					psp.CustomSettings.Features.ShowBars = plan.CustomSettings.Features.ShowBars.ValueStringPointer()
+				}
+				if !plan.CustomSettings.Features.ShowUptimePercentage.IsNull() {
+					psp.CustomSettings.Features.ShowUptimePercentage = plan.CustomSettings.Features.ShowUptimePercentage.ValueStringPointer()
+				}
+				if !plan.CustomSettings.Features.EnableFloatingStatus.IsNull() {
+					psp.CustomSettings.Features.EnableFloatingStatus = plan.CustomSettings.Features.EnableFloatingStatus.ValueStringPointer()
+				}
+				if !plan.CustomSettings.Features.ShowOverallUptime.IsNull() {
+					psp.CustomSettings.Features.ShowOverallUptime = plan.CustomSettings.Features.ShowOverallUptime.ValueStringPointer()
+				}
+				if !plan.CustomSettings.Features.ShowOutageUpdates.IsNull() {
+					psp.CustomSettings.Features.ShowOutageUpdates = plan.CustomSettings.Features.ShowOutageUpdates.ValueStringPointer()
+				}
+				if !plan.CustomSettings.Features.ShowOutageDetails.IsNull() {
+					psp.CustomSettings.Features.ShowOutageDetails = plan.CustomSettings.Features.ShowOutageDetails.ValueStringPointer()
+				}
+				if !plan.CustomSettings.Features.EnableDetailsPage.IsNull() {
+					psp.CustomSettings.Features.EnableDetailsPage = plan.CustomSettings.Features.EnableDetailsPage.ValueStringPointer()
+				}
+				if !plan.CustomSettings.Features.ShowMonitorURL.IsNull() {
+					psp.CustomSettings.Features.ShowMonitorURL = plan.CustomSettings.Features.ShowMonitorURL.ValueStringPointer()
+				}
+				if !plan.CustomSettings.Features.HidePausedMonitors.IsNull() {
+					psp.CustomSettings.Features.HidePausedMonitors = plan.CustomSettings.Features.HidePausedMonitors.ValueStringPointer()
+				}
 			}
 		}
-
-		if plan.CustomSettings.Page != nil {
-			customSettings.Page = &client.PageSettings{
-				Layout:  plan.CustomSettings.Page.Layout.ValueString(),
-				Theme:   plan.CustomSettings.Page.Theme.ValueString(),
-				Density: plan.CustomSettings.Page.Density.ValueString(),
-			}
-		}
-
-		if plan.CustomSettings.Colors != nil {
-			customSettings.Colors = &client.ColorSettings{
-				Main: plan.CustomSettings.Colors.Main.ValueString(),
-				Text: plan.CustomSettings.Colors.Text.ValueString(),
-				Link: plan.CustomSettings.Colors.Link.ValueString(),
-			}
-		}
-
-		if plan.CustomSettings.Features != nil {
-			customSettings.Features = &client.FeatureSettings{
-				ShowBars:             plan.CustomSettings.Features.ShowBars.ValueString(),
-				ShowUptimePercentage: plan.CustomSettings.Features.ShowUptimePercentage.ValueString(),
-				EnableFloatingStatus: plan.CustomSettings.Features.EnableFloatingStatus.ValueString(),
-				ShowOverallUptime:    plan.CustomSettings.Features.ShowOverallUptime.ValueString(),
-				ShowOutageUpdates:    plan.CustomSettings.Features.ShowOutageUpdates.ValueString(),
-				ShowOutageDetails:    plan.CustomSettings.Features.ShowOutageDetails.ValueString(),
-				EnableDetailsPage:    plan.CustomSettings.Features.EnableDetailsPage.ValueString(),
-				ShowMonitorURL:       plan.CustomSettings.Features.ShowMonitorURL.ValueString(),
-				HidePausedMonitors:   plan.CustomSettings.Features.HidePausedMonitors.ValueString(),
-			}
-		}
-
-		psp.CustomSettings = customSettings
 	}
 
+	if !plan.PinnedAnnouncementID.IsNull() {
+		psp.PinnedAnnouncementID = plan.PinnedAnnouncementID.ValueInt64Pointer()
+	}
+
+	// Create PSP
 	newPSP, err := r.client.CreatePSP(psp)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -389,24 +483,18 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	plan.ID = types.StringValue(strconv.FormatInt(newPSP.ID, 10))
-	plan.IsPasswordSet = types.BoolValue(newPSP.IsPasswordSet)
-	plan.MonitorsCount = types.Int64Value(int64(newPSP.MonitorsCount))
-	plan.Status = types.StringValue(newPSP.Status)
-	plan.URLKey = types.StringValue(newPSP.URLKey)
-	plan.HomepageLink = types.StringValue(newPSP.HomepageLink)
-	plan.Subscription = types.BoolValue(newPSP.Subscription)
+	var updatedPlan pspResourceModel = plan
+	pspToResourceData(newPSP, &updatedPlan)
 
 	// Set state to fully populated data
-	diags = resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(diags...)
+	stateSet := resp.State.Set(ctx, updatedPlan)
+	resp.Diagnostics.Append(stateSet...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 }
 
 func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	// Get current state
 	var state pspResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -414,12 +502,11 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	// Get PSP from API
 	id, err := strconv.ParseInt(state.ID.ValueString(), 10, 64)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error parsing PSP ID",
-			"Could not parse PSP ID, unexpected error: "+err.Error(),
+			"Could not parse ID "+state.ID.ValueString()+": "+err.Error(),
 		)
 		return
 	}
@@ -433,78 +520,15 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	// Map response body to schema and populate Computed attribute values
-	state.Name = types.StringValue(psp.Name)
-	state.CustomDomain = types.StringValue(psp.CustomDomain)
-	state.IsPasswordSet = types.BoolValue(psp.IsPasswordSet)
+	// First make a copy of the current state to preserve user-defined order of monitor IDs
+	// and to ensure we don't lose any user configuration
+	updatedState := state
 
-	// Convert []int64 to []attr.Value for MonitorIDs
-	monitorIDValues := make([]attr.Value, len(psp.MonitorIDs))
-	for i, id := range psp.MonitorIDs {
-		monitorIDValues[i] = types.Int64Value(id)
-	}
-	state.MonitorIDs = types.ListValueMust(types.Int64Type, monitorIDValues)
+	// Now update the state with the response data, preserving existing monitor IDs order
+	// and handling all computed values properly
+	pspToResourceData(psp, &updatedState)
 
-	state.MonitorsCount = types.Int64Value(int64(psp.MonitorsCount))
-	state.Status = types.StringValue(psp.Status)
-	state.URLKey = types.StringValue(psp.URLKey)
-	state.HomepageLink = types.StringValue(psp.HomepageLink)
-	state.GACode = types.StringValue(psp.GACode)
-	state.ShareAnalyticsConsent = types.BoolValue(psp.ShareAnalyticsConsent)
-	state.UseSmallCookieConsentModal = types.BoolValue(psp.UseSmallCookieConsentModal)
-	state.Icon = types.StringValue(psp.Icon)
-	state.NoIndex = types.BoolValue(psp.NoIndex)
-	state.Logo = types.StringValue(psp.Logo)
-	state.HideURLLinks = types.BoolValue(psp.HideURLLinks)
-	state.Subscription = types.BoolValue(psp.Subscription)
-	state.ShowCookieBar = types.BoolValue(psp.ShowCookieBar)
-	state.PinnedAnnouncementID = types.Int64Value(int64(psp.PinnedAnnouncementID))
-
-	// Handle custom settings if set
-	if psp.CustomSettings != nil {
-		customSettings := &customSettingsModel{}
-
-		if psp.CustomSettings.Font != nil {
-			customSettings.Font = &fontSettingsModel{
-				Family: types.StringValue(psp.CustomSettings.Font.Family),
-			}
-		}
-
-		if psp.CustomSettings.Page != nil {
-			customSettings.Page = &pageSettingsModel{
-				Layout:  types.StringValue(psp.CustomSettings.Page.Layout),
-				Theme:   types.StringValue(psp.CustomSettings.Page.Theme),
-				Density: types.StringValue(psp.CustomSettings.Page.Density),
-			}
-		}
-
-		if psp.CustomSettings.Colors != nil {
-			customSettings.Colors = &colorSettingsModel{
-				Main: types.StringValue(psp.CustomSettings.Colors.Main),
-				Text: types.StringValue(psp.CustomSettings.Colors.Text),
-				Link: types.StringValue(psp.CustomSettings.Colors.Link),
-			}
-		}
-
-		if psp.CustomSettings.Features != nil {
-			customSettings.Features = &featureSettingsModel{
-				ShowBars:             types.StringValue(psp.CustomSettings.Features.ShowBars),
-				ShowUptimePercentage: types.StringValue(psp.CustomSettings.Features.ShowUptimePercentage),
-				EnableFloatingStatus: types.StringValue(psp.CustomSettings.Features.EnableFloatingStatus),
-				ShowOverallUptime:    types.StringValue(psp.CustomSettings.Features.ShowOverallUptime),
-				ShowOutageUpdates:    types.StringValue(psp.CustomSettings.Features.ShowOutageUpdates),
-				ShowOutageDetails:    types.StringValue(psp.CustomSettings.Features.ShowOutageDetails),
-				EnableDetailsPage:    types.StringValue(psp.CustomSettings.Features.EnableDetailsPage),
-				ShowMonitorURL:       types.StringValue(psp.CustomSettings.Features.ShowMonitorURL),
-				HidePausedMonitors:   types.StringValue(psp.CustomSettings.Features.HidePausedMonitors),
-			}
-		}
-
-		state.CustomSettings = customSettings
-	}
-
-	// Set refreshed state
-	diags = resp.State.Set(ctx, &state)
+	diags = resp.State.Set(ctx, &updatedState)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -512,15 +536,21 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 }
 
 func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// Retrieve values from plan
-	var plan pspResourceModel
+	// Retrieve values from plan and state
+	var plan, state pspResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	id, err := strconv.ParseInt(plan.ID.ValueString(), 10, 64)
+	// Get current state
+	id, err := strconv.ParseInt(state.ID.ValueString(), 10, 64)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error parsing PSP ID",
@@ -529,80 +559,156 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	// Generate API request body from plan
+	// Create update PSP request with required fields
+	// Create local variables for boolean values so we can take their addresses
 	shareAnalyticsConsent := plan.ShareAnalyticsConsent.ValueBool()
 	useSmallCookieConsentModal := plan.UseSmallCookieConsentModal.ValueBool()
 	noIndex := plan.NoIndex.ValueBool()
 	hideURLLinks := plan.HideURLLinks.ValueBool()
 	showCookieBar := plan.ShowCookieBar.ValueBool()
 
-	updateReq := &client.UpdatePSPRequest{
+	psp := &client.UpdatePSPRequest{
 		Name:                       plan.Name.ValueString(),
-		CustomDomain:               plan.CustomDomain.ValueString(),
-		GACode:                     plan.GACode.ValueString(),
 		ShareAnalyticsConsent:      &shareAnalyticsConsent,
 		UseSmallCookieConsentModal: &useSmallCookieConsentModal,
-		Icon:                       plan.Icon.ValueString(),
 		NoIndex:                    &noIndex,
-		Logo:                       plan.Logo.ValueString(),
 		HideURLLinks:               &hideURLLinks,
 		ShowCookieBar:              &showCookieBar,
 	}
 
-	// Convert monitor IDs
-	var monitorIDs []int64
-	diags = plan.MonitorIDs.ElementsAs(ctx, &monitorIDs, false)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	// Handle nullable fields
+	if !plan.CustomDomain.IsNull() && !plan.CustomDomain.IsUnknown() {
+		customDomain := plan.CustomDomain.ValueString()
+		psp.CustomDomain = &customDomain
 	}
-	updateReq.MonitorIDs = monitorIDs
 
-	// Handle custom settings if set
+	if !plan.GACode.IsNull() && !plan.GACode.IsUnknown() {
+		gaCode := plan.GACode.ValueString()
+		psp.GACode = &gaCode
+	}
+
+	if !plan.Icon.IsNull() && !plan.Icon.IsUnknown() {
+		icon := plan.Icon.ValueString()
+		psp.Icon = &icon
+	}
+
+	if !plan.Logo.IsNull() && !plan.Logo.IsUnknown() {
+		logo := plan.Logo.ValueString()
+		psp.Logo = &logo
+	}
+
+	// Convert []attr.Value to []int64 for MonitorIDs
+	if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
+		monitorIDs := make([]int64, 0, len(plan.MonitorIDs.Elements()))
+		for _, id := range plan.MonitorIDs.Elements() {
+			idValue, _ := id.(types.Int64)
+			monitorIDs = append(monitorIDs, idValue.ValueInt64())
+		}
+		psp.MonitorIDs = monitorIDs
+	}
+
+	// Handle CustomSettings if set
 	if plan.CustomSettings != nil {
-		customSettings := &client.CustomSettings{}
+		psp.CustomSettings = &client.CustomSettings{
+			// Always initialize these as empty objects instead of null
+			Page:     &client.PageSettings{},
+			Colors:   &client.ColorSettings{},
+			Features: &client.FeatureSettings{},
+		}
 
+		// Handle Font settings
 		if plan.CustomSettings.Font != nil {
-			customSettings.Font = &client.FontSettings{
-				Family: plan.CustomSettings.Font.Family.ValueString(),
+			psp.CustomSettings.Font = &client.FontSettings{}
+			if !plan.CustomSettings.Font.Family.IsNull() {
+				family := plan.CustomSettings.Font.Family.ValueString()
+				psp.CustomSettings.Font.Family = &family
 			}
 		}
 
+		// Handle Page settings
 		if plan.CustomSettings.Page != nil {
-			customSettings.Page = &client.PageSettings{
-				Layout:  plan.CustomSettings.Page.Layout.ValueString(),
-				Theme:   plan.CustomSettings.Page.Theme.ValueString(),
-				Density: plan.CustomSettings.Page.Density.ValueString(),
+			if !plan.CustomSettings.Page.Layout.IsNull() {
+				psp.CustomSettings.Page.Layout = plan.CustomSettings.Page.Layout.ValueString()
+			}
+
+			if !plan.CustomSettings.Page.Theme.IsNull() {
+				psp.CustomSettings.Page.Theme = plan.CustomSettings.Page.Theme.ValueString()
+			}
+
+			if !plan.CustomSettings.Page.Density.IsNull() {
+				psp.CustomSettings.Page.Density = plan.CustomSettings.Page.Density.ValueString()
 			}
 		}
 
+		// Handle Colors settings
 		if plan.CustomSettings.Colors != nil {
-			customSettings.Colors = &client.ColorSettings{
-				Main: plan.CustomSettings.Colors.Main.ValueString(),
-				Text: plan.CustomSettings.Colors.Text.ValueString(),
-				Link: plan.CustomSettings.Colors.Link.ValueString(),
+			if !plan.CustomSettings.Colors.Main.IsNull() {
+				main := plan.CustomSettings.Colors.Main.ValueString()
+				psp.CustomSettings.Colors.Main = &main
+			}
+
+			if !plan.CustomSettings.Colors.Text.IsNull() {
+				text := plan.CustomSettings.Colors.Text.ValueString()
+				psp.CustomSettings.Colors.Text = &text
+			}
+
+			if !plan.CustomSettings.Colors.Link.IsNull() {
+				link := plan.CustomSettings.Colors.Link.ValueString()
+				psp.CustomSettings.Colors.Link = &link
 			}
 		}
 
+		// Handle Features settings
 		if plan.CustomSettings.Features != nil {
-			customSettings.Features = &client.FeatureSettings{
-				ShowBars:             plan.CustomSettings.Features.ShowBars.ValueString(),
-				ShowUptimePercentage: plan.CustomSettings.Features.ShowUptimePercentage.ValueString(),
-				EnableFloatingStatus: plan.CustomSettings.Features.EnableFloatingStatus.ValueString(),
-				ShowOverallUptime:    plan.CustomSettings.Features.ShowOverallUptime.ValueString(),
-				ShowOutageUpdates:    plan.CustomSettings.Features.ShowOutageUpdates.ValueString(),
-				ShowOutageDetails:    plan.CustomSettings.Features.ShowOutageDetails.ValueString(),
-				EnableDetailsPage:    plan.CustomSettings.Features.EnableDetailsPage.ValueString(),
-				ShowMonitorURL:       plan.CustomSettings.Features.ShowMonitorURL.ValueString(),
-				HidePausedMonitors:   plan.CustomSettings.Features.HidePausedMonitors.ValueString(),
+			if !plan.CustomSettings.Features.ShowBars.IsNull() {
+				showBars := plan.CustomSettings.Features.ShowBars.ValueString()
+				psp.CustomSettings.Features.ShowBars = &showBars
+			}
+
+			if !plan.CustomSettings.Features.ShowUptimePercentage.IsNull() {
+				showUptimePercentage := plan.CustomSettings.Features.ShowUptimePercentage.ValueString()
+				psp.CustomSettings.Features.ShowUptimePercentage = &showUptimePercentage
+			}
+
+			if !plan.CustomSettings.Features.EnableFloatingStatus.IsNull() {
+				enableFloatingStatus := plan.CustomSettings.Features.EnableFloatingStatus.ValueString()
+				psp.CustomSettings.Features.EnableFloatingStatus = &enableFloatingStatus
+			}
+
+			if !plan.CustomSettings.Features.ShowOverallUptime.IsNull() {
+				showOverallUptime := plan.CustomSettings.Features.ShowOverallUptime.ValueString()
+				psp.CustomSettings.Features.ShowOverallUptime = &showOverallUptime
+			}
+
+			if !plan.CustomSettings.Features.ShowOutageUpdates.IsNull() {
+				showOutageUpdates := plan.CustomSettings.Features.ShowOutageUpdates.ValueString()
+				psp.CustomSettings.Features.ShowOutageUpdates = &showOutageUpdates
+			}
+
+			if !plan.CustomSettings.Features.ShowOutageDetails.IsNull() {
+				showOutageDetails := plan.CustomSettings.Features.ShowOutageDetails.ValueString()
+				psp.CustomSettings.Features.ShowOutageDetails = &showOutageDetails
+			}
+
+			if !plan.CustomSettings.Features.EnableDetailsPage.IsNull() {
+				enableDetailsPage := plan.CustomSettings.Features.EnableDetailsPage.ValueString()
+				psp.CustomSettings.Features.EnableDetailsPage = &enableDetailsPage
+			}
+
+			if !plan.CustomSettings.Features.ShowMonitorURL.IsNull() {
+				showMonitorURL := plan.CustomSettings.Features.ShowMonitorURL.ValueString()
+				psp.CustomSettings.Features.ShowMonitorURL = &showMonitorURL
+			}
+
+			if !plan.CustomSettings.Features.HidePausedMonitors.IsNull() {
+				hidePausedMonitors := plan.CustomSettings.Features.HidePausedMonitors.ValueString()
+				psp.CustomSettings.Features.HidePausedMonitors = &hidePausedMonitors
 			}
 		}
-
-		updateReq.CustomSettings = customSettings
 	}
 
 	// Update PSP
-	updatedPSP, err := r.client.UpdatePSP(id, updateReq)
+	updatedPSP, err := r.client.UpdatePSP(id, psp)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating PSP",
@@ -611,17 +717,33 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	// Update computed fields
-	plan.IsPasswordSet = types.BoolValue(updatedPSP.IsPasswordSet)
-	plan.MonitorsCount = types.Int64Value(int64(updatedPSP.MonitorsCount))
+	// Map response body to schema and populate Computed attribute values
 	plan.Status = types.StringValue(updatedPSP.Status)
 	plan.URLKey = types.StringValue(updatedPSP.URLKey)
-	plan.HomepageLink = types.StringValue(updatedPSP.HomepageLink)
-	plan.Subscription = types.BoolValue(updatedPSP.Subscription)
+	plan.IsPasswordSet = types.BoolValue(updatedPSP.IsPasswordSet)
+
+	// Handle nullable fields in response
+	if updatedPSP.MonitorsCount != nil {
+		plan.MonitorsCount = types.Int64Value(int64(*updatedPSP.MonitorsCount))
+	} else {
+		plan.MonitorsCount = types.Int64Value(0)
+	}
+
+	if updatedPSP.HomepageLink != nil {
+		plan.HomepageLink = types.StringValue(*updatedPSP.HomepageLink)
+	} else {
+		plan.HomepageLink = types.StringValue("")
+	}
+
+	if updatedPSP.PinnedAnnouncementID != nil {
+		plan.PinnedAnnouncementID = types.Int64Value(*updatedPSP.PinnedAnnouncementID)
+	} else {
+		plan.PinnedAnnouncementID = types.Int64Value(0)
+	}
 
 	// Set state to fully populated data
-	diags = resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(diags...)
+	stateDiags := resp.State.Set(ctx, plan)
+	resp.Diagnostics.Append(stateDiags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -640,7 +762,7 @@ func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error parsing PSP ID",
-			"Could not parse PSP ID, unexpected error: "+err.Error(),
+			"Could not parse ID "+state.ID.ValueString()+": "+err.Error(),
 		)
 		return
 	}
@@ -652,5 +774,229 @@ func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 			"Could not delete PSP, unexpected error: "+err.Error(),
 		)
 		return
+	}
+}
+
+func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
+	plan.ID = types.StringValue(strconv.FormatInt(psp.ID, 10))
+	plan.Name = types.StringValue(psp.Name)
+	plan.Status = types.StringValue(psp.Status)
+	plan.URLKey = types.StringValue(psp.URLKey)
+	plan.IsPasswordSet = types.BoolValue(psp.IsPasswordSet)
+	
+	// Always set computed values, even if they're defaults from the API
+	plan.ShareAnalyticsConsent = types.BoolValue(psp.ShareAnalyticsConsent)
+	plan.UseSmallCookieConsentModal = types.BoolValue(psp.UseSmallCookieConsentModal)
+	plan.NoIndex = types.BoolValue(psp.NoIndex)
+	plan.HideURLLinks = types.BoolValue(psp.HideURLLinks)
+	plan.ShowCookieBar = types.BoolValue(psp.ShowCookieBar)
+	
+	// Critical: Always set subscription to a known value
+	plan.Subscription = types.BoolValue(psp.Subscription)
+	
+	// Handle optional fields that could be nil with defaults
+	if psp.MonitorsCount != nil {
+		plan.MonitorsCount = types.Int64Value(int64(*psp.MonitorsCount))
+	} else {
+		plan.MonitorsCount = types.Int64Value(0)
+	}
+	
+	if psp.HomepageLink != nil {
+		plan.HomepageLink = types.StringValue(*psp.HomepageLink)
+	} else {
+		plan.HomepageLink = types.StringValue("")
+	}
+	
+	// Handle other optional fields
+	if psp.CustomDomain != nil {
+		plan.CustomDomain = types.StringValue(*psp.CustomDomain)
+	} else if !plan.CustomDomain.IsNull() {
+		// Keep the existing value if it's set
+		plan.CustomDomain = types.StringValue("")
+	}
+	
+	if psp.GACode != nil {
+		plan.GACode = types.StringValue(*psp.GACode)
+	} else if !plan.GACode.IsNull() {
+		// Keep the existing value if it's set
+		plan.GACode = types.StringValue("")
+	}
+	
+	if psp.Icon != nil {
+		plan.Icon = types.StringValue(*psp.Icon)
+	} else if !plan.Icon.IsNull() {
+		// Keep the existing value if it's set
+		plan.Icon = types.StringValue("")
+	}
+	
+	if psp.Logo != nil {
+		plan.Logo = types.StringValue(*psp.Logo)
+	} else if !plan.Logo.IsNull() {
+		// Keep the existing value if it's set
+		plan.Logo = types.StringValue("")
+	}
+	
+	if psp.PinnedAnnouncementID != nil {
+		plan.PinnedAnnouncementID = types.Int64Value(*psp.PinnedAnnouncementID)
+	} else if !plan.PinnedAnnouncementID.IsNull() {
+		// Zero is the appropriate default for a missing integer
+		plan.PinnedAnnouncementID = types.Int64Value(0)
+	}
+	
+	// Handle monitor IDs while preserving the order if possible
+	if !plan.MonitorIDs.IsNull() && psp.MonitorIDs != nil {
+		planMonitorIDs := []int64{}
+		diags := plan.MonitorIDs.ElementsAs(context.Background(), &planMonitorIDs, false)
+		if diags == nil || !diags.HasError() {
+			// Create a map of the API's monitor IDs for faster lookup
+			apiIDsMap := make(map[int64]bool)
+			for _, id := range psp.MonitorIDs {
+				apiIDsMap[id] = true
+			}
+			
+			// Check if all IDs in the plan are in the API response (regardless of order)
+			allFound := true
+			for _, id := range planMonitorIDs {
+				if !apiIDsMap[id] {
+					allFound = false
+					break
+				}
+			}
+			
+			// Check if all IDs in the API response are in the plan (regardless of order)
+			if allFound && len(planMonitorIDs) == len(psp.MonitorIDs) {
+				// They contain the exact same IDs, just in different order
+				// Preserve the plan's order to avoid unnecessary changes
+				return
+			}
+		}
+	}
+	
+	// If we reach here, we need to update the monitor IDs
+	if psp.MonitorIDs != nil {
+		// Create the monitor IDs list
+		monitorIDsElements := make([]attr.Value, len(psp.MonitorIDs))
+		for i, id := range psp.MonitorIDs {
+			monitorIDsElements[i] = types.Int64Value(id)
+		}
+		
+		monitorIDsList, diags := types.ListValue(types.Int64Type, monitorIDsElements)
+		if diags == nil || !diags.HasError() {
+			plan.MonitorIDs = monitorIDsList
+		}
+	} else {
+		// If the API returns nil, use an empty list
+		emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
+		plan.MonitorIDs = emptyList
+	}
+	
+	// Handle CustomSettings if present in the API response
+	if psp.CustomSettings == nil {
+		// API returned no custom settings, so make sure the field is null in plan
+		plan.CustomSettings = nil
+		return
+	}
+	
+	// Otherwise, process each custom setting field
+	hasCustomSettings := false
+	customSettings := &customSettingsModel{}
+	
+	// Font settings
+	if psp.CustomSettings.Font != nil && psp.CustomSettings.Font.Family != nil {
+		hasCustomSettings = true
+		fontSettings := &fontSettingsModel{
+			Family: types.StringValue(*psp.CustomSettings.Font.Family),
+		}
+		customSettings.Font = fontSettings
+	}
+	
+	// Page settings
+	if psp.CustomSettings.Page != nil && 
+	   (psp.CustomSettings.Page.Layout != "" || 
+		psp.CustomSettings.Page.Theme != "" || 
+		psp.CustomSettings.Page.Density != "") {
+		
+		hasCustomSettings = true
+		pageSettings := &pageSettingsModel{
+			Layout:  types.StringValue(psp.CustomSettings.Page.Layout),
+			Theme:   types.StringValue(psp.CustomSettings.Page.Theme),
+			Density: types.StringValue(psp.CustomSettings.Page.Density),
+		}
+		customSettings.Page = pageSettings
+	}
+	
+	// Colors settings
+	if psp.CustomSettings.Colors != nil && 
+	   (psp.CustomSettings.Colors.Main != nil || 
+		psp.CustomSettings.Colors.Text != nil || 
+		psp.CustomSettings.Colors.Link != nil) {
+		
+		hasCustomSettings = true
+		colorSettings := &colorSettingsModel{}
+		
+		if psp.CustomSettings.Colors.Main != nil {
+			colorSettings.Main = types.StringValue(*psp.CustomSettings.Colors.Main)
+		}
+		if psp.CustomSettings.Colors.Text != nil {
+			colorSettings.Text = types.StringValue(*psp.CustomSettings.Colors.Text)
+		}
+		if psp.CustomSettings.Colors.Link != nil {
+			colorSettings.Link = types.StringValue(*psp.CustomSettings.Colors.Link)
+		}
+		
+		customSettings.Colors = colorSettings
+	}
+	
+	// Features settings
+	if psp.CustomSettings.Features != nil && 
+	   (psp.CustomSettings.Features.ShowBars != nil || 
+		psp.CustomSettings.Features.ShowUptimePercentage != nil || 
+		psp.CustomSettings.Features.EnableFloatingStatus != nil || 
+		psp.CustomSettings.Features.ShowOverallUptime != nil || 
+		psp.CustomSettings.Features.ShowOutageUpdates != nil || 
+		psp.CustomSettings.Features.ShowOutageDetails != nil || 
+		psp.CustomSettings.Features.EnableDetailsPage != nil || 
+		psp.CustomSettings.Features.ShowMonitorURL != nil || 
+		psp.CustomSettings.Features.HidePausedMonitors != nil) {
+		
+		hasCustomSettings = true
+		featureSettings := &featureSettingsModel{}
+		
+		if psp.CustomSettings.Features.ShowBars != nil {
+			featureSettings.ShowBars = types.StringValue(*psp.CustomSettings.Features.ShowBars)
+		}
+		if psp.CustomSettings.Features.ShowUptimePercentage != nil {
+			featureSettings.ShowUptimePercentage = types.StringValue(*psp.CustomSettings.Features.ShowUptimePercentage)
+		}
+		if psp.CustomSettings.Features.EnableFloatingStatus != nil {
+			featureSettings.EnableFloatingStatus = types.StringValue(*psp.CustomSettings.Features.EnableFloatingStatus)
+		}
+		if psp.CustomSettings.Features.ShowOverallUptime != nil {
+			featureSettings.ShowOverallUptime = types.StringValue(*psp.CustomSettings.Features.ShowOverallUptime)
+		}
+		if psp.CustomSettings.Features.ShowOutageUpdates != nil {
+			featureSettings.ShowOutageUpdates = types.StringValue(*psp.CustomSettings.Features.ShowOutageUpdates)
+		}
+		if psp.CustomSettings.Features.ShowOutageDetails != nil {
+			featureSettings.ShowOutageDetails = types.StringValue(*psp.CustomSettings.Features.ShowOutageDetails)
+		}
+		if psp.CustomSettings.Features.EnableDetailsPage != nil {
+			featureSettings.EnableDetailsPage = types.StringValue(*psp.CustomSettings.Features.EnableDetailsPage)
+		}
+		if psp.CustomSettings.Features.ShowMonitorURL != nil {
+			featureSettings.ShowMonitorURL = types.StringValue(*psp.CustomSettings.Features.ShowMonitorURL)
+		}
+		if psp.CustomSettings.Features.HidePausedMonitors != nil {
+			featureSettings.HidePausedMonitors = types.StringValue(*psp.CustomSettings.Features.HidePausedMonitors)
+		}
+		
+		customSettings.Features = featureSettings
+	}
+	
+	// Only set CustomSettings if there are actual values
+	if hasCustomSettings {
+		plan.CustomSettings = customSettings
+	} else {
+		plan.CustomSettings = nil
 	}
 }
