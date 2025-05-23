@@ -1,40 +1,139 @@
-# Terraform Provider Scaffolding (Terraform Plugin Framework)
+# Terraform Provider for UptimeRobot
 
-_This template repository is built on the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework). The template repository built on the [Terraform Plugin SDK](https://github.com/hashicorp/terraform-plugin-sdk) can be found at [terraform-provider-scaffolding](https://github.com/hashicorp/terraform-provider-scaffolding). See [Which SDK Should I Use?](https://developer.hashicorp.com/terraform/plugin/framework-benefits) in the Terraform documentation for additional information._
+This Terraform provider allows you to manage your UptimeRobot resources programmatically.
 
-This repository is a *template* for a [Terraform](https://www.terraform.io) provider. It is intended as a starting point for creating Terraform providers, containing:
+## Maintainer Notice
 
-- A resource and a data source (`internal/provider/`),
-- Examples (`examples/`) and generated documentation (`docs/`),
-- Miscellaneous meta files.
-
-These files contain boilerplate code that you will need to edit to create your own Terraform provider. Tutorials for creating Terraform providers can be found on the [HashiCorp Developer](https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework) platform. _Terraform Plugin Framework specific guides are titled accordingly._
-
-Please see the [GitHub template repository documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template) for how to create a new repository from this template on GitHub.
-
-Once you've written your provider, you'll want to [publish it on the Terraform Registry](https://developer.hashicorp.com/terraform/registry/providers/publishing) so that others can use it.
+This is the officially Terraform provider supported by UptimeRobot.
 
 ## Requirements
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
-- [Go](https://golang.org/doc/install) >= 1.21
+- An [UptimeRobot](https://uptimerobot.com) account.
+- An UptimeRobot API Key. You can generate your Main API Key from your UptimeRobot dashboard under "My Settings" -> "API Settings" -> "Main API Key".
 
-## Building The Provider
+## Installation
 
-1. Clone the repository
-1. Enter the repository directory
-1. Build the provider using the Go `install` command:
+To use this provider, add the following to your Terraform configuration, then run `terraform init`.
 
-```shell
-go install
+```hcl
+terraform {
+  required_providers {
+    uptimerobot = {
+      source  = "https://registry.terraform.io/providers/uptimerobot/uptimerobot"
+      version = "~> [PROVIDER_VERSION]" # Specify the provider version
+    }
+  }
+}
+
+provider "uptimerobot" {
+  # Configuration options
+}
 ```
 
-## Adding Dependencies
+## Provider Configuration
+
+The provider requires an API key to interact with the UptimeRobot API.
+
+```hcl
+provider "uptimerobot" {
+  api_key = "YOUR_UPTIMEROBOT_API_KEY"
+  # api_url = "https://api.uptimerobot.com/v3" # Optional: Default is UptimeRobot API v3 URL
+}
+```
+
+### Argument Reference
+
+- `api_key` (String, Required): Your UptimeRobot Main API Key. This can also be set via the `UPTIMEROBOT_API_KEY` environment variable.
+- `api_url` (String, Optional): The base URL for the UptimeRobot API. Defaults to `https://api.uptimerobot.com/v3`. Useful if UptimeRobot offers different API endpoints or for testing purposes.
+
+## Usage Examples
+
+Here's a basic example of how to create an UptimeRobot monitor:
+
+```hcl
+resource "uptimerobot_monitor" "mysite_monitor" {
+  friendly_name = "My Production Website"
+  url           = "https://myproductionsite.com"
+  type          = "http"
+  interval      = 300 # Interval in seconds (e.g., 300 for 5 minutes)
+  # ... other monitor-specific arguments
+}
+```
+
+## Resource Reference
+
+Detailed documentation for the resources supported by this provider can be found in the `docs/resources/` directory or by clicking the links below:
+
+- `uptimerobot_monitor`: (Link to `docs/resources/monitor.md` or similar)
+- (Add links for other resources as they are created)
+
+## Data Source Reference
+
+Detailed documentation for the data sources supported by this provider can be found in the `docs/data-sources/` directory or by clicking the links below:
+
+- `uptimerobot_account`: (Link to `docs/data-sources/account.md` or similar)
+- (Add links for other data sources as they are created)
+
+## Developing the Provider
+
+If you wish to work on the provider, you'll first need [Go](https://golang.org/doc/install) installed on your machine (version 1.21 or higher is recommended).
+
+### Building The Provider
+
+1.  Clone the repository.
+2.  Enter the repository directory.
+3.  Build the provider using the Go `install` command:
+
+    ```shell
+    go install
+    ```
+    This will build the provider and put the provider binary in the `$GOPATH/bin` directory (or `$GOBIN` if set).
+
+### Local Development and Testing
+
+To use your locally built provider for testing with a Terraform configuration, you can specify the development override in your Terraform CLI configuration file. See [Provider Development Overrides](https://developer.hashicorp.com/terraform/cli/config/config-file#development-overrides-for-provider-developers).
+
+Example `~/.terraformrc` or `terraform.rc`:
+
+```hcl
+provider_installation {
+  dev_overrides {
+    "https://registry.terraform.io/providers/uptimerobot/uptimerobot" = "/path/to/your/gopath/bin" # or wherever 'go install' places the binary
+    # For example: "examplecorp/uptimerobot" = "$HOME/go/bin"
+  }
+  # For TF 0.13+ installations, you can also use a direct path to the binary
+  # fs_mirror {
+  #   "https://registry.terraform.io/providers/uptimerobot/uptimerobot" = "/path/to/your/project/terraform-provider-uptimerobot"
+  # }
+}
+```
+
+### Generating Documentation
+
+If you have `tfplugindocs` installed, you can generate or update documentation by running:
+
+```shell
+go generate
+```
+
+### Running Acceptance Tests
+
+Acceptance tests create real resources against the UptimeRobot API and may incur costs or affect your UptimeRobot account.
+Ensure you have the `UPTIMEROBOT_API_KEY` environment variable set before running tests.
+
+To run the full suite of Acceptance tests:
+
+```shell
+make testacc
+```
+
+*Note: Acceptance tests create real resources*
+
+### Adding Dependencies
 
 This provider uses [Go modules](https://github.com/golang/go/wiki/Modules).
-Please see the Go documentation for the most up to date information about using Go modules.
-
-To add a new dependency `github.com/author/dependency` to your Terraform provider:
+To add a new dependency `github.com/author/dependency`:
 
 ```shell
 go get github.com/author/dependency
@@ -43,22 +142,10 @@ go mod tidy
 
 Then commit the changes to `go.mod` and `go.sum`.
 
-## Using the provider
+## Contributing
 
-Fill this in for each provider
+Contributions are welcome! Please open an issue or submit a pull request if you have improvements or bug fixes.
 
-## Developing the Provider
+## License
 
-If you wish to work on the provider, you'll first need [Go](http://www.golang.org) installed on your machine (see [Requirements](#requirements) above).
-
-To compile the provider, run `go install`. This will build the provider and put the provider binary in the `$GOPATH/bin` directory.
-
-To generate or update documentation, run `go generate`.
-
-In order to run the full suite of Acceptance tests, run `make testacc`.
-
-*Note:* Acceptance tests create real resources, and often cost money to run.
-
-```shell
-make testacc
-```
+This provider is distributed under the Mozilla Public License Version 2.0. See the `LICENSE` file for more information.
