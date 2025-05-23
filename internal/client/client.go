@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	defaultBaseURL = "http://localhost:3000"
+	defaultBaseURL = "https://api.uptimerobot.com/v3"
 	defaultTimeout = 10 * time.Second
 )
 
