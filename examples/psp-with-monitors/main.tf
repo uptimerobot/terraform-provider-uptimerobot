@@ -1,29 +1,29 @@
 # Create monitors for different services
 resource "uptimerobot_monitor" "api" {
   friendly_name = "API Service"
-  url          = "https://api.example.com"
-  type         = 1  # HTTP(s)
-  interval     = 300  # 5 minutes
+  url           = "https://api.example.com"
+  type          = 1   # HTTP(s)
+  interval      = 300 # 5 minutes
 }
 
 resource "uptimerobot_monitor" "web" {
   friendly_name = "Web Frontend"
-  url          = "https://www.example.com"
-  type         = 1  # HTTP(s)
-  interval     = 300
+  url           = "https://www.example.com"
+  type          = 1 # HTTP(s)
+  interval      = 300
 }
 
 resource "uptimerobot_monitor" "database" {
   friendly_name = "Database Health"
-  url          = "https://db.example.com"
-  type         = 1  # HTTP(s)
-  interval     = 60  # 1 minute
+  url           = "https://db.example.com"
+  type          = 1  # HTTP(s)
+  interval      = 60 # 1 minute
 }
 
 # Create a public status page for all services
 resource "uptimerobot_psp" "main_status" {
-  name     = "Example.com Status"
-  type     = "status"  # Standard status page
+  name = "Example.com Status"
+  type = "status" # Standard status page
   monitors = [
     uptimerobot_monitor.api.id,
     uptimerobot_monitor.web.id,
@@ -32,9 +32,9 @@ resource "uptimerobot_psp" "main_status" {
 
   # Optional: Customize the status page
   custom_domain   = "status.example.com"
-  sort           = "status-desc"  # Sort by status, critical first
-  theme          = "light"
-  hide_urls      = false
+  sort            = "status-desc" # Sort by status, critical first
+  theme           = "light"
+  hide_urls       = false
   all_time_uptime = true
 
   # Optional: Add custom branding
@@ -52,8 +52,8 @@ resource "uptimerobot_psp" "main_status" {
 
 # Create a separate status page for API services only
 resource "uptimerobot_psp" "api_status" {
-  name     = "API Status"
-  type     = "status"
+  name = "API Status"
+  type = "status"
   monitors = [
     uptimerobot_monitor.api.id,
     uptimerobot_monitor.database.id
@@ -64,15 +64,15 @@ resource "uptimerobot_psp" "api_status" {
 
   # Different theme and sorting
   theme = "dark"
-  sort  = "name-asc"  # Sort alphabetically
+  sort  = "name-asc" # Sort alphabetically
 
   tags = ["api", "internal"]
 }
 
 # Create a minimal status page for internal use
 resource "uptimerobot_psp" "internal" {
-  name     = "Internal Systems Status"
-  type     = "status"
+  name = "Internal Systems Status"
+  type = "status"
   monitors = [
     uptimerobot_monitor.database.id
   ]
@@ -108,5 +108,5 @@ output "main_status_url" {
 output "api_status_url" {
   description = "URL of the API status page"
   value       = uptimerobot_psp.api_status.default_url
-  sensitive   = true  # Since this page is password protected
+  sensitive   = true # Since this page is password protected
 }
