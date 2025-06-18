@@ -1,12 +1,16 @@
-# Visit https://golangci-lint.run/ for usage documentation
-# and information on other useful linters
+# golangci-lint configuration
 version: "2"
-issues:
-  max-per-linter: 0
-  max-same-issues: 0
+run:
+  # Timeout for running linters
+  timeout: 5m
+  # Include test files
+  tests: true
+  # Skip directories with vendored code
+  skip-dirs:
+    - vendor
 
 linters:
-  disable-all: true
+  # Don't enable all linters by default, select only the important ones
   enable:
     - durationcheck
     - errcheck
@@ -22,7 +26,16 @@ linters:
     - unparam
     - unused
     - govet
+formatters:
+  enabled:
+    - gofmt
 
-  formatters:
-    enabled:
-      - gofmt
+issues:
+  # Don't use the default exclusions
+  exclude-use-default: false
+  # Don't limit the number of issues per linter
+  max-issues-per-linter: 0
+  # Don't limit the number of same issues
+  max-same-issues: 0
+  # Exclude specific issues
+  exclude-rules:
