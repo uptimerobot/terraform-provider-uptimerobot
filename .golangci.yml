@@ -5,9 +5,6 @@ run:
   timeout: 5m
   # Include test files
   tests: true
-  # Skip directories with vendored code
-  skip-dirs:
-    - vendor
 
 linters:
   # Don't enable all linters by default, select only the important ones
@@ -27,15 +24,11 @@ linters:
     - unused
     - govet
 formatters:
-  enabled:
+  enable:
     - gofmt
 
 issues:
-  # Don't use the default exclusions
-  exclude-use-default: false
   # Don't limit the number of issues per linter
   max-issues-per-linter: 0
   # Don't limit the number of same issues
   max-same-issues: 0
-  # Exclude specific issues
-  exclude-rules:
