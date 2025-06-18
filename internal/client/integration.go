@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// Integration represents an integration configuration
+// Integration represents an integration configuration.
 type Integration struct {
 	ID                     int64  `json:"id"`
 	FriendlyName           string `json:"friendlyName"`
@@ -22,7 +22,7 @@ type Integration struct {
 	PostValue         string `json:"postValue,omitempty"`
 }
 
-// CreateIntegrationRequest represents the request to create a new integration
+// CreateIntegrationRequest represents the request to create a new integration.
 type CreateIntegrationRequest struct {
 	FriendlyName           string `json:"friendlyName"`
 	Type                   string `json:"type"`
@@ -37,7 +37,7 @@ type CreateIntegrationRequest struct {
 	PostValue         string `json:"postValue,omitempty"`
 }
 
-// UpdateIntegrationRequest represents the request to update an existing integration
+// UpdateIntegrationRequest represents the request to update an existing integration.
 type UpdateIntegrationRequest struct {
 	FriendlyName           string `json:"friendlyName,omitempty"`
 	Type                   string `json:"type,omitempty"`
@@ -52,7 +52,7 @@ type UpdateIntegrationRequest struct {
 	PostValue         string `json:"postValue,omitempty"`
 }
 
-// CreateIntegration creates a new integration
+// CreateIntegration creates a new integration.
 func (c *Client) CreateIntegration(req *CreateIntegrationRequest) (*Integration, error) {
 	resp, err := c.doRequest("POST", "/public/integrations", req)
 	if err != nil {
@@ -67,7 +67,7 @@ func (c *Client) CreateIntegration(req *CreateIntegrationRequest) (*Integration,
 	return &integration, nil
 }
 
-// GetIntegration retrieves an integration by ID
+// GetIntegration retrieves an integration by ID.
 func (c *Client) GetIntegration(id int64) (*Integration, error) {
 	resp, err := c.doRequest("GET", fmt.Sprintf("/public/integrations/%d", id), nil)
 	if err != nil {
@@ -82,7 +82,7 @@ func (c *Client) GetIntegration(id int64) (*Integration, error) {
 	return &integration, nil
 }
 
-// UpdateIntegration updates an existing integration
+// UpdateIntegration updates an existing integration.
 func (c *Client) UpdateIntegration(id int64, req *UpdateIntegrationRequest) (*Integration, error) {
 	resp, err := c.doRequest("PATCH", fmt.Sprintf("/public/integrations/%d", id), req)
 	if err != nil {
@@ -97,7 +97,7 @@ func (c *Client) UpdateIntegration(id int64, req *UpdateIntegrationRequest) (*In
 	return &integration, nil
 }
 
-// DeleteIntegration deletes an integration
+// DeleteIntegration deletes an integration.
 func (c *Client) DeleteIntegration(id int64) error {
 	_, err := c.doRequest("DELETE", fmt.Sprintf("/public/integrations/%d", id), nil)
 	return err

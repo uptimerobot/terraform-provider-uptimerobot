@@ -14,14 +14,14 @@ const (
 	defaultTimeout = 10 * time.Second
 )
 
-// Client represents an Uptimerobot API client
+// Client represents an Uptimerobot API client.
 type Client struct {
 	baseURL    string
 	apiKey     string
 	httpClient *http.Client
 }
 
-// NewClient creates a new Uptimerobot API client
+// NewClient creates a new Uptimerobot API client.
 func NewClient(apiKey string) *Client {
 	return &Client{
 		baseURL: defaultBaseURL,
@@ -32,12 +32,12 @@ func NewClient(apiKey string) *Client {
 	}
 }
 
-// SetBaseURL sets the base URL for the client
+// SetBaseURL sets the base URL for the client.
 func (c *Client) SetBaseURL(url string) {
 	c.baseURL = url
 }
 
-// doRequest performs an HTTP request and returns the response
+// doRequest performs an HTTP request and returns the response.
 func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error) {
 	var reqBody io.Reader
 	if body != nil {
@@ -87,7 +87,12 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Log the error or handle it appropriately
+			fmt.Printf("Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

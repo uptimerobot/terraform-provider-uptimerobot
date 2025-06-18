@@ -153,7 +153,7 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	plan.ID = types.Int64Value(int64(newIntegration.ID))
+	plan.ID = types.Int64Value(newIntegration.ID)
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)

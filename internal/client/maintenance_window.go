@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// MaintenanceWindow represents a maintenance window
+// MaintenanceWindow represents a maintenance window.
 type MaintenanceWindow struct {
 	ID              int64   `json:"id"`
 	Name            string  `json:"name"`
@@ -19,7 +19,7 @@ type MaintenanceWindow struct {
 	Created         string  `json:"created"`
 }
 
-// CreateMaintenanceWindowRequest represents the request to create a new maintenance window
+// CreateMaintenanceWindowRequest represents the request to create a new maintenance window.
 type CreateMaintenanceWindowRequest struct {
 	Name            string  `json:"name"`
 	Interval        string  `json:"interval"`
@@ -30,7 +30,7 @@ type CreateMaintenanceWindowRequest struct {
 	Days            []int   `json:"value,omitempty"`
 }
 
-// UpdateMaintenanceWindowRequest represents the request to update an existing maintenance window
+// UpdateMaintenanceWindowRequest represents the request to update an existing maintenance window.
 type UpdateMaintenanceWindowRequest struct {
 	Name            string  `json:"name,omitempty"`
 	Interval        string  `json:"interval,omitempty"`
@@ -41,7 +41,7 @@ type UpdateMaintenanceWindowRequest struct {
 	Days            []int   `json:"value,omitempty"`
 }
 
-// CreateMaintenanceWindow creates a new maintenance window
+// CreateMaintenanceWindow creates a new maintenance window.
 func (c *Client) CreateMaintenanceWindow(req *CreateMaintenanceWindowRequest) (*MaintenanceWindow, error) {
 	resp, err := c.doRequest("POST", "/public/maintenance-windows", req)
 	if err != nil {
@@ -56,7 +56,7 @@ func (c *Client) CreateMaintenanceWindow(req *CreateMaintenanceWindowRequest) (*
 	return &maintenanceWindow, nil
 }
 
-// GetMaintenanceWindow retrieves a maintenance window by ID
+// GetMaintenanceWindow retrieves a maintenance window by ID.
 func (c *Client) GetMaintenanceWindow(id int64) (*MaintenanceWindow, error) {
 	resp, err := c.doRequest("GET", fmt.Sprintf("/public/maintenance-windows/%d", id), nil)
 	if err != nil {
@@ -71,7 +71,7 @@ func (c *Client) GetMaintenanceWindow(id int64) (*MaintenanceWindow, error) {
 	return &maintenanceWindow, nil
 }
 
-// UpdateMaintenanceWindow updates an existing maintenance window
+// UpdateMaintenanceWindow updates an existing maintenance window.
 func (c *Client) UpdateMaintenanceWindow(id int64, req *UpdateMaintenanceWindowRequest) (*MaintenanceWindow, error) {
 	resp, err := c.doRequest("PATCH", fmt.Sprintf("/public/maintenance-windows/%d", id), req)
 	if err != nil {
@@ -86,7 +86,7 @@ func (c *Client) UpdateMaintenanceWindow(id int64, req *UpdateMaintenanceWindowR
 	return &maintenanceWindow, nil
 }
 
-// DeleteMaintenanceWindow deletes a maintenance window
+// DeleteMaintenanceWindow deletes a maintenance window.
 func (c *Client) DeleteMaintenanceWindow(id int64) error {
 	_, err := c.doRequest("DELETE", fmt.Sprintf("/public/maintenance-windows/%d", id), nil)
 	return err

@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// PSP represents a Public Status Page
+// PSP represents a Public Status Page.
 type PSP struct {
 	ID                         int64           `json:"id"`
 	Name                       string          `json:"friendlyName"`
@@ -29,7 +29,7 @@ type PSP struct {
 	CustomSettings             *CustomSettings `json:"customSettings,omitempty"`
 }
 
-// CustomSettings represents the custom settings for a PSP
+// CustomSettings represents the custom settings for a PSP.
 type CustomSettings struct {
 	Font     *FontSettings    `json:"font,omitempty"`
 	Page     *PageSettings    `json:"page"`
@@ -37,26 +37,26 @@ type CustomSettings struct {
 	Features *FeatureSettings `json:"features"`
 }
 
-// FontSettings represents the font settings
+// FontSettings represents the font settings.
 type FontSettings struct {
 	Family *string `json:"family,omitempty"`
 }
 
-// PageSettings represents the page settings
+// PageSettings represents the page settings.
 type PageSettings struct {
 	Layout  string `json:"layout,omitempty"`
 	Theme   string `json:"theme,omitempty"`
 	Density string `json:"density,omitempty"`
 }
 
-// ColorSettings represents the color settings
+// ColorSettings represents the color settings.
 type ColorSettings struct {
 	Main *string `json:"main,omitempty"`
 	Text *string `json:"text,omitempty"`
 	Link *string `json:"link,omitempty"`
 }
 
-// FeatureSettings represents the feature settings
+// FeatureSettings represents the feature settings.
 type FeatureSettings struct {
 	ShowBars             *string `json:"showBars,omitempty"`
 	ShowUptimePercentage *string `json:"showUptimePercentage,omitempty"`
@@ -69,7 +69,7 @@ type FeatureSettings struct {
 	HidePausedMonitors   *string `json:"hidePausedMonitors,omitempty"`
 }
 
-// CreatePSPRequest represents the request to create a new PSP
+// CreatePSPRequest represents the request to create a new PSP.
 type CreatePSPRequest struct {
 	Name                       string          `json:"friendlyName"`
 	CustomDomain               *string         `json:"customDomain,omitempty"`
@@ -87,17 +87,17 @@ type CreatePSPRequest struct {
 }
 
 // MarshalJSON implements the json.Marshaler interface for CreatePSPRequest
-// to ensure customSettings.page, customSettings.colors, and customSettings.features are always serialized as empty objects if they are nil
+// to ensure customSettings.page, customSettings.colors, and customSettings.features are always serialized as empty objects if they are nil.
 func (r *CreatePSPRequest) MarshalJSON() ([]byte, error) {
 	type Alias CreatePSPRequest
-	
+
 	// Create a copy of the original request
 	req := &struct {
 		*Alias
 	}{
 		Alias: (*Alias)(r),
 	}
-	
+
 	// If CustomSettings is set, ensure page, colors, and features are initialized
 	if req.CustomSettings != nil {
 		if req.CustomSettings.Page == nil {
@@ -110,11 +110,11 @@ func (r *CreatePSPRequest) MarshalJSON() ([]byte, error) {
 			req.CustomSettings.Features = &FeatureSettings{}
 		}
 	}
-	
+
 	return json.Marshal(req)
 }
 
-// UpdatePSPRequest represents the request to update an existing PSP
+// UpdatePSPRequest represents the request to update an existing PSP.
 type UpdatePSPRequest struct {
 	Name                       string          `json:"friendlyName,omitempty"`
 	CustomDomain               *string         `json:"customDomain,omitempty"`
@@ -132,17 +132,17 @@ type UpdatePSPRequest struct {
 }
 
 // MarshalJSON implements the json.Marshaler interface for UpdatePSPRequest
-// to ensure customSettings.page, customSettings.colors, and customSettings.features are always serialized as empty objects if they are nil
+// to ensure customSettings.page, customSettings.colors, and customSettings.features are always serialized as empty objects if they are nil.
 func (r *UpdatePSPRequest) MarshalJSON() ([]byte, error) {
 	type Alias UpdatePSPRequest
-	
+
 	// Create a copy of the original request
 	req := &struct {
 		*Alias
 	}{
 		Alias: (*Alias)(r),
 	}
-	
+
 	// If CustomSettings is set, ensure page, colors, and features are initialized
 	if req.CustomSettings != nil {
 		if req.CustomSettings.Page == nil {
@@ -155,11 +155,11 @@ func (r *UpdatePSPRequest) MarshalJSON() ([]byte, error) {
 			req.CustomSettings.Features = &FeatureSettings{}
 		}
 	}
-	
+
 	return json.Marshal(req)
 }
 
-// CreatePSP creates a new PSP
+// CreatePSP creates a new PSP.
 func (c *Client) CreatePSP(req *CreatePSPRequest) (*PSP, error) {
 	// Log the request for debugging
 	reqJSON, err := json.MarshalIndent(req, "", "  ")
@@ -181,7 +181,7 @@ func (c *Client) CreatePSP(req *CreatePSPRequest) (*PSP, error) {
 	return &psp, nil
 }
 
-// GetPSP retrieves a PSP by ID
+// GetPSP retrieves a PSP by ID.
 func (c *Client) GetPSP(id int64) (*PSP, error) {
 	resp, err := c.doRequest("GET", fmt.Sprintf("/public/psps/%d", id), nil)
 	if err != nil {
@@ -196,7 +196,7 @@ func (c *Client) GetPSP(id int64) (*PSP, error) {
 	return &psp, nil
 }
 
-// UpdatePSP updates an existing PSP
+// UpdatePSP updates an existing PSP.
 func (c *Client) UpdatePSP(id int64, req *UpdatePSPRequest) (*PSP, error) {
 	// Log the request for debugging
 	reqJSON, err := json.MarshalIndent(req, "", "  ")
@@ -218,7 +218,7 @@ func (c *Client) UpdatePSP(id int64, req *UpdatePSPRequest) (*PSP, error) {
 	return &psp, nil
 }
 
-// DeletePSP deletes a PSP
+// DeletePSP deletes a PSP.
 func (c *Client) DeletePSP(id int64) error {
 	_, err := c.doRequest("DELETE", fmt.Sprintf("/public/psps/%d", id), nil)
 	return err

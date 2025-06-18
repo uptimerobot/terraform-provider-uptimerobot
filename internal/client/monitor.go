@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// MonitorType represents the type of monitor
+// MonitorType represents the type of monitor.
 type MonitorType string
 
 const (
@@ -15,7 +15,7 @@ const (
 	MonitorTypePort    MonitorType = "PORT"
 )
 
-// CreateMonitorRequest represents the request to create a new monitor
+// CreateMonitorRequest represents the request to create a new monitor.
 type CreateMonitorRequest struct {
 	Name                     string            `json:"friendlyName"`
 	URL                      string            `json:"url"`
@@ -46,7 +46,7 @@ type CreateMonitorRequest struct {
 	ResponseTimeThreshold    int               `json:"responseTimeThreshold,omitempty"`
 }
 
-// UpdateMonitorRequest represents the request to update an existing monitor
+// UpdateMonitorRequest represents the request to update an existing monitor.
 type UpdateMonitorRequest struct {
 	Name                     string            `json:"friendlyName"`
 	URL                      string            `json:"url"`
@@ -77,7 +77,7 @@ type UpdateMonitorRequest struct {
 	ResponseTimeThreshold    int               `json:"responseTimeThreshold,omitempty"`
 }
 
-// Monitor represents a monitor
+// Monitor represents a monitor.
 type Monitor struct {
 	Type                     string              `json:"type"`
 	Interval                 int                 `json:"interval"`
@@ -151,7 +151,7 @@ type UptimeRecord struct {
 	Uptime    float64 `json:"uptime"`
 }
 
-// CreateMonitor creates a new monitor
+// CreateMonitor creates a new monitor.
 func (c *Client) CreateMonitor(req *CreateMonitorRequest) (*Monitor, error) {
 	resp, err := c.doRequest("POST", "/public/monitors", req)
 	if err != nil {
@@ -166,7 +166,7 @@ func (c *Client) CreateMonitor(req *CreateMonitorRequest) (*Monitor, error) {
 	return &monitor, nil
 }
 
-// GetMonitor retrieves a monitor by ID
+// GetMonitor retrieves a monitor by ID.
 func (c *Client) GetMonitor(id int64) (*Monitor, error) {
 	resp, err := c.doRequest("GET", fmt.Sprintf("/public/monitors/%d", id), nil)
 	if err != nil {
@@ -181,7 +181,7 @@ func (c *Client) GetMonitor(id int64) (*Monitor, error) {
 	return &monitor, nil
 }
 
-// GetMonitors retrieves all monitors
+// GetMonitors retrieves all monitors.
 func (c *Client) GetMonitors() ([]Monitor, error) {
 	resp, err := c.doRequest("GET", "/public/monitors", nil)
 	if err != nil {
@@ -198,7 +198,7 @@ func (c *Client) GetMonitors() ([]Monitor, error) {
 	return response.Monitors, nil
 }
 
-// UpdateMonitor updates an existing monitor
+// UpdateMonitor updates an existing monitor.
 func (c *Client) UpdateMonitor(id int64, req *UpdateMonitorRequest) (*Monitor, error) {
 	resp, err := c.doRequest("PATCH", fmt.Sprintf("/public/monitors/%d", id), req)
 	if err != nil {
@@ -213,19 +213,19 @@ func (c *Client) UpdateMonitor(id int64, req *UpdateMonitorRequest) (*Monitor, e
 	return &monitor, nil
 }
 
-// DeleteMonitor deletes a monitor
+// DeleteMonitor deletes a monitor.
 func (c *Client) DeleteMonitor(id int64) error {
 	_, err := c.doRequest("DELETE", fmt.Sprintf("/public/monitors/%d", id), nil)
 	return err
 }
 
-// ResetMonitor resets monitor statistics
+// ResetMonitor resets monitor statistics.
 func (c *Client) ResetMonitor(id int64) error {
 	_, err := c.doRequest("POST", fmt.Sprintf("/public/monitors/%d/reset", id), nil)
 	return err
 }
 
-// FindExistingMonitorByNameAndURL searches for a monitor with matching name and URL
+// FindExistingMonitorByNameAndURL searches for a monitor with matching name and URL.
 func (c *Client) FindExistingMonitorByNameAndURL(name, url string) (*Monitor, error) {
 	monitors, err := c.GetMonitors()
 	if err != nil {

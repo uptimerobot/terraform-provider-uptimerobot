@@ -352,63 +352,63 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	// According to the API DTO, we should only include customSettings if needed
 	// The API expects customSettings.page, customSettings.colors, and customSettings.features to be objects, not null
-	
+
 	// Only add customSettings if we have custom settings to configure
 	if plan.CustomSettings != nil {
 		// Check if any of the customSettings fields have values
 		hasCustomSettings := false
-		
+
 		// Check font settings
 		if plan.CustomSettings.Font != nil && !plan.CustomSettings.Font.Family.IsNull() {
 			hasCustomSettings = true
 		}
-		
+
 		// Check page settings
-		if plan.CustomSettings.Page != nil && 
-		   (!plan.CustomSettings.Page.Layout.IsNull() || 
-		    !plan.CustomSettings.Page.Theme.IsNull() || 
-		    !plan.CustomSettings.Page.Density.IsNull()) {
+		if plan.CustomSettings.Page != nil &&
+			(!plan.CustomSettings.Page.Layout.IsNull() ||
+				!plan.CustomSettings.Page.Theme.IsNull() ||
+				!plan.CustomSettings.Page.Density.IsNull()) {
 			hasCustomSettings = true
 		}
-		
+
 		// Check colors settings
-		if plan.CustomSettings.Colors != nil && 
-		   (!plan.CustomSettings.Colors.Main.IsNull() || 
-		    !plan.CustomSettings.Colors.Text.IsNull() || 
-		    !plan.CustomSettings.Colors.Link.IsNull()) {
+		if plan.CustomSettings.Colors != nil &&
+			(!plan.CustomSettings.Colors.Main.IsNull() ||
+				!plan.CustomSettings.Colors.Text.IsNull() ||
+				!plan.CustomSettings.Colors.Link.IsNull()) {
 			hasCustomSettings = true
 		}
-		
+
 		// Check features settings
-		if plan.CustomSettings.Features != nil && 
-		   (!plan.CustomSettings.Features.ShowBars.IsNull() || 
-		    !plan.CustomSettings.Features.ShowUptimePercentage.IsNull() || 
-		    !plan.CustomSettings.Features.EnableFloatingStatus.IsNull() || 
-		    !plan.CustomSettings.Features.ShowOverallUptime.IsNull() || 
-		    !plan.CustomSettings.Features.ShowOutageUpdates.IsNull() || 
-		    !plan.CustomSettings.Features.ShowOutageDetails.IsNull() || 
-		    !plan.CustomSettings.Features.EnableDetailsPage.IsNull() || 
-		    !plan.CustomSettings.Features.ShowMonitorURL.IsNull() || 
-		    !plan.CustomSettings.Features.HidePausedMonitors.IsNull()) {
+		if plan.CustomSettings.Features != nil &&
+			(!plan.CustomSettings.Features.ShowBars.IsNull() ||
+				!plan.CustomSettings.Features.ShowUptimePercentage.IsNull() ||
+				!plan.CustomSettings.Features.EnableFloatingStatus.IsNull() ||
+				!plan.CustomSettings.Features.ShowOverallUptime.IsNull() ||
+				!plan.CustomSettings.Features.ShowOutageUpdates.IsNull() ||
+				!plan.CustomSettings.Features.ShowOutageDetails.IsNull() ||
+				!plan.CustomSettings.Features.EnableDetailsPage.IsNull() ||
+				!plan.CustomSettings.Features.ShowMonitorURL.IsNull() ||
+				!plan.CustomSettings.Features.HidePausedMonitors.IsNull()) {
 			hasCustomSettings = true
 		}
-		
+
 		// Only include customSettings if there's at least one setting
 		if hasCustomSettings {
 			psp.CustomSettings = &client.CustomSettings{}
-			
+
 			// Add font settings if present
 			if plan.CustomSettings.Font != nil && !plan.CustomSettings.Font.Family.IsNull() {
 				psp.CustomSettings.Font = &client.FontSettings{
 					Family: plan.CustomSettings.Font.Family.ValueStringPointer(),
 				}
 			}
-			
+
 			// Always include these as empty objects rather than null to satisfy API requirements
 			psp.CustomSettings.Page = &client.PageSettings{}
 			psp.CustomSettings.Colors = &client.ColorSettings{}
 			psp.CustomSettings.Features = &client.FeatureSettings{}
-			
+
 			// Populate page settings if present
 			if plan.CustomSettings.Page != nil {
 				if !plan.CustomSettings.Page.Layout.IsNull() {
@@ -421,7 +421,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 					psp.CustomSettings.Page.Density = plan.CustomSettings.Page.Density.ValueString()
 				}
 			}
-			
+
 			// Populate colors settings if present
 			if plan.CustomSettings.Colors != nil {
 				if !plan.CustomSettings.Colors.Main.IsNull() {
@@ -434,7 +434,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 					psp.CustomSettings.Colors.Link = plan.CustomSettings.Colors.Link.ValueStringPointer()
 				}
 			}
-			
+
 			// Populate features settings if present
 			if plan.CustomSettings.Features != nil {
 				if !plan.CustomSettings.Features.ShowBars.IsNull() {
@@ -483,7 +483,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	var updatedPlan pspResourceModel = plan
+	var updatedPlan = plan
 	pspToResourceData(newPSP, &updatedPlan)
 
 	// Set state to fully populated data
@@ -783,30 +783,30 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 	plan.Status = types.StringValue(psp.Status)
 	plan.URLKey = types.StringValue(psp.URLKey)
 	plan.IsPasswordSet = types.BoolValue(psp.IsPasswordSet)
-	
+
 	// Always set computed values, even if they're defaults from the API
 	plan.ShareAnalyticsConsent = types.BoolValue(psp.ShareAnalyticsConsent)
 	plan.UseSmallCookieConsentModal = types.BoolValue(psp.UseSmallCookieConsentModal)
 	plan.NoIndex = types.BoolValue(psp.NoIndex)
 	plan.HideURLLinks = types.BoolValue(psp.HideURLLinks)
 	plan.ShowCookieBar = types.BoolValue(psp.ShowCookieBar)
-	
+
 	// Critical: Always set subscription to a known value
 	plan.Subscription = types.BoolValue(psp.Subscription)
-	
+
 	// Handle optional fields that could be nil with defaults
 	if psp.MonitorsCount != nil {
 		plan.MonitorsCount = types.Int64Value(int64(*psp.MonitorsCount))
 	} else {
 		plan.MonitorsCount = types.Int64Value(0)
 	}
-	
+
 	if psp.HomepageLink != nil {
 		plan.HomepageLink = types.StringValue(*psp.HomepageLink)
 	} else {
 		plan.HomepageLink = types.StringValue("")
 	}
-	
+
 	// Handle other optional fields
 	if psp.CustomDomain != nil {
 		plan.CustomDomain = types.StringValue(*psp.CustomDomain)
@@ -814,35 +814,35 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 		// Keep the existing value if it's set
 		plan.CustomDomain = types.StringValue("")
 	}
-	
+
 	if psp.GACode != nil {
 		plan.GACode = types.StringValue(*psp.GACode)
 	} else if !plan.GACode.IsNull() {
 		// Keep the existing value if it's set
 		plan.GACode = types.StringValue("")
 	}
-	
+
 	if psp.Icon != nil {
 		plan.Icon = types.StringValue(*psp.Icon)
 	} else if !plan.Icon.IsNull() {
 		// Keep the existing value if it's set
 		plan.Icon = types.StringValue("")
 	}
-	
+
 	if psp.Logo != nil {
 		plan.Logo = types.StringValue(*psp.Logo)
 	} else if !plan.Logo.IsNull() {
 		// Keep the existing value if it's set
 		plan.Logo = types.StringValue("")
 	}
-	
+
 	if psp.PinnedAnnouncementID != nil {
 		plan.PinnedAnnouncementID = types.Int64Value(*psp.PinnedAnnouncementID)
 	} else if !plan.PinnedAnnouncementID.IsNull() {
 		// Zero is the appropriate default for a missing integer
 		plan.PinnedAnnouncementID = types.Int64Value(0)
 	}
-	
+
 	// Handle monitor IDs while preserving the order if possible
 	if !plan.MonitorIDs.IsNull() && psp.MonitorIDs != nil {
 		planMonitorIDs := []int64{}
@@ -853,7 +853,7 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 			for _, id := range psp.MonitorIDs {
 				apiIDsMap[id] = true
 			}
-			
+
 			// Check if all IDs in the plan are in the API response (regardless of order)
 			allFound := true
 			for _, id := range planMonitorIDs {
@@ -862,7 +862,7 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 					break
 				}
 			}
-			
+
 			// Check if all IDs in the API response are in the plan (regardless of order)
 			if allFound && len(planMonitorIDs) == len(psp.MonitorIDs) {
 				// They contain the exact same IDs, just in different order
@@ -871,7 +871,7 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 			}
 		}
 	}
-	
+
 	// If we reach here, we need to update the monitor IDs
 	if psp.MonitorIDs != nil {
 		// Create the monitor IDs list
@@ -879,7 +879,7 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 		for i, id := range psp.MonitorIDs {
 			monitorIDsElements[i] = types.Int64Value(id)
 		}
-		
+
 		monitorIDsList, diags := types.ListValue(types.Int64Type, monitorIDsElements)
 		if diags == nil || !diags.HasError() {
 			plan.MonitorIDs = monitorIDsList
@@ -889,18 +889,18 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 		emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
 		plan.MonitorIDs = emptyList
 	}
-	
+
 	// Handle CustomSettings if present in the API response
 	if psp.CustomSettings == nil {
 		// API returned no custom settings, so make sure the field is null in plan
 		plan.CustomSettings = nil
 		return
 	}
-	
+
 	// Otherwise, process each custom setting field
 	hasCustomSettings := false
 	customSettings := &customSettingsModel{}
-	
+
 	// Font settings
 	if psp.CustomSettings.Font != nil && psp.CustomSettings.Font.Family != nil {
 		hasCustomSettings = true
@@ -909,13 +909,13 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 		}
 		customSettings.Font = fontSettings
 	}
-	
+
 	// Page settings
-	if psp.CustomSettings.Page != nil && 
-	   (psp.CustomSettings.Page.Layout != "" || 
-		psp.CustomSettings.Page.Theme != "" || 
-		psp.CustomSettings.Page.Density != "") {
-		
+	if psp.CustomSettings.Page != nil &&
+		(psp.CustomSettings.Page.Layout != "" ||
+			psp.CustomSettings.Page.Theme != "" ||
+			psp.CustomSettings.Page.Density != "") {
+
 		hasCustomSettings = true
 		pageSettings := &pageSettingsModel{
 			Layout:  types.StringValue(psp.CustomSettings.Page.Layout),
@@ -924,16 +924,16 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 		}
 		customSettings.Page = pageSettings
 	}
-	
+
 	// Colors settings
-	if psp.CustomSettings.Colors != nil && 
-	   (psp.CustomSettings.Colors.Main != nil || 
-		psp.CustomSettings.Colors.Text != nil || 
-		psp.CustomSettings.Colors.Link != nil) {
-		
+	if psp.CustomSettings.Colors != nil &&
+		(psp.CustomSettings.Colors.Main != nil ||
+			psp.CustomSettings.Colors.Text != nil ||
+			psp.CustomSettings.Colors.Link != nil) {
+
 		hasCustomSettings = true
 		colorSettings := &colorSettingsModel{}
-		
+
 		if psp.CustomSettings.Colors.Main != nil {
 			colorSettings.Main = types.StringValue(*psp.CustomSettings.Colors.Main)
 		}
@@ -943,25 +943,25 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 		if psp.CustomSettings.Colors.Link != nil {
 			colorSettings.Link = types.StringValue(*psp.CustomSettings.Colors.Link)
 		}
-		
+
 		customSettings.Colors = colorSettings
 	}
-	
+
 	// Features settings
-	if psp.CustomSettings.Features != nil && 
-	   (psp.CustomSettings.Features.ShowBars != nil || 
-		psp.CustomSettings.Features.ShowUptimePercentage != nil || 
-		psp.CustomSettings.Features.EnableFloatingStatus != nil || 
-		psp.CustomSettings.Features.ShowOverallUptime != nil || 
-		psp.CustomSettings.Features.ShowOutageUpdates != nil || 
-		psp.CustomSettings.Features.ShowOutageDetails != nil || 
-		psp.CustomSettings.Features.EnableDetailsPage != nil || 
-		psp.CustomSettings.Features.ShowMonitorURL != nil || 
-		psp.CustomSettings.Features.HidePausedMonitors != nil) {
-		
+	if psp.CustomSettings.Features != nil &&
+		(psp.CustomSettings.Features.ShowBars != nil ||
+			psp.CustomSettings.Features.ShowUptimePercentage != nil ||
+			psp.CustomSettings.Features.EnableFloatingStatus != nil ||
+			psp.CustomSettings.Features.ShowOverallUptime != nil ||
+			psp.CustomSettings.Features.ShowOutageUpdates != nil ||
+			psp.CustomSettings.Features.ShowOutageDetails != nil ||
+			psp.CustomSettings.Features.EnableDetailsPage != nil ||
+			psp.CustomSettings.Features.ShowMonitorURL != nil ||
+			psp.CustomSettings.Features.HidePausedMonitors != nil) {
+
 		hasCustomSettings = true
 		featureSettings := &featureSettingsModel{}
-		
+
 		if psp.CustomSettings.Features.ShowBars != nil {
 			featureSettings.ShowBars = types.StringValue(*psp.CustomSettings.Features.ShowBars)
 		}
@@ -989,10 +989,10 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 		if psp.CustomSettings.Features.HidePausedMonitors != nil {
 			featureSettings.HidePausedMonitors = types.StringValue(*psp.CustomSettings.Features.HidePausedMonitors)
 		}
-		
+
 		customSettings.Features = featureSettings
 	}
-	
+
 	// Only set CustomSettings if there are actual values
 	if hasCustomSettings {
 		plan.CustomSettings = customSettings

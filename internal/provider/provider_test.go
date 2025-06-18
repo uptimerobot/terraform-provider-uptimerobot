@@ -19,7 +19,7 @@ var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServe
 	"uptimerobot": providerserver.NewProtocol6WithError(New("test")()),
 }
 
-// Provider-level tests
+// Provider-level tests.
 func TestProvider(t *testing.T) {
 	p := New("test")()
 	resp := &provider.MetadataResponse{}
@@ -38,10 +38,3 @@ func testAccPreCheck(t *testing.T) {
 		t.Fatal("UPTIMEROBOT_ORGANIZATION_ID must be set for acceptance tests")
 	}
 }
-
-// Test provider configuration
-const testAccProviderConfig = `
-provider "uptimerobot" {
-  api_key = "%s"
-}
-`

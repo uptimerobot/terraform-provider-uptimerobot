@@ -397,7 +397,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	state.Type = types.StringValue(string(monitor.Type))
+	state.Type = types.StringValue(monitor.Type)
 	state.Interval = types.Int64Value(int64(monitor.Interval))
 	state.FollowRedirections = types.BoolValue(monitor.FollowRedirections)
 	state.AuthType = types.StringValue(stringValue(&monitor.AuthType))
@@ -407,7 +407,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	headers := make(map[string]attr.Value)
 	if !state.CustomHTTPHeaders.IsNull() {
 		state.CustomHTTPHeaders.ElementsAs(ctx, &headers, false)
-	} else if monitor.CustomHTTPHeaders != nil && len(monitor.CustomHTTPHeaders) > 0 {
+	} else if len(monitor.CustomHTTPHeaders) > 0 {
 		for k, v := range monitor.CustomHTTPHeaders {
 			headers[k] = types.StringValue(v)
 		}
@@ -443,7 +443,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	state.ID = types.StringValue(strconv.FormatInt(monitor.ID, 10))
 	state.Status = types.StringValue(monitor.Status)
 
-	if monitor.Tags != nil && len(monitor.Tags) > 0 {
+	if len(monitor.Tags) > 0 {
 		tagValues := make([]attr.Value, 0, len(monitor.Tags))
 		for _, tag := range monitor.Tags {
 			tagValues = append(tagValues, types.StringValue(tag.Name))
@@ -453,7 +453,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.Tags = types.ListNull(types.StringType)
 	}
 
-	if monitor.AssignedAlertContacts != nil && len(monitor.AssignedAlertContacts) > 0 {
+	if len(monitor.AssignedAlertContacts) > 0 {
 		alertContacts := make([]attr.Value, 0)
 		for _, contact := range monitor.AssignedAlertContacts {
 			alertContacts = append(alertContacts, types.StringValue(contact.AlertContactID))
@@ -601,7 +601,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	var updatedState monitorResourceModel = plan
+	var updatedState = plan
 	updatedState.Status = types.StringValue(updatedMonitor.Status)
 	var keywordCaseTypeValue string
 	if updatedMonitor.KeywordCaseType == 0 {
@@ -610,7 +610,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		keywordCaseTypeValue = "CaseInsensitive"
 	}
 	updatedState.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
-	if updatedMonitor.Tags != nil && len(updatedMonitor.Tags) > 0 {
+	if len(updatedMonitor.Tags) > 0 {
 		tagValues := make([]attr.Value, 0, len(updatedMonitor.Tags))
 		for _, tag := range updatedMonitor.Tags {
 			tagValues = append(tagValues, types.StringValue(tag.Name))
@@ -695,7 +695,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	}
 }
 
-// modifyPlanForListField handles the special case for list fields that might be null vs empty lists
+// modifyPlanForListField handles the special case for list fields that might be null vs empty lists.
 func modifyPlanForListField(ctx context.Context, planField, stateField *types.List, resp *resource.ModifyPlanResponse, fieldName string) {
 	// If state has a null value but plan has an empty list or vice versa, make them consistent
 	if stateField.IsNull() && !planField.IsNull() && planField.ElementsAs(ctx, &[]string{}, false) == nil {
