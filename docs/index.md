@@ -17,7 +17,7 @@ description: |-
 
 ### Required
 
-- `api_key` (String, Sensitive) API key for authentication
+- `api_key` (String, Sensitive) API key for authentication.
 
 ### Optional
 

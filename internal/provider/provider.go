@@ -39,12 +39,12 @@ func (p *UptimeRobotProvider) Schema(ctx context.Context, req provider.SchemaReq
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"api_key": schema.StringAttribute{
-				MarkdownDescription: "API key for authentication. Can also be provided via UPTIMEROBOT_API_KEY environment variable.",
+				MarkdownDescription: "API key for authentication.",
 				Required:            true,
 				Sensitive:           true,
 			},
 			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "Optional API endpoint URL. If not specified, the default endpoint will be used. Can also be set via UPTIMEROBOT_ENDPOINT environment variable.",
+				MarkdownDescription: "Optional API endpoint URL. If not specified, the default endpoint will be used.",
 				Optional:            true,
 			},
 		},
@@ -63,8 +63,7 @@ func (p *UptimeRobotProvider) Configure(ctx context.Context, req provider.Config
 	if apiKey == "" {
 		resp.Diagnostics.AddError(
 			"Missing API Key Configuration",
-			"While configuring the provider, the API key was not found in the configuration or environment variables. "+
-				"Please ensure the api_key argument is set in the provider configuration or set the UPTIMEROBOT_API_KEY environment variable.",
+			"While configuring the provider, the API key was not found in the configuration. Please ensure the api_key argument is set in the provider configuration.",
 		)
 
 	}
