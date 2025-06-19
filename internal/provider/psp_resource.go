@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -16,8 +17,9 @@ import (
 
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ resource.Resource              = &pspResource{}
-	_ resource.ResourceWithConfigure = &pspResource{}
+	_ resource.Resource                = &pspResource{}
+	_ resource.ResourceWithConfigure   = &pspResource{}
+	_ resource.ResourceWithImportState = &pspResource{}
 )
 
 // NewPSPResource is a helper function to simplify the provider implementation.
@@ -721,6 +723,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	plan.Status = types.StringValue(updatedPSP.Status)
 	plan.URLKey = types.StringValue(updatedPSP.URLKey)
 	plan.IsPasswordSet = types.BoolValue(updatedPSP.IsPasswordSet)
+	plan.Subscription = types.BoolValue(updatedPSP.Subscription)
 
 	// Handle nullable fields in response
 	if updatedPSP.MonitorsCount != nil {
@@ -738,7 +741,8 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	if updatedPSP.PinnedAnnouncementID != nil {
 		plan.PinnedAnnouncementID = types.Int64Value(*updatedPSP.PinnedAnnouncementID)
 	} else {
-		plan.PinnedAnnouncementID = types.Int64Value(0)
+		// Keep as null if not set
+		plan.PinnedAnnouncementID = types.Int64Null()
 	}
 
 	// Set state to fully populated data
@@ -838,9 +842,9 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 
 	if psp.PinnedAnnouncementID != nil {
 		plan.PinnedAnnouncementID = types.Int64Value(*psp.PinnedAnnouncementID)
-	} else if !plan.PinnedAnnouncementID.IsNull() {
-		// Zero is the appropriate default for a missing integer
-		plan.PinnedAnnouncementID = types.Int64Value(0)
+	} else {
+		// Keep as null if not set
+		plan.PinnedAnnouncementID = types.Int64Null()
 	}
 
 	// Handle monitor IDs while preserving the order if possible
@@ -999,4 +1003,9 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 	} else {
 		plan.CustomSettings = nil
 	}
+}
+
+// ImportState imports an existing resource into Terraform.
+func (r *pspResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

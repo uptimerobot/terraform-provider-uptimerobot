@@ -39,12 +39,12 @@ func (p *UptimeRobotProvider) Schema(ctx context.Context, req provider.SchemaReq
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"api_key": schema.StringAttribute{
-				MarkdownDescription: "API key for authentication",
+				MarkdownDescription: "API key for authentication. Can also be provided via UPTIMEROBOT_API_KEY environment variable.",
 				Required:            true,
 				Sensitive:           true,
 			},
 			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "Optional API endpoint URL. If not specified, the default endpoint will be used.",
+				MarkdownDescription: "Optional API endpoint URL. If not specified, the default endpoint will be used. Can also be set via UPTIMEROBOT_ENDPOINT environment variable.",
 				Optional:            true,
 			},
 		},
@@ -58,22 +58,27 @@ func (p *UptimeRobotProvider) Configure(ctx context.Context, req provider.Config
 		return
 	}
 
-	if config.APIKey.IsNull() {
+	// Read from environment variables if not set in configuration
+	apiKey := config.APIKey.ValueString()
+	if apiKey == "" {
 		resp.Diagnostics.AddError(
 			"Missing API Key Configuration",
-			"While configuring the provider, the API key was not found in the configuration. "+
-				"Please ensure the api_key argument is set in the provider configuration.",
+			"While configuring the provider, the API key was not found in the configuration or environment variables. "+
+				"Please ensure the api_key argument is set in the provider configuration or set the UPTIMEROBOT_API_KEY environment variable.",
 		)
-		return
+
 	}
 
 	// Create a new client using the configuration
-	client := client.NewClient(config.APIKey.ValueString())
+	client := client.NewClient(apiKey)
 
-	// Override the default endpoint if specified
-	if !config.Endpoint.IsNull() {
-		client.SetBaseURL(config.Endpoint.ValueString())
+	// Override the default endpoint if specified in config or environment
+	endpoint := config.Endpoint.ValueString()
+	if endpoint == "" {
+		endpoint = "https://api.uptimerobot.com/v3"
 	}
+
+	client.SetBaseURL(endpoint)
 
 	// Make the client available during DataSource and Resource Configure methods
 	resp.DataSourceData = client
@@ -85,6 +90,7 @@ func (p *UptimeRobotProvider) Resources(ctx context.Context) []func() resource.R
 		NewMonitorResource,
 		NewPSPResource,
 		NewMaintenanceWindowResource,
+		NewIntegrationResource,
 	}
 }
 

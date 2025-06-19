@@ -8,8 +8,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
@@ -33,7 +33,7 @@ type integrationResource struct {
 
 // integrationResourceModel maps the resource schema data.
 type integrationResourceModel struct {
-	ID                     types.Int64  `tfsdk:"id"`
+	ID                     types.String `tfsdk:"id"`
 	FriendlyName           types.String `tfsdk:"friendly_name"`
 	Type                   types.String `tfsdk:"type"`
 	Value                  types.String `tfsdk:"value"`
@@ -73,11 +73,11 @@ func (r *integrationResource) Schema(_ context.Context, _ resource.SchemaRequest
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages an integration in UptimeRobot.",
 		Attributes: map[string]schema.Attribute{
-			"id": schema.Int64Attribute{
+			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The ID of this integration.",
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"friendly_name": schema.StringAttribute{
@@ -153,7 +153,7 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	plan.ID = types.Int64Value(newIntegration.ID)
+	plan.ID = types.StringValue(strconv.FormatInt(newIntegration.ID, 10))
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -174,7 +174,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	}
 
 	// Get integration from API
-	id, err := strconv.ParseInt(strconv.FormatInt(state.ID.ValueInt64(), 10), 10, 64)
+	id, err := strconv.ParseInt(state.ID.ValueString(), 10, 64)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error parsing integration ID",
@@ -199,9 +199,19 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	state.CustomValue = types.StringValue(integration.CustomValue)
 	state.EnableNotificationsFor = types.Int64Value(int64(integration.EnableNotificationsFor))
 	state.SSLExpirationReminder = types.BoolValue(integration.SSLExpirationReminder)
-	state.SendAsJSON = types.BoolValue(integration.SendAsJSON)
-	state.SendAsQueryString = types.BoolValue(integration.SendAsQueryString)
-	state.PostValue = types.StringValue(integration.PostValue)
+
+	// Only set webhook-specific fields if they were already set in the state
+	// or if this is a webhook integration. This prevents Terraform from seeing
+	// differences when these fields are not specified in the configuration.
+	if !state.SendAsJSON.IsNull() || integration.Type == "webhook" {
+		state.SendAsJSON = types.BoolValue(integration.SendAsJSON)
+	}
+	if !state.SendAsQueryString.IsNull() || integration.Type == "webhook" {
+		state.SendAsQueryString = types.BoolValue(integration.SendAsQueryString)
+	}
+	if !state.PostValue.IsNull() || integration.Type == "webhook" {
+		state.PostValue = types.StringValue(integration.PostValue)
+	}
 
 	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)
@@ -221,7 +231,7 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	id, err := strconv.ParseInt(strconv.FormatInt(plan.ID.ValueInt64(), 10), 10, 64)
+	id, err := strconv.ParseInt(plan.ID.ValueString(), 10, 64)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error parsing integration ID",
@@ -270,7 +280,7 @@ func (r *integrationResource) Delete(ctx context.Context, req resource.DeleteReq
 	}
 
 	// Delete integration
-	id, err := strconv.ParseInt(strconv.FormatInt(state.ID.ValueInt64(), 10), 10, 64)
+	id, err := strconv.ParseInt(state.ID.ValueString(), 10, 64)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error parsing integration ID",

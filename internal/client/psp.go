@@ -168,7 +168,7 @@ func (c *Client) CreatePSP(req *CreatePSPRequest) (*PSP, error) {
 	}
 	fmt.Printf("PSP Create Request: %s\n", reqJSON)
 
-	resp, err := c.doRequest("POST", "/public/psps", req)
+	resp, err := c.doRequest("POST", "/psps", req)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (c *Client) CreatePSP(req *CreatePSPRequest) (*PSP, error) {
 
 // GetPSP retrieves a PSP by ID.
 func (c *Client) GetPSP(id int64) (*PSP, error) {
-	resp, err := c.doRequest("GET", fmt.Sprintf("/public/psps/%d", id), nil)
+	resp, err := c.doRequest("GET", fmt.Sprintf("/psps/%d", id), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,7 @@ func (c *Client) UpdatePSP(id int64, req *UpdatePSPRequest) (*PSP, error) {
 	}
 	fmt.Printf("PSP Update Request: %s\n", reqJSON)
 
-	resp, err := c.doRequest("PATCH", fmt.Sprintf("/public/psps/%d", id), req)
+	resp, err := c.doRequest("PATCH", fmt.Sprintf("/psps/%d", id), req)
 	if err != nil {
 		return nil, err
 	}
@@ -220,6 +220,6 @@ func (c *Client) UpdatePSP(id int64, req *UpdatePSPRequest) (*PSP, error) {
 
 // DeletePSP deletes a PSP.
 func (c *Client) DeletePSP(id int64) error {
-	_, err := c.doRequest("DELETE", fmt.Sprintf("/public/psps/%d", id), nil)
+	_, err := c.doRequest("DELETE", fmt.Sprintf("/psps/%d", id), nil)
 	return err
 }

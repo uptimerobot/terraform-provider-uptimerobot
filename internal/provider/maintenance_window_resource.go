@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -14,8 +15,9 @@ import (
 
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ resource.Resource              = &maintenanceWindowResource{}
-	_ resource.ResourceWithConfigure = &maintenanceWindowResource{}
+	_ resource.Resource                = &maintenanceWindowResource{}
+	_ resource.ResourceWithConfigure   = &maintenanceWindowResource{}
+	_ resource.ResourceWithImportState = &maintenanceWindowResource{}
 )
 
 // NewMaintenanceWindowResource is a helper function to simplify the provider implementation.
@@ -108,6 +110,9 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 			"status": schema.StringAttribute{
 				Description: "Status of the maintenance window",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -131,11 +136,15 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 
 	// Create new maintenance window
 	mw := &client.CreateMaintenanceWindowRequest{
-		Name:            plan.Name.ValueString(),
-		Interval:        plan.Interval.ValueString(),
-		Time:            plan.Time.ValueString(),
-		Duration:        int(plan.Duration.ValueInt64()),
-		AutoAddMonitors: plan.AutoAddMonitors.ValueBool(),
+		Name:     plan.Name.ValueString(),
+		Interval: plan.Interval.ValueString(),
+		Time:     plan.Time.ValueString(),
+		Duration: int(plan.Duration.ValueInt64()),
+	}
+
+	// Only set AutoAddMonitors if it was explicitly set
+	if !plan.AutoAddMonitors.IsNull() {
+		mw.AutoAddMonitors = plan.AutoAddMonitors.ValueBool()
 	}
 
 	// Add date if it's set
@@ -234,7 +243,13 @@ func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadR
 	state.Interval = types.StringValue(mw.Interval)
 	state.Time = types.StringValue(mw.Time)
 	state.Duration = types.Int64Value(int64(mw.Duration))
-	state.AutoAddMonitors = types.BoolValue(mw.AutoAddMonitors)
+
+	// Only set auto_add_monitors if it was already set in the state
+	// This prevents Terraform from seeing differences when the field
+	// is not specified in the configuration
+	if !state.AutoAddMonitors.IsNull() {
+		state.AutoAddMonitors = types.BoolValue(mw.AutoAddMonitors)
+	}
 
 	// Add date if it's set
 	if mw.Date != nil {
@@ -288,11 +303,15 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 
 	// Create update request
 	updateReq := &client.UpdateMaintenanceWindowRequest{
-		Name:            plan.Name.ValueString(),
-		Interval:        plan.Interval.ValueString(),
-		Time:            plan.Time.ValueString(),
-		Duration:        int(plan.Duration.ValueInt64()),
-		AutoAddMonitors: plan.AutoAddMonitors.ValueBool(),
+		Name:     plan.Name.ValueString(),
+		Interval: plan.Interval.ValueString(),
+		Time:     plan.Time.ValueString(),
+		Duration: int(plan.Duration.ValueInt64()),
+	}
+
+	// Only set AutoAddMonitors if it was explicitly set
+	if !plan.AutoAddMonitors.IsNull() {
+		updateReq.AutoAddMonitors = plan.AutoAddMonitors.ValueBool()
 	}
 
 	// Add date if it's set
@@ -360,4 +379,9 @@ func (r *maintenanceWindowResource) Delete(ctx context.Context, req resource.Del
 		)
 		return
 	}
+}
+
+// ImportState imports an existing resource into Terraform.
+func (r *maintenanceWindowResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

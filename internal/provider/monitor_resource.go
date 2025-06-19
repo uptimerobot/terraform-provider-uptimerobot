@@ -23,6 +23,14 @@ func NewMonitorResource() resource.Resource {
 	return &monitorResource{}
 }
 
+// Ensure the implementation satisfies the expected interfaces.
+var (
+	_ resource.Resource                = &monitorResource{}
+	_ resource.ResourceWithConfigure   = &monitorResource{}
+	_ resource.ResourceWithModifyPlan  = &monitorResource{}
+	_ resource.ResourceWithImportState = &monitorResource{}
+)
+
 // monitorResource is the resource implementation.
 type monitorResource struct {
 	client *client.Client
@@ -397,12 +405,26 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
+	// Check if we're in an import operation by seeing if all required fields are null
+	// During import, only the ID is set
+	isImport := state.Name.IsNull() && state.URL.IsNull() && state.Type.IsNull() && state.Interval.IsNull()
+
 	state.Type = types.StringValue(monitor.Type)
 	state.Interval = types.Int64Value(int64(monitor.Interval))
-	state.FollowRedirections = types.BoolValue(monitor.FollowRedirections)
-	state.AuthType = types.StringValue(stringValue(&monitor.AuthType))
-	state.HTTPUsername = types.StringValue(stringValue(&monitor.HTTPUsername))
-	state.HTTPPassword = types.StringValue(stringValue(&monitor.HTTPPassword))
+
+	// For optional fields with defaults, set them during import or if already set in state
+	if isImport || !state.FollowRedirections.IsNull() {
+		state.FollowRedirections = types.BoolValue(monitor.FollowRedirections)
+	}
+	if isImport || !state.AuthType.IsNull() {
+		state.AuthType = types.StringValue(stringValue(&monitor.AuthType))
+	}
+	if !state.HTTPUsername.IsNull() {
+		state.HTTPUsername = types.StringValue(stringValue(&monitor.HTTPUsername))
+	}
+	if !state.HTTPPassword.IsNull() {
+		state.HTTPPassword = types.StringValue(stringValue(&monitor.HTTPPassword))
+	}
 
 	headers := make(map[string]attr.Value)
 	if !state.CustomHTTPHeaders.IsNull() {
@@ -416,28 +438,45 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.CustomHTTPHeaders = types.MapNull(types.StringType)
 	}
 
-	state.HTTPMethodType = types.StringValue(stringValue(&monitor.HTTPMethodType))
-	state.PostValueType = types.StringValue(stringValue(monitor.PostValueType))
-	state.PostValueData = types.StringValue(stringValue(monitor.PostValueData))
+	if !state.HTTPMethodType.IsNull() {
+		state.HTTPMethodType = types.StringValue(stringValue(&monitor.HTTPMethodType))
+	}
+	if !state.PostValueType.IsNull() {
+		state.PostValueType = types.StringValue(stringValue(monitor.PostValueType))
+	}
+	if !state.PostValueData.IsNull() {
+		state.PostValueData = types.StringValue(stringValue(monitor.PostValueData))
+	}
 	if monitor.Port != nil {
 		state.Port = types.Int64Value(int64(*monitor.Port))
 	} else {
 		state.Port = types.Int64Null()
 	}
-	state.KeywordValue = types.StringValue(stringValue(&monitor.KeywordValue))
+	if !state.KeywordValue.IsNull() {
+		state.KeywordValue = types.StringValue(stringValue(&monitor.KeywordValue))
+	}
 	if monitor.KeywordType != nil {
 		state.KeywordType = types.StringValue(*monitor.KeywordType)
 	} else {
 		state.KeywordType = types.StringNull()
 	}
-	var keywordCaseTypeValue string
-	if monitor.KeywordCaseType == 0 {
-		keywordCaseTypeValue = "CaseSensitive"
-	} else {
-		keywordCaseTypeValue = "CaseInsensitive"
+
+	// Set keyword case type during import or if already set in state
+	if isImport || !state.KeywordCaseType.IsNull() {
+		var keywordCaseTypeValue string
+		if monitor.KeywordCaseType == 0 {
+			keywordCaseTypeValue = "CaseSensitive"
+		} else {
+			keywordCaseTypeValue = "CaseInsensitive"
+		}
+		state.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
 	}
-	state.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
-	state.GracePeriod = types.Int64Value(int64(monitor.GracePeriod))
+
+	// Set grace period during import or if already set in state
+	if isImport || !state.GracePeriod.IsNull() {
+		state.GracePeriod = types.Int64Value(int64(monitor.GracePeriod))
+	}
+
 	state.Name = types.StringValue(monitor.Name)
 	state.URL = types.StringValue(monitor.URL)
 	state.ID = types.StringValue(strconv.FormatInt(monitor.ID, 10))
@@ -463,18 +502,27 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.AssignedAlertContacts = types.ListNull(types.StringType)
 	}
 
-	successCodes := make([]attr.Value, 0)
-	if monitor.SuccessHTTPResponseCodes != nil {
-		for _, code := range monitor.SuccessHTTPResponseCodes {
-			successCodes = append(successCodes, types.StringValue(code))
+	// Set success codes during import or if already set in state
+	if isImport || !state.SuccessHTTPResponseCodes.IsNull() {
+		successCodes := make([]attr.Value, 0)
+		if monitor.SuccessHTTPResponseCodes != nil {
+			for _, code := range monitor.SuccessHTTPResponseCodes {
+				successCodes = append(successCodes, types.StringValue(code))
+			}
 		}
+		state.SuccessHTTPResponseCodes = types.ListValueMust(types.StringType, successCodes)
 	}
-	state.SuccessHTTPResponseCodes = types.ListValueMust(types.StringType, successCodes)
 
-	state.SSLExpirationReminder = types.BoolValue(monitor.SSLExpirationReminder)
-	state.DomainExpirationReminder = types.BoolValue(monitor.DomainExpirationReminder)
+	// Set boolean fields with defaults during import or if already set in state
+	if isImport || !state.SSLExpirationReminder.IsNull() {
+		state.SSLExpirationReminder = types.BoolValue(monitor.SSLExpirationReminder)
+	}
+	if isImport || !state.DomainExpirationReminder.IsNull() {
+		state.DomainExpirationReminder = types.BoolValue(monitor.DomainExpirationReminder)
+	}
 
 	if !state.MaintenanceWindowIDs.IsNull() {
+		// Keep existing behavior for maintenance window IDs
 	} else {
 		state.MaintenanceWindowIDs = types.ListNull(types.Int64Type)
 	}
@@ -706,6 +754,11 @@ func modifyPlanForListField(ctx context.Context, planField, stateField *types.Li
 		// keep the state value to avoid unnecessary updates
 		resp.Plan.SetAttribute(ctx, path.Root(fieldName), *stateField)
 	}
+}
+
+// ImportState imports an existing resource into Terraform.
+func (r *monitorResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func stringValue(s *string) string {

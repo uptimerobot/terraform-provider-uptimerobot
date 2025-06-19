@@ -153,7 +153,7 @@ type UptimeRecord struct {
 
 // CreateMonitor creates a new monitor.
 func (c *Client) CreateMonitor(req *CreateMonitorRequest) (*Monitor, error) {
-	resp, err := c.doRequest("POST", "/public/monitors", req)
+	resp, err := c.doRequest("POST", "/monitors", req)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func (c *Client) CreateMonitor(req *CreateMonitorRequest) (*Monitor, error) {
 
 // GetMonitor retrieves a monitor by ID.
 func (c *Client) GetMonitor(id int64) (*Monitor, error) {
-	resp, err := c.doRequest("GET", fmt.Sprintf("/public/monitors/%d", id), nil)
+	resp, err := c.doRequest("GET", fmt.Sprintf("/monitors/%d", id), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (c *Client) GetMonitor(id int64) (*Monitor, error) {
 
 // GetMonitors retrieves all monitors.
 func (c *Client) GetMonitors() ([]Monitor, error) {
-	resp, err := c.doRequest("GET", "/public/monitors", nil)
+	resp, err := c.doRequest("GET", "/monitors", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func (c *Client) GetMonitors() ([]Monitor, error) {
 
 // UpdateMonitor updates an existing monitor.
 func (c *Client) UpdateMonitor(id int64, req *UpdateMonitorRequest) (*Monitor, error) {
-	resp, err := c.doRequest("PATCH", fmt.Sprintf("/public/monitors/%d", id), req)
+	resp, err := c.doRequest("PATCH", fmt.Sprintf("/monitors/%d", id), req)
 	if err != nil {
 		return nil, err
 	}
@@ -215,13 +215,13 @@ func (c *Client) UpdateMonitor(id int64, req *UpdateMonitorRequest) (*Monitor, e
 
 // DeleteMonitor deletes a monitor.
 func (c *Client) DeleteMonitor(id int64) error {
-	_, err := c.doRequest("DELETE", fmt.Sprintf("/public/monitors/%d", id), nil)
+	_, err := c.doRequest("DELETE", fmt.Sprintf("/monitors/%d", id), nil)
 	return err
 }
 
 // ResetMonitor resets monitor statistics.
 func (c *Client) ResetMonitor(id int64) error {
-	_, err := c.doRequest("POST", fmt.Sprintf("/public/monitors/%d/reset", id), nil)
+	_, err := c.doRequest("POST", fmt.Sprintf("/monitors/%d/reset", id), nil)
 	return err
 }
 

@@ -54,7 +54,7 @@ type UpdateIntegrationRequest struct {
 
 // CreateIntegration creates a new integration.
 func (c *Client) CreateIntegration(req *CreateIntegrationRequest) (*Integration, error) {
-	resp, err := c.doRequest("POST", "/public/integrations", req)
+	resp, err := c.doRequest("POST", "/integrations", req)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (c *Client) CreateIntegration(req *CreateIntegrationRequest) (*Integration,
 
 // GetIntegration retrieves an integration by ID.
 func (c *Client) GetIntegration(id int64) (*Integration, error) {
-	resp, err := c.doRequest("GET", fmt.Sprintf("/public/integrations/%d", id), nil)
+	resp, err := c.doRequest("GET", fmt.Sprintf("/integrations/%d", id), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (c *Client) GetIntegration(id int64) (*Integration, error) {
 
 // UpdateIntegration updates an existing integration.
 func (c *Client) UpdateIntegration(id int64, req *UpdateIntegrationRequest) (*Integration, error) {
-	resp, err := c.doRequest("PATCH", fmt.Sprintf("/public/integrations/%d", id), req)
+	resp, err := c.doRequest("PATCH", fmt.Sprintf("/integrations/%d", id), req)
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +99,6 @@ func (c *Client) UpdateIntegration(id int64, req *UpdateIntegrationRequest) (*In
 
 // DeleteIntegration deletes an integration.
 func (c *Client) DeleteIntegration(id int64) error {
-	_, err := c.doRequest("DELETE", fmt.Sprintf("/public/integrations/%d", id), nil)
+	_, err := c.doRequest("DELETE", fmt.Sprintf("/integrations/%d", id), nil)
 	return err
 }

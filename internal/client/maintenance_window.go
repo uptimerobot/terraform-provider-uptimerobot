@@ -43,7 +43,7 @@ type UpdateMaintenanceWindowRequest struct {
 
 // CreateMaintenanceWindow creates a new maintenance window.
 func (c *Client) CreateMaintenanceWindow(req *CreateMaintenanceWindowRequest) (*MaintenanceWindow, error) {
-	resp, err := c.doRequest("POST", "/public/maintenance-windows", req)
+	resp, err := c.doRequest("POST", "/maintenance-windows", req)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (c *Client) CreateMaintenanceWindow(req *CreateMaintenanceWindowRequest) (*
 
 // GetMaintenanceWindow retrieves a maintenance window by ID.
 func (c *Client) GetMaintenanceWindow(id int64) (*MaintenanceWindow, error) {
-	resp, err := c.doRequest("GET", fmt.Sprintf("/public/maintenance-windows/%d", id), nil)
+	resp, err := c.doRequest("GET", fmt.Sprintf("/maintenance-windows/%d", id), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (c *Client) GetMaintenanceWindow(id int64) (*MaintenanceWindow, error) {
 
 // UpdateMaintenanceWindow updates an existing maintenance window.
 func (c *Client) UpdateMaintenanceWindow(id int64, req *UpdateMaintenanceWindowRequest) (*MaintenanceWindow, error) {
-	resp, err := c.doRequest("PATCH", fmt.Sprintf("/public/maintenance-windows/%d", id), req)
+	resp, err := c.doRequest("PATCH", fmt.Sprintf("/maintenance-windows/%d", id), req)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +88,6 @@ func (c *Client) UpdateMaintenanceWindow(id int64, req *UpdateMaintenanceWindowR
 
 // DeleteMaintenanceWindow deletes a maintenance window.
 func (c *Client) DeleteMaintenanceWindow(id int64) error {
-	_, err := c.doRequest("DELETE", fmt.Sprintf("/public/maintenance-windows/%d", id), nil)
+	_, err := c.doRequest("DELETE", fmt.Sprintf("/maintenance-windows/%d", id), nil)
 	return err
 }
