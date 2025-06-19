@@ -1,0 +1,34 @@
+# golangci-lint configuration
+version: "2"
+run:
+  # Timeout for running linters
+  timeout: 5m
+  # Include test files
+  tests: true
+
+linters:
+  # Don't enable all linters by default, select only the important ones
+  enable:
+    - durationcheck
+    - errcheck
+    - forcetypeassert
+    - godot
+    - ineffassign
+    - makezero
+    - misspell
+    - nilerr
+    - predeclared
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - govet
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  # Don't limit the number of issues per linter
+  max-issues-per-linter: 0
+  # Don't limit the number of same issues
+  max-same-issues: 0
