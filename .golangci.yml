@@ -1,0 +1,29 @@
+version: "2"
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - durationcheck
+    - errcheck
+    - forcetypeassert
+    - godot
+    - govet
+    - ineffassign
+    - makezero
+    - misspell
+    - nilerr
+    - predeclared
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
