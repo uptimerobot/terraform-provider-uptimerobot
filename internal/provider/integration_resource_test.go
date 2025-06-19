@@ -11,6 +11,7 @@ func TestAccIntegrationResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckIntegrationDestroy,
 		Steps: []resource.TestStep{
 			// Create and Read testing for Slack integration
 			{
@@ -57,9 +58,9 @@ func TestAccIntegrationResource(t *testing.T) {
 }
 
 func testAccSlackIntegrationConfig(name string) string {
-	return fmt.Sprintf(`
+	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_integration" "slack" {
-  friendly_name             = %[1]q
+  friendly_name             = %q
   type                     = "slack"
   value                    = "https://hooks.slack.com/services/XXXXX/YYYYY/ZZZZZ"
   custom_value             = "#monitoring"
@@ -69,9 +70,9 @@ resource "uptimerobot_integration" "slack" {
 }
 
 func testAccWebhookIntegrationConfig(name string) string {
-	return fmt.Sprintf(`
+	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_integration" "webhook" {
-  friendly_name             = %[1]q
+  friendly_name             = %q
   type                     = "webhook"
   value                    = "https://example.com/webhook"
   custom_value             = "POST"

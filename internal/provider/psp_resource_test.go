@@ -8,19 +8,10 @@ import (
 )
 
 func testAccPSPResourceConfig(name string) string {
-	return fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-    name     = "test-monitor"
-    url      = "https://example.com"
-    type     = "http"
-    interval = 300
-}
-
+	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
-    name     = %[1]q
-    type     = "public"
-    sort     = "name-asc"
-    monitors = [uptimerobot_monitor.test.id]
+  name = %q
+  monitor_ids   = [12345, 67890]
 }
 `, name)
 }
@@ -29,14 +20,16 @@ func TestAccPSPResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPSPDestroy,
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
 				Config: testAccPSPResourceConfig("test-psp"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", "test-psp"),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "type", "public"),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "sort", "name-asc"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.0", "12345"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.1", "67890"),
 				),
 			},
 			// Update testing

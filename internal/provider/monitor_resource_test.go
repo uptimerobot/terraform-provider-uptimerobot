@@ -8,11 +8,11 @@ import (
 )
 
 func testAccMonitorResourceConfig(name string) string {
-	return fmt.Sprintf(`
+	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-    friendly_name = %[1]q
+    name         = %q
     url          = "https://example.com"
-    type         = 1
+    type         = "1"
     interval     = 300
 }
 `, name)
@@ -22,12 +22,13 @@ func TestAccMonitorResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
 				Config: testAccMonitorResourceConfig("test-monitor"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "friendly_name", "test-monitor"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "1"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
@@ -37,7 +38,7 @@ func TestAccMonitorResource(t *testing.T) {
 			{
 				Config: testAccMonitorResourceConfig("test-monitor-updated"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "friendly_name", "test-monitor-updated"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-updated"),
 				),
 			},
 			// Import testing

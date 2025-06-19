@@ -96,5 +96,7 @@ jobs:
       - run: go mod download
       - env:
           TF_ACC: "1"
+          UPTIMEROBOT_API_KEY: "test"
+          UPTIMEROBOT_ORGANIZATION_ID: "1"
         run: go test -v -cover ./internal/provider/
         timeout-minutes: 10
