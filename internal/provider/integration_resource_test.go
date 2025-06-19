@@ -9,7 +9,7 @@ import (
 
 func TestAccIntegrationResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheck() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckIntegrationDestroy,
 		Steps: []resource.TestStep{

@@ -27,17 +27,17 @@ var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServe
 	"uptimerobot": providerserver.NewProtocol6WithError(New("test")()),
 }
 
-// mock server storage
+// mock server storage.
 var mockMonitors = make(map[int64]map[string]interface{})
 var mockIntegrations = make(map[int64]map[string]interface{})
 var mockMaintenanceWindows = make(map[int64]map[string]interface{})
 var mockPSPs = make(map[int64]map[string]interface{})
 
-// mockServer holds the test server and next ID counter
+// mockServer holds the test server and next ID counter.
 var mockServer *httptest.Server
 var nextID int64 = 1
 
-// setupMockServer creates a mock HTTP server for testing
+// setupMockServer creates a mock HTTP server for testing.
 func setupMockServer() *httptest.Server {
 	mux := http.NewServeMux()
 
@@ -60,12 +60,15 @@ func setupMockServer() *httptest.Server {
 	return httptest.NewServer(mux)
 }
 
-// Mock handlers
+// Mock handlers.
 func handleMonitors(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
 		var req map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
 
 		response := map[string]interface{}{
 			"id":                       nextID,
@@ -92,7 +95,10 @@ func handleMonitors(w http.ResponseWriter, r *http.Request) {
 		nextID++
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
+		}
 
 	case "GET":
 		response := []map[string]interface{}{}
@@ -100,7 +106,10 @@ func handleMonitors(w http.ResponseWriter, r *http.Request) {
 			response = append(response, monitor)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
+		}
 	}
 }
 
@@ -117,14 +126,20 @@ func handleMonitorByID(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		if monitor, exists := mockMonitors[id]; exists {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(monitor)
+			if err := json.NewEncoder(w).Encode(monitor); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 		} else {
 			http.Error(w, "Monitor not found", http.StatusNotFound)
 		}
 
 	case "PATCH":
 		var req map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
 
 		if monitor, exists := mockMonitors[id]; exists {
 			// Update the stored monitor
@@ -133,7 +148,10 @@ func handleMonitorByID(w http.ResponseWriter, r *http.Request) {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(monitor)
+			if err := json.NewEncoder(w).Encode(monitor); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 		} else {
 			http.Error(w, "Monitor not found", http.StatusNotFound)
 		}
@@ -148,7 +166,10 @@ func handleIntegrations(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
 		var req map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
 
 		response := map[string]interface{}{
 			"id":                     nextID,
@@ -186,7 +207,10 @@ func handleIntegrations(w http.ResponseWriter, r *http.Request) {
 		nextID++
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
+		}
 	}
 }
 
@@ -203,14 +227,20 @@ func handleIntegrationByID(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		if integration, exists := mockIntegrations[id]; exists {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(integration)
+			if err := json.NewEncoder(w).Encode(integration); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 		} else {
 			http.Error(w, "Integration not found", http.StatusNotFound)
 		}
 
 	case "PATCH":
 		var req map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
 
 		if integration, exists := mockIntegrations[id]; exists {
 			// Update the stored integration
@@ -219,7 +249,10 @@ func handleIntegrationByID(w http.ResponseWriter, r *http.Request) {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(integration)
+			if err := json.NewEncoder(w).Encode(integration); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 		} else {
 			http.Error(w, "Integration not found", http.StatusNotFound)
 		}
@@ -234,7 +267,10 @@ func handleMaintenanceWindows(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
 		var req map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
 
 		response := map[string]interface{}{
 			"id":              nextID,
@@ -251,7 +287,10 @@ func handleMaintenanceWindows(w http.ResponseWriter, r *http.Request) {
 		nextID++
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
+		}
 	}
 }
 
@@ -268,14 +307,20 @@ func handleMaintenanceWindowByID(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		if mw, exists := mockMaintenanceWindows[id]; exists {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(mw)
+			if err := json.NewEncoder(w).Encode(mw); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 		} else {
 			http.Error(w, "Maintenance window not found", http.StatusNotFound)
 		}
 
 	case "PATCH":
 		var req map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
 
 		if mw, exists := mockMaintenanceWindows[id]; exists {
 			// Update the stored maintenance window
@@ -284,7 +329,10 @@ func handleMaintenanceWindowByID(w http.ResponseWriter, r *http.Request) {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(mw)
+			if err := json.NewEncoder(w).Encode(mw); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 		} else {
 			http.Error(w, "Maintenance window not found", http.StatusNotFound)
 		}
@@ -299,7 +347,10 @@ func handlePSPs(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
 		var req map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
 
 		response := map[string]interface{}{
 			"id":                         nextID,
@@ -321,7 +372,10 @@ func handlePSPs(w http.ResponseWriter, r *http.Request) {
 		nextID++
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
+		}
 	}
 }
 
@@ -338,14 +392,20 @@ func handlePSPByID(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		if psp, exists := mockPSPs[id]; exists {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(psp)
+			if err := json.NewEncoder(w).Encode(psp); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 		} else {
 			http.Error(w, "PSP not found", http.StatusNotFound)
 		}
 
 	case "PATCH":
 		var req map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
 
 		if psp, exists := mockPSPs[id]; exists {
 			// Update the stored PSP
@@ -359,7 +419,10 @@ func handlePSPByID(w http.ResponseWriter, r *http.Request) {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(psp)
+			if err := json.NewEncoder(w).Encode(psp); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 		} else {
 			http.Error(w, "PSP not found", http.StatusNotFound)
 		}
@@ -380,7 +443,7 @@ func TestProvider(t *testing.T) {
 	}
 }
 
-func testAccPreCheck(t *testing.T) {
+func testAccPreCheck() {
 	// Setup mock server if not already running
 	if mockServer == nil {
 		mockServer = setupMockServer()
@@ -394,23 +457,31 @@ func testAccPreCheck(t *testing.T) {
 	nextID = 1
 
 	// Set mock server URL as endpoint for testing
-	os.Setenv("UPTIMEROBOT_ENDPOINT", mockServer.URL)
+	if err := os.Setenv("UPTIMEROBOT_ENDPOINT", mockServer.URL); err != nil {
+		panic(fmt.Sprintf("Failed to set UPTIMEROBOT_ENDPOINT: %v", err))
+	}
 
 	// Ensure required environment variables are set for testing
 	// These would normally be real credentials in CI/CD environments
 	if os.Getenv("UPTIMEROBOT_API_KEY") == "" {
-		os.Setenv("UPTIMEROBOT_API_KEY", "test-api-key")
+		if err := os.Setenv("UPTIMEROBOT_API_KEY", "test-api-key"); err != nil {
+			panic(fmt.Sprintf("Failed to set UPTIMEROBOT_API_KEY: %v", err))
+		}
 	}
 	if os.Getenv("UPTIMEROBOT_ORGANIZATION_ID") == "" {
-		os.Setenv("UPTIMEROBOT_ORGANIZATION_ID", "1")
+		if err := os.Setenv("UPTIMEROBOT_ORGANIZATION_ID", "1"); err != nil {
+			panic(fmt.Sprintf("Failed to set UPTIMEROBOT_ORGANIZATION_ID: %v", err))
+		}
 	}
 }
 
-// Cleanup function to stop mock server
+// Cleanup function to stop mock server.
 func TestMain(m *testing.M) {
 	// Setup mock server
 	mockServer = setupMockServer()
-	os.Setenv("UPTIMEROBOT_ENDPOINT", mockServer.URL)
+	if err := os.Setenv("UPTIMEROBOT_ENDPOINT", mockServer.URL); err != nil {
+		panic(fmt.Sprintf("Failed to set UPTIMEROBOT_ENDPOINT: %v", err))
+	}
 
 	// Run tests
 	code := m.Run()
@@ -428,7 +499,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// Centralized provider configuration helper
+// Centralized provider configuration helper.
 func testAccProviderConfig() string {
 	return fmt.Sprintf(`
 terraform {
@@ -446,7 +517,7 @@ provider "uptimerobot" {
 `, os.Getenv("UPTIMEROBOT_ENDPOINT"))
 }
 
-// CheckDestroy functions for each resource type
+// CheckDestroy functions for each resource type.
 func testAccCheckMonitorDestroy(s *terraform.State) error {
 	// In a real implementation, we would check the actual API
 	// For our mock implementation, we can check the mock storage

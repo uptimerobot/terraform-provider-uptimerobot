@@ -20,7 +20,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAccMonitorResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheck() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{

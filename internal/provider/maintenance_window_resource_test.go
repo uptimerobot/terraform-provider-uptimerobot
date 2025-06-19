@@ -20,7 +20,7 @@ resource "uptimerobot_maintenance_window" "test" {
 
 func TestAccMaintenanceWindowResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { testAccPreCheck() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
