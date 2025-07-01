@@ -4,11 +4,11 @@ This Terraform provider allows you to manage your UptimeRobot resources programm
 
 ## Maintainer Notice
 
-This is the officially Terraform provider supported by UptimeRobot.
+This is the official UptimeRobot Terraform provider.
 
 ## Requirements
 
-- [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
+- [Terraform](https://developer.hashicorp.com/terraform/install) or [OpenTofu](https://opentofu.org/docs/intro/install/)
 - An [UptimeRobot](https://uptimerobot.com) account.
 - An UptimeRobot API Key. You can generate your Main API Key from your UptimeRobot dashboard under "My Settings" -> "API Settings" -> "Main API Key".
 
@@ -20,8 +20,8 @@ To use this provider, add the following to your Terraform configuration, then ru
 terraform {
   required_providers {
     uptimerobot = {
-      source  = "https://registry.terraform.io/providers/uptimerobot/uptimerobot"
-      version = "~> [PROVIDER_VERSION]" # Specify the provider version
+      source  = "uptimerobot/uptimerobot"
+      version = "~> 1.0.0"
     }
   }
 }
@@ -77,7 +77,7 @@ Detailed documentation for the data sources supported by this provider can be fo
 
 ## Developing the Provider
 
-If you wish to work on the provider, you'll first need [Go](https://golang.org/doc/install) installed on your machine (version 1.21 or higher is recommended).
+If you wish to work on the provider, you'll first need [Go](https://golang.org/doc/install) installed on your machine (version 1.24 or higher is recommended).
 
 ### Building The Provider
 
@@ -99,8 +99,8 @@ Example `~/.terraformrc` or `terraform.rc`:
 ```hcl
 provider_installation {
   dev_overrides {
-    "https://registry.terraform.io/providers/uptimerobot/uptimerobot" = "/path/to/your/gopath/bin" # or wherever 'go install' places the binary
-    # For example: "examplecorp/uptimerobot" = "$HOME/go/bin"
+    "uptimerobot/uptimerobot" = "/path/to/your/gopath/bin" # or wherever 'go install' places the binary
+    # For example: "uptimerobot/uptimerobot" = "$HOME/go/bin"
   }
   # For TF 0.13+ installations, you can also use a direct path to the binary
   # fs_mirror {
