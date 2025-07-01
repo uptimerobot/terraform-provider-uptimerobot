@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     uptimerobot = {
-      source = "registry.terraform.io/uptimerobot/uptimerobot"
+      source = "uptimerobot/uptimerobot"
     }
   }
 }
