@@ -86,7 +86,7 @@ func handleMonitors(w http.ResponseWriter, r *http.Request) {
 			"domainExpirationReminder": req["domainExpirationReminder"],
 			"followRedirections":       req["followRedirections"],
 			"customHttpHeaders":        map[string]string{},
-			"assignedAlertContacts":    []map[string]interface{}{},
+			"assignedAlertContacts":    convertAlertContactsFromRequest(req["assignedAlertContacts"]),
 			"tags":                     []map[string]interface{}{},
 		}
 
@@ -142,9 +142,21 @@ func handleMonitorByID(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if monitor, exists := mockMonitors[id]; exists {
+			// Special handling for assignedAlertContacts
+			// If not present in request, assume user wants to remove them
+			if _, hasAlertContacts := req["assignedAlertContacts"]; !hasAlertContacts {
+				// Not present in request = remove alert contacts
+				monitor["assignedAlertContacts"] = []map[string]interface{}{}
+			}
+			
 			// Update the stored monitor
 			for key, value := range req {
-				monitor[key] = value
+				if key == "assignedAlertContacts" {
+					// Convert alert contacts to the expected format
+					monitor[key] = convertAlertContactsFromRequest(value)
+				} else {
+					monitor[key] = value
+				}
 			}
 
 			w.Header().Set("Content-Type", "application/json")
@@ -500,6 +512,30 @@ func TestMain(m *testing.M) {
 }
 
 // Centralized provider configuration helper.
+// convertAlertContactsFromRequest converts the request format to the API response format
+func convertAlertContactsFromRequest(requestContacts interface{}) []map[string]interface{} {
+	if requestContacts == nil {
+		return []map[string]interface{}{}
+	}
+	
+	// Handle the case where it's already a slice of contact IDs
+	if contactIDs, ok := requestContacts.([]interface{}); ok {
+		result := make([]map[string]interface{}, len(contactIDs))
+		for i, id := range contactIDs {
+			if idStr, ok := id.(string); ok {
+				result[i] = map[string]interface{}{
+					"alertContactId": idStr,
+					"threshold":      1,
+					"recurrence":     1,
+				}
+			}
+		}
+		return result
+	}
+	
+	return []map[string]interface{}{}
+}
+
 func testAccProviderConfig() string {
 	return fmt.Sprintf(`
 terraform {
