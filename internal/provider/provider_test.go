@@ -84,7 +84,8 @@ func handleMonitors(w http.ResponseWriter, r *http.Request) {
 			"followRedirections":       req["followRedirections"],
 			"customHttpHeaders":        map[string]string{},
 			"assignedAlertContacts":    convertAlertContactsFromRequest(req["assignedAlertContacts"]),
-			"tags":                     []map[string]interface{}{},
+			"tags":                     convertTagsFromRequest(req["tagNames"]),
+			"maintenanceWindows":       convertMaintenanceWindowsFromRequest(req["maintenanceWindowsIds"]),
 		}
 
 		// Store the monitor
@@ -146,12 +147,33 @@ func handleMonitorByID(w http.ResponseWriter, r *http.Request) {
 				monitor["assignedAlertContacts"] = []map[string]interface{}{}
 			}
 
+			// Special handling for tags
+			// If not present in request, assume user wants to remove them
+			if _, hasTags := req["tagNames"]; !hasTags {
+				// Not present in request = remove tags
+				monitor["tags"] = []map[string]interface{}{}
+			}
+
+			// Special handling for maintenanceWindows
+			// If not present in request, assume user wants to remove them
+			if _, hasMaintenanceWindows := req["maintenanceWindowsIds"]; !hasMaintenanceWindows {
+				// Not present in request = remove maintenance windows
+				monitor["maintenanceWindows"] = []map[string]interface{}{}
+			}
+
 			// Update the stored monitor
 			for key, value := range req {
-				if key == "assignedAlertContacts" {
+				switch key {
+				case "assignedAlertContacts":
 					// Convert alert contacts to the expected format
 					monitor[key] = convertAlertContactsFromRequest(value)
-				} else {
+				case "tagNames":
+					// Convert tags to the expected format
+					monitor["tags"] = convertTagsFromRequest(value)
+				case "maintenanceWindowsIds":
+					// Convert maintenance windows to the expected format
+					monitor["maintenanceWindows"] = convertMaintenanceWindowsFromRequest(value)
+				default:
 					monitor[key] = value
 				}
 			}
@@ -525,6 +547,62 @@ func convertAlertContactsFromRequest(requestContacts interface{}) []map[string]i
 					"threshold":      1,
 					"recurrence":     1,
 				}
+			}
+		}
+		return result
+	}
+
+	return []map[string]interface{}{}
+}
+
+// convertTagsFromRequest converts the request format to the API response format.
+func convertTagsFromRequest(requestTags interface{}) []map[string]interface{} {
+	if requestTags == nil {
+		return []map[string]interface{}{}
+	}
+
+	// Handle the case where it's already a slice of tag names
+	if tagNames, ok := requestTags.([]interface{}); ok {
+		result := make([]map[string]interface{}, len(tagNames))
+		for i, name := range tagNames {
+			if nameStr, ok := name.(string); ok {
+				result[i] = map[string]interface{}{
+					"name": nameStr,
+				}
+			}
+		}
+		return result
+	}
+
+	return []map[string]interface{}{}
+}
+
+// convertMaintenanceWindowsFromRequest converts the request format to the API response format.
+func convertMaintenanceWindowsFromRequest(requestWindows interface{}) []map[string]interface{} {
+	if requestWindows == nil {
+		return []map[string]interface{}{}
+	}
+
+	// Handle the case where it's already a slice of maintenance window IDs
+	if windowIDs, ok := requestWindows.([]interface{}); ok {
+		result := make([]map[string]interface{}, len(windowIDs))
+		for i, id := range windowIDs {
+			// Convert different numeric types to int64
+			var idInt64 int64
+			switch v := id.(type) {
+			case int:
+				idInt64 = int64(v)
+			case int64:
+				idInt64 = v
+			case float64:
+				idInt64 = int64(v)
+			default:
+				continue // Skip invalid types
+			}
+
+			result[i] = map[string]interface{}{
+				"id":   idInt64,
+				"name": fmt.Sprintf("Maintenance Window %d", idInt64),
 			}
 		}
 		return result
