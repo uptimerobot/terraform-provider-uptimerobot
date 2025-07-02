@@ -1,5 +1,6 @@
 terraform-provider-uptimerobot
 dist/
+.claude
 
 .terraform/
 .terraform.lock.hcl

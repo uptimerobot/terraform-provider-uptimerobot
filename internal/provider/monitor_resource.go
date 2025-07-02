@@ -342,6 +342,17 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		createReq.Tags = tags
 	}
 
+	// Handle assigned alert contacts
+	if !plan.AssignedAlertContacts.IsNull() {
+		var alertContacts []string
+		diags = plan.AssignedAlertContacts.ElementsAs(ctx, &alertContacts, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		createReq.AssignedAlertContacts = alertContacts
+	}
+
 	// Set boolean fields
 	createReq.SSLExpirationReminder = plan.SSLExpirationReminder.ValueBool()
 	createReq.DomainExpirationReminder = plan.DomainExpirationReminder.ValueBool()
@@ -521,10 +532,23 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.DomainExpirationReminder = types.BoolValue(monitor.DomainExpirationReminder)
 	}
 
-	if !state.MaintenanceWindowIDs.IsNull() {
-		// Keep existing behavior for maintenance window IDs
+	// Handle maintenance window IDs from API response
+	if len(monitor.MaintenanceWindows) > 0 {
+		var maintenanceWindowIDs []int64
+		for _, mw := range monitor.MaintenanceWindows {
+			maintenanceWindowIDs = append(maintenanceWindowIDs, mw.ID)
+		}
+		maintenanceWindowIDsValue, d := types.ListValueFrom(ctx, types.Int64Type, maintenanceWindowIDs)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		state.MaintenanceWindowIDs = maintenanceWindowIDsValue
 	} else {
-		state.MaintenanceWindowIDs = types.ListNull(types.Int64Type)
+		// No maintenance windows assigned
+		if isImport || !state.MaintenanceWindowIDs.IsNull() {
+			state.MaintenanceWindowIDs = types.ListNull(types.Int64Type)
+		}
 	}
 
 	diags = resp.State.Set(ctx, &state)
@@ -632,6 +656,16 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updateReq.Tags = tags
 	}
 
+	if !plan.AssignedAlertContacts.IsNull() {
+		var alertContacts []string
+		diags = plan.AssignedAlertContacts.ElementsAs(ctx, &alertContacts, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		updateReq.AssignedAlertContacts = alertContacts
+	}
+
 	updateReq.SSLExpirationReminder = plan.SSLExpirationReminder.ValueBool()
 	updateReq.DomainExpirationReminder = plan.DomainExpirationReminder.ValueBool()
 	updateReq.FollowRedirections = plan.FollowRedirections.ValueBool()
@@ -666,6 +700,20 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updatedState.Tags = types.ListValueMust(types.StringType, tagValues)
 	} else if plan.Tags.IsNull() {
 		updatedState.Tags = types.ListNull(types.StringType)
+	}
+
+	// Update assigned alert contacts
+	if len(updatedMonitor.AssignedAlertContacts) > 0 {
+		alertContactValues := make([]attr.Value, 0, len(updatedMonitor.AssignedAlertContacts))
+		for _, contact := range updatedMonitor.AssignedAlertContacts {
+			alertContactValues = append(alertContactValues, types.StringValue(contact.AlertContactID))
+		}
+		updatedState.AssignedAlertContacts = types.ListValueMust(types.StringType, alertContactValues)
+	} else if plan.AssignedAlertContacts.IsNull() {
+		updatedState.AssignedAlertContacts = types.ListNull(types.StringType)
+	} else {
+		// Plan had alert contacts but result has none - set to empty list
+		updatedState.AssignedAlertContacts = types.ListValueMust(types.StringType, []attr.Value{})
 	}
 
 	diags = resp.State.Set(ctx, updatedState)
@@ -726,6 +774,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	modifyPlanForListField(ctx, &plan.Tags, &state.Tags, resp, "tags")
 	modifyPlanForListField(ctx, &plan.AssignedAlertContacts, &state.AssignedAlertContacts, resp, "assigned_alert_contacts")
 	modifyPlanForListField(ctx, &plan.MaintenanceWindowIDs, &state.MaintenanceWindowIDs, resp, "maintenance_window_ids")
+	modifyPlanForListField(ctx, &plan.SuccessHTTPResponseCodes, &state.SuccessHTTPResponseCodes, resp, "success_http_response_codes")
 
 	// Ensure boolean defaults are consistently applied
 	if !plan.SSLExpirationReminder.IsNull() && !state.SSLExpirationReminder.IsNull() {
@@ -745,15 +794,26 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 
 // modifyPlanForListField handles the special case for list fields that might be null vs empty lists.
 func modifyPlanForListField(ctx context.Context, planField, stateField *types.List, resp *resource.ModifyPlanResponse, fieldName string) {
-	// If state has a null value but plan has an empty list or vice versa, make them consistent
-	if stateField.IsNull() && !planField.IsNull() && planField.ElementsAs(ctx, &[]string{}, false) == nil {
-		// If plan has an empty list but state is null, convert plan to null for consistency
-		resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.ListNull(planField.ElementType(ctx)))
-	} else if !stateField.IsNull() && planField.IsNull() {
-		// If plan is null but state has a non-null value (possibly an empty list),
-		// keep the state value to avoid unnecessary updates
-		resp.Plan.SetAttribute(ctx, path.Root(fieldName), *stateField)
+	// Only modify the plan if we're dealing with empty lists vs null values
+	// DO NOT modify the plan if the user is intentionally adding/removing items
+
+	// Case 1: State is null, plan has an empty list -> convert plan to null for consistency
+	if stateField.IsNull() && !planField.IsNull() {
+		// Check if plan has an empty list by getting the elements without type conversion
+		planElements := planField.Elements()
+		if len(planElements) == 0 {
+			// Plan has empty list, state is null -> make plan null for consistency
+			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.ListNull(planField.ElementType(ctx)))
+		}
+		// If plan has items, leave it alone - user is adding items to a previously null field
 	}
+
+	// Case 2: State has non-null value, plan is null -> DON'T override!
+	// The user explicitly wants to remove the items (set to null)
+	// Let the plan proceed as-is
+
+	// Case 3: Both state and plan have non-null values -> don't modify
+	// This allows users to add/remove items normally
 }
 
 // ImportState imports an existing resource into Terraform.
