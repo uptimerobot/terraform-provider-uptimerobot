@@ -96,7 +96,7 @@ Time should be specified in `HH:MM` format (24-hour format):
 - `23:30` - 11:30 PM
 - `00:00` - Midnight
 
-## Week Days
+## Weekdays
 
 For weekly maintenance windows, specify days as numbers:
 - `1` - Monday
