@@ -60,6 +60,8 @@ terraform {
     }
   }
 }
+  }
+}
 
 provider "uptimerobot" {
   api_key = "YOUR_UPTIMEROBOT_API_KEY"
