@@ -1,26 +1,36 @@
-# Terraform Provider testing workflow.
-name: Tests
+name: Test
 
-# This GitHub action runs your tests for each pull request and push.
-# Optionally, you can turn it on using a schedule for regular testing.
 on:
-  pull_request:
-    paths-ignore:
-      - "README.md"
   push:
-    paths-ignore:
-      - "README.md"
+    branches:
+      - 'main'
+    paths:
+      - '**'
+      - '!**/.gitignore'
+      - '!**/*.md'
+      - '!LICENSE'
+      - '!.github/**'
+      - '.github/workflows/test.yml'
 
-# Testing only needs permissions to read the repository contents.
+  pull_request:
+    paths:
+      - '**'
+      - '!**/.gitignore'
+      - '!**/*.md'
+      - '!LICENSE'
+      - '!.github/**'
+      - '.github/workflows/test.yml'
+
+  workflow_dispatch:
+
 permissions:
   contents: read
 
 jobs:
-  # Ensure project builds before running testing matrix
-  build:
-    name: Build
-    runs-on: ubuntu-latest
+  validate:
     timeout-minutes: 5
+    runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -28,19 +38,20 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: "go.mod"
-          cache: true
+          go-version-file: 'go.mod'
 
-      - run: go mod download
-      - run: go build -v .
-      - name: Run linters
+      - name: Check Modules Integrity
+        run: go mod verify
+
+      - name: Lint Code
         uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
-          args: --timeout=5m
+          version: 'latest'
 
-  generate:
+  documentation:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -48,37 +59,37 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: "go.mod"
-          cache: true
+          go-version-file: 'go.mod'
 
-      # Temporarily download Terraform 1.8 prerelease for function documentation support.
-      # When Terraform 1.8.0 final is released, this can be removed.
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.8.0-alpha20240216"
           terraform_wrapper: false
-      - run: go generate ./...
-      - name: git diff
-        run: |
-          git diff --compact-summary --exit-code || \
-            (echo; echo "Unexpected difference in directories after code generation. Run 'go generate ./...' command and commit."; exit 1)
 
-  # Run acceptance tests in a matrix with Terraform CLI versions
-  test:
-    name: Terraform Provider Acceptance Tests
-    needs: build
-    runs-on: ubuntu-latest
+      - name: Generate Documentation
+        run: go generate ./...
+
+      - name: Validate Documentation
+        run: git diff --compact-summary --exit-code || (echo -e "\nDocumentation is out of sync. Run 'go generate ./...' to update and commit the changes." && exit 1)
+
+  acceptance:
     timeout-minutes: 15
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # list whatever Terraform versions here you would like to support
-        terraform:
-          - "1.0.*"
-          - "1.1.*"
-          - "1.2.*"
-          - "1.3.*"
-          - "1.4.*"
+        include:
+          - app: terraform
+            version: 'latest'
+          - app: terraform
+            version: '1.11.x'
+          - app: opentofu
+            version: 'latest'
+          - app: opentofu
+            version: 'v1.9.x'
+          - app: opentofu
+            version: 'v1.8.x'
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -86,17 +97,33 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: "go.mod"
-          cache: true
+          go-version-file: 'go.mod'
 
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+      - name: Setup Terraform
+        if: matrix.app == 'terraform'
+        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: ${{ matrix.terraform }}
+          terraform_version: ${{ matrix.version }}
           terraform_wrapper: false
-      - run: go mod download
-      - env:
-          TF_ACC: "1"
-          UPTIMEROBOT_API_KEY: "test"
-          UPTIMEROBOT_ORGANIZATION_ID: "1"
-        run: go test -v -cover ./internal/provider/
-        timeout-minutes: 10
+
+      - name: Setup OpenTofu
+        if: matrix.app == 'opentofu'
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ matrix.version }}
+          tofu_wrapper: false
+
+      - name: Configure OpenTofu Environment
+        if: matrix.app == 'opentofu'
+        run: |
+          echo TF_ACC_PROVIDER_HOST="registry.opentofu.org" >> $GITHUB_ENV
+          echo TF_ACC_PROVIDER_NAMESPACE="hashicorp" >> $GITHUB_ENV
+          echo TF_ACC_TERRAFORM_PATH="$(which tofu)" >> $GITHUB_ENV
+
+
+      - name: Test Provider
+        run: go test -v -cover ./internal/provider
+        env:
+          TF_ACC: '1'
+          UPTIMEROBOT_API_KEY: 'test'
+          UPTIMEROBOT_ORGANIZATION_ID: '1'
