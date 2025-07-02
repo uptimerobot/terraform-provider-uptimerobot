@@ -1,7 +1,7 @@
 resource "uptimerobot_integration" "team_slack" {
   name                     = "Team Slack"
   type                     = "slack"
-  value                    = "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+  value                    = "https://hooks.slack.com/services/*****REDACTED*****"
   custom_value             = "#monitoring" # Slack channel
   enable_notifications_for = 1             # All notifications
   ssl_expiration_reminder  = true
