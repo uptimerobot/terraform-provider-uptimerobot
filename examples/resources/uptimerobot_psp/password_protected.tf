@@ -14,7 +14,7 @@ resource "uptimerobot_psp" "internal_status" {
   # Password protection for internal use
   custom_settings = {
     features = {
-      show_monitor_url = "0" # Hide URLs
+      show_monitor_url = false # Hide URLs
     }
   }
 

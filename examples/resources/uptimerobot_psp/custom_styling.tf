@@ -34,10 +34,10 @@ resource "uptimerobot_psp" "branded_status" {
     }
 
     features = {
-      show_uptime_percentage = "1"
-      show_overall_uptime    = "1"
-      show_bars              = "1"
-      enable_floating_status = "1"
+      show_uptime_percentage = true
+      show_overall_uptime    = true
+      show_bars              = true
+      enable_floating_status = true
     }
   }
 
