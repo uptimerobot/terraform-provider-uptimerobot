@@ -142,7 +142,7 @@ func TestAccMonitorResource(t *testing.T) {
 }
 
 // TestAccMonitorResource_AlertContacts tests the specific case where alert contacts
-// are added to an existing monitor that was initially created without any
+// are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_AlertContacts(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
@@ -186,7 +186,7 @@ func TestAccMonitorResource_AlertContacts(t *testing.T) {
 }
 
 // TestAccMonitorResource_Tags tests the specific case where tags
-// are added to an existing monitor that was initially created without any
+// are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_Tags(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
@@ -230,7 +230,7 @@ func TestAccMonitorResource_Tags(t *testing.T) {
 }
 
 // TestAccMonitorResource_MaintenanceWindows tests the specific case where maintenance window IDs
-// are added to an existing monitor that was initially created without any
+// are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
@@ -274,7 +274,7 @@ func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 }
 
 // TestAccMonitorResource_SuccessHTTPResponseCodes tests the specific case where success HTTP response codes
-// are modified from their defaults to custom values
+// are modified from their defaults to custom values.
 func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },

@@ -145,7 +145,7 @@ func handleMonitorByID(w http.ResponseWriter, r *http.Request) {
 				// Not present in request = remove alert contacts
 				monitor["assignedAlertContacts"] = []map[string]interface{}{}
 			}
-			
+
 			// Update the stored monitor
 			for key, value := range req {
 				if key == "assignedAlertContacts" {
@@ -509,12 +509,12 @@ func TestMain(m *testing.M) {
 }
 
 // Centralized provider configuration helper.
-// convertAlertContactsFromRequest converts the request format to the API response format
+// convertAlertContactsFromRequest converts the request format to the API response format.
 func convertAlertContactsFromRequest(requestContacts interface{}) []map[string]interface{} {
 	if requestContacts == nil {
 		return []map[string]interface{}{}
 	}
-	
+
 	// Handle the case where it's already a slice of contact IDs
 	if contactIDs, ok := requestContacts.([]interface{}); ok {
 		result := make([]map[string]interface{}, len(contactIDs))
@@ -529,7 +529,7 @@ func convertAlertContactsFromRequest(requestContacts interface{}) []map[string]i
 		}
 		return result
 	}
-	
+
 	return []map[string]interface{}{}
 }
 
