@@ -1,0 +1,51 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+### Slack Integration
+
+{{tffile "examples/resources/uptimerobot_integration/slack.tf"}}
+
+### Email Integration
+
+{{tffile "examples/resources/uptimerobot_integration/email.tf"}}
+
+### Webhook Integration
+
+{{tffile "examples/resources/uptimerobot_integration/webhook.tf"}}
+
+### SMS Integration
+
+{{tffile "examples/resources/uptimerobot_integration/sms.tf"}}
+
+### Multiple Integrations
+
+{{tffile "examples/resources/uptimerobot_integration/multiple.tf"}}
+
+## Integration Types
+
+- `slack` - Slack webhook integration
+- `email` - Email notifications
+- `webhook` - Custom webhook integration
+- `sms` - SMS notifications
+- `discord` - Discord webhook integration
+- `telegram` - Telegram bot integration
+- `pushover` - Pushover notifications
+- `pushbullet` - Pushbullet notifications
+
+## Notification Levels
+
+- `1` - All notifications (up, down, paused, etc.)
+- `2` - Down notifications only
+- `3` - Custom notification settings
+
+{{ .SchemaMarkdown | trimspace }}
