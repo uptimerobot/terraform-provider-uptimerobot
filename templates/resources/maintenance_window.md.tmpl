@@ -1,0 +1,51 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+### Weekly Maintenance Window
+
+{{tffile "examples/resources/uptimerobot_maintenance_window/weekly.tf"}}
+
+### Daily Maintenance Window
+
+{{tffile "examples/resources/uptimerobot_maintenance_window/daily.tf"}}
+
+### One-time Maintenance Window
+
+{{tffile "examples/resources/uptimerobot_maintenance_window/onetime.tf"}}
+
+## Maintenance Window Types
+
+- `once` - One-time maintenance window
+- `daily` - Daily recurring maintenance window
+- `weekly` - Weekly recurring maintenance window
+- `monthly` - Monthly recurring maintenance window
+
+## Time Format
+
+Time should be specified in `HH:MM` format (24-hour format):
+- `09:00` - 9:00 AM
+- `23:30` - 11:30 PM
+- `00:00` - Midnight
+
+## Week Days
+
+For weekly maintenance windows, specify days as numbers:
+- `1` - Monday
+- `2` - Tuesday
+- `3` - Wednesday
+- `4` - Thursday
+- `5` - Friday
+- `6` - Saturday
+- `7` - Sunday
+
+{{ .SchemaMarkdown | trimspace }}

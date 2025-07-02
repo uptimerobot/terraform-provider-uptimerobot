@@ -1,0 +1,51 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+### Basic HTTP Monitor
+
+{{tffile "examples/resources/uptimerobot_monitor/basic.tf"}}
+
+### HTTP Monitor with Keyword Checking
+
+{{tffile "examples/resources/uptimerobot_monitor/keyword.tf"}}
+
+### HTTP Monitor with Authentication
+
+{{tffile "examples/resources/uptimerobot_monitor/auth.tf"}}
+
+### Port Monitor
+
+{{tffile "examples/resources/uptimerobot_monitor/port.tf"}}
+
+### Ping Monitor
+
+{{tffile "examples/resources/uptimerobot_monitor/ping.tf"}}
+
+## Monitor Types
+
+- `http` - HTTP(s) monitoring
+- `keyword` - Keyword monitoring (searches for specific text)
+- `ping` - Ping monitoring
+- `port` - Port monitoring
+
+## Intervals
+
+Common monitoring intervals:
+- `60` - Every minute
+- `300` - Every 5 minutes (recommended)
+- `600` - Every 10 minutes
+- `900` - Every 15 minutes
+- `1800` - Every 30 minutes
+- `3600` - Every hour
+
+{{ .SchemaMarkdown | trimspace }}

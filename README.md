@@ -49,15 +49,46 @@ provider "uptimerobot" {
 
 ## Usage Examples
 
-Here's a basic example of how to create an UptimeRobot monitor:
+Here's an example of how to create an UptimeRobot monitor, a maintenance window, an integration, and a public status page:
 
-```hcl
-resource "uptimerobot_monitor" "mysite_monitor" {
-  name = "My Production Website"
-  url           = "https://myproductionsite.com"
-  type          = "http"
-  interval      = 300 # Interval in seconds (e.g., 300 for 5 minutes)
-  # ... other monitor-specific arguments
+```terraform
+terraform {
+  required_providers {
+    uptimerobot = {
+      source  = "uptimerobot/uptimerobot"
+      version = "0.1.0"
+    }
+  }
+}
+
+provider "uptimerobot" {
+  api_key = "YOUR_UPTIMEROBOT_API_KEY"
+}
+
+resource "uptimerobot_monitor" "website" {
+  name     = "My Website"
+  type     = "http"
+  url      = "https://example.com"
+  interval = 300
+}
+
+resource "uptimerobot_maintenance_window" "weekly" {
+  name     = "Weekly Maintenance"
+  type     = "weekly"
+  duration = 60
+  interval = "weekly"
+  time     = "23:00"
+}
+
+resource "uptimerobot_integration" "slack" {
+  name  = "Team Slack"
+  type  = "slack"
+  value = "https://hooks.slack.com/services/XXXXX/YYYYY/ZZZZZ"
+}
+
+resource "uptimerobot_psp" "main_status" {
+  name        = "Example.com Status"
+  monitor_ids = [uptimerobot_monitor.website.id]
 }
 ```
 
