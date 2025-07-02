@@ -20,7 +20,7 @@ resource "uptimerobot_monitor" "website" {
   type     = "http"
   url      = "https://example.com"
   interval = 300
-  
+
   # Initially created without assigned_alert_contacts
   # This used to cause issues when adding them later
 }
@@ -33,7 +33,7 @@ resource "uptimerobot_monitor" "website_with_contacts" {
   type     = "http"
   url      = "https://example.com"
   interval = 300
-  
+
   # Adding alert contacts to an existing monitor now works
   assigned_alert_contacts = [
     "contact-123",
@@ -48,7 +48,7 @@ resource "uptimerobot_monitor" "website_no_contacts" {
   type     = "http"
   url      = "https://example.com"
   interval = 300
-  
+
   # No assigned_alert_contacts field = remove all alert contacts
 }
 
