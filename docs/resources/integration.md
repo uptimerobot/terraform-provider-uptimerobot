@@ -131,6 +131,126 @@ variable "oncall_phone" {
 }
 ```
 
+### Discord Integration
+
+```terraform
+resource "uptimerobot_integration" "team_discord" {
+  name                     = "Team Discord"
+  type                     = "discord"
+  value                    = "https://discord.com/api/webhooks/123456789/abcdefghijklmnopqrstuvwxyz"
+  enable_notifications_for = 1
+  ssl_expiration_reminder  = true
+}
+
+resource "uptimerobot_integration" "critical_discord" {
+  name                     = "Critical Discord"
+  type                     = "discord"
+  value                    = var.discord_webhook_url
+  enable_notifications_for = 2 # Down events only
+  ssl_expiration_reminder  = false
+}
+
+variable "discord_webhook_url" {
+  description = "Discord webhook URL for notifications"
+  type        = string
+  sensitive   = true
+}
+```
+
+### Telegram Integration
+
+```terraform
+resource "uptimerobot_integration" "telegram_bot" {
+  name                     = "Telegram Alerts"
+  type                     = "telegram"
+  value                    = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz" # Bot token
+  custom_value             = "-987654321"                           # Chat ID
+  enable_notifications_for = 1
+  ssl_expiration_reminder  = true
+}
+
+resource "uptimerobot_integration" "telegram_personal" {
+  name                     = "Personal Telegram"
+  type                     = "telegram"
+  value                    = var.telegram_bot_token
+  custom_value             = var.telegram_chat_id
+  enable_notifications_for = 2 # Down events only
+  ssl_expiration_reminder  = false
+}
+
+variable "telegram_bot_token" {
+  description = "Telegram bot token"
+  type        = string
+  sensitive   = true
+}
+
+variable "telegram_chat_id" {
+  description = "Telegram chat ID"
+  type        = string
+  sensitive   = true
+}
+```
+
+### Pushover Integration
+
+```terraform
+resource "uptimerobot_integration" "pushover_alerts" {
+  name                     = "Pushover Alerts"
+  type                     = "pushover"
+  value                    = "uQiRzpo4DXghDmr9QzzfQu27cmVRsG" # User key
+  custom_value             = "azGDORePK8gMaC0QOYAMyEEuzJnyUi" # Device name (optional)
+  enable_notifications_for = 1
+  ssl_expiration_reminder  = true
+}
+
+resource "uptimerobot_integration" "pushover_emergency" {
+  name                     = "Emergency Pushover"
+  type                     = "pushover"
+  value                    = var.pushover_user_key
+  custom_value             = var.pushover_device
+  enable_notifications_for = 2 # Down events only
+  ssl_expiration_reminder  = false
+}
+
+variable "pushover_user_key" {
+  description = "Pushover user key"
+  type        = string
+  sensitive   = true
+}
+
+variable "pushover_device" {
+  description = "Pushover device name (optional)"
+  type        = string
+  default     = ""
+}
+```
+
+### Pushbullet Integration
+
+```terraform
+resource "uptimerobot_integration" "pushbullet_alerts" {
+  name                     = "Pushbullet Alerts"
+  type                     = "pushbullet"
+  value                    = "o.XXXXXXXXXXXXXXXXXXXXX" # Access token
+  enable_notifications_for = 1
+  ssl_expiration_reminder  = true
+}
+
+resource "uptimerobot_integration" "pushbullet_critical" {
+  name                     = "Critical Pushbullet"
+  type                     = "pushbullet"
+  value                    = var.pushbullet_access_token
+  enable_notifications_for = 2 # Down events only
+  ssl_expiration_reminder  = false
+}
+
+variable "pushbullet_access_token" {
+  description = "Pushbullet access token"
+  type        = string
+  sensitive   = true
+}
+```
+
 ### Multiple Integrations
 
 ```terraform
