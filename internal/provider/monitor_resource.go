@@ -64,6 +64,8 @@ type monitorResourceModel struct {
 	URL                      types.String `tfsdk:"url"`
 	Tags                     types.List   `tfsdk:"tags"`
 	AssignedAlertContacts    types.List   `tfsdk:"assigned_alert_contacts"`
+	ResponseTimeThreshold    types.Int64  `tfsdk:"response_time_threshold"`
+	RegionalData             types.String `tfsdk:"regional_data"`
 }
 
 // Configure adds the provider configured client to the resource.
@@ -94,10 +96,10 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 	resp.Schema = schema.Schema{
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
-			"type": schema.StringAttribute{
-				Description: "Type of the monitor (HTTP, keyword, ping, port)",
-				Required:    true,
-			},
+					"type": schema.StringAttribute{
+			Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)",
+			Required:    true,
+		},
 			"interval": schema.Int64Attribute{
 				Description: "Interval for the monitoring check (in seconds)",
 				Required:    true,
@@ -187,7 +189,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"keyword_type": schema.StringAttribute{
-				Description: "The type of keyword check",
+				Description: "The type of keyword check (ALERT_EXISTS, ALERT_NOT_EXISTS)",
 				Optional:    true,
 			},
 			"maintenance_window_ids": schema.ListAttribute{
@@ -227,6 +229,14 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:    true,
 				ElementType: types.StringType,
 			},
+			"response_time_threshold": schema.Int64Attribute{
+				Description: "Response time threshold in milliseconds. Response time over this threshold will trigger an incident",
+				Optional:    true,
+			},
+			"regional_data": schema.StringAttribute{
+				Description: "Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)",
+				Optional:    true,
+			},
 		},
 	}
 }
@@ -236,6 +246,63 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Validate required fields based on monitor type
+	monitorType := plan.Type.ValueString()
+	
+	// Validate port is provided for PORT monitors
+	if monitorType == "PORT" && plan.Port.IsNull() {
+		resp.Diagnostics.AddError(
+			"Port required for PORT monitor",
+			"Port must be specified for PORT monitor type",
+		)
+		return
+	}
+	
+	// Validate keyword fields for KEYWORD monitors
+	if monitorType == "KEYWORD" {
+		if plan.KeywordType.IsNull() {
+			resp.Diagnostics.AddError(
+				"KeywordType required for KEYWORD monitor",
+				"KeywordType must be specified for KEYWORD monitor type (ALERT_EXISTS or ALERT_NOT_EXISTS)",
+			)
+			return
+		}
+		if plan.KeywordValue.IsNull() {
+			resp.Diagnostics.AddError(
+				"KeywordValue required for KEYWORD monitor",
+				"KeywordValue must be specified for KEYWORD monitor type",
+			)
+			return
+		}
+		
+		// Validate keyword type enum
+		keywordType := plan.KeywordType.ValueString()
+		if keywordType != "ALERT_EXISTS" && keywordType != "ALERT_NOT_EXISTS" {
+			resp.Diagnostics.AddError(
+				"Invalid KeywordType",
+				"KeywordType must be either ALERT_EXISTS or ALERT_NOT_EXISTS",
+			)
+			return
+		}
+	}
+	
+	// Validate monitor type
+	validTypes := []string{"HTTP", "KEYWORD", "PING", "PORT", "HEARTBEAT", "DNS"}
+	validType := false
+	for _, vt := range validTypes {
+		if monitorType == vt {
+			validType = true
+			break
+		}
+	}
+	if !validType {
+		resp.Diagnostics.AddError(
+			"Invalid monitor type",
+			"Monitor type must be one of: HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS",
+		)
 		return
 	}
 
@@ -296,6 +363,12 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 	if !plan.GracePeriod.IsNull() {
 		createReq.GracePeriod = int(plan.GracePeriod.ValueInt64())
+	}
+	if !plan.ResponseTimeThreshold.IsNull() {
+		createReq.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
+	}
+	if !plan.RegionalData.IsNull() {
+		createReq.RegionalData = plan.RegionalData.ValueString()
 	}
 
 	// Handle custom HTTP headers
@@ -492,6 +565,28 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	state.URL = types.StringValue(monitor.URL)
 	state.ID = types.StringValue(strconv.FormatInt(monitor.ID, 10))
 	state.Status = types.StringValue(monitor.Status)
+	
+	// Set response time threshold
+	if monitor.ResponseTimeThreshold > 0 {
+		state.ResponseTimeThreshold = types.Int64Value(int64(monitor.ResponseTimeThreshold))
+	} else {
+		state.ResponseTimeThreshold = types.Int64Null()
+	}
+	
+	// Set regional data
+	if monitor.RegionalData != nil {
+		// Convert regional data from API format to string
+		if regionData, ok := monitor.RegionalData.(map[string]interface{}); ok {
+			if regions, ok := regionData["REGION"].([]interface{}); ok && len(regions) > 0 {
+				if region, ok := regions[0].(string); ok {
+					state.RegionalData = types.StringValue(region)
+				}
+			}
+		}
+	}
+	if state.RegionalData.IsNull() {
+		state.RegionalData = types.StringNull()
+	}
 
 	if len(monitor.Tags) > 0 {
 		tagValues := make([]attr.Value, 0, len(monitor.Tags))
@@ -673,6 +768,14 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq.PostValueData = plan.PostValueData.ValueString()
 	updateReq.PostValueType = plan.PostValueType.ValueString()
 	updateReq.GracePeriod = int(plan.GracePeriod.ValueInt64())
+	
+	// Add new fields
+	if !plan.ResponseTimeThreshold.IsNull() {
+		updateReq.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
+	}
+	if !plan.RegionalData.IsNull() {
+		updateReq.RegionalData = plan.RegionalData.ValueString()
+	}
 
 	updatedMonitor, err := r.client.UpdateMonitor(id, updateReq)
 	if err != nil {
