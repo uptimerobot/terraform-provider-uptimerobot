@@ -158,9 +158,7 @@ resource "uptimerobot_psp" "branded_status" {
 
 ## Monitor Selection
 
-You can include specific monitors in your status page by providing their IDs in the `monitor_ids` list.
-
-This allows you to:
+You can include specific monitors in your status page by providing their IDs in the `monitor_ids` list. This allows you to:
 - Show only public-facing services
 - Create different status pages for different audiences
 - Group related services together
