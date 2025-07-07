@@ -96,10 +96,10 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 	resp.Schema = schema.Schema{
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
-					"type": schema.StringAttribute{
-			Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)",
-			Required:    true,
-		},
+			"type": schema.StringAttribute{
+				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)",
+				Required:    true,
+			},
 			"interval": schema.Int64Attribute{
 				Description: "Interval for the monitoring check (in seconds)",
 				Required:    true,
@@ -251,7 +251,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 
 	// Validate required fields based on monitor type
 	monitorType := plan.Type.ValueString()
-	
+
 	// Validate port is provided for PORT monitors
 	if monitorType == "PORT" && plan.Port.IsNull() {
 		resp.Diagnostics.AddError(
@@ -260,7 +260,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		)
 		return
 	}
-	
+
 	// Validate keyword fields for KEYWORD monitors
 	if monitorType == "KEYWORD" {
 		if plan.KeywordType.IsNull() {
@@ -277,7 +277,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 			)
 			return
 		}
-		
+
 		// Validate keyword type enum
 		keywordType := plan.KeywordType.ValueString()
 		if keywordType != "ALERT_EXISTS" && keywordType != "ALERT_NOT_EXISTS" {
@@ -288,7 +288,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 			return
 		}
 	}
-	
+
 	// Validate monitor type
 	validTypes := []string{"HTTP", "KEYWORD", "PING", "PORT", "HEARTBEAT", "DNS"}
 	validType := false
@@ -565,14 +565,14 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	state.URL = types.StringValue(monitor.URL)
 	state.ID = types.StringValue(strconv.FormatInt(monitor.ID, 10))
 	state.Status = types.StringValue(monitor.Status)
-	
+
 	// Set response time threshold
 	if monitor.ResponseTimeThreshold > 0 {
 		state.ResponseTimeThreshold = types.Int64Value(int64(monitor.ResponseTimeThreshold))
 	} else {
 		state.ResponseTimeThreshold = types.Int64Null()
 	}
-	
+
 	// Set regional data
 	if monitor.RegionalData != nil {
 		// Convert regional data from API format to string
@@ -768,7 +768,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq.PostValueData = plan.PostValueData.ValueString()
 	updateReq.PostValueType = plan.PostValueType.ValueString()
 	updateReq.GracePeriod = int(plan.GracePeriod.ValueInt64())
-	
+
 	// Add new fields
 	if !plan.ResponseTimeThreshold.IsNull() {
 		updateReq.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())

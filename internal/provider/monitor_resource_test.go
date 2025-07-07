@@ -320,7 +320,7 @@ func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 	})
 }
 
-// TestAccMonitorResource_PortMonitorValidation tests that PORT monitors require a port number
+// TestAccMonitorResource_PortMonitorValidation tests that PORT monitors require a port number.
 func TestAccMonitorResource_PortMonitorValidation(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
@@ -359,7 +359,7 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
-// TestAccMonitorResource_KeywordMonitorValidation tests that KEYWORD monitors require keyword fields
+// TestAccMonitorResource_KeywordMonitorValidation tests that KEYWORD monitors require keyword fields.
 func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
@@ -447,7 +447,7 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
-// TestAccMonitorResource_NewMonitorTypes tests the new monitor types
+// TestAccMonitorResource_NewMonitorTypes tests the new monitor types.
 func TestAccMonitorResource_NewMonitorTypes(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
@@ -490,7 +490,7 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
-// TestAccMonitorResource_NewFields tests the new fields added to the monitor resource
+// TestAccMonitorResource_NewFields tests the new fields added to the monitor resource.
 func TestAccMonitorResource_NewFields(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
@@ -553,7 +553,7 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
-// TestAccMonitorResource_InvalidMonitorType tests that invalid monitor types are rejected
+// TestAccMonitorResource_InvalidMonitorType tests that invalid monitor types are rejected.
 func TestAccMonitorResource_InvalidMonitorType(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
