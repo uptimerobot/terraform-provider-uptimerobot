@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -17,6 +18,7 @@ import (
 var (
 	_ resource.Resource                = &maintenanceWindowResource{}
 	_ resource.ResourceWithConfigure   = &maintenanceWindowResource{}
+	_ resource.ResourceWithModifyPlan  = &maintenanceWindowResource{}
 	_ resource.ResourceWithImportState = &maintenanceWindowResource{}
 )
 
@@ -268,6 +270,14 @@ func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadR
 			return
 		}
 		state.Days = days
+	} else {
+		// Handle empty days - set to null if not previously set, preserve existing state otherwise
+		if state.Days.IsNull() {
+			state.Days = types.ListNull(types.Int64Type)
+		} else {
+			// If days was previously set, create an empty list
+			state.Days = types.ListValueMust(types.Int64Type, []attr.Value{})
+		}
 	}
 
 	// Set additional computed values if available
@@ -379,6 +389,49 @@ func (r *maintenanceWindowResource) Delete(ctx context.Context, req resource.Del
 		)
 		return
 	}
+}
+
+// ModifyPlan modifies the plan to handle list field consistency issues.
+func (r *maintenanceWindowResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// If we don't have a plan or state, there's nothing to modify
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	// Retrieve values from plan and state
+	var plan, state maintenanceWindowResourceModel
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Preserve null vs empty list consistency for days field
+	maintenanceWindowModifyPlanForListField(ctx, &plan.Days, &state.Days, resp, "days")
+}
+
+// maintenanceWindowModifyPlanForListField handles the special case for list fields that might be null vs empty lists.
+func maintenanceWindowModifyPlanForListField(ctx context.Context, planField, stateField *types.List, resp *resource.ModifyPlanResponse, fieldName string) {
+	// If we don't have both plan and state, nothing to modify
+	if planField == nil || stateField == nil {
+		return
+	}
+
+	// Case 1: State is null, plan has an empty list -> convert plan to null for consistency
+	if stateField.IsNull() && !planField.IsNull() {
+		var planItems []int64
+		diags := planField.ElementsAs(ctx, &planItems, false)
+		if !diags.HasError() && len(planItems) == 0 {
+			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.ListNull(planField.ElementType(ctx)))
+		}
+	}
+	// Case 2: State has items, plan is null -> This is a user-intended removal, don't modify
+	// Case 3: State has items, plan has different items -> This is a user-intended change, don't modify
 }
 
 // ImportState imports an existing resource into Terraform.
