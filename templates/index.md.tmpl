@@ -1,0 +1,20 @@
+---
+page_title: "{{ .ProviderShortName }} Provider"
+subcategory: ""
+description: |-
+  The UptimeRobot provider allows you to manage UptimeRobot monitors, integrations, maintenance windows, and public status pages.
+---
+
+# {{ .ProviderShortName }} Provider
+
+The UptimeRobot provider allows you to manage your UptimeRobot resources programmatically using Terraform.
+
+## Example Usage
+
+{{tffile "examples/provider/provider.tf"}}
+
+## Authentication
+
+The provider requires an UptimeRobot API key for authentication. You can obtain this from your UptimeRobot dashboard under "My Settings" → "API Settings" → "Main API Key".
+
+{{ .SchemaMarkdown | trimspace }}

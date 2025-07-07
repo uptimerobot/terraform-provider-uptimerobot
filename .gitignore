@@ -11,3 +11,4 @@ terraform.tfplan
 *.log
 go.work*
 test-uptimerobot/
+.claude
