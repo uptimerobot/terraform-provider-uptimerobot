@@ -19,6 +19,7 @@ import (
 var (
 	_ resource.Resource                = &pspResource{}
 	_ resource.ResourceWithConfigure   = &pspResource{}
+	_ resource.ResourceWithModifyPlan  = &pspResource{}
 	_ resource.ResourceWithImportState = &pspResource{}
 )
 
@@ -1003,6 +1004,49 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 	} else {
 		plan.CustomSettings = nil
 	}
+}
+
+// ModifyPlan modifies the plan to handle list field consistency issues.
+func (r *pspResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// If we don't have a plan or state, there's nothing to modify
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	// Retrieve values from plan and state
+	var plan, state pspResourceModel
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Handle monitor IDs list consistency
+	pspModifyPlanForListField(ctx, &plan.MonitorIDs, &state.MonitorIDs, resp, "monitor_ids")
+}
+
+// pspModifyPlanForListField handles the special case for list fields that might be null vs empty lists.
+func pspModifyPlanForListField(ctx context.Context, planField, stateField *types.List, resp *resource.ModifyPlanResponse, fieldName string) {
+	// If we don't have both plan and state, nothing to modify
+	if planField == nil || stateField == nil {
+		return
+	}
+
+	// Case 1: State is null, plan has an empty list -> convert plan to null for consistency
+	if stateField.IsNull() && !planField.IsNull() {
+		var planItems []int64
+		diags := planField.ElementsAs(ctx, &planItems, false)
+		if !diags.HasError() && len(planItems) == 0 {
+			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.ListNull(planField.ElementType(ctx)))
+		}
+	}
+	// Case 2: State has items, plan is null -> This is a user-intended removal, don't modify
+	// Case 3: State has items, plan has different items -> This is a user-intended change, don't modify
 }
 
 // ImportState imports an existing resource into Terraform.
