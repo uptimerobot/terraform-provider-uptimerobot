@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -14,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
@@ -236,6 +238,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"regional_data": schema.StringAttribute{
 				Description: "Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("na", "eu", "as", "oc"),
+				},
 			},
 		},
 	}
@@ -503,11 +508,15 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	if isImport || !state.AuthType.IsNull() {
 		state.AuthType = types.StringValue(stringValue(&monitor.AuthType))
 	}
-	if !state.HTTPUsername.IsNull() {
-		state.HTTPUsername = types.StringValue(stringValue(&monitor.HTTPUsername))
+	if monitor.HTTPUsername != "" {
+		state.HTTPUsername = types.StringValue(monitor.HTTPUsername)
+	} else if !state.HTTPUsername.IsNull() {
+		state.HTTPUsername = types.StringNull()
 	}
-	if !state.HTTPPassword.IsNull() {
-		state.HTTPPassword = types.StringValue(stringValue(&monitor.HTTPPassword))
+	if monitor.HTTPPassword != "" {
+		state.HTTPPassword = types.StringValue(monitor.HTTPPassword)
+	} else if !state.HTTPPassword.IsNull() {
+		state.HTTPPassword = types.StringNull()
 	}
 
 	headers := make(map[string]attr.Value)
@@ -522,22 +531,31 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.CustomHTTPHeaders = types.MapNull(types.StringType)
 	}
 
-	if !state.HTTPMethodType.IsNull() {
-		state.HTTPMethodType = types.StringValue(stringValue(&monitor.HTTPMethodType))
+	if monitor.HTTPMethodType != "" {
+		state.HTTPMethodType = types.StringValue(monitor.HTTPMethodType)
+	} else if !state.HTTPMethodType.IsNull() {
+		state.HTTPMethodType = types.StringNull()
 	}
-	if !state.PostValueType.IsNull() {
-		state.PostValueType = types.StringValue(stringValue(monitor.PostValueType))
+	if monitor.PostValueType != nil && *monitor.PostValueType != "" {
+		state.PostValueType = types.StringValue(*monitor.PostValueType)
+	} else if !state.PostValueType.IsNull() {
+		state.PostValueType = types.StringNull()
 	}
-	if !state.PostValueData.IsNull() {
-		state.PostValueData = types.StringValue(stringValue(monitor.PostValueData))
+	if monitor.PostValueData != nil && *monitor.PostValueData != "" {
+		state.PostValueData = types.StringValue(*monitor.PostValueData)
+	} else if !state.PostValueData.IsNull() {
+		state.PostValueData = types.StringNull()
 	}
 	if monitor.Port != nil {
 		state.Port = types.Int64Value(int64(*monitor.Port))
 	} else {
 		state.Port = types.Int64Null()
 	}
-	if !state.KeywordValue.IsNull() {
-		state.KeywordValue = types.StringValue(stringValue(&monitor.KeywordValue))
+	if monitor.KeywordValue != "" {
+		state.KeywordValue = types.StringValue(monitor.KeywordValue)
+	} else if !state.KeywordValue.IsNull() {
+		// If API returns empty but state had a value, set to null
+		state.KeywordValue = types.StringNull()
 	}
 	if monitor.KeywordType != nil {
 		state.KeywordType = types.StringValue(*monitor.KeywordType)
@@ -771,10 +789,12 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	// Add new fields
 	if !plan.ResponseTimeThreshold.IsNull() {
-		updateReq.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
+		value := int(plan.ResponseTimeThreshold.ValueInt64())
+		updateReq.ResponseTimeThreshold = &value
 	}
 	if !plan.RegionalData.IsNull() {
-		updateReq.RegionalData = plan.RegionalData.ValueString()
+		value := plan.RegionalData.ValueString()
+		updateReq.RegionalData = &value
 	}
 
 	updatedMonitor, err := r.client.UpdateMonitor(id, updateReq)
@@ -795,6 +815,26 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		keywordCaseTypeValue = "CaseInsensitive"
 	}
 	updatedState.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
+
+	// Update response time threshold from the API response
+	if updatedMonitor.ResponseTimeThreshold > 0 {
+		updatedState.ResponseTimeThreshold = types.Int64Value(int64(updatedMonitor.ResponseTimeThreshold))
+	} else if plan.ResponseTimeThreshold.IsNull() {
+		updatedState.ResponseTimeThreshold = types.Int64Null()
+	}
+
+	// Update regional data from the API response
+	if updatedMonitor.RegionalData != nil {
+		if regionData, ok := updatedMonitor.RegionalData.(map[string]interface{}); ok {
+			if regions, ok := regionData["REGION"].([]interface{}); ok && len(regions) > 0 {
+				if region, ok := regions[0].(string); ok {
+					updatedState.RegionalData = types.StringValue(region)
+				}
+			}
+		}
+	} else if plan.RegionalData.IsNull() {
+		updatedState.RegionalData = types.StringNull()
+	}
 	if len(updatedMonitor.Tags) > 0 {
 		tagValues := make([]attr.Value, 0, len(updatedMonitor.Tags))
 		for _, tag := range updatedMonitor.Tags {

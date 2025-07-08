@@ -139,7 +139,7 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 	// Create new integration
 	integration := &client.CreateIntegrationRequest{
 		Name:                   plan.Name.ValueString(),
-		Type:                   plan.Type.ValueString(),
+		Type:                   TransformIntegrationTypeToAPI(plan.Type.ValueString()),
 		Value:                  plan.Value.ValueString(),
 		CustomValue:            plan.CustomValue.ValueString(),
 		EnableNotificationsFor: int(plan.EnableNotificationsFor.ValueInt64()),
@@ -200,7 +200,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 
 	// Map response body to schema and populate Computed attribute values
 	state.Name = types.StringValue(integration.Name)
-	state.Type = types.StringValue(integration.Type)
+	state.Type = types.StringValue(TransformIntegrationTypeFromAPI(integration.Type))
 	state.Value = types.StringValue(integration.Value)
 	state.CustomValue = types.StringValue(integration.CustomValue)
 	state.EnableNotificationsFor = types.Int64Value(int64(integration.EnableNotificationsFor))
@@ -209,13 +209,14 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	// Only set webhook-specific fields if they were already set in the state
 	// or if this is a webhook integration. This prevents Terraform from seeing
 	// differences when these fields are not specified in the configuration.
-	if !state.SendAsJSON.IsNull() || integration.Type == "webhook" {
+	integrationType := TransformIntegrationTypeFromAPI(integration.Type)
+	if !state.SendAsJSON.IsNull() || integrationType == "webhook" {
 		state.SendAsJSON = types.BoolValue(integration.SendAsJSON)
 	}
-	if !state.SendAsQueryString.IsNull() || integration.Type == "webhook" {
+	if !state.SendAsQueryString.IsNull() || integrationType == "webhook" {
 		state.SendAsQueryString = types.BoolValue(integration.SendAsQueryString)
 	}
-	if !state.PostValue.IsNull() || integration.Type == "webhook" {
+	if !state.PostValue.IsNull() || integrationType == "webhook" {
 		state.PostValue = types.StringValue(integration.PostValue)
 	}
 
@@ -249,7 +250,7 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 	// Create update request
 	integration := &client.UpdateIntegrationRequest{
 		Name:                   plan.Name.ValueString(),
-		Type:                   plan.Type.ValueString(),
+		Type:                   TransformIntegrationTypeToAPI(plan.Type.ValueString()),
 		Value:                  plan.Value.ValueString(),
 		CustomValue:            plan.CustomValue.ValueString(),
 		EnableNotificationsFor: int(plan.EnableNotificationsFor.ValueInt64()),

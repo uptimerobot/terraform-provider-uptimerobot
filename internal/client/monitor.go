@@ -77,8 +77,8 @@ type UpdateMonitorRequest struct {
 	SSLExpirationReminder    bool              `json:"sslExpirationReminder"`
 	DomainExpirationReminder bool              `json:"domainExpirationReminder"`
 	FollowRedirections       bool              `json:"followRedirections"`
-	ResponseTimeThreshold    int               `json:"responseTimeThreshold,omitempty"`
-	RegionalData             string            `json:"regionalData,omitempty"`
+	ResponseTimeThreshold    *int              `json:"responseTimeThreshold,omitempty"`
+	RegionalData             *string           `json:"regionalData,omitempty"`
 }
 
 // Monitor represents a monitor.
