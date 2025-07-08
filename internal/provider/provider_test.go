@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -58,6 +60,19 @@ func setupMockServer() *httptest.Server {
 }
 
 // Mock handlers.
+
+// Helper function to validate enum values.
+func isValidEnumValue(value interface{}, validValues []string) bool {
+	if str, ok := value.(string); ok {
+		for _, valid := range validValues {
+			if str == valid {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func handleMonitors(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
@@ -67,13 +82,30 @@ func handleMonitors(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Validate monitor type
+		if monitorType, exists := req["type"]; exists {
+			validTypes := []string{"HTTP", "KEYWORD", "PING", "PORT", "HEARTBEAT", "DNS"}
+			if !isValidEnumValue(monitorType, validTypes) {
+				http.Error(w, "Invalid monitor type", http.StatusBadRequest)
+				return
+			}
+		}
+
+		// Validate friendlyName length
+		if friendlyName, exists := req["friendlyName"]; exists {
+			if str, ok := friendlyName.(string); ok && len(str) > 100 {
+				http.Error(w, "friendlyName must be 100 characters or less", http.StatusBadRequest)
+				return
+			}
+		}
+
 		response := map[string]interface{}{
 			"id":                       nextID,
 			"friendlyName":             req["friendlyName"],
 			"url":                      req["url"],
 			"type":                     req["type"],
 			"interval":                 req["interval"],
-			"status":                   "active",
+			"status":                   "Active",
 			"authType":                 req["authType"],
 			"keywordCaseType":          req["keywordCaseType"],
 			"checkSSLErrors":           req["checkSSLErrors"],
@@ -86,6 +118,49 @@ func handleMonitors(w http.ResponseWriter, r *http.Request) {
 			"assignedAlertContacts":    convertAlertContactsFromRequest(req["assignedAlertContacts"]),
 			"tags":                     convertTagsFromRequest(req["tagNames"]),
 			"maintenanceWindows":       convertMaintenanceWindowsFromRequest(req["maintenanceWindowsIds"]),
+		}
+
+		// Add optional fields if they exist in the request
+		if keywordType, exists := req["keywordType"]; exists {
+			response["keywordType"] = keywordType
+		}
+		if keywordValue, exists := req["keywordValue"]; exists {
+			response["keywordValue"] = keywordValue
+		}
+		if responseTimeThreshold, exists := req["responseTimeThreshold"]; exists {
+			response["responseTimeThreshold"] = responseTimeThreshold
+		}
+		if regionalData, exists := req["regionalData"]; exists {
+			// Convert simple string to API format expected by provider
+			if regionalDataStr, ok := regionalData.(string); ok {
+				response["regionalData"] = map[string]interface{}{
+					"REGION": []string{regionalDataStr},
+				}
+			}
+		}
+		if port, exists := req["port"]; exists {
+			response["port"] = port
+		}
+		if httpMethodType, exists := req["httpMethodType"]; exists {
+			response["httpMethodType"] = httpMethodType
+		}
+		if postValueData, exists := req["postValueData"]; exists {
+			response["postValueData"] = postValueData
+		}
+		if postValueType, exists := req["postValueType"]; exists {
+			response["postValueType"] = postValueType
+		}
+		if httpUsername, exists := req["httpUsername"]; exists {
+			response["httpUsername"] = httpUsername
+		}
+		if httpPassword, exists := req["httpPassword"]; exists {
+			response["httpPassword"] = httpPassword
+		}
+		if timeout, exists := req["timeout"]; exists {
+			response["timeout"] = timeout
+		}
+		if regionalData, exists := req["regionalData"]; exists {
+			response["regionalData"] = regionalData
 		}
 
 		// Store the monitor
@@ -114,6 +189,36 @@ func handleMonitors(w http.ResponseWriter, r *http.Request) {
 func handleMonitorByID(w http.ResponseWriter, r *http.Request) {
 	// Extract ID from URL path
 	idStr := r.URL.Path[len("/monitors/"):]
+
+	// Check if this is a reset request
+	if strings.HasSuffix(idStr, "/reset") {
+		// Extract the actual monitor ID
+		actualIDStr := strings.TrimSuffix(idStr, "/reset")
+		id, err := strconv.ParseInt(actualIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			return
+		}
+
+		if r.Method == "POST" {
+			if monitor, exists := mockMonitors[id]; exists {
+				// Reset monitor stats (simulate the reset operation)
+				// In a real API, this would reset statistics, incidents, alerts etc.
+				monitor["lastResetDate"] = time.Now().Unix()
+
+				w.WriteHeader(http.StatusCreated) // API spec expects 201
+				return
+			} else {
+				http.Error(w, "Monitor not found", http.StatusNotFound)
+				return
+			}
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+	}
+
+	// Normal monitor operations
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
@@ -161,6 +266,14 @@ func handleMonitorByID(w http.ResponseWriter, r *http.Request) {
 				monitor["maintenanceWindows"] = []map[string]interface{}{}
 			}
 
+			// Handle optional fields - remove if not present in update
+			if _, hasResponseTimeThreshold := req["responseTimeThreshold"]; !hasResponseTimeThreshold {
+				delete(monitor, "responseTimeThreshold")
+			}
+			if _, hasRegionalData := req["regionalData"]; !hasRegionalData {
+				delete(monitor, "regionalData")
+			}
+
 			// Update the stored monitor
 			for key, value := range req {
 				switch key {
@@ -173,6 +286,13 @@ func handleMonitorByID(w http.ResponseWriter, r *http.Request) {
 				case "maintenanceWindowsIds":
 					// Convert maintenance windows to the expected format
 					monitor["maintenanceWindows"] = convertMaintenanceWindowsFromRequest(value)
+				case "regionalData":
+					// Convert simple string to API format expected by provider
+					if regionalDataStr, ok := value.(string); ok {
+						monitor["regionalData"] = map[string]interface{}{
+							"REGION": []string{regionalDataStr},
+						}
+					}
 				default:
 					monitor[key] = value
 				}
@@ -202,6 +322,44 @@ func handleIntegrations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Validate integration type
+		if integrationType, exists := req["type"]; exists {
+			validTypes := []string{"Slack", "Telegram", "MS Teams", "Webhook", "Zapier", "PagerDuty", "Google Chat", "Discord", "Splunk", "Pushbullet", "Pushover", "Email", "SMS"}
+			if !isValidEnumValue(integrationType, validTypes) {
+				http.Error(w, "Invalid integration type", http.StatusBadRequest)
+				return
+			}
+		}
+
+		// Validate friendlyName length
+		if friendlyName, exists := req["friendlyName"]; exists {
+			if str, ok := friendlyName.(string); ok && len(str) > 60 {
+				http.Error(w, "friendlyName must be 60 characters or less", http.StatusBadRequest)
+				return
+			}
+		}
+
+		// Validate enableNotificationsFor - accept both integer and string values
+		if notifFor, exists := req["enableNotificationsFor"]; exists {
+			// Accept integers (from Terraform) and convert for validation
+			if intVal, ok := notifFor.(float64); ok {
+				// Integer values: 1=all, 2=down only, 3=up only, 0=none
+				if intVal != 0 && intVal != 1 && intVal != 2 && intVal != 3 {
+					http.Error(w, "Invalid enableNotificationsFor value", http.StatusBadRequest)
+					return
+				}
+			} else if strVal, ok := notifFor.(string); ok {
+				validValues := []string{"UpAndDown", "Down", "Up", "None"}
+				if !isValidEnumValue(strVal, validValues) {
+					http.Error(w, "Invalid enableNotificationsFor value", http.StatusBadRequest)
+					return
+				}
+			} else {
+				http.Error(w, "Invalid enableNotificationsFor value", http.StatusBadRequest)
+				return
+			}
+		}
+
 		response := map[string]interface{}{
 			"id":                     nextID,
 			"friendlyName":           req["friendlyName"],
@@ -213,7 +371,7 @@ func handleIntegrations(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Only include webhook-specific fields for webhook integrations
-		if req["type"] == "webhook" {
+		if req["type"] == "Webhook" {
 			if sendAsJson, exists := req["sendAsJson"]; exists {
 				response["sendAsJson"] = sendAsJson
 			} else {
@@ -296,6 +454,39 @@ func handleIntegrationByID(w http.ResponseWriter, r *http.Request) {
 
 func handleMaintenanceWindows(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
+	case "GET":
+		// List maintenance windows with pagination support
+		cursor := r.URL.Query().Get("cursor")
+		var startID int64 = 0
+		if cursor != "" {
+			if parsedCursor, err := strconv.ParseInt(cursor, 10, 64); err == nil {
+				startID = parsedCursor
+			}
+		}
+
+		response := map[string]interface{}{
+			"data": []map[string]interface{}{},
+			"pagination": map[string]interface{}{
+				"cursor":  nil,
+				"hasMore": false,
+			},
+		}
+
+		windows := []map[string]interface{}{}
+		for id, window := range mockMaintenanceWindows {
+			if id >= startID {
+				windows = append(windows, window)
+			}
+		}
+
+		response["data"] = windows
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
+		}
+
 	case "POST":
 		var req map[string]interface{}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -303,14 +494,32 @@ func handleMaintenanceWindows(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Validate name length
+		if name, exists := req["name"]; exists {
+			if str, ok := name.(string); ok && len(str) > 100 {
+				http.Error(w, "name must be 100 characters or less", http.StatusBadRequest)
+				return
+			}
+		}
+
+		// Validate duration - should be a simple integer in minutes
+		if durationReq, exists := req["duration"]; exists {
+			if _, ok := durationReq.(float64); !ok {
+				if _, ok := durationReq.(int); !ok {
+					http.Error(w, "duration must be a number (minutes)", http.StatusBadRequest)
+					return
+				}
+			}
+		}
+
 		response := map[string]interface{}{
 			"id":              nextID,
 			"name":            req["name"],
 			"interval":        req["interval"],
 			"time":            req["time"],
-			"duration":        req["duration"],
+			"duration":        req["duration"], // Keep as simple integer
 			"autoAddMonitors": req["autoAddMonitors"],
-			"status":          "active",
+			"status":          "Active",
 		}
 
 		// Store the maintenance window
@@ -383,11 +592,19 @@ func handlePSPs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Validate friendlyName length
+		if friendlyName, exists := req["friendlyName"]; exists {
+			if str, ok := friendlyName.(string); ok && len(str) > 100 {
+				http.Error(w, "friendlyName must be 100 characters or less", http.StatusBadRequest)
+				return
+			}
+		}
+
 		response := map[string]interface{}{
 			"id":                         nextID,
 			"friendlyName":               req["friendlyName"],
 			"monitorIds":                 req["monitorIds"],
-			"status":                     "active",
+			"status":                     "Active", // ✅ Fixed: Use proper case
 			"urlKey":                     fmt.Sprintf("psp-%d", nextID),
 			"isPasswordSet":              false,
 			"shareAnalyticsConsent":      req["shareAnalyticsConsent"],

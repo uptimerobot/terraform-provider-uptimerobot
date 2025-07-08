@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -12,7 +13,7 @@ func testAccMonitorResourceConfig(name string) string {
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = "https://example.com"
-    type         = "1"
+    type         = "HTTP"
     interval     = 300
 }
 `, name)
@@ -29,7 +30,7 @@ func testAccMonitorResourceConfigWithAlertContacts(name string, alertContacts []
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = "https://example.com"
-    type         = "1"
+    type         = "HTTP"
     interval     = 300%s
 }
 `, name, alertContactsStr)
@@ -46,7 +47,7 @@ func testAccMonitorResourceConfigWithTags(name string, tags []string) string {
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = "https://example.com"
-    type         = "1"
+    type         = "HTTP"
     interval     = 300%s
 }
 `, name, tagsStr)
@@ -63,7 +64,7 @@ func testAccMonitorResourceConfigWithMaintenanceWindows(name string, maintenance
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = "https://example.com"
-    type         = "1"
+    type         = "HTTP"
     interval     = 300%s
 }
 `, name, maintenanceWindowsStr)
@@ -80,7 +81,7 @@ func testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name string, respo
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = "https://example.com"
-    type         = "1"
+    type         = "HTTP"
     interval     = 300%s
 }
 `, name, responseCodesStr)
@@ -119,7 +120,7 @@ func TestAccMonitorResource(t *testing.T) {
 				Config: testAccMonitorResourceConfig("test-monitor"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
 				),
@@ -154,7 +155,7 @@ func TestAccMonitorResource_AlertContacts(t *testing.T) {
 				Config: testAccMonitorResourceConfigWithAlertContacts("test-monitor-alerts", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-alerts"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
 					// Verify no alert contacts are set initially
@@ -198,7 +199,7 @@ func TestAccMonitorResource_Tags(t *testing.T) {
 				Config: testAccMonitorResourceConfigWithTags("test-monitor-tags", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-tags"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
 					// Verify no tags are set initially
@@ -242,7 +243,7 @@ func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 				Config: testAccMonitorResourceConfigWithMaintenanceWindows("test-monitor-maintenance", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-maintenance"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
 					// Verify no maintenance windows are set initially
@@ -286,7 +287,7 @@ func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-response-codes"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
 					// Verify default response codes are set
@@ -314,6 +315,261 @@ func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-response-codes"),
 					// This might expose the issue - what happens with empty vs default?
 				),
+			},
+		},
+	})
+}
+
+// TestAccMonitorResource_PortMonitorValidation tests that PORT monitors require a port number.
+func TestAccMonitorResource_PortMonitorValidation(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Test that PORT monitor without port fails
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "test-port-monitor"
+    url          = "https://example.com"
+    type         = "PORT"
+    interval     = 300
+}
+`,
+				ExpectError: regexp.MustCompile("Port required for PORT monitor"),
+			},
+			// Test that PORT monitor with port succeeds
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "test-port-monitor"
+    url          = "https://example.com"
+    type         = "PORT"
+    interval     = 300
+    port         = 80
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-port-monitor"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "PORT"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "port", "80"),
+				),
+			},
+		},
+	})
+}
+
+// TestAccMonitorResource_KeywordMonitorValidation tests that KEYWORD monitors require keyword fields.
+func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Test that KEYWORD monitor without keywordType fails
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "test-keyword-monitor"
+    url          = "https://example.com"
+    type         = "KEYWORD"
+    interval     = 300
+    keyword_value = "test"
+}
+`,
+				ExpectError: regexp.MustCompile("KeywordType required for KEYWORD monitor"),
+			},
+			// Test that KEYWORD monitor without keywordValue fails
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "test-keyword-monitor"
+    url          = "https://example.com"
+    type         = "KEYWORD"
+    interval     = 300
+    keyword_type = "ALERT_EXISTS"
+}
+`,
+				ExpectError: regexp.MustCompile("KeywordValue required for KEYWORD monitor"),
+			},
+			// Test that KEYWORD monitor with invalid keywordType fails
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "test-keyword-monitor"
+    url          = "https://example.com"
+    type         = "KEYWORD"
+    interval     = 300
+    keyword_type = "INVALID_TYPE"
+    keyword_value = "test"
+}
+`,
+				ExpectError: regexp.MustCompile("KeywordType must be either ALERT_EXISTS or ALERT_NOT_EXISTS"),
+			},
+			// Test that KEYWORD monitor with valid fields succeeds
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "test-keyword-monitor"
+    url          = "https://example.com"
+    type         = "KEYWORD"
+    interval     = 300
+    keyword_type = "ALERT_EXISTS"
+    keyword_value = "test"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-keyword-monitor"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "KEYWORD"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_type", "ALERT_EXISTS"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_value", "test"),
+				),
+			},
+			// Test ALERT_NOT_EXISTS keyword type
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "test-keyword-monitor"
+    url          = "https://example.com"
+    type         = "KEYWORD"
+    interval     = 300
+    keyword_type = "ALERT_NOT_EXISTS"
+    keyword_value = "error"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-keyword-monitor"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "KEYWORD"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_type", "ALERT_NOT_EXISTS"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_value", "error"),
+				),
+			},
+		},
+	})
+}
+
+// TestAccMonitorResource_NewMonitorTypes tests the new monitor types.
+func TestAccMonitorResource_NewMonitorTypes(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Test HEARTBEAT monitor
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "test-heartbeat-monitor"
+    url          = "https://example.com"
+    type         = "HEARTBEAT"
+    interval     = 300
+    grace_period = 60
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-heartbeat-monitor"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HEARTBEAT"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "grace_period", "60"),
+				),
+			},
+			// Test DNS monitor
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "test-dns-monitor"
+    url          = "example.com"
+    type         = "DNS"
+    interval     = 300
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-dns-monitor"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "DNS"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "example.com"),
+				),
+			},
+		},
+	})
+}
+
+// TestAccMonitorResource_NewFields tests the new fields added to the monitor resource.
+func TestAccMonitorResource_NewFields(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Test response_time_threshold field
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name                     = "test-response-time-monitor"
+    url                      = "https://example.com"
+    type                     = "HTTP"
+    interval                 = 300
+    response_time_threshold  = 5000
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-response-time-monitor"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "response_time_threshold", "5000"),
+				),
+			},
+			// Test regional_data field
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name          = "test-regional-monitor"
+    url           = "https://example.com"
+    type          = "HTTP"
+    interval      = 300
+    regional_data = "na"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-regional-monitor"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "regional_data", "na"),
+				),
+			},
+			// Test both new fields together
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name                     = "test-combined-monitor"
+    url                      = "https://example.com"
+    type                     = "HTTP"
+    interval                 = 300
+    response_time_threshold  = 3000
+    regional_data            = "eu"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-combined-monitor"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "response_time_threshold", "3000"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "regional_data", "eu"),
+				),
+			},
+		},
+	})
+}
+
+// TestAccMonitorResource_InvalidMonitorType tests that invalid monitor types are rejected.
+func TestAccMonitorResource_InvalidMonitorType(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Test invalid monitor type
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "test-invalid-monitor"
+    url          = "https://example.com"
+    type         = "INVALID_TYPE"
+    interval     = 300
+}
+`,
+				ExpectError: regexp.MustCompile("Monitor type must be one of: HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS"),
 			},
 		},
 	})
