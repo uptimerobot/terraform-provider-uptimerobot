@@ -204,7 +204,7 @@ Common monitoring intervals:
 
 - `interval` (Number) Interval for the monitoring check (in seconds)
 - `name` (String) Name of the monitor
-- `type` (String) Type of the monitor (HTTP, keyword, ping, port)
+- `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)
 - `url` (String) URL to monitor
 
 ### Optional
@@ -219,12 +219,14 @@ Common monitoring intervals:
 - `http_password` (String, Sensitive) The password for HTTP authentication
 - `http_username` (String) The username for HTTP authentication
 - `keyword_case_type` (String) The case sensitivity for keyword (CaseSensitive or CaseInsensitive). Default: CaseInsensitive
-- `keyword_type` (String) The type of keyword check
+- `keyword_type` (String) The type of keyword check (ALERT_EXISTS, ALERT_NOT_EXISTS)
 - `keyword_value` (String) The keyword to search for
 - `maintenance_window_ids` (List of Number) The maintenance window IDs
 - `port` (Number) The port to monitor
 - `post_value_data` (String) The data to send with POST request
 - `post_value_type` (String) The type of data to send with POST request
+- `regional_data` (String) Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)
+- `response_time_threshold` (Number) Response time threshold in milliseconds. Response time over this threshold will trigger an incident
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
 - `success_http_response_codes` (List of String) The expected HTTP response codes
 - `tags` (List of String) Tags for the monitor

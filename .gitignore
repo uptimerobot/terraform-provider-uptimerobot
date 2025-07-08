@@ -12,3 +12,4 @@ terraform.tfplan
 go.work*
 test-uptimerobot/
 .claude
+claude.md

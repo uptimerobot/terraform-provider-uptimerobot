@@ -9,10 +9,12 @@ import (
 type MonitorType string
 
 const (
-	MonitorTypeHTTP    MonitorType = "HTTP"
-	MonitorTypeKeyword MonitorType = "KEYWORD"
-	MonitorTypePing    MonitorType = "PING"
-	MonitorTypePort    MonitorType = "PORT"
+	MonitorTypeHTTP      MonitorType = "HTTP"
+	MonitorTypeKeyword   MonitorType = "KEYWORD"
+	MonitorTypePing      MonitorType = "PING"
+	MonitorTypePort      MonitorType = "PORT"
+	MonitorTypeHeartbeat MonitorType = "HEARTBEAT"
+	MonitorTypeDNS       MonitorType = "DNS"
 )
 
 // CreateMonitorRequest represents the request to create a new monitor.
@@ -44,6 +46,7 @@ type CreateMonitorRequest struct {
 	DomainExpirationReminder bool              `json:"domainExpirationReminder"`
 	FollowRedirections       bool              `json:"followRedirections"`
 	ResponseTimeThreshold    int               `json:"responseTimeThreshold,omitempty"`
+	RegionalData             string            `json:"regionalData,omitempty"`
 }
 
 // UpdateMonitorRequest represents the request to update an existing monitor.
@@ -74,7 +77,8 @@ type UpdateMonitorRequest struct {
 	SSLExpirationReminder    bool              `json:"sslExpirationReminder"`
 	DomainExpirationReminder bool              `json:"domainExpirationReminder"`
 	FollowRedirections       bool              `json:"followRedirections"`
-	ResponseTimeThreshold    int               `json:"responseTimeThreshold,omitempty"`
+	ResponseTimeThreshold    *int              `json:"responseTimeThreshold,omitempty"`
+	RegionalData             *string           `json:"regionalData,omitempty"`
 }
 
 // Monitor represents a monitor.
@@ -117,6 +121,8 @@ type Monitor struct {
 	LastDayUptimes           *UptimeStats        `json:"lastDayUptimes"`
 	CreateDateTime           string              `json:"createDateTime"`
 	APIKey                   string              `json:"apiKey"`
+	RegionalData             interface{}         `json:"regionalData"`
+	ResponseTimeThreshold    int                 `json:"responseTimeThreshold"`
 }
 
 type Tag struct {
