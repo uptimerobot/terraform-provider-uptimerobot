@@ -11,7 +11,7 @@ import (
 
 const (
 	defaultBaseURL = "https://api.uptimerobot.com/v3"
-	defaultTimeout = 10 * time.Second
+	defaultTimeout = 30 * time.Second
 )
 
 // Client represents an Uptimerobot API client.

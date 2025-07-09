@@ -164,13 +164,12 @@ func TestAccMonitorResource_AlertContacts(t *testing.T) {
 			},
 			// Step 2: Add alert contacts to existing monitor - this should NOT fail
 			{
-				Config: testAccMonitorResourceConfigWithAlertContacts("test-monitor-alerts", []string{"contact-123", "contact-456"}),
+				Config: testAccMonitorResourceConfigWithAlertContacts("test-monitor-alerts", []string{"7589476"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-alerts"),
 					// Verify alert contacts are now set
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.#", "2"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.0", "contact-123"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.1", "contact-456"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.#", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.0", "7589476"),
 				),
 			},
 			// Step 3: Remove alert contacts - set back to empty

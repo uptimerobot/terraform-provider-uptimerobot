@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"sort"
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -101,6 +102,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"type": schema.StringAttribute{
 				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)",
 				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("HTTP", "KEYWORD", "PING", "PORT", "HEARTBEAT", "DNS"),
+				},
 			},
 			"interval": schema.Int64Attribute{
 				Description: "Interval for the monitoring check (in seconds)",
@@ -147,6 +151,11 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"http_method_type": schema.StringAttribute{
 				Description: "The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS)",
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString("GET"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("HEAD", "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"),
+				},
 			},
 			"success_http_response_codes": schema.ListAttribute{
 				Description: "The expected HTTP response codes",
@@ -193,6 +202,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"keyword_type": schema.StringAttribute{
 				Description: "The type of keyword check (ALERT_EXISTS, ALERT_NOT_EXISTS)",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("ALERT_EXISTS", "ALERT_NOT_EXISTS"),
+				},
 			},
 			"maintenance_window_ids": schema.ListAttribute{
 				Description: "The maintenance window IDs",
@@ -417,16 +429,26 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		if resp.Diagnostics.HasError() {
 			return
 		}
+		sort.Strings(tags)
 		createReq.Tags = tags
 	}
 
 	// Handle assigned alert contacts
 	if !plan.AssignedAlertContacts.IsNull() {
-		var alertContacts []string
-		diags = plan.AssignedAlertContacts.ElementsAs(ctx, &alertContacts, false)
+		var alertContactIds []string
+		diags = plan.AssignedAlertContacts.ElementsAs(ctx, &alertContactIds, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
+		}
+		// Convert string IDs to alert contact objects
+		alertContacts := make([]interface{}, 0, len(alertContactIds))
+		for _, contactId := range alertContactIds {
+			alertContacts = append(alertContacts, map[string]interface{}{
+				"alertContactId": contactId,
+				"threshold":      0,
+				"recurrence":     0,
+			})
 		}
 		createReq.AssignedAlertContacts = alertContacts
 	}
@@ -584,32 +606,54 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	state.ID = types.StringValue(strconv.FormatInt(monitor.ID, 10))
 	state.Status = types.StringValue(monitor.Status)
 
-	// Set response time threshold
-	if monitor.ResponseTimeThreshold > 0 {
-		state.ResponseTimeThreshold = types.Int64Value(int64(monitor.ResponseTimeThreshold))
-	} else {
-		state.ResponseTimeThreshold = types.Int64Null()
-	}
-
-	// Set regional data
-	if monitor.RegionalData != nil {
-		// Convert regional data from API format to string
-		if regionData, ok := monitor.RegionalData.(map[string]interface{}); ok {
-			if regions, ok := regionData["REGION"].([]interface{}); ok && len(regions) > 0 {
-				if region, ok := regions[0].(string); ok {
-					state.RegionalData = types.StringValue(region)
-				}
-			}
+	// Set response time threshold - only if it was specified in the plan or during import
+	if isImport {
+		// During import, set response time threshold if API returns it
+		if monitor.ResponseTimeThreshold > 0 {
+			state.ResponseTimeThreshold = types.Int64Value(int64(monitor.ResponseTimeThreshold))
+		} else {
+			state.ResponseTimeThreshold = types.Int64Null()
+		}
+	} else if !state.ResponseTimeThreshold.IsNull() {
+		// During regular read, only update if it was originally set in the plan
+		if monitor.ResponseTimeThreshold > 0 {
+			state.ResponseTimeThreshold = types.Int64Value(int64(monitor.ResponseTimeThreshold))
+		} else {
+			state.ResponseTimeThreshold = types.Int64Null()
 		}
 	}
-	if state.RegionalData.IsNull() {
+	// If response_time_threshold was not in the original plan and this is not an import, keep it as-is (null)
+
+	// Set regional data - only if it was specified in the plan or during import
+	if isImport {
+		// During import, keep regional data null unless it was manually set by user
+		// The API always returns regionalData, but we only want to set it if user explicitly configured it
 		state.RegionalData = types.StringNull()
+	} else if !state.RegionalData.IsNull() {
+		// During regular read, only update if it was originally set in the plan
+		if monitor.RegionalData != nil {
+			if regionData, ok := monitor.RegionalData.(map[string]interface{}); ok {
+				if regions, ok := regionData["REGION"].([]interface{}); ok && len(regions) > 0 {
+					if region, ok := regions[0].(string); ok {
+						state.RegionalData = types.StringValue(region)
+					}
+				}
+			}
+		} else {
+			state.RegionalData = types.StringNull()
+		}
 	}
+	// If regional_data was not in the original plan and this is not an import, keep it as-is (null)
 
 	if len(monitor.Tags) > 0 {
-		tagValues := make([]attr.Value, 0, len(monitor.Tags))
+		tagNames := make([]string, 0, len(monitor.Tags))
 		for _, tag := range monitor.Tags {
-			tagValues = append(tagValues, types.StringValue(tag.Name))
+			tagNames = append(tagNames, tag.Name)
+		}
+		sort.Strings(tagNames)
+		tagValues := make([]attr.Value, 0, len(tagNames))
+		for _, tagName := range tagNames {
+			tagValues = append(tagValues, types.StringValue(tagName))
 		}
 		state.Tags = types.ListValueMust(types.StringType, tagValues)
 	} else {
@@ -619,7 +663,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	if len(monitor.AssignedAlertContacts) > 0 {
 		alertContacts := make([]attr.Value, 0)
 		for _, contact := range monitor.AssignedAlertContacts {
-			alertContacts = append(alertContacts, types.StringValue(contact.AlertContactID))
+			alertContacts = append(alertContacts, types.StringValue(strconv.FormatInt(contact.AlertContactID, 10)))
 		}
 		state.AssignedAlertContacts = types.ListValueMust(types.StringType, alertContacts)
 	} else {
@@ -693,6 +737,36 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	// Validate required fields based on monitor type
+	monitorType := plan.Type.ValueString()
+
+	// Validate port is provided for PORT monitors
+	if monitorType == "PORT" && plan.Port.IsNull() {
+		resp.Diagnostics.AddError(
+			"Port required for PORT monitor",
+			"Port must be specified for PORT monitor type",
+		)
+		return
+	}
+
+	// Validate keyword fields for KEYWORD monitors
+	if monitorType == "KEYWORD" {
+		if plan.KeywordType.IsNull() {
+			resp.Diagnostics.AddError(
+				"KeywordType required for KEYWORD monitor",
+				"KeywordType must be specified for KEYWORD monitor type (ALERT_EXISTS or ALERT_NOT_EXISTS)",
+			)
+			return
+		}
+		if plan.KeywordValue.IsNull() {
+			resp.Diagnostics.AddError(
+				"KeywordValue required for KEYWORD monitor",
+				"KeywordValue must be specified for KEYWORD monitor type",
+			)
+			return
+		}
+	}
+
 	updateReq := &client.UpdateMonitorRequest{
 		Type:     client.MonitorType(plan.Type.ValueString()),
 		Interval: int(plan.Interval.ValueInt64()),
@@ -759,6 +833,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updateReq.MaintenanceWindowIDs = windowIDs
 	}
 
+	// Always set tags - empty array if null, populated array if not null
 	if !plan.Tags.IsNull() {
 		var tags []string
 		diags = plan.Tags.ElementsAs(ctx, &tags, false)
@@ -766,17 +841,34 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		if resp.Diagnostics.HasError() {
 			return
 		}
+		sort.Strings(tags)
 		updateReq.Tags = tags
+	} else {
+		// Explicitly set empty array to clear tags
+		updateReq.Tags = []string{}
 	}
 
+	// Always set alert contacts - empty array if null, populated array if not null
 	if !plan.AssignedAlertContacts.IsNull() {
-		var alertContacts []string
-		diags = plan.AssignedAlertContacts.ElementsAs(ctx, &alertContacts, false)
+		var alertContactIds []string
+		diags = plan.AssignedAlertContacts.ElementsAs(ctx, &alertContactIds, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
+		// Convert string IDs to alert contact objects
+		alertContacts := make([]interface{}, 0, len(alertContactIds))
+		for _, contactId := range alertContactIds {
+			alertContacts = append(alertContacts, map[string]interface{}{
+				"alertContactId": contactId,
+				"threshold":      0,
+				"recurrence":     0,
+			})
+		}
 		updateReq.AssignedAlertContacts = alertContacts
+	} else {
+		// Explicitly set empty array to clear alert contacts
+		updateReq.AssignedAlertContacts = []interface{}{}
 	}
 
 	updateReq.SSLExpirationReminder = plan.SSLExpirationReminder.ValueBool()
@@ -817,28 +909,45 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updatedState.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
 
 	// Update response time threshold from the API response
-	if updatedMonitor.ResponseTimeThreshold > 0 {
-		updatedState.ResponseTimeThreshold = types.Int64Value(int64(updatedMonitor.ResponseTimeThreshold))
-	} else if plan.ResponseTimeThreshold.IsNull() {
+	if !plan.ResponseTimeThreshold.IsNull() {
+		// User specified response time threshold, update from API response
+		if updatedMonitor.ResponseTimeThreshold > 0 {
+			updatedState.ResponseTimeThreshold = types.Int64Value(int64(updatedMonitor.ResponseTimeThreshold))
+		} else {
+			updatedState.ResponseTimeThreshold = plan.ResponseTimeThreshold
+		}
+	} else {
+		// User didn't specify response time threshold, keep it null
 		updatedState.ResponseTimeThreshold = types.Int64Null()
 	}
 
 	// Update regional data from the API response
-	if updatedMonitor.RegionalData != nil {
-		if regionData, ok := updatedMonitor.RegionalData.(map[string]interface{}); ok {
-			if regions, ok := regionData["REGION"].([]interface{}); ok && len(regions) > 0 {
-				if region, ok := regions[0].(string); ok {
-					updatedState.RegionalData = types.StringValue(region)
+	if !plan.RegionalData.IsNull() {
+		// User specified regional data, so update from API response
+		if updatedMonitor.RegionalData != nil {
+			if regionData, ok := updatedMonitor.RegionalData.(map[string]interface{}); ok {
+				if regions, ok := regionData["REGION"].([]interface{}); ok && len(regions) > 0 {
+					if region, ok := regions[0].(string); ok {
+						updatedState.RegionalData = types.StringValue(region)
+					}
 				}
 			}
+		} else {
+			updatedState.RegionalData = types.StringNull()
 		}
-	} else if plan.RegionalData.IsNull() {
+	} else {
+		// User didn't specify regional data, keep it null
 		updatedState.RegionalData = types.StringNull()
 	}
 	if len(updatedMonitor.Tags) > 0 {
-		tagValues := make([]attr.Value, 0, len(updatedMonitor.Tags))
+		tagNames := make([]string, 0, len(updatedMonitor.Tags))
 		for _, tag := range updatedMonitor.Tags {
-			tagValues = append(tagValues, types.StringValue(tag.Name))
+			tagNames = append(tagNames, tag.Name)
+		}
+		sort.Strings(tagNames)
+		tagValues := make([]attr.Value, 0, len(tagNames))
+		for _, tagName := range tagNames {
+			tagValues = append(tagValues, types.StringValue(tagName))
 		}
 		updatedState.Tags = types.ListValueMust(types.StringType, tagValues)
 	} else if plan.Tags.IsNull() {
@@ -849,14 +958,12 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	if len(updatedMonitor.AssignedAlertContacts) > 0 {
 		alertContactValues := make([]attr.Value, 0, len(updatedMonitor.AssignedAlertContacts))
 		for _, contact := range updatedMonitor.AssignedAlertContacts {
-			alertContactValues = append(alertContactValues, types.StringValue(contact.AlertContactID))
+			alertContactValues = append(alertContactValues, types.StringValue(strconv.FormatInt(contact.AlertContactID, 10)))
 		}
 		updatedState.AssignedAlertContacts = types.ListValueMust(types.StringType, alertContactValues)
-	} else if plan.AssignedAlertContacts.IsNull() {
-		updatedState.AssignedAlertContacts = types.ListNull(types.StringType)
 	} else {
-		// Plan had alert contacts but result has none - set to empty list
-		updatedState.AssignedAlertContacts = types.ListValueMust(types.StringType, []attr.Value{})
+		// If no alert contacts returned from API, set to null (no attribute)
+		updatedState.AssignedAlertContacts = types.ListNull(types.StringType)
 	}
 
 	diags = resp.State.Set(ctx, updatedState)

@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -16,6 +18,99 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
+
+// convertNotificationsForToString converts integer to API string format.
+func convertNotificationsForToString(value int64) string {
+	switch value {
+	case 1:
+		return "UpAndDown"
+	case 2:
+		return "Down"
+	case 3:
+		return "Up"
+	case 4:
+		return "None"
+	default:
+		return "UpAndDown"
+	}
+}
+
+// convertNotificationsForFromString converts API string format to integer.
+func convertNotificationsForFromString(value string) int64 {
+	switch value {
+	case "UpAndDown":
+		return 1
+	case "Down":
+		return 2
+	case "Up":
+		return 3
+	case "None":
+		return 4
+	default:
+		return 1
+	}
+}
+
+// webhookConfig represents the webhook configuration stored in customValue.
+type webhookConfig struct {
+	PostValue map[string]interface{} `json:"postValue,omitempty"`
+	SendJSON  string                 `json:"sendJSON,omitempty"`
+	SendQuery string                 `json:"sendQuery,omitempty"`
+	SendPost  string                 `json:"sendPost,omitempty"`
+}
+
+// jsonEquivalentPlanModifier is a custom plan modifier that ignores JSON formatting differences.
+type jsonEquivalentPlanModifier struct{}
+
+func (m jsonEquivalentPlanModifier) Description(context.Context) string {
+	return "Ignores JSON formatting differences"
+}
+
+func (m jsonEquivalentPlanModifier) MarkdownDescription(context.Context) string {
+	return "Ignores JSON formatting differences"
+}
+
+func (m jsonEquivalentPlanModifier) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	// If either value is null or unknown, use default behavior
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() || req.StateValue.IsNull() || req.StateValue.IsUnknown() {
+		return
+	}
+
+	configValue := req.ConfigValue.ValueString()
+	stateValue := req.StateValue.ValueString()
+
+	// If both are empty, they're equal
+	if configValue == "" && stateValue == "" {
+		return
+	}
+
+	// Try to parse both as JSON and compare the parsed objects
+	var configObj, stateObj interface{}
+	configErr := json.Unmarshal([]byte(configValue), &configObj)
+	stateErr := json.Unmarshal([]byte(stateValue), &stateObj)
+
+	// If both parse successfully and are equal, keep the state value
+	if configErr == nil && stateErr == nil && reflect.DeepEqual(configObj, stateObj) {
+		resp.PlanValue = req.StateValue
+		return
+	}
+
+	// Otherwise, use default behavior
+}
+
+// parseWebhookConfig parses webhook configuration from the customValue JSON.
+func parseWebhookConfig(customValue string) (*webhookConfig, error) {
+	if customValue == "" {
+		return &webhookConfig{}, nil
+	}
+
+	var config webhookConfig
+	if err := json.Unmarshal([]byte(customValue), &config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
 
 // Ensure the implementation satisfies the expected interfaces.
 var (
@@ -45,6 +140,7 @@ type integrationResourceModel struct {
 	SSLExpirationReminder  types.Bool   `tfsdk:"ssl_expiration_reminder"`
 	SendAsJSON             types.Bool   `tfsdk:"send_as_json"`
 	SendAsQueryString      types.Bool   `tfsdk:"send_as_query_string"`
+	SendAsPostParameters   types.Bool   `tfsdk:"send_as_post_parameters"`
 	PostValue              types.String `tfsdk:"post_value"`
 }
 
@@ -100,7 +196,7 @@ func (r *integrationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 			"custom_value": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "The custom value for the integration. Only valid for slack (#channel), telegram (chat_id), and pushover (device name).",
+				MarkdownDescription: "The custom value for the integration. Only valid for slack (#channel), telegram (chat_id), and pushover (device name). Not used for webhook integrations (webhook settings are stored in dedicated fields).",
 			},
 			"enable_notifications_for": schema.Int64Attribute{
 				Required:            true,
@@ -118,9 +214,16 @@ func (r *integrationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:            true,
 				MarkdownDescription: "Whether to send the webhook payload as query string. Only valid for webhook integrations.",
 			},
+			"send_as_post_parameters": schema.BoolAttribute{
+				Optional:            true,
+				MarkdownDescription: "Whether to send the webhook payload as POST parameters. Only valid for webhook integrations.",
+			},
 			"post_value": schema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "The POST value to send with the webhook. Only valid for webhook integrations.",
+				PlanModifiers: []planmodifier.String{
+					jsonEquivalentPlanModifier{},
+				},
 			},
 		},
 	}
@@ -136,17 +239,44 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	// Create new integration
+	// Create new integration with the new API format
+	integrationTypeAPI := TransformIntegrationTypeToAPI(plan.Type.ValueString())
+
+	var integrationData interface{}
+	switch strings.ToLower(plan.Type.ValueString()) {
+	case "slack":
+		integrationData = &client.SlackIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			Value:                  plan.Value.ValueString(),
+			CustomValue:            plan.CustomValue.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "webhook":
+		integrationData = &client.WebhookIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			URLToNotify:            plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+			PostValue:              plan.PostValue.ValueString(),
+			SendAsQueryString:      plan.SendAsQueryString.ValueBool(),
+			SendAsJSON:             plan.SendAsJSON.ValueBool(),
+			SendAsPostParameters:   plan.SendAsPostParameters.ValueBool(),
+		}
+	default:
+		// For other integration types, use a generic structure
+		integrationData = map[string]interface{}{
+			"friendlyName":           plan.Name.ValueString(),
+			"value":                  plan.Value.ValueString(),
+			"customValue":            plan.CustomValue.ValueString(),
+			"enableNotificationsFor": convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			"sslExpirationReminder":  plan.SSLExpirationReminder.ValueBool(),
+		}
+	}
+
 	integration := &client.CreateIntegrationRequest{
-		Name:                   plan.Name.ValueString(),
-		Type:                   TransformIntegrationTypeToAPI(plan.Type.ValueString()),
-		Value:                  plan.Value.ValueString(),
-		CustomValue:            plan.CustomValue.ValueString(),
-		EnableNotificationsFor: int(plan.EnableNotificationsFor.ValueInt64()),
-		SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
-		SendAsJSON:             plan.SendAsJSON.ValueBool(),
-		SendAsQueryString:      plan.SendAsQueryString.ValueBool(),
-		PostValue:              plan.PostValue.ValueString(),
+		Type: integrationTypeAPI,
+		Data: integrationData,
 	}
 
 	newIntegration, err := r.client.CreateIntegration(integration)
@@ -202,22 +332,53 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	state.Name = types.StringValue(integration.Name)
 	state.Type = types.StringValue(TransformIntegrationTypeFromAPI(integration.Type))
 	state.Value = types.StringValue(integration.Value)
-	state.CustomValue = types.StringValue(integration.CustomValue)
-	state.EnableNotificationsFor = types.Int64Value(int64(integration.EnableNotificationsFor))
+	state.EnableNotificationsFor = types.Int64Value(convertNotificationsForFromString(integration.EnableNotificationsFor))
 	state.SSLExpirationReminder = types.BoolValue(integration.SSLExpirationReminder)
 
-	// Only set webhook-specific fields if they were already set in the state
-	// or if this is a webhook integration. This prevents Terraform from seeing
-	// differences when these fields are not specified in the configuration.
+	// Handle integration-specific fields based on type
 	integrationType := TransformIntegrationTypeFromAPI(integration.Type)
-	if !state.SendAsJSON.IsNull() || integrationType == "webhook" {
-		state.SendAsJSON = types.BoolValue(integration.SendAsJSON)
-	}
-	if !state.SendAsQueryString.IsNull() || integrationType == "webhook" {
-		state.SendAsQueryString = types.BoolValue(integration.SendAsQueryString)
-	}
-	if !state.PostValue.IsNull() || integrationType == "webhook" {
-		state.PostValue = types.StringValue(integration.PostValue)
+	if integrationType == "webhook" {
+		// Parse webhook configuration from customValue JSON
+		webhookConfig, err := parseWebhookConfig(integration.CustomValue)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error parsing webhook configuration",
+				"Could not parse webhook configuration from API response: "+err.Error(),
+			)
+			return
+		}
+
+		// Set webhook-specific fields from parsed config
+		state.SendAsJSON = types.BoolValue(webhookConfig.SendJSON == "1")
+		state.SendAsQueryString = types.BoolValue(webhookConfig.SendQuery == "1")
+		state.SendAsPostParameters = types.BoolValue(webhookConfig.SendPost == "1")
+
+		// Set PostValue from parsed config - convert object back to JSON string for user
+		if webhookConfig.PostValue != nil {
+			postValueJSON, err := json.Marshal(webhookConfig.PostValue)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Error marshaling post value",
+					"Could not marshal post value from webhook configuration: "+err.Error(),
+				)
+				return
+			}
+			state.PostValue = types.StringValue(string(postValueJSON))
+		} else {
+			state.PostValue = types.StringValue("")
+		}
+
+		// Webhook integrations don't use custom_value - it's parsed into dedicated fields
+		state.CustomValue = types.StringNull()
+	} else {
+		// For non-webhook integrations, use customValue directly
+		state.CustomValue = types.StringValue(integration.CustomValue)
+
+		// Set webhook-specific fields to null for non-webhook integrations
+		state.SendAsJSON = types.BoolNull()
+		state.SendAsQueryString = types.BoolNull()
+		state.SendAsPostParameters = types.BoolNull()
+		state.PostValue = types.StringNull()
 	}
 
 	// Set refreshed state
@@ -247,17 +408,44 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	// Create update request
+	// Create update request with same structure as create request
+	integrationTypeAPI := TransformIntegrationTypeToAPI(plan.Type.ValueString())
+
+	var integrationData interface{}
+	switch strings.ToLower(plan.Type.ValueString()) {
+	case "slack":
+		integrationData = &client.SlackIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			Value:                  plan.Value.ValueString(),
+			CustomValue:            plan.CustomValue.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "webhook":
+		integrationData = &client.WebhookIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			URLToNotify:            plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+			PostValue:              plan.PostValue.ValueString(),
+			SendAsQueryString:      plan.SendAsQueryString.ValueBool(),
+			SendAsJSON:             plan.SendAsJSON.ValueBool(),
+			SendAsPostParameters:   plan.SendAsPostParameters.ValueBool(),
+		}
+	default:
+		// For other integration types, use a generic structure
+		integrationData = map[string]interface{}{
+			"friendlyName":           plan.Name.ValueString(),
+			"value":                  plan.Value.ValueString(),
+			"customValue":            plan.CustomValue.ValueString(),
+			"enableNotificationsFor": convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			"sslExpirationReminder":  plan.SSLExpirationReminder.ValueBool(),
+		}
+	}
+
 	integration := &client.UpdateIntegrationRequest{
-		Name:                   plan.Name.ValueString(),
-		Type:                   TransformIntegrationTypeToAPI(plan.Type.ValueString()),
-		Value:                  plan.Value.ValueString(),
-		CustomValue:            plan.CustomValue.ValueString(),
-		EnableNotificationsFor: int(plan.EnableNotificationsFor.ValueInt64()),
-		SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
-		SendAsJSON:             plan.SendAsJSON.ValueBool(),
-		SendAsQueryString:      plan.SendAsQueryString.ValueBool(),
-		PostValue:              plan.PostValue.ValueString(),
+		Type: integrationTypeAPI,
+		Data: integrationData,
 	}
 
 	_, err = r.client.UpdateIntegration(id, integration)

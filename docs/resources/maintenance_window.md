@@ -115,7 +115,7 @@ For weekly maintenance windows, specify days as numbers:
 - `duration` (Number) Duration of the maintenance window in minutes
 - `interval` (String) Interval of maintenance window (once, daily, weekly, monthly)
 - `name` (String) Name of the maintenance window
-- `time` (String) Time of the maintenance window (format: HH:mm)
+- `time` (String) Time of the maintenance window (format: HH:mm:ss)
 
 ### Optional
 

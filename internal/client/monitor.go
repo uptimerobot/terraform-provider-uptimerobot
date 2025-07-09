@@ -32,13 +32,13 @@ type CreateMonitorRequest struct {
 	KeywordType              string            `json:"keywordType,omitempty"`
 	KeywordValue             string            `json:"keywordValue,omitempty"`
 	KeywordCaseType          int               `json:"keywordCaseType,omitempty"`
-	AssignedAlertContacts    []string          `json:"assignedAlertContacts,omitempty"`
+	AssignedAlertContacts    []interface{}     `json:"assignedAlertContacts"`
 	CheckSSLErrors           bool              `json:"checkSSLErrors"`
 	SSLCheckEnabled          bool              `json:"sslCheckEnabled,omitempty"`
 	CustomHTTPHeaders        map[string]string `json:"customHttpHeaders,omitempty"`
 	SuccessHTTPResponseCodes []string          `json:"successHttpResponseCodes,omitempty"`
 	MaintenanceWindowIDs     []int64           `json:"maintenanceWindowsIds,omitempty"`
-	Tags                     []string          `json:"tagNames,omitempty"`
+	Tags                     []string          `json:"tagNames"`
 	GracePeriod              int               `json:"gracePeriod,omitempty"`
 	PostValueData            interface{}       `json:"postValueData,omitempty"`
 	PostValueType            string            `json:"postValueType,omitempty"`
@@ -64,13 +64,13 @@ type UpdateMonitorRequest struct {
 	KeywordType              string            `json:"keywordType,omitempty"`
 	KeywordValue             string            `json:"keywordValue,omitempty"`
 	KeywordCaseType          int               `json:"keywordCaseType,omitempty"`
-	AssignedAlertContacts    []string          `json:"assignedAlertContacts,omitempty"`
+	AssignedAlertContacts    []interface{}     `json:"assignedAlertContacts"`
 	CheckSSLErrors           bool              `json:"checkSSLErrors"`
 	SSLCheckEnabled          bool              `json:"sslCheckEnabled,omitempty"`
 	CustomHTTPHeaders        map[string]string `json:"customHttpHeaders,omitempty"`
 	SuccessHTTPResponseCodes []string          `json:"successHttpResponseCodes,omitempty"`
 	MaintenanceWindowIDs     []int64           `json:"maintenanceWindowsIds,omitempty"`
-	Tags                     []string          `json:"tagNames,omitempty"`
+	Tags                     []string          `json:"tagNames"`
 	GracePeriod              int               `json:"gracePeriod,omitempty"`
 	PostValueData            interface{}       `json:"postValueData,omitempty"`
 	PostValueType            string            `json:"postValueType,omitempty"`
@@ -133,9 +133,9 @@ type Tag struct {
 }
 
 type AlertContact struct {
-	AlertContactID string `json:"alertContactId"`
-	Threshold      int    `json:"threshold"`
-	Recurrence     int    `json:"recurrence"`
+	AlertContactID int64 `json:"alertContactId"`
+	Threshold      int   `json:"threshold"`
+	Recurrence     int   `json:"recurrence"`
 }
 
 type Incident struct {

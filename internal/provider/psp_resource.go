@@ -848,38 +848,9 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 		plan.PinnedAnnouncementID = types.Int64Null()
 	}
 
-	// Handle monitor IDs while preserving the order if possible
-	if !plan.MonitorIDs.IsNull() && psp.MonitorIDs != nil {
-		planMonitorIDs := []int64{}
-		diags := plan.MonitorIDs.ElementsAs(context.Background(), &planMonitorIDs, false)
-		if diags == nil || !diags.HasError() {
-			// Create a map of the API's monitor IDs for faster lookup
-			apiIDsMap := make(map[int64]bool)
-			for _, id := range psp.MonitorIDs {
-				apiIDsMap[id] = true
-			}
-
-			// Check if all IDs in the plan are in the API response (regardless of order)
-			allFound := true
-			for _, id := range planMonitorIDs {
-				if !apiIDsMap[id] {
-					allFound = false
-					break
-				}
-			}
-
-			// Check if all IDs in the API response are in the plan (regardless of order)
-			if allFound && len(planMonitorIDs) == len(psp.MonitorIDs) {
-				// They contain the exact same IDs, just in different order
-				// Preserve the plan's order to avoid unnecessary changes
-				return
-			}
-		}
-	}
-
-	// If we reach here, we need to update the monitor IDs
-	if psp.MonitorIDs != nil {
-		// Create the monitor IDs list
+	// Handle monitor IDs - always update with what the API returns
+	if len(psp.MonitorIDs) > 0 {
+		// Create the monitor IDs list from API response
 		monitorIDsElements := make([]attr.Value, len(psp.MonitorIDs))
 		for i, id := range psp.MonitorIDs {
 			monitorIDsElements[i] = types.Int64Value(id)
@@ -890,7 +861,7 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 			plan.MonitorIDs = monitorIDsList
 		}
 	} else {
-		// If the API returns nil, use an empty list
+		// If the API returns empty or nil, use an empty list
 		emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
 		plan.MonitorIDs = emptyList
 	}

@@ -3,7 +3,7 @@ default: testacc
 # Run acceptance tests
 .PHONY: testacc
 testacc:
-	TF_ACC=1 go test ./... -v $(TESTARGS) -timeout 120m
+	set -a; source .env; set +a && TF_ACC=1 go test ./... -v $(TESTARGS) -timeout 120m
 
 # Run unit tests
 .PHONY: test
