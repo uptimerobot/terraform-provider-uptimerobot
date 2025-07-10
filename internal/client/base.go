@@ -33,6 +33,9 @@ func (b *BaseCRUDOperations) doCreate(req interface{}, result interface{}) error
 
 // doGet performs a GET request to retrieve a resource by ID.
 func (b *BaseCRUDOperations) doGet(id int64, result interface{}) error {
+	if result == nil {
+		return fmt.Errorf("result cannot be nil")
+	}
 	resp, err := b.client.doRequest("GET", fmt.Sprintf("%s/%d", b.endpoint, id), nil)
 	if err != nil {
 		return err
@@ -42,6 +45,9 @@ func (b *BaseCRUDOperations) doGet(id int64, result interface{}) error {
 
 // doUpdate performs a PATCH request to update a resource.
 func (b *BaseCRUDOperations) doUpdate(id int64, req interface{}, result interface{}) error {
+	if result == nil {
+		return fmt.Errorf("result cannot be nil")
+	}
 	resp, err := b.client.doRequest("PATCH", fmt.Sprintf("%s/%d", b.endpoint, id), req)
 	if err != nil {
 		return err

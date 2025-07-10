@@ -18,7 +18,7 @@ resource "uptimerobot_maintenance_window" "weekly_maintenance" {
   name     = "Weekly Maintenance"
   interval = "weekly"
   duration = 60
-  time     = "02:00"
+  time     = "02:00:00"
   days     = [7] # Sunday
 
   # Automatically add new monitors to this maintenance window
@@ -29,7 +29,7 @@ resource "uptimerobot_maintenance_window" "business_hours_maintenance" {
   name     = "Business Hours Maintenance"
   interval = "weekly"
   duration = 120 # 2 hours
-  time     = "09:00"
+  time     = "09:00:00"
   days     = [2, 4] # Tuesday and Thursday
 
   auto_add_monitors = false
@@ -43,7 +43,7 @@ resource "uptimerobot_maintenance_window" "daily_backup" {
   name     = "Daily Backup Window"
   interval = "daily"
   duration = 30
-  time     = "03:00"
+  time     = "03:00:00"
 
   auto_add_monitors = true
 }
@@ -52,7 +52,7 @@ resource "uptimerobot_maintenance_window" "daily_updates" {
   name     = "Daily Security Updates"
   interval = "daily"
   duration = 15
-  time     = "04:30"
+  time     = "04:30:00"
 
   auto_add_monitors = false
 }
@@ -66,7 +66,7 @@ resource "uptimerobot_maintenance_window" "server_migration" {
   interval = "once"
   duration = 240 # 4 hours
   date     = "2024-12-15"
-  time     = "01:00"
+  time     = "01:00:00"
 
   auto_add_monitors = false
 }
@@ -76,7 +76,7 @@ resource "uptimerobot_maintenance_window" "emergency_patch" {
   interval = "once"
   duration = 60
   date     = "2024-08-20"
-  time     = "23:00"
+  time     = "23:00:00"
 
   auto_add_monitors = true
 }
@@ -91,10 +91,10 @@ resource "uptimerobot_maintenance_window" "emergency_patch" {
 
 ## Time Format
 
-Time should be specified in `HH:MM` format (24-hour format):
-- `09:00` - 9:00 AM
-- `23:30` - 11:30 PM
-- `00:00` - Midnight
+Time should be specified in `HH:mm:ss` format (24-hour format):
+- `09:00:00` - 9:00:00 AM
+- `23:30:00` - 11:30:00 PM
+- `00:00:00` - 12:00:00 AM
 
 ## Week Days
 

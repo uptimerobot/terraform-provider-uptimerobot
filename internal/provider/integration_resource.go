@@ -112,6 +112,45 @@ func parseWebhookConfig(customValue string) (*webhookConfig, error) {
 	return &config, nil
 }
 
+// webhookStateFields represents the parsed webhook fields for the state.
+type webhookStateFields struct {
+	SendAsJSON           types.Bool
+	SendAsQueryString    types.Bool
+	SendAsPostParameters types.Bool
+	PostValue            types.String
+	CustomValue          types.String
+}
+
+// parseWebhookStateFields parses webhook configuration and returns the state fields.
+func parseWebhookStateFields(customValue string) (*webhookStateFields, error) {
+	// Parse webhook configuration from customValue JSON
+	webhookConfig, err := parseWebhookConfig(customValue)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse webhook configuration from API response: %w", err)
+	}
+
+	// Set webhook-specific fields from parsed config
+	fields := &webhookStateFields{
+		SendAsJSON:           types.BoolValue(webhookConfig.SendJSON == "1"),
+		SendAsQueryString:    types.BoolValue(webhookConfig.SendQuery == "1"),
+		SendAsPostParameters: types.BoolValue(webhookConfig.SendPost == "1"),
+		CustomValue:          types.StringNull(), // Webhook integrations don't use custom_value
+	}
+
+	// Set PostValue from parsed config - convert object back to JSON string for user
+	if webhookConfig.PostValue != nil {
+		postValueJSON, err := json.Marshal(webhookConfig.PostValue)
+		if err != nil {
+			return nil, fmt.Errorf("could not marshal post value from webhook configuration: %w", err)
+		}
+		fields.PostValue = types.StringValue(string(postValueJSON))
+	} else {
+		fields.PostValue = types.StringValue("")
+	}
+
+	return fields, nil
+}
+
 // Ensure the implementation satisfies the expected interfaces.
 var (
 	_ resource.Resource                = &integrationResource{}
@@ -338,38 +377,22 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	// Handle integration-specific fields based on type
 	integrationType := TransformIntegrationTypeFromAPI(integration.Type)
 	if integrationType == "webhook" {
-		// Parse webhook configuration from customValue JSON
-		webhookConfig, err := parseWebhookConfig(integration.CustomValue)
+		// Parse webhook configuration using helper function
+		webhookFields, err := parseWebhookStateFields(integration.CustomValue)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error parsing webhook configuration",
-				"Could not parse webhook configuration from API response: "+err.Error(),
+				err.Error(),
 			)
 			return
 		}
 
 		// Set webhook-specific fields from parsed config
-		state.SendAsJSON = types.BoolValue(webhookConfig.SendJSON == "1")
-		state.SendAsQueryString = types.BoolValue(webhookConfig.SendQuery == "1")
-		state.SendAsPostParameters = types.BoolValue(webhookConfig.SendPost == "1")
-
-		// Set PostValue from parsed config - convert object back to JSON string for user
-		if webhookConfig.PostValue != nil {
-			postValueJSON, err := json.Marshal(webhookConfig.PostValue)
-			if err != nil {
-				resp.Diagnostics.AddError(
-					"Error marshaling post value",
-					"Could not marshal post value from webhook configuration: "+err.Error(),
-				)
-				return
-			}
-			state.PostValue = types.StringValue(string(postValueJSON))
-		} else {
-			state.PostValue = types.StringValue("")
-		}
-
-		// Webhook integrations don't use custom_value - it's parsed into dedicated fields
-		state.CustomValue = types.StringNull()
+		state.SendAsJSON = webhookFields.SendAsJSON
+		state.SendAsQueryString = webhookFields.SendAsQueryString
+		state.SendAsPostParameters = webhookFields.SendAsPostParameters
+		state.PostValue = webhookFields.PostValue
+		state.CustomValue = webhookFields.CustomValue
 	} else {
 		// For non-webhook integrations, use customValue directly
 		state.CustomValue = types.StringValue(integration.CustomValue)
