@@ -402,7 +402,7 @@ resource "uptimerobot_monitor" "test" {
     keyword_value = "test"
 }
 `,
-				ExpectError: regexp.MustCompile("KeywordType must be either ALERT_EXISTS or ALERT_NOT_EXISTS"),
+				ExpectError: regexp.MustCompile(`(?s)value must be one of:.*ALERT_EXISTS.*ALERT_NOT_EXISTS`),
 			},
 			// Test that KEYWORD monitor with valid fields succeeds
 			{
@@ -568,7 +568,7 @@ resource "uptimerobot_monitor" "test" {
     interval     = 300
 }
 `,
-				ExpectError: regexp.MustCompile("Monitor type must be one of: HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS"),
+				ExpectError: regexp.MustCompile(`(?s)value must be one of:.*HTTP.*KEYWORD.*PING.*PORT.*HEARTBEAT.*DNS`),
 			},
 		},
 	})

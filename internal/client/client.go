@@ -70,9 +70,6 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 		}
 
 		reqBody = bytes.NewBuffer(jsonBody)
-		// Debug logging
-		fmt.Printf("Request URL: %s%s\n", c.baseURL, path)
-		fmt.Printf("Request Body: %s\n", string(jsonBody))
 	}
 
 	req, err := http.NewRequest(method, c.baseURL+path, reqBody)
@@ -88,10 +85,7 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 		return nil, err
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			// Log the error or handle it appropriately
-			fmt.Printf("Warning: failed to close response body: %v\n", err)
-		}
+		_ = resp.Body.Close()
 	}()
 
 	respBody, err := io.ReadAll(resp.Body)

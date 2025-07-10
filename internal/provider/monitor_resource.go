@@ -703,9 +703,10 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.MaintenanceWindowIDs = maintenanceWindowIDsValue
 	} else {
 		// No maintenance windows assigned
-		if isImport || !state.MaintenanceWindowIDs.IsNull() {
+		if isImport {
 			state.MaintenanceWindowIDs = types.ListNull(types.Int64Type)
 		}
+		// For non-import operations, preserve the existing state to avoid unnecessary diffs
 	}
 
 	diags = resp.State.Set(ctx, &state)

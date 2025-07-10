@@ -159,31 +159,21 @@ type UptimeRecord struct {
 
 // CreateMonitor creates a new monitor.
 func (c *Client) CreateMonitor(req *CreateMonitorRequest) (*Monitor, error) {
-	resp, err := c.doRequest("POST", "/monitors", req)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/monitors")
 	var monitor Monitor
-	if err := json.Unmarshal(resp, &monitor); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal monitor response: %v", err)
+	if err := base.doCreate(req, &monitor); err != nil {
+		return nil, fmt.Errorf("failed to create monitor: %v", err)
 	}
-
 	return &monitor, nil
 }
 
 // GetMonitor retrieves a monitor by ID.
 func (c *Client) GetMonitor(id int64) (*Monitor, error) {
-	resp, err := c.doRequest("GET", fmt.Sprintf("/monitors/%d", id), nil)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/monitors")
 	var monitor Monitor
-	if err := json.Unmarshal(resp, &monitor); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal monitor response: %v", err)
+	if err := base.doGet(id, &monitor); err != nil {
+		return nil, fmt.Errorf("failed to get monitor: %v", err)
 	}
-
 	return &monitor, nil
 }
 
@@ -206,23 +196,18 @@ func (c *Client) GetMonitors() ([]Monitor, error) {
 
 // UpdateMonitor updates an existing monitor.
 func (c *Client) UpdateMonitor(id int64, req *UpdateMonitorRequest) (*Monitor, error) {
-	resp, err := c.doRequest("PATCH", fmt.Sprintf("/monitors/%d", id), req)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/monitors")
 	var monitor Monitor
-	if err := json.Unmarshal(resp, &monitor); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal monitor response: %v", err)
+	if err := base.doUpdate(id, req, &monitor); err != nil {
+		return nil, fmt.Errorf("failed to update monitor: %v", err)
 	}
-
 	return &monitor, nil
 }
 
 // DeleteMonitor deletes a monitor.
 func (c *Client) DeleteMonitor(id int64) error {
-	_, err := c.doRequest("DELETE", fmt.Sprintf("/monitors/%d", id), nil)
-	return err
+	base := NewBaseCRUDOperations(c, "/monitors")
+	return base.doDelete(id)
 }
 
 // ResetMonitor resets monitor statistics.

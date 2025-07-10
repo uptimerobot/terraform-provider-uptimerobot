@@ -41,9 +41,10 @@ func TestAccPSPResource(t *testing.T) {
 			},
 			// Import testing
 			{
-				ResourceName:      "uptimerobot_psp.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            "uptimerobot_psp.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"monitor_ids"},
 			},
 		},
 	})

@@ -487,7 +487,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
-	pspToResourceData(newPSP, &updatedPlan)
+	pspToResourceData(newPSP, &updatedPlan, false)
 
 	// Set state to fully populated data
 	stateSet := resp.State.Set(ctx, updatedPlan)
@@ -523,13 +523,17 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
+	// Check if we're in an import operation by seeing if all required fields are null
+	// During import, only the ID is set
+	isImport := state.Name.IsNull()
+
 	// First make a copy of the current state to preserve user-defined order of monitor IDs
 	// and to ensure we don't lose any user configuration
 	updatedState := state
 
 	// Now update the state with the response data, preserving existing monitor IDs order
 	// and handling all computed values properly
-	pspToResourceData(psp, &updatedState)
+	pspToResourceData(psp, &updatedState, isImport)
 
 	diags = resp.State.Set(ctx, &updatedState)
 	resp.Diagnostics.Append(diags...)
@@ -782,7 +786,7 @@ func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 	}
 }
 
-func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
+func pspToResourceData(psp *client.PSP, plan *pspResourceModel, isImport bool) {
 	plan.ID = types.StringValue(strconv.FormatInt(psp.ID, 10))
 	plan.Name = types.StringValue(psp.Name)
 	plan.Status = types.StringValue(psp.Status)
@@ -861,9 +865,20 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 			plan.MonitorIDs = monitorIDsList
 		}
 	} else {
-		// If the API returns empty or nil, use an empty list
-		emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
-		plan.MonitorIDs = emptyList
+		// If the API returns empty or nil, handle based on context
+		if isImport {
+			// During import, always set to empty list if API returns no monitor IDs
+			emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
+			plan.MonitorIDs = emptyList
+		} else {
+			// For normal operations, preserve the existing state to avoid unnecessary diffs
+			// Only set to empty if the current state is null or unknown
+			if plan.MonitorIDs.IsNull() || plan.MonitorIDs.IsUnknown() {
+				emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
+				plan.MonitorIDs = emptyList
+			}
+			// Otherwise, keep the existing value
+		}
 	}
 
 	// Handle CustomSettings if present in the API response

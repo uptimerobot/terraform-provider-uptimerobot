@@ -1,10 +1,5 @@
 package client
 
-import (
-	"encoding/json"
-	"fmt"
-)
-
 // Integration represents an integration configuration.
 type Integration struct {
 	ID                     int64  `json:"id"`
@@ -59,51 +54,36 @@ type UpdateIntegrationRequest struct {
 
 // CreateIntegration creates a new integration.
 func (c *Client) CreateIntegration(req *CreateIntegrationRequest) (*Integration, error) {
-	resp, err := c.doRequest("POST", "/integrations", req)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/integrations")
 	var integration Integration
-	if err := json.Unmarshal(resp, &integration); err != nil {
+	if err := base.doCreate(req, &integration); err != nil {
 		return nil, err
 	}
-
 	return &integration, nil
 }
 
 // GetIntegration retrieves an integration by ID.
 func (c *Client) GetIntegration(id int64) (*Integration, error) {
-	resp, err := c.doRequest("GET", fmt.Sprintf("/integrations/%d", id), nil)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/integrations")
 	var integration Integration
-	if err := json.Unmarshal(resp, &integration); err != nil {
+	if err := base.doGet(id, &integration); err != nil {
 		return nil, err
 	}
-
 	return &integration, nil
 }
 
 // UpdateIntegration updates an existing integration.
 func (c *Client) UpdateIntegration(id int64, req *UpdateIntegrationRequest) (*Integration, error) {
-	resp, err := c.doRequest("PATCH", fmt.Sprintf("/integrations/%d", id), req)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/integrations")
 	var integration Integration
-	if err := json.Unmarshal(resp, &integration); err != nil {
+	if err := base.doUpdate(id, req, &integration); err != nil {
 		return nil, err
 	}
-
 	return &integration, nil
 }
 
 // DeleteIntegration deletes an integration.
 func (c *Client) DeleteIntegration(id int64) error {
-	_, err := c.doRequest("DELETE", fmt.Sprintf("/integrations/%d", id), nil)
-	return err
+	base := NewBaseCRUDOperations(c, "/integrations")
+	return base.doDelete(id)
 }
