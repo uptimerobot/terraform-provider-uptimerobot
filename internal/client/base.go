@@ -21,6 +21,9 @@ func NewBaseCRUDOperations(client *Client, endpoint string) *BaseCRUDOperations 
 
 // doCreate performs a POST request to create a resource.
 func (b *BaseCRUDOperations) doCreate(req interface{}, result interface{}) error {
+	if result == nil {
+		return fmt.Errorf("result cannot be nil")
+	}
 	resp, err := b.client.doRequest("POST", b.endpoint, req)
 	if err != nil {
 		return err
