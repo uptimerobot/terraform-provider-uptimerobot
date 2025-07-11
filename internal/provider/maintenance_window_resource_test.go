@@ -12,7 +12,7 @@ func testAccMaintenanceWindowResourceConfig(name string) string {
 resource "uptimerobot_maintenance_window" "test" {
   name = %q
   interval = "weekly"
-  time     = "01:00"
+  time     = "01:00:00"
   duration = 60
 }
 `, name)
@@ -30,7 +30,7 @@ func TestAccMaintenanceWindowResource(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.test", "name", "test-maintenance-window"),
 					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.test", "interval", "weekly"),
-					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.test", "time", "01:00"),
+					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.test", "time", "01:00:00"),
 					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.test", "duration", "60"),
 				),
 			},
@@ -40,7 +40,7 @@ func TestAccMaintenanceWindowResource(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.test", "name", "test-maintenance-window-updated"),
 					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.test", "interval", "weekly"),
-					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.test", "time", "01:00"),
+					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.test", "time", "01:00:00"),
 					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.test", "duration", "60"),
 				),
 			},

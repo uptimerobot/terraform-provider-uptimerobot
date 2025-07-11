@@ -2,7 +2,6 @@ package client
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 // PSP represents a Public Status Page.
@@ -161,65 +160,36 @@ func (r *UpdatePSPRequest) MarshalJSON() ([]byte, error) {
 
 // CreatePSP creates a new PSP.
 func (c *Client) CreatePSP(req *CreatePSPRequest) (*PSP, error) {
-	// Log the request for debugging
-	reqJSON, err := json.MarshalIndent(req, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-	fmt.Printf("PSP Create Request: %s\n", reqJSON)
-
-	resp, err := c.doRequest("POST", "/psps", req)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/psps")
 	var psp PSP
-	if err := json.Unmarshal(resp, &psp); err != nil {
+	if err := base.doCreate(req, &psp); err != nil {
 		return nil, err
 	}
-
 	return &psp, nil
 }
 
 // GetPSP retrieves a PSP by ID.
 func (c *Client) GetPSP(id int64) (*PSP, error) {
-	resp, err := c.doRequest("GET", fmt.Sprintf("/psps/%d", id), nil)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/psps")
 	var psp PSP
-	if err := json.Unmarshal(resp, &psp); err != nil {
+	if err := base.doGet(id, &psp); err != nil {
 		return nil, err
 	}
-
 	return &psp, nil
 }
 
 // UpdatePSP updates an existing PSP.
 func (c *Client) UpdatePSP(id int64, req *UpdatePSPRequest) (*PSP, error) {
-	// Log the request for debugging
-	reqJSON, err := json.MarshalIndent(req, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-	fmt.Printf("PSP Update Request: %s\n", reqJSON)
-
-	resp, err := c.doRequest("PATCH", fmt.Sprintf("/psps/%d", id), req)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/psps")
 	var psp PSP
-	if err := json.Unmarshal(resp, &psp); err != nil {
+	if err := base.doUpdate(id, req, &psp); err != nil {
 		return nil, err
 	}
-
 	return &psp, nil
 }
 
 // DeletePSP deletes a PSP.
 func (c *Client) DeletePSP(id int64) error {
-	_, err := c.doRequest("DELETE", fmt.Sprintf("/psps/%d", id), nil)
-	return err
+	base := NewBaseCRUDOperations(c, "/psps")
+	return base.doDelete(id)
 }

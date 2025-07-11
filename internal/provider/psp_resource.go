@@ -487,7 +487,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
-	pspToResourceData(newPSP, &updatedPlan)
+	pspToResourceData(newPSP, &updatedPlan, false)
 
 	// Set state to fully populated data
 	stateSet := resp.State.Set(ctx, updatedPlan)
@@ -523,13 +523,17 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
+	// Check if we're in an import operation by seeing if all required fields are null
+	// During import, only the ID is set
+	isImport := state.Name.IsNull()
+
 	// First make a copy of the current state to preserve user-defined order of monitor IDs
 	// and to ensure we don't lose any user configuration
 	updatedState := state
 
 	// Now update the state with the response data, preserving existing monitor IDs order
 	// and handling all computed values properly
-	pspToResourceData(psp, &updatedState)
+	pspToResourceData(psp, &updatedState, isImport)
 
 	diags = resp.State.Set(ctx, &updatedState)
 	resp.Diagnostics.Append(diags...)
@@ -782,7 +786,7 @@ func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 	}
 }
 
-func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
+func pspToResourceData(psp *client.PSP, plan *pspResourceModel, isImport bool) {
 	plan.ID = types.StringValue(strconv.FormatInt(psp.ID, 10))
 	plan.Name = types.StringValue(psp.Name)
 	plan.Status = types.StringValue(psp.Status)
@@ -848,38 +852,9 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 		plan.PinnedAnnouncementID = types.Int64Null()
 	}
 
-	// Handle monitor IDs while preserving the order if possible
-	if !plan.MonitorIDs.IsNull() && psp.MonitorIDs != nil {
-		planMonitorIDs := []int64{}
-		diags := plan.MonitorIDs.ElementsAs(context.Background(), &planMonitorIDs, false)
-		if diags == nil || !diags.HasError() {
-			// Create a map of the API's monitor IDs for faster lookup
-			apiIDsMap := make(map[int64]bool)
-			for _, id := range psp.MonitorIDs {
-				apiIDsMap[id] = true
-			}
-
-			// Check if all IDs in the plan are in the API response (regardless of order)
-			allFound := true
-			for _, id := range planMonitorIDs {
-				if !apiIDsMap[id] {
-					allFound = false
-					break
-				}
-			}
-
-			// Check if all IDs in the API response are in the plan (regardless of order)
-			if allFound && len(planMonitorIDs) == len(psp.MonitorIDs) {
-				// They contain the exact same IDs, just in different order
-				// Preserve the plan's order to avoid unnecessary changes
-				return
-			}
-		}
-	}
-
-	// If we reach here, we need to update the monitor IDs
-	if psp.MonitorIDs != nil {
-		// Create the monitor IDs list
+	// Handle monitor IDs - always update with what the API returns
+	if len(psp.MonitorIDs) > 0 {
+		// Create the monitor IDs list from API response
 		monitorIDsElements := make([]attr.Value, len(psp.MonitorIDs))
 		for i, id := range psp.MonitorIDs {
 			monitorIDsElements[i] = types.Int64Value(id)
@@ -890,9 +865,20 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel) {
 			plan.MonitorIDs = monitorIDsList
 		}
 	} else {
-		// If the API returns nil, use an empty list
-		emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
-		plan.MonitorIDs = emptyList
+		// If the API returns empty or nil, handle based on context
+		if isImport {
+			// During import, always set to empty list if API returns no monitor IDs
+			emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
+			plan.MonitorIDs = emptyList
+		} else {
+			// For normal operations, preserve the existing state to avoid unnecessary diffs
+			// Only set to empty if the current state is null or unknown
+			if plan.MonitorIDs.IsNull() || plan.MonitorIDs.IsUnknown() {
+				emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
+				plan.MonitorIDs = emptyList
+			}
+			// Otherwise, keep the existing value
+		}
 	}
 
 	// Handle CustomSettings if present in the API response

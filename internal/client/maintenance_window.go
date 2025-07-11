@@ -1,10 +1,5 @@
 package client
 
-import (
-	"encoding/json"
-	"fmt"
-)
-
 // MaintenanceWindow represents a maintenance window.
 type MaintenanceWindow struct {
 	ID              int64   `json:"id"`
@@ -43,51 +38,36 @@ type UpdateMaintenanceWindowRequest struct {
 
 // CreateMaintenanceWindow creates a new maintenance window.
 func (c *Client) CreateMaintenanceWindow(req *CreateMaintenanceWindowRequest) (*MaintenanceWindow, error) {
-	resp, err := c.doRequest("POST", "/maintenance-windows", req)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/maintenance-windows")
 	var maintenanceWindow MaintenanceWindow
-	if err := json.Unmarshal(resp, &maintenanceWindow); err != nil {
+	if err := base.doCreate(req, &maintenanceWindow); err != nil {
 		return nil, err
 	}
-
 	return &maintenanceWindow, nil
 }
 
 // GetMaintenanceWindow retrieves a maintenance window by ID.
 func (c *Client) GetMaintenanceWindow(id int64) (*MaintenanceWindow, error) {
-	resp, err := c.doRequest("GET", fmt.Sprintf("/maintenance-windows/%d", id), nil)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/maintenance-windows")
 	var maintenanceWindow MaintenanceWindow
-	if err := json.Unmarshal(resp, &maintenanceWindow); err != nil {
+	if err := base.doGet(id, &maintenanceWindow); err != nil {
 		return nil, err
 	}
-
 	return &maintenanceWindow, nil
 }
 
 // UpdateMaintenanceWindow updates an existing maintenance window.
 func (c *Client) UpdateMaintenanceWindow(id int64, req *UpdateMaintenanceWindowRequest) (*MaintenanceWindow, error) {
-	resp, err := c.doRequest("PATCH", fmt.Sprintf("/maintenance-windows/%d", id), req)
-	if err != nil {
-		return nil, err
-	}
-
+	base := NewBaseCRUDOperations(c, "/maintenance-windows")
 	var maintenanceWindow MaintenanceWindow
-	if err := json.Unmarshal(resp, &maintenanceWindow); err != nil {
+	if err := base.doUpdate(id, req, &maintenanceWindow); err != nil {
 		return nil, err
 	}
-
 	return &maintenanceWindow, nil
 }
 
 // DeleteMaintenanceWindow deletes a maintenance window.
 func (c *Client) DeleteMaintenanceWindow(id int64) error {
-	_, err := c.doRequest("DELETE", fmt.Sprintf("/maintenance-windows/%d", id), nil)
-	return err
+	base := NewBaseCRUDOperations(c, "/maintenance-windows")
+	return base.doDelete(id)
 }

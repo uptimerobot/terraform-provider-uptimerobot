@@ -332,14 +332,15 @@ resource "uptimerobot_integration" "webhook" {
 - `enable_notifications_for` (Number) Enable notifications for specific events (1 for all, 2 for down only, 3 for custom).
 - `name` (String) The name of the integration.
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders.
-- `type` (String) The type of the integration (slack, email, webhook, sms, discord, telegram, pushover, pushbullet, msteams, zapier, pagerduty, googlechat, splunk).
+- `type` (String) The type of the integration (slack, webhook, discord, telegram, pushover, pushbullet, msteams, zapier, pagerduty, googlechat, splunk, mattermost).
 - `value` (String) The value for the integration (e.g. webhook URL, email address).
 
 ### Optional
 
-- `custom_value` (String) The custom value for the integration. Only valid for slack (#channel), telegram (chat_id), and pushover (device name).
+- `custom_value` (String) The custom value for the integration. Only valid for slack (#channel), telegram (chat_id), and pushover (device name). Not used for webhook integrations (webhook settings are stored in dedicated fields).
 - `post_value` (String) The POST value to send with the webhook. Only valid for webhook integrations.
 - `send_as_json` (Boolean) Whether to send the webhook payload as JSON. Only valid for webhook integrations.
+- `send_as_post_parameters` (Boolean) Whether to send the webhook payload as POST parameters. Only valid for webhook integrations.
 - `send_as_query_string` (Boolean) Whether to send the webhook payload as query string. Only valid for webhook integrations.
 
 ### Read-Only

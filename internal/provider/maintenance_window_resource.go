@@ -2,14 +2,17 @@ package provider
 
 import (
 	"context"
+	"regexp"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
@@ -87,14 +90,23 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 			"interval": schema.StringAttribute{
 				Description: "Interval of maintenance window (once, daily, weekly, monthly)",
 				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("once", "daily", "weekly", "monthly"),
+				},
 			},
 			"date": schema.StringAttribute{
 				Description: "Date of the maintenance window (format: YYYY-MM-DD)",
 				Optional:    true,
 			},
 			"time": schema.StringAttribute{
-				Description: "Time of the maintenance window (format: HH:mm)",
+				Description: "Time of the maintenance window (format: HH:mm:ss)",
 				Required:    true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$`),
+						"must be in HH:mm:ss format (e.g., 14:30:00)",
+					),
+				},
 			},
 			"duration": schema.Int64Attribute{
 				Description: "Duration of the maintenance window in minutes",

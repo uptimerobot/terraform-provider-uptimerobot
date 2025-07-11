@@ -126,5 +126,5 @@ jobs:
         run: go test -v -cover ./internal/provider
         env:
           TF_ACC: '1'
-          UPTIMEROBOT_API_KEY: 'test'
-          UPTIMEROBOT_ORGANIZATION_ID: '1'
+          UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
+        if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
