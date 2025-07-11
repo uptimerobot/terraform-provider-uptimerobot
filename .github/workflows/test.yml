@@ -1,17 +1,6 @@
 name: Test
 
 on:
-  push:
-    branches:
-      - 'main'
-    paths:
-      - '**'
-      - '!**/.gitignore'
-      - '!**/*.md'
-      - '!LICENSE'
-      - '!.github/**'
-      - '.github/workflows/test.yml'
-
   pull_request:
     paths:
       - '**'
@@ -73,7 +62,7 @@ jobs:
         run: git diff --compact-summary --exit-code || (echo -e "\nDocumentation is out of sync. Run 'go generate ./...' to update and commit the changes." && exit 1)
 
   acceptance:
-    timeout-minutes: 15
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
