@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 
@@ -444,8 +445,16 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		// Convert string IDs to alert contact objects
 		alertContacts := make([]interface{}, 0, len(alertContactIds))
 		for _, contactId := range alertContactIds {
+			idInt, err := strconv.ParseInt(contactId, 10, 64)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Invalid Alert Contact ID",
+					fmt.Sprintf("Could not parse alert contact ID '%s' to integer: %v", contactId, err),
+				)
+				return
+			}
 			alertContacts = append(alertContacts, map[string]interface{}{
-				"alertContactId": contactId,
+				"alertContactId": idInt,
 				"threshold":      0,
 				"recurrence":     0,
 			})
@@ -860,8 +869,16 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		// Convert string IDs to alert contact objects
 		alertContacts := make([]interface{}, 0, len(alertContactIds))
 		for _, contactId := range alertContactIds {
+			idInt, err := strconv.ParseInt(contactId, 10, 64)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Invalid Alert Contact ID",
+					fmt.Sprintf("Could not parse alert contact ID '%s' to integer: %v", contactId, err),
+				)
+				return
+			}
 			alertContacts = append(alertContacts, map[string]interface{}{
-				"alertContactId": contactId,
+				"alertContactId": idInt,
 				"threshold":      0,
 				"recurrence":     0,
 			})
