@@ -42,7 +42,7 @@ func TestProviderConfigure_EnvironmentVariables(t *testing.T) {
 	const testAPIKey = "test-api-key-from-env"
 	const testAPIURL = "http://test-api-url.com"
 
-	t.Setenv("UPTIMEROBOT_API_TOKEN", testAPIKey)
+	t.Setenv("UPTIMEROBOT_API_KEY", testAPIKey)
 	t.Setenv("UPTIMEROBOT_API_URL", testAPIURL)
 
 	p := New("test")()

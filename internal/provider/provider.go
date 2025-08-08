@@ -51,7 +51,7 @@ func (p *UptimeRobotProvider) Schema(ctx context.Context, req provider.SchemaReq
 }
 
 func (p *UptimeRobotProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
-	apiKey := os.Getenv("UPTIMEROBOT_API_TOKEN")
+	apiKey := os.Getenv("UPTIMEROBOT_API_KEY")
 	apiURL := os.Getenv("UPTIMEROBOT_API_URL")
 
 	var config UptimeRobotProviderModel
