@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
@@ -38,7 +39,8 @@ func (p *UptimeRobotProvider) Schema(ctx context.Context, req provider.SchemaReq
 			"api_key": schema.StringAttribute{
 				MarkdownDescription: "API key for authentication.",
 				Required:            true,
-				Sensitive:           true,
+
+				Sensitive: true,
 			},
 			"api_url": schema.StringAttribute{
 				MarkdownDescription: "Optional API endpoint URL. If not specified, the default endpoint will be used.",
@@ -49,14 +51,25 @@ func (p *UptimeRobotProvider) Schema(ctx context.Context, req provider.SchemaReq
 }
 
 func (p *UptimeRobotProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+	apiKey := os.Getenv("UPTIMEROBOT_API_TOKEN")
+	apiURL := os.Getenv("UPTIMEROBOT_API_URL")
+
 	var config UptimeRobotProviderModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Read from environment variables if not set in configuration
-	apiKey := config.APIKey.ValueString()
+	// Check configuration data, which should take precedence over
+	// environment variable data, if found.
+	if config.APIKey.ValueString() != "" {
+		apiKey = config.APIKey.ValueString()
+	}
+
+	if config.APIURL.ValueString() != "" {
+		apiURL = config.APIURL.ValueString()
+	}
+
 	if apiKey == "" {
 		resp.Diagnostics.AddError(
 			"Missing API Key Configuration",
@@ -69,7 +82,6 @@ func (p *UptimeRobotProvider) Configure(ctx context.Context, req provider.Config
 	client := client.NewClient(apiKey)
 
 	// Override the default endpoint if specified in config or environment
-	apiURL := config.APIURL.ValueString()
 	if apiURL == "" {
 		apiURL = "https://api.uptimerobot.com/v3"
 	}

@@ -32,6 +32,14 @@ func NewClient(apiKey string) *Client {
 	}
 }
 
+func (c *Client) GetApiKey() string {
+	return c.apiKey
+}
+
+func (c *Client) GetBaseURL() string {
+	return c.baseURL
+}
+
 // SetBaseURL sets the base URL for the client.
 func (c *Client) SetBaseURL(url string) {
 	c.baseURL = url

@@ -33,17 +33,55 @@ func TestProvider(t *testing.T) {
 }
 
 func testAccPreCheck() {
-	// Ensure required environment variables are set for real API testing
 	if os.Getenv("UPTIMEROBOT_API_KEY") == "" {
 		panic("UPTIMEROBOT_API_KEY must be set for acceptance tests")
 	}
-	// UPTIMEROBOT_ORGANIZATION_ID is optional and not required for testing
 }
 
-func TestMain(m *testing.M) {
-	// Run tests
-	code := m.Run()
-	os.Exit(code)
+// New test to verify provider configuration using environment variables.
+func TestProviderConfigure_EnvironmentVariables(t *testing.T) {
+	// Use t.Setenv() to set environment variables for the duration of this test.
+	// This automatically cleans them up after the test completes.
+	const testAPIKey = "test-api-key-from-env"
+	const testAPIURL = "http://test-api-url.com"
+
+	t.Setenv("UPTIMEROBOT_API_TOKEN", testAPIKey)
+	t.Setenv("UPTIMEROBOT_API_URL", testAPIURL)
+
+	p := New("test")()
+	req := provider.ConfigureRequest{}
+	resp := &provider.ConfigureResponse{}
+
+	p.Configure(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Provider.Configure() failed with diagnostics: %v", resp.Diagnostics)
+	}
+
+	clientData := resp.ResourceData
+	if clientData == nil {
+		t.Fatal("ResourceData is nil, provider client was not configured")
+	}
+
+	apiClient, ok := clientData.(*client.Client)
+	if !ok {
+		t.Fatalf("Failed to type assert ResourceData to *client.Client, got %T", clientData)
+	}
+
+	if gotAPIKey := apiClient.GetApiKey(); gotAPIKey != testAPIKey {
+		t.Errorf("Expected API key to be %s, but got %s", testAPIKey, gotAPIKey)
+	}
+
+	if gotAPIURL := apiClient.GetBaseURL(); gotAPIURL != testAPIURL {
+		t.Errorf("Expected API URL to be %s, but got %s", testAPIURL, gotAPIURL)
+	}
+
+	t.Setenv("UPTIMEROBOT_API_URL", "")
+	p.Configure(context.Background(), req, resp)
+
+	if gotAPIURL := apiClient.GetBaseURL(); gotAPIURL != "https://api.uptimerobot.com/v3" {
+		t.Errorf("Expected API URL to be the default, but got %s", gotAPIURL)
+	}
 }
 
 func testAccProviderConfig() string {
