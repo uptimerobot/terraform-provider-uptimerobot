@@ -32,11 +32,11 @@ func NewClient(apiKey string) *Client {
 	}
 }
 
-func (c *Client) GetApiKey() string {
+func (c *Client) ApiKey() string {
 	return c.apiKey
 }
 
-func (c *Client) GetBaseURL() string {
+func (c *Client) BaseURL() string {
 	return c.baseURL
 }
 

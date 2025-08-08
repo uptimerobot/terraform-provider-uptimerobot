@@ -38,6 +38,12 @@ func testAccPreCheck() {
 	}
 }
 
+func TestMain(m *testing.M) {
+	// Run tests
+	code := m.Run()
+	os.Exit(code)
+}
+
 func TestProviderConfigure_EnvironmentVariables(t *testing.T) {
 	const testAPIKey = "test-api-key-from-env"
 	const testAPIURL = "http://test-api-url.com"
@@ -65,18 +71,27 @@ func TestProviderConfigure_EnvironmentVariables(t *testing.T) {
 		t.Fatalf("Failed to type assert ResourceData to *client.Client, got %T", clientData)
 	}
 
-	if gotAPIKey := apiClient.GetApiKey(); gotAPIKey != testAPIKey {
+	if gotAPIKey := apiClient.ApiKey(); gotAPIKey != testAPIKey {
 		t.Errorf("Expected API key to be %s, but got %s", testAPIKey, gotAPIKey)
 	}
 
-	if gotAPIURL := apiClient.GetBaseURL(); gotAPIURL != testAPIURL {
+	if gotAPIURL := apiClient.BaseURL(); gotAPIURL != testAPIURL {
 		t.Errorf("Expected API URL to be %s, but got %s", testAPIURL, gotAPIURL)
 	}
 
 	t.Setenv("UPTIMEROBOT_API_URL", "")
 	p.Configure(context.Background(), req, resp)
 
-	if gotAPIURL := apiClient.GetBaseURL(); gotAPIURL != "https://api.uptimerobot.com/v3" {
+	// Re-fetch the newly configured client instance.
+	clientData = resp.ResourceData
+	apiClient, ok = clientData.(*client.Client)
+	if !ok {
+		t.Fatalf("Failed to type assert ResourceData to *client.Client, got %T", clientData)
+	}
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Provider.Configure() after clearing env failed with diagnostics: %v", resp.Diagnostics)
+	}
+	if gotAPIURL := apiClient.BaseURL(); gotAPIURL != "https://api.uptimerobot.com/v3" {
 		t.Errorf("Expected API URL to be the default, but got %s", gotAPIURL)
 	}
 }
