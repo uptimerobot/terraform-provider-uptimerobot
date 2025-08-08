@@ -38,10 +38,7 @@ func testAccPreCheck() {
 	}
 }
 
-// New test to verify provider configuration using environment variables.
 func TestProviderConfigure_EnvironmentVariables(t *testing.T) {
-	// Use t.Setenv() to set environment variables for the duration of this test.
-	// This automatically cleans them up after the test completes.
 	const testAPIKey = "test-api-key-from-env"
 	const testAPIURL = "http://test-api-url.com"
 
