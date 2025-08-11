@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
@@ -36,12 +37,12 @@ func (p *UptimeRobotProvider) Schema(ctx context.Context, req provider.SchemaReq
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"api_key": schema.StringAttribute{
-				MarkdownDescription: "API key for authentication.",
-				Required:            true,
+				MarkdownDescription: "API key for authentication. Can also be set via the `UPTIMEROBOT_API_KEY` environment variable.",
+				Optional:            true,
 				Sensitive:           true,
 			},
 			"api_url": schema.StringAttribute{
-				MarkdownDescription: "Optional API endpoint URL. If not specified, the default endpoint will be used.",
+				MarkdownDescription: "Optional API endpoint URL. If not specified, the default endpoint will be used. Can also be set via the `UPTIMEROBOT_API_URL` environment variable.",
 				Optional:            true,
 			},
 		},
@@ -49,34 +50,43 @@ func (p *UptimeRobotProvider) Schema(ctx context.Context, req provider.SchemaReq
 }
 
 func (p *UptimeRobotProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+	apiKey := os.Getenv("UPTIMEROBOT_API_KEY")
+	apiURL := os.Getenv("UPTIMEROBOT_API_URL")
+
 	var config UptimeRobotProviderModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
-	if resp.Diagnostics.HasError() {
-		return
+
+	// Only try to read config if Terraform actually provided something
+	if !req.Config.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
-	// Read from environment variables if not set in configuration
-	apiKey := config.APIKey.ValueString()
+	// Config values take precedence over env vars
+	if !config.APIKey.IsNull() && !config.APIKey.IsUnknown() {
+		apiKey = config.APIKey.ValueString()
+	}
+	if !config.APIURL.IsNull() && !config.APIURL.IsUnknown() {
+		apiURL = config.APIURL.ValueString()
+	}
+
 	if apiKey == "" {
 		resp.Diagnostics.AddError(
 			"Missing API Key Configuration",
-			"While configuring the provider, the API key was not found in the configuration. Please ensure the api_key argument is set in the provider configuration.",
+			"While configuring the provider, the API key was not found in the configuration or the UPTIMEROBOT_API_KEY environment variable.",
 		)
-
+		return
 	}
 
-	// Create a new client using the configuration
 	client := client.NewClient(apiKey)
 
 	// Override the default endpoint if specified in config or environment
-	apiURL := config.APIURL.ValueString()
 	if apiURL == "" {
 		apiURL = "https://api.uptimerobot.com/v3"
 	}
-
 	client.SetBaseURL(apiURL)
 
-	// Make the client available during DataSource and Resource Configure methods
 	resp.DataSourceData = client
 	resp.ResourceData = client
 }
