@@ -237,7 +237,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"tags": schema.ListAttribute{
 				Description: "Tags for the monitor",
 				Optional:    true,
+				Computed:    true,
 				ElementType: types.StringType,
+				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"assigned_alert_contacts": schema.ListAttribute{
 				Description: "Alert contact IDs to assign to the monitor",
@@ -423,15 +425,18 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Handle tags
-	if !plan.Tags.IsNull() {
+	if !plan.Tags.IsNull() && !plan.Tags.IsUnknown() {
 		var tags []string
-		diags = plan.Tags.ElementsAs(ctx, &tags, false)
+		diags := plan.Tags.ElementsAs(ctx, &tags, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		sort.Strings(tags)
-		createReq.Tags = tags
+
+		if len(tags) > 0 {
+			sort.Strings(tags)
+			createReq.Tags = tags
+		}
 	}
 
 	// Handle assigned alert contacts
@@ -666,7 +671,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		}
 		state.Tags = types.ListValueMust(types.StringType, tagValues)
 	} else {
-		state.Tags = types.ListNull(types.StringType)
+		state.Tags = types.ListValueMust(types.StringType, []attr.Value{})
 	}
 
 	if len(monitor.AssignedAlertContacts) > 0 {
