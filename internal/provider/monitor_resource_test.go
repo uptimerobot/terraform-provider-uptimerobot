@@ -202,7 +202,7 @@ func TestAccMonitorResource_Tags(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
 					// Verify no tags are set initially
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "tags"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "tags.#", "0"),
 				),
 			},
 			// Step 2: Add tags to existing monitor - this should NOT fail
@@ -222,7 +222,7 @@ func TestAccMonitorResource_Tags(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-tags"),
 					// Verify tags are removed
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "tags"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "tags.#", "0"),
 				),
 			},
 		},
