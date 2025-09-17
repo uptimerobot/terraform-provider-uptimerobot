@@ -231,7 +231,7 @@ func (r *integrationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 			"value": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The value for the integration (e.g. webhook URL, email address).",
+				MarkdownDescription: "The value for the integration (e.g. webhook URL).",
 			},
 			"custom_value": schema.StringAttribute{
 				Optional:            true,
