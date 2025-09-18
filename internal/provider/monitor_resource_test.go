@@ -15,6 +15,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300
+	timeout 	 = 30
 }
 `, name)
 }
@@ -32,6 +33,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout 	 = 30
 }
 `, name, alertContactsStr)
 }
@@ -49,6 +51,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout 	 = 30
 }
 `, name, tagsStr)
 }
@@ -66,6 +69,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout 	 = 30
 }
 `, name, maintenanceWindowsStr)
 }
@@ -83,6 +87,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout 	 = 30
 }
 `, name, responseCodesStr)
 }
@@ -134,9 +139,10 @@ func TestAccMonitorResource(t *testing.T) {
 			},
 			// Import testing
 			{
-				ResourceName:      "uptimerobot_monitor.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            "uptimerobot_monitor.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"timeout"},
 			},
 		},
 	})
@@ -333,6 +339,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "PORT"
     interval     = 300
+	timeout 	 = 30
 }
 `,
 				ExpectError: regexp.MustCompile("Port required for PORT monitor"),
@@ -346,6 +353,7 @@ resource "uptimerobot_monitor" "test" {
     type         = "PORT"
     interval     = 300
     port         = 80
+	timeout 	 = 30
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -372,6 +380,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "KEYWORD"
     interval     = 300
+	timeout 	 = 30
     keyword_value = "test"
 }
 `,
@@ -385,6 +394,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "KEYWORD"
     interval     = 300
+	timeout 	 = 30
     keyword_type = "ALERT_EXISTS"
 }
 `,
@@ -398,6 +408,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "KEYWORD"
     interval     = 300
+	timeout 	 = 30
     keyword_type = "INVALID_TYPE"
     keyword_value = "test"
 }
@@ -412,6 +423,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "KEYWORD"
     interval     = 300
+	timeout 	 = 30
     keyword_type = "ALERT_EXISTS"
     keyword_value = "test"
 }
@@ -431,6 +443,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "KEYWORD"
     interval     = 300
+	timeout 	 = 30
     keyword_type = "ALERT_NOT_EXISTS"
     keyword_value = "error"
 }
@@ -460,6 +473,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HEARTBEAT"
     interval     = 300
+	timeout 	 = 30
     grace_period = 60
 }
 `,
@@ -477,6 +491,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "example.com"
     type         = "DNS"
     interval     = 300
+	timeout 	 = 30
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -503,6 +518,7 @@ resource "uptimerobot_monitor" "test" {
     url                      = "https://example.com"
     type                     = "HTTP"
     interval                 = 300
+	timeout 				 = 30
     response_time_threshold  = 5000
 }
 `,
@@ -520,6 +536,7 @@ resource "uptimerobot_monitor" "test" {
     url           = "https://example.com"
     type          = "HTTP"
     interval      = 300
+	timeout 	  = 30
     regional_data = "na"
 }
 `,
@@ -537,6 +554,7 @@ resource "uptimerobot_monitor" "test" {
     url                      = "https://example.com"
     type                     = "HTTP"
     interval                 = 300
+	timeout 	 			 = 30
     response_time_threshold  = 3000
     regional_data            = "eu"
 }
@@ -566,6 +584,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "INVALID_TYPE"
     interval     = 300
+	timeout 	 = 30
 }
 `,
 				ExpectError: regexp.MustCompile(`(?s)value must be one of:.*HTTP.*KEYWORD.*PING.*PORT.*HEARTBEAT.*DNS`),
