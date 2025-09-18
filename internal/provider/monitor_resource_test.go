@@ -151,6 +151,7 @@ func TestAccMonitorResource(t *testing.T) {
 // TestAccMonitorResource_AlertContacts tests the specific case where alert contacts
 // are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_AlertContacts(t *testing.T) {
+	t.Skip("Skipping: assigned_alert_contacts work and added only if they are from the list of alert contacts of the user.")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
