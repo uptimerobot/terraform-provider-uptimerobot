@@ -1,6 +1,6 @@
 resource "uptimerobot_monitor" "database_port" {
   name     = "Database Port Check"
-  type     = "port"
+  type     = "PORT"
   url      = "db.example.com"
   port     = 5432
   interval = 300
