@@ -23,7 +23,7 @@ type CreateMonitorRequest struct {
 	URL                      string            `json:"url"`
 	Type                     MonitorType       `json:"type"`
 	Interval                 int               `json:"interval"`
-	Timeout                  int               `json:"timeout,omitempty"`
+	Timeout                  *int              `json:"timeout,omitempty"`
 	HTTPAuthType             string            `json:"authType,omitempty"`
 	HTTPMethodType           string            `json:"httpMethodType,omitempty"`
 	HTTPUsername             string            `json:"httpUsername,omitempty"`
@@ -55,7 +55,7 @@ type UpdateMonitorRequest struct {
 	URL                      string            `json:"url"`
 	Type                     MonitorType       `json:"type"`
 	Interval                 int               `json:"interval"`
-	Timeout                  int               `json:"timeout,omitempty"`
+	Timeout                  *int              `json:"timeout,omitempty"`
 	HTTPAuthType             string            `json:"authType,omitempty"`
 	HTTPMethodType           string            `json:"httpMethodType,omitempty"`
 	HTTPUsername             string            `json:"httpUsername,omitempty"`
