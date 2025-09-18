@@ -680,7 +680,11 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		}
 		state.Tags = types.SetValueMust(types.StringType, tagValues)
 	} else {
-		state.Tags = types.SetValueMust(types.StringType, []attr.Value{})
+		if isImport || state.Tags.IsNull() {
+			state.Tags = types.SetNull(types.StringType)
+		} else {
+			state.Tags = types.SetValueMust(types.StringType, []attr.Value{})
+		}
 	}
 
 	if len(monitor.AssignedAlertContacts) > 0 {
