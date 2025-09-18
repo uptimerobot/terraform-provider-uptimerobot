@@ -66,7 +66,7 @@ type monitorResourceModel struct {
 	Name                     types.String `tfsdk:"name"`
 	Status                   types.String `tfsdk:"status"`
 	URL                      types.String `tfsdk:"url"`
-	Tags                     types.List   `tfsdk:"tags"`
+	Tags                     types.Set    `tfsdk:"tags"`
 	AssignedAlertContacts    types.List   `tfsdk:"assigned_alert_contacts"`
 	ResponseTimeThreshold    types.Int64  `tfsdk:"response_time_threshold"`
 	RegionalData             types.String `tfsdk:"regional_data"`
@@ -234,12 +234,10 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "URL to monitor",
 				Required:    true,
 			},
-			"tags": schema.ListAttribute{
+			"tags": schema.SetAttribute{
 				Description: "Tags for the monitor",
 				Optional:    true,
-				Computed:    true,
 				ElementType: types.StringType,
-				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"assigned_alert_contacts": schema.ListAttribute{
 				Description: "Alert contact IDs to assign to the monitor",
@@ -669,9 +667,9 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		for _, tagName := range tagNames {
 			tagValues = append(tagValues, types.StringValue(tagName))
 		}
-		state.Tags = types.ListValueMust(types.StringType, tagValues)
+		state.Tags = types.SetValueMust(types.StringType, tagValues)
 	} else {
-		state.Tags = types.ListValueMust(types.StringType, []attr.Value{})
+		state.Tags = types.SetValueMust(types.StringType, []attr.Value{})
 	}
 
 	if len(monitor.AssignedAlertContacts) > 0 {
@@ -972,9 +970,9 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		for _, tagName := range tagNames {
 			tagValues = append(tagValues, types.StringValue(tagName))
 		}
-		updatedState.Tags = types.ListValueMust(types.StringType, tagValues)
+		updatedState.Tags = types.SetValueMust(types.StringType, tagValues)
 	} else if plan.Tags.IsNull() {
-		updatedState.Tags = types.ListNull(types.StringType)
+		updatedState.Tags = types.SetNull(types.StringType)
 	}
 
 	// Update assigned alert contacts
@@ -1044,7 +1042,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 
 	// Preserve null vs empty list consistency between state and plan for fields
 	// that might be returned differently by the API
-	modifyPlanForListField(ctx, &plan.Tags, &state.Tags, resp, "tags")
+	modifyPlanForSetField(ctx, &plan.Tags, &state.Tags, resp, "tags")
 	modifyPlanForListField(ctx, &plan.AssignedAlertContacts, &state.AssignedAlertContacts, resp, "assigned_alert_contacts")
 	modifyPlanForListField(ctx, &plan.MaintenanceWindowIDs, &state.MaintenanceWindowIDs, resp, "maintenance_window_ids")
 	modifyPlanForListField(ctx, &plan.SuccessHTTPResponseCodes, &state.SuccessHTTPResponseCodes, resp, "success_http_response_codes")
@@ -1087,6 +1085,14 @@ func modifyPlanForListField(ctx context.Context, planField, stateField *types.Li
 
 	// Case 3: Both state and plan have non-null values -> don't modify
 	// This allows users to add/remove items normally
+}
+
+func modifyPlanForSetField(ctx context.Context, planField, stateField *types.Set, resp *resource.ModifyPlanResponse, fieldName string) {
+	if stateField.IsNull() && !planField.IsNull() {
+		if len(planField.Elements()) == 0 {
+			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.SetNull(planField.ElementType(ctx)))
+		}
+	}
 }
 
 // ImportState imports an existing resource into Terraform.
