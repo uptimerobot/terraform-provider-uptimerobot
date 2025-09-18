@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
@@ -443,7 +442,6 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 
 		if len(tags) > 0 {
-			sort.Strings(tags)
 			createReq.Tags = tags
 		}
 	}
@@ -673,7 +671,6 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		for _, tag := range monitor.Tags {
 			tagNames = append(tagNames, tag.Name)
 		}
-		sort.Strings(tagNames)
 		tagValues := make([]attr.Value, 0, len(tagNames))
 		for _, tagName := range tagNames {
 			tagValues = append(tagValues, types.StringValue(tagName))
@@ -872,7 +869,6 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		sort.Strings(tags)
 		updateReq.Tags = tags
 	} else {
 		// Explicitly set empty array to clear tags
@@ -983,7 +979,6 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		for _, tag := range updatedMonitor.Tags {
 			tagNames = append(tagNames, tag.Name)
 		}
-		sort.Strings(tagNames)
 		tagValues := make([]attr.Value, 0, len(tagNames))
 		for _, tagName := range tagNames {
 			tagValues = append(tagValues, types.StringValue(tagName))
@@ -1097,6 +1092,15 @@ func modifyPlanForListField(ctx context.Context, planField, stateField *types.Li
 		// If plan has items, leave it alone - user is adding items to a previously null field
 	}
 
+	if !stateField.IsNull() && len(stateField.Elements()) == 0 && planField.IsNull() {
+		resp.Plan.SetAttribute(
+			ctx,
+			path.Root(fieldName),
+			types.ListValueMust(stateField.ElementType(ctx), []attr.Value{}),
+		)
+		return
+	}
+
 	// Case 2: State has non-null value, plan is null -> DON'T override!
 	// The user explicitly wants to remove the items (set to null)
 	// Let the plan proceed as-is
@@ -1110,6 +1114,15 @@ func modifyPlanForSetField(ctx context.Context, planField, stateField *types.Set
 		if len(planField.Elements()) == 0 {
 			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.SetNull(planField.ElementType(ctx)))
 		}
+	}
+
+	if !stateField.IsNull() && len(stateField.Elements()) == 0 && planField.IsNull() {
+		resp.Plan.SetAttribute(
+			ctx,
+			path.Root(fieldName),
+			types.SetValueMust(stateField.ElementType(ctx), []attr.Value{}),
+		)
+		return
 	}
 }
 
