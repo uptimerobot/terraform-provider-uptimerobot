@@ -229,7 +229,7 @@ Common monitoring intervals:
 - `response_time_threshold` (Number) Response time threshold in milliseconds. Response time over this threshold will trigger an incident
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
 - `success_http_response_codes` (List of String) The expected HTTP response codes
-- `tags` (List of String) Tags for the monitor
+- `tags` (Set of String) Tags for the monitor
 - `timeout` (Number) Timeout for the monitoring check (in seconds)
 
 ### Read-Only
