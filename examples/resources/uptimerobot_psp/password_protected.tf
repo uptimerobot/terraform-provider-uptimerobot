@@ -1,6 +1,6 @@
 resource "uptimerobot_monitor" "internal_api" {
   name     = "Internal API"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://internal-api.example.com"
   interval = 300
 }

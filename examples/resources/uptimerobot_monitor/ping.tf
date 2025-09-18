@@ -1,6 +1,6 @@
 resource "uptimerobot_monitor" "server_ping" {
   name     = "Server Ping Check"
-  type     = "ping"
+  type     = "PING"
   url      = "server.example.com"
   interval = 300
 
@@ -12,7 +12,7 @@ resource "uptimerobot_monitor" "server_ping" {
 
 resource "uptimerobot_monitor" "gateway_ping" {
   name     = "Gateway Ping"
-  type     = "ping"
+  type     = "PING"
   url      = "gateway.example.com"
   interval = 60
 

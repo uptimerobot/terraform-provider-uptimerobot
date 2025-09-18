@@ -16,7 +16,7 @@ Manages an UptimeRobot monitor.
 ```terraform
 resource "uptimerobot_monitor" "website" {
   name     = "My Website"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://example.com"
   interval = 300
 
@@ -39,7 +39,7 @@ resource "uptimerobot_monitor" "website" {
 ```terraform
 resource "uptimerobot_monitor" "api_health" {
   name     = "API Health Check"
-  type     = "keyword"
+  type     = "KEYWORD"
   url      = "https://api.example.com/health"
   interval = 60
 
@@ -71,7 +71,7 @@ resource "uptimerobot_monitor" "api_health" {
 ```terraform
 resource "uptimerobot_monitor" "protected_api" {
   name     = "Protected API Endpoint"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://api.example.com/protected"
   interval = 300
 
@@ -120,7 +120,7 @@ variable "api_key" {
 ```terraform
 resource "uptimerobot_monitor" "database_port" {
   name     = "Database Port Check"
-  type     = "port"
+  type     = "PORT"
   url      = "db.example.com"
   port     = 5432
   interval = 300
@@ -133,7 +133,7 @@ resource "uptimerobot_monitor" "database_port" {
 
 resource "uptimerobot_monitor" "redis_port" {
   name     = "Redis Port Check"
-  type     = "port"
+  type     = "PORT"
   url      = "redis.example.com"
   port     = 6379
   interval = 60
@@ -143,7 +143,7 @@ resource "uptimerobot_monitor" "redis_port" {
 
 resource "uptimerobot_monitor" "ssh_port" {
   name     = "SSH Port Check"
-  type     = "port"
+  type     = "PORT"
   url      = "server.example.com"
   port     = 22
   interval = 900
@@ -157,7 +157,7 @@ resource "uptimerobot_monitor" "ssh_port" {
 ```terraform
 resource "uptimerobot_monitor" "server_ping" {
   name     = "Server Ping Check"
-  type     = "ping"
+  type     = "PING"
   url      = "server.example.com"
   interval = 300
 
@@ -169,7 +169,7 @@ resource "uptimerobot_monitor" "server_ping" {
 
 resource "uptimerobot_monitor" "gateway_ping" {
   name     = "Gateway Ping"
-  type     = "ping"
+  type     = "PING"
   url      = "gateway.example.com"
   interval = 60
 
@@ -182,10 +182,10 @@ resource "uptimerobot_monitor" "gateway_ping" {
 
 ## Monitor Types
 
-- `http` - HTTP(s) monitoring
-- `keyword` - Keyword monitoring (searches for specific text)
-- `ping` - Ping monitoring
-- `port` - Port monitoring
+- `HTTP` - HTTP(s) monitoring
+- `KEYWORD` - Keyword monitoring (searches for specific text)
+- `PING` - Ping monitoring
+- `PORT` - Port monitoring
 
 ## Intervals
 

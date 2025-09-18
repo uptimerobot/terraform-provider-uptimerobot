@@ -17,7 +17,7 @@ provider "uptimerobot" {
 # Step 1: Create a monitor without alert contacts initially
 resource "uptimerobot_monitor" "website" {
   name     = "My Website"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://example.com"
   interval = 300
 
@@ -30,7 +30,7 @@ resource "uptimerobot_monitor" "website" {
 # but now works correctly after the fix
 resource "uptimerobot_monitor" "website_with_contacts" {
   name     = "My Website"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://example.com"
   interval = 300
 
@@ -45,7 +45,7 @@ resource "uptimerobot_monitor" "website_with_contacts" {
 # or setting it to null
 resource "uptimerobot_monitor" "website_no_contacts" {
   name     = "My Website"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://example.com"
   interval = 300
 

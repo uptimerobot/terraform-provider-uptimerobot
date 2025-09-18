@@ -15,7 +15,7 @@ provider "uptimerobot" {
 resource "uptimerobot_monitor" "test" {
   name     = "Test Monitor"
   url      = "https://example.com"
-  type     = "http"
+  type     = "HTTP"
   interval = 300
 
   http_method = "GET"
