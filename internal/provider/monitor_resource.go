@@ -858,6 +858,8 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			return
 		}
 		updateReq.MaintenanceWindowIDs = windowIDs
+	} else {
+		updateReq.MaintenanceWindowIDs = []int64{}
 	}
 
 	// Always set tags - empty array if null, populated array if not null
