@@ -15,7 +15,6 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300
-	timeout 	 = 30
 }
 `, name)
 }
@@ -33,7 +32,6 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
-	timeout 	 = 30
 }
 `, name, alertContactsStr)
 }
@@ -51,7 +49,6 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
-	timeout 	 = 30
 }
 `, name, tagsStr)
 }
@@ -69,7 +66,6 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
-	timeout 	 = 30
 }
 `, name, maintenanceWindowsStr)
 }
@@ -87,7 +83,6 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
-	timeout 	 = 30
 }
 `, name, responseCodesStr)
 }
