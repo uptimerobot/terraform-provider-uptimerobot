@@ -30,10 +30,11 @@ func NewMonitorResource() resource.Resource {
 
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ resource.Resource                = &monitorResource{}
-	_ resource.ResourceWithConfigure   = &monitorResource{}
-	_ resource.ResourceWithModifyPlan  = &monitorResource{}
-	_ resource.ResourceWithImportState = &monitorResource{}
+	_ resource.Resource                 = &monitorResource{}
+	_ resource.ResourceWithConfigure    = &monitorResource{}
+	_ resource.ResourceWithModifyPlan   = &monitorResource{}
+	_ resource.ResourceWithImportState  = &monitorResource{}
+	_ resource.ResourceWithUpgradeState = &monitorResource{}
 )
 
 // monitorResource is the resource implementation.
@@ -99,6 +100,7 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Version:     1,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
@@ -1082,7 +1084,7 @@ func modifyPlanForListField(ctx context.Context, planField, stateField *types.Li
 	// DO NOT modify the plan if the user is intentionally adding/removing items
 
 	// Case 1: State is null, plan has an empty list -> convert plan to null for consistency
-	if stateField.IsNull() && !planField.IsNull() {
+	if stateField.IsNull() && !planField.IsNull() && !planField.IsUnknown() {
 		// Check if plan has an empty list by getting the elements without type conversion
 		planElements := planField.Elements()
 		if len(planElements) == 0 {
@@ -1110,7 +1112,7 @@ func modifyPlanForListField(ctx context.Context, planField, stateField *types.Li
 }
 
 func modifyPlanForSetField(ctx context.Context, planField, stateField *types.Set, resp *resource.ModifyPlanResponse, fieldName string) {
-	if stateField.IsNull() && !planField.IsNull() {
+	if stateField.IsNull() && !planField.IsNull() && !planField.IsUnknown() {
 		if len(planField.Elements()) == 0 {
 			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.SetNull(planField.ElementType(ctx)))
 		}
@@ -1136,4 +1138,61 @@ func stringValue(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
+
+	type v0Model struct {
+		Tags types.List `tfsdk:"tags"` // this was an old type that should be set now
+	}
+	return map[int64]resource.StateUpgrader{
+		0: {
+			PriorSchema: &schema.Schema{
+				Attributes: map[string]schema.Attribute{
+					"tags": schema.ListAttribute{
+						ElementType: types.StringType,
+						Optional:    true,
+					},
+				},
+			}, StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				// 1) Read prior state (decoded using PriorSchema above)
+				var prior v0Model
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				// 2) Convert tags: list -> set (dedupe as a courtesy)
+				if prior.Tags.IsNull() || prior.Tags.IsUnknown() {
+					resp.Diagnostics.Append(
+						resp.State.SetAttribute(ctx, path.Root("tags"), types.SetNull(types.StringType))...,
+					)
+				} else {
+					var tags []string
+					resp.Diagnostics.Append(prior.Tags.ElementsAs(ctx, &tags, false)...)
+					if resp.Diagnostics.HasError() {
+						return
+					}
+					seen := make(map[string]struct{}, len(tags))
+					vals := make([]attr.Value, 0, len(tags))
+					for _, t := range tags {
+						if _, ok := seen[t]; ok {
+							continue
+						}
+						seen[t] = struct{}{}
+						vals = append(vals, types.StringValue(t))
+					}
+					resp.Diagnostics.Append(
+						resp.State.SetAttribute(ctx, path.Root("tags"), types.SetValueMust(types.StringType, vals))...,
+					)
+				}
+
+				// NOTE: For a fully correct upgrade you should populate ALL attributes in resp.State
+				// (set known values, or set them to null). The framework does not auto-copy prior
+				// values you don’t set here. For simple one-attribute changes, you can get away with
+				// setting only the changed field(s) plus "id", but best practice is to map the whole
+				// prior model to the current model and do: resp.State.Set(ctx, upgradedModel).
+			},
+		},
+	}
 }
