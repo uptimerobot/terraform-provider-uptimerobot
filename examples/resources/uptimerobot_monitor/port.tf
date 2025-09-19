@@ -1,6 +1,6 @@
 resource "uptimerobot_monitor" "database_port" {
   name     = "Database Port Check"
-  type     = "port"
+  type     = "PORT"
   url      = "db.example.com"
   port     = 5432
   interval = 300
@@ -13,7 +13,7 @@ resource "uptimerobot_monitor" "database_port" {
 
 resource "uptimerobot_monitor" "redis_port" {
   name     = "Redis Port Check"
-  type     = "port"
+  type     = "PORT"
   url      = "redis.example.com"
   port     = 6379
   interval = 60
@@ -23,7 +23,7 @@ resource "uptimerobot_monitor" "redis_port" {
 
 resource "uptimerobot_monitor" "ssh_port" {
   name     = "SSH Port Check"
-  type     = "port"
+  type     = "PORT"
   url      = "server.example.com"
   port     = 22
   interval = 900

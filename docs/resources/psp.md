@@ -16,14 +16,14 @@ Manages an UptimeRobot Public Status Page (PSP).
 ```terraform
 resource "uptimerobot_monitor" "website" {
   name     = "Website"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://example.com"
   interval = 300
 }
 
 resource "uptimerobot_monitor" "api" {
   name     = "API"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://api.example.com"
   interval = 300
 }
@@ -42,7 +42,7 @@ resource "uptimerobot_psp" "public_status" {
 ```terraform
 resource "uptimerobot_monitor" "website" {
   name     = "Website"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://example.com"
   interval = 300
 }
@@ -67,7 +67,7 @@ resource "uptimerobot_psp" "custom_domain_status" {
 ```terraform
 resource "uptimerobot_monitor" "internal_api" {
   name     = "Internal API"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://internal-api.example.com"
   interval = 300
 }
@@ -98,7 +98,7 @@ resource "uptimerobot_psp" "internal_status" {
 ```terraform
 resource "uptimerobot_monitor" "website" {
   name     = "Website"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://example.com"
   interval = 300
 }

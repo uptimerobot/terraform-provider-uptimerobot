@@ -1,6 +1,6 @@
 resource "uptimerobot_monitor" "protected_api" {
   name     = "Protected API Endpoint"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://api.example.com/protected"
   interval = 300
 

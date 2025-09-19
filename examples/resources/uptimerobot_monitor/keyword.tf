@@ -1,6 +1,6 @@
 resource "uptimerobot_monitor" "api_health" {
   name     = "API Health Check"
-  type     = "keyword"
+  type     = "KEYWORD"
   url      = "https://api.example.com/health"
   interval = 60
 

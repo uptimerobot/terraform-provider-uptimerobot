@@ -1,13 +1,13 @@
 resource "uptimerobot_monitor" "website" {
   name     = "Website"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://example.com"
   interval = 300
 }
 
 resource "uptimerobot_monitor" "api" {
   name     = "API"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://api.example.com"
   interval = 300
 }

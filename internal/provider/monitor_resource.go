@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
@@ -31,10 +30,11 @@ func NewMonitorResource() resource.Resource {
 
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ resource.Resource                = &monitorResource{}
-	_ resource.ResourceWithConfigure   = &monitorResource{}
-	_ resource.ResourceWithModifyPlan  = &monitorResource{}
-	_ resource.ResourceWithImportState = &monitorResource{}
+	_ resource.Resource                 = &monitorResource{}
+	_ resource.ResourceWithConfigure    = &monitorResource{}
+	_ resource.ResourceWithModifyPlan   = &monitorResource{}
+	_ resource.ResourceWithImportState  = &monitorResource{}
+	_ resource.ResourceWithUpgradeState = &monitorResource{}
 )
 
 // monitorResource is the resource implementation.
@@ -68,7 +68,7 @@ type monitorResourceModel struct {
 	Name                     types.String `tfsdk:"name"`
 	Status                   types.String `tfsdk:"status"`
 	URL                      types.String `tfsdk:"url"`
-	Tags                     types.List   `tfsdk:"tags"`
+	Tags                     types.Set    `tfsdk:"tags"`
 	AssignedAlertContacts    types.List   `tfsdk:"assigned_alert_contacts"`
 	ResponseTimeThreshold    types.Int64  `tfsdk:"response_time_threshold"`
 	RegionalData             types.String `tfsdk:"regional_data"`
@@ -100,6 +100,7 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Version:     1,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
@@ -244,12 +245,10 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "URL to monitor",
 				Required:    true,
 			},
-			"tags": schema.ListAttribute{
+			"tags": schema.SetAttribute{
 				Description: "Tags for the monitor",
 				Optional:    true,
-				Computed:    true,
 				ElementType: types.StringType,
-				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"assigned_alert_contacts": schema.ListAttribute{
 				Description: "Alert contact IDs to assign to the monitor",
@@ -445,7 +444,6 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 
 		if len(tags) > 0 {
-			sort.Strings(tags)
 			createReq.Tags = tags
 		}
 	}
@@ -675,14 +673,17 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		for _, tag := range monitor.Tags {
 			tagNames = append(tagNames, tag.Name)
 		}
-		sort.Strings(tagNames)
 		tagValues := make([]attr.Value, 0, len(tagNames))
 		for _, tagName := range tagNames {
 			tagValues = append(tagValues, types.StringValue(tagName))
 		}
-		state.Tags = types.ListValueMust(types.StringType, tagValues)
+		state.Tags = types.SetValueMust(types.StringType, tagValues)
 	} else {
-		state.Tags = types.ListValueMust(types.StringType, []attr.Value{})
+		if isImport || state.Tags.IsNull() {
+			state.Tags = types.SetNull(types.StringType)
+		} else {
+			state.Tags = types.SetValueMust(types.StringType, []attr.Value{})
+		}
 	}
 
 	if len(monitor.AssignedAlertContacts) > 0 {
@@ -870,7 +871,6 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		sort.Strings(tags)
 		updateReq.Tags = tags
 	} else {
 		// Explicitly set empty array to clear tags
@@ -981,14 +981,13 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		for _, tag := range updatedMonitor.Tags {
 			tagNames = append(tagNames, tag.Name)
 		}
-		sort.Strings(tagNames)
 		tagValues := make([]attr.Value, 0, len(tagNames))
 		for _, tagName := range tagNames {
 			tagValues = append(tagValues, types.StringValue(tagName))
 		}
-		updatedState.Tags = types.ListValueMust(types.StringType, tagValues)
+		updatedState.Tags = types.SetValueMust(types.StringType, tagValues)
 	} else if plan.Tags.IsNull() {
-		updatedState.Tags = types.ListNull(types.StringType)
+		updatedState.Tags = types.SetNull(types.StringType)
 	}
 
 	// Update assigned alert contacts
@@ -1058,7 +1057,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 
 	// Preserve null vs empty list consistency between state and plan for fields
 	// that might be returned differently by the API
-	modifyPlanForListField(ctx, &plan.Tags, &state.Tags, resp, "tags")
+	modifyPlanForSetField(ctx, &plan.Tags, &state.Tags, resp, "tags")
 	modifyPlanForListField(ctx, &plan.AssignedAlertContacts, &state.AssignedAlertContacts, resp, "assigned_alert_contacts")
 	modifyPlanForListField(ctx, &plan.MaintenanceWindowIDs, &state.MaintenanceWindowIDs, resp, "maintenance_window_ids")
 	modifyPlanForListField(ctx, &plan.SuccessHTTPResponseCodes, &state.SuccessHTTPResponseCodes, resp, "success_http_response_codes")
@@ -1085,7 +1084,7 @@ func modifyPlanForListField(ctx context.Context, planField, stateField *types.Li
 	// DO NOT modify the plan if the user is intentionally adding/removing items
 
 	// Case 1: State is null, plan has an empty list -> convert plan to null for consistency
-	if stateField.IsNull() && !planField.IsNull() {
+	if stateField.IsNull() && !planField.IsNull() && !planField.IsUnknown() {
 		// Check if plan has an empty list by getting the elements without type conversion
 		planElements := planField.Elements()
 		if len(planElements) == 0 {
@@ -1095,12 +1094,38 @@ func modifyPlanForListField(ctx context.Context, planField, stateField *types.Li
 		// If plan has items, leave it alone - user is adding items to a previously null field
 	}
 
+	if !stateField.IsNull() && len(stateField.Elements()) == 0 && planField.IsNull() {
+		resp.Plan.SetAttribute(
+			ctx,
+			path.Root(fieldName),
+			types.ListValueMust(stateField.ElementType(ctx), []attr.Value{}),
+		)
+		return
+	}
+
 	// Case 2: State has non-null value, plan is null -> DON'T override!
 	// The user explicitly wants to remove the items (set to null)
 	// Let the plan proceed as-is
 
 	// Case 3: Both state and plan have non-null values -> don't modify
 	// This allows users to add/remove items normally
+}
+
+func modifyPlanForSetField(ctx context.Context, planField, stateField *types.Set, resp *resource.ModifyPlanResponse, fieldName string) {
+	if stateField.IsNull() && !planField.IsNull() && !planField.IsUnknown() {
+		if len(planField.Elements()) == 0 {
+			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.SetNull(planField.ElementType(ctx)))
+		}
+	}
+
+	if !stateField.IsNull() && len(stateField.Elements()) == 0 && planField.IsNull() {
+		resp.Plan.SetAttribute(
+			ctx,
+			path.Root(fieldName),
+			types.SetValueMust(stateField.ElementType(ctx), []attr.Value{}),
+		)
+		return
+	}
 }
 
 // ImportState imports an existing resource into Terraform.
@@ -1113,4 +1138,61 @@ func stringValue(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// UpgradeState used for migration between schemas.
+func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
+
+	type v0Model struct {
+		Tags types.List `tfsdk:"tags"` // this was an old type that should be set now
+	}
+	return map[int64]resource.StateUpgrader{
+		0: {
+			PriorSchema: &schema.Schema{
+				Attributes: map[string]schema.Attribute{
+					"tags": schema.ListAttribute{
+						ElementType: types.StringType,
+						Optional:    true,
+					},
+				},
+			}, StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				// 1. Read prior state that is decoded using PriorSchema
+				var prior v0Model
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				// 2. Convert tags: list -> set and dedupe as a courtesy
+				if prior.Tags.IsNull() || prior.Tags.IsUnknown() {
+					resp.Diagnostics.Append(
+						resp.State.SetAttribute(ctx, path.Root("tags"), types.SetNull(types.StringType))...,
+					)
+				} else {
+					var tags []string
+					resp.Diagnostics.Append(prior.Tags.ElementsAs(ctx, &tags, false)...)
+					if resp.Diagnostics.HasError() {
+						return
+					}
+					seen := make(map[string]struct{}, len(tags))
+					vals := make([]attr.Value, 0, len(tags))
+					for _, t := range tags {
+						if _, ok := seen[t]; ok {
+							continue
+						}
+						seen[t] = struct{}{}
+						vals = append(vals, types.StringValue(t))
+					}
+					resp.Diagnostics.Append(
+						resp.State.SetAttribute(ctx, path.Root("tags"), types.SetValueMust(types.StringType, vals))...,
+					)
+				}
+
+				// NOTE: For a fully correct upgrade ALL attributes in resp.State should be populated.
+				// Known values should be set/assign or setted to null value. Terrafrom framework do not copy them.
+				// For simple one-attribute changes, only one field may be setted as well.
+				// Nice practice and convenience way is to map the whole prior model to the current model and do resp.State.Set(ctx, upgradedModel).
+			},
+		},
+	}
 }

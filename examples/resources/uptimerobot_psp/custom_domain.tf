@@ -1,6 +1,6 @@
 resource "uptimerobot_monitor" "website" {
   name     = "Website"
-  type     = "http"
+  type     = "HTTP"
   url      = "https://example.com"
   interval = 300
 }
