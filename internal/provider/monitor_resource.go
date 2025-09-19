@@ -1140,6 +1140,7 @@ func stringValue(s *string) string {
 	return *s
 }
 
+// UpgradeState used for migration between schemas.
 func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
 
 	type v0Model struct {
@@ -1155,14 +1156,14 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 					},
 				},
 			}, StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
-				// 1) Read prior state (decoded using PriorSchema above)
+				// 1. Read prior state that is decoded using PriorSchema
 				var prior v0Model
 				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
 				if resp.Diagnostics.HasError() {
 					return
 				}
 
-				// 2) Convert tags: list -> set (dedupe as a courtesy)
+				// 2. Convert tags: list -> set and dedupe as a courtesy
 				if prior.Tags.IsNull() || prior.Tags.IsUnknown() {
 					resp.Diagnostics.Append(
 						resp.State.SetAttribute(ctx, path.Root("tags"), types.SetNull(types.StringType))...,
@@ -1187,11 +1188,10 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 					)
 				}
 
-				// NOTE: For a fully correct upgrade you should populate ALL attributes in resp.State
-				// (set known values, or set them to null). The framework does not auto-copy prior
-				// values you don’t set here. For simple one-attribute changes, you can get away with
-				// setting only the changed field(s) plus "id", but best practice is to map the whole
-				// prior model to the current model and do: resp.State.Set(ctx, upgradedModel).
+				// NOTE: For a fully correct upgrade ALL attributes in resp.State should be populated.
+				// Known values should be set/assign or setted to null value. Terrafrom framework do not copy them.
+				// For simple one-attribute changes, only one field may be setted as well.
+				// Nice practice and convenience way is to map the whole prior model to the current model and do resp.State.Set(ctx, upgradedModel).
 			},
 		},
 	}
