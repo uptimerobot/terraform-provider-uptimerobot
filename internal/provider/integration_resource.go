@@ -286,7 +286,7 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 	case "slack":
 		integrationData = &client.SlackIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
-			Value:                  plan.Value.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
 			CustomValue:            plan.CustomValue.ValueString(),
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
@@ -370,7 +370,13 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	// Map response body to schema and populate Computed attribute values
 	state.Name = types.StringValue(integration.Name)
 	state.Type = types.StringValue(TransformIntegrationTypeFromAPI(integration.Type))
-	state.Value = types.StringValue(integration.Value)
+
+	if integration.WebhookURL != "" {
+		state.Value = types.StringValue(integration.WebhookURL)
+	} else {
+		state.Value = types.StringValue(integration.Value)
+	}
+
 	state.EnableNotificationsFor = types.Int64Value(convertNotificationsForFromString(integration.EnableNotificationsFor))
 	state.SSLExpirationReminder = types.BoolValue(integration.SSLExpirationReminder)
 
@@ -439,7 +445,7 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 	case "slack":
 		integrationData = &client.SlackIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
-			Value:                  plan.Value.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
 			CustomValue:            plan.CustomValue.ValueString(),
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
