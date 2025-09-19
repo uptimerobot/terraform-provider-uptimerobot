@@ -5,15 +5,6 @@ resource "uptimerobot_monitor" "website" {
   interval = 300
 }
 
-# Email integration for general alerts
-resource "uptimerobot_integration" "team_email" {
-  name                     = "Team Email"
-  type                     = "email"
-  value                    = "alerts@example.com"
-  enable_notifications_for = 1
-  ssl_expiration_reminder  = true
-}
-
 # Slack integration for team notifications
 resource "uptimerobot_integration" "team_slack" {
   name                     = "Team Slack"
@@ -22,15 +13,6 @@ resource "uptimerobot_integration" "team_slack" {
   custom_value             = "#monitoring"
   enable_notifications_for = 1
   ssl_expiration_reminder  = true
-}
-
-# SMS for critical down events only
-resource "uptimerobot_integration" "emergency_sms" {
-  name                     = "Emergency SMS"
-  type                     = "sms"
-  value                    = "+1234567890"
-  enable_notifications_for = 2 # Down events only
-  ssl_expiration_reminder  = false
 }
 
 # Webhook for external systems
