@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -13,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -168,6 +170,14 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"timeout": schema.Int64Attribute{
 				Description: "Timeout for the monitoring check (in seconds)",
 				Optional:    true,
+				Computed:    true,
+				Default:     int64default.StaticInt64(30),
+				Validators: []validator.Int64{
+					int64validator.Between(0, 60),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"post_value_data": schema.StringAttribute{
 				Description: "The data to send with POST request",
@@ -335,8 +345,9 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Add optional fields if set
-	if !plan.Timeout.IsNull() {
-		createReq.Timeout = int(plan.Timeout.ValueInt64())
+	if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+		t := int(plan.Timeout.ValueInt64())
+		createReq.Timeout = &t
 	}
 	if !plan.HTTPMethodType.IsNull() {
 		createReq.HTTPMethodType = plan.HTTPMethodType.ValueString()
@@ -789,8 +800,9 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		URL:      plan.URL.ValueString(),
 	}
 
-	if !plan.Timeout.IsNull() {
-		updateReq.Timeout = int(plan.Timeout.ValueInt64())
+	if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+		t := int(plan.Timeout.ValueInt64())
+		updateReq.Timeout = &t
 	}
 	if !plan.HTTPMethodType.IsNull() {
 		updateReq.HTTPMethodType = plan.HTTPMethodType.ValueString()
@@ -846,6 +858,8 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			return
 		}
 		updateReq.MaintenanceWindowIDs = windowIDs
+	} else {
+		updateReq.MaintenanceWindowIDs = []int64{}
 	}
 
 	// Always set tags - empty array if null, populated array if not null
