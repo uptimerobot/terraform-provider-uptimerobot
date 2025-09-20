@@ -7,6 +7,7 @@ type Integration struct {
 	Type                   string `json:"type"`
 	Status                 string `json:"status"`
 	Value                  string `json:"value"`
+	WebhookURL             string `json:"webhookURL,omitempty"`
 	CustomValue            string `json:"customValue,omitempty"`
 	EnableNotificationsFor string `json:"enableNotificationsFor"`
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
@@ -26,7 +27,7 @@ type CreateIntegrationRequest struct {
 // SlackIntegrationData represents the data structure for Slack integrations.
 type SlackIntegrationData struct {
 	FriendlyName           string `json:"friendlyName,omitempty"`
-	Value                  string `json:"value"`
+	WebhookURL             string `json:"webhookURL,omitempty"`
 	CustomValue            string `json:"customValue,omitempty"`
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
