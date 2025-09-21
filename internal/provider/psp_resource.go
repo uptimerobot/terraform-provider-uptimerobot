@@ -554,14 +554,12 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	// Retrieve values from plan and state
 	var plan, state pspResourceModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	if diags := req.Plan.Get(ctx, &plan); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
 		return
 	}
-	diags = req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	if diags := req.State.Get(ctx, &state); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
 		return
 	}
 
@@ -733,45 +731,10 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	/*
-		var newState = state
-		pspToResourceData(ctx, updatedPSP, &newState, false)
-		if diags := resp.State.Set(ctx, newState); diags.HasError() {
-		    resp.Diagnostics.Append(diags...)
-		    return
-		}
-	*/
-
-	// Map response body to schema and populate Computed attribute values
-	plan.Status = types.StringValue(updatedPSP.Status)
-	plan.URLKey = types.StringValue(updatedPSP.URLKey)
-	plan.IsPasswordSet = types.BoolValue(updatedPSP.IsPasswordSet)
-	plan.Subscription = types.BoolValue(updatedPSP.Subscription)
-
-	// Handle nullable fields in response
-	if updatedPSP.MonitorsCount != nil {
-		plan.MonitorsCount = types.Int64Value(int64(*updatedPSP.MonitorsCount))
-	} else {
-		plan.MonitorsCount = types.Int64Value(0)
-	}
-
-	if updatedPSP.HomepageLink != nil {
-		plan.HomepageLink = types.StringValue(*updatedPSP.HomepageLink)
-	} else {
-		plan.HomepageLink = types.StringValue("")
-	}
-
-	if updatedPSP.PinnedAnnouncementID != nil {
-		plan.PinnedAnnouncementID = types.Int64Value(*updatedPSP.PinnedAnnouncementID)
-	} else {
-		// Keep as null if not set
-		plan.PinnedAnnouncementID = types.Int64Null()
-	}
-
-	// Set state to fully populated data
-	stateDiags := resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(stateDiags...)
-	if resp.Diagnostics.HasError() {
+	var newState = state
+	pspToResourceData(ctx, updatedPSP, &newState, false)
+	if diags := resp.State.Set(ctx, newState); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
 		return
 	}
 }

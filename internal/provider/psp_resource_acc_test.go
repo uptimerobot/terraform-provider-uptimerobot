@@ -66,6 +66,19 @@ resource "uptimerobot_psp" "test" {
 `, name)
 }
 
+func testAccPSPResourceConfigWithoutMonitors(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name = %q
+
+  // no monitor_ids
+  custom_settings = {
+    page = { layout = "logo_on_left", theme = "dark", density = "compact" }
+  }
+}
+`, name)
+}
+
 func TestAccPSPResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
@@ -109,6 +122,13 @@ func TestAccPSPResource(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.features.show_monitor_url", "true"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.features.enable_details_page", "true"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.features.hide_paused_monitors", "true"),
+				),
+			},
+			{
+				Config: testAccPSPResourceConfigWithoutMonitors("test-psp-nomon"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", "test-psp-nomon"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "0"),
 				),
 			},
 			// Import testing
