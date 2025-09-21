@@ -1,0 +1,101 @@
+name: "🐞 Bug report"
+description: Problem with the provider, a resource, or a data source
+title: "[Bug]: <short summary>"
+labels: ["bug", "triage"]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      options:
+        - "Provider (authentication/configuration)"
+        - "Resource: Monitor"
+        - "Resource: Integration"
+        - "Resource: Public Status Page (PSP)"
+        - "Resource: Maintenance Window"
+        - "Data Source"
+        - "Import"
+        - "Plan/State"
+        - "Documentation"
+        - "Other / Unsure"
+    validations:
+      required: true
+
+  - type: input
+    id: other_component
+    attributes:
+      label: If "Other / Unsure", briefly describe
+      placeholder: e.g., acceptance tests, registry docs page, examples
+
+  - type: input
+    id: resource_name
+    attributes:
+      label: Resource/Data Source name (if applicable)
+      placeholder: "e.g., uptimerobot_monitor / data.uptimerobot_account / uptimerobot_integration (e.g., Slack)"
+  
+  - type: input
+    id: tf_or_tofu_version
+    attributes:
+      label: Terraform/OpenTofu version
+      placeholder: "Terraform 1.9.5 or OpenTofu 1.7.3"
+    validations:
+      required: true
+
+  - type: input
+    id: provider_version
+    attributes:
+      label: Provider version
+      placeholder: "v1.1.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Minimal reproducible config
+      description: Redact secrets; keep it as small as possible.
+      render: terraform
+      placeholder: |
+        resource "uptimerobot_monitor" "example" {
+          friendly_name = "API"
+          url           = "https://example.com/healthz"
+          type          = "HTTP"
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. terraform init
+        2. terraform apply
+        3. observe error …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / logs
+      description: Paste relevant error output or logs (redact secrets).
+      render: bash
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues/PRs
+          required: true
+        - label: I can reproduce with the latest provider release
+          required: true
+        - label: Also reproduces with the other CLI (Terraform/OpenTofu)
