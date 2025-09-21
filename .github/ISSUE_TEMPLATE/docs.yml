@@ -1,0 +1,67 @@
+name: "📚 Docs improvement"
+description: Fix or improve provider documentation
+title: "[Docs]: <page or concept>"
+labels: ["documentation", "triage"]
+body:
+  - type: dropdown
+    id: doc_area
+    attributes:
+      label: Area
+      options:
+        - "Resource docs"
+        - "Data source docs"
+        - "Provider docs (authentication/configuration)"
+        - "Examples"
+        - "README"
+        - "Changelog"
+        - "Other / Unsure"
+    validations:
+      required: true
+
+  - type: input
+    id: page
+    attributes:
+      label: Page/URL (if applicable)
+      placeholder: "e.g., docs/resources/monitor.md or a link to the page"
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: What’s wrong or missing?
+      description: Be specific—typos, outdated flags, missing argument, unclear behavior, etc.
+      placeholder: "The `method` argument is missing from the monitor docs; import example still shows v1; etc."
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested change (optional)
+      description: Provide the fixed text or example if you can.
+      render: markdown
+      placeholder: |
+        **Proposed snippet**
+        ```terraform
+        resource "uptimerobot_monitor" "api" {
+          name   = "API"
+          url    = "https://example.com/healthz"
+          type   = "HTTP"
+          method = "HEAD"
+        }
+        ```
+        - Add `method` argument (GET, HEAD, POST…)
+        - Update import example to v1.1.1
+
+  - type: input
+    id: versions
+    attributes:
+      label: Terraform/OpenTofu + provider versions (optional)
+      placeholder: "Terraform 1.9.5 / OpenTofu 1.7.3; provider v1.1.1"
+
+  - type: checkboxes
+    id: flags
+    attributes:
+      label: Flags
+      options:
+        - label: This is a quick fix (typo/wording)
+        - label: I can provide exact wording here or open a PR (maintainers will review; please reference this issue)

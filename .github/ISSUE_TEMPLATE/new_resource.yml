@@ -1,0 +1,82 @@
+name: "🧩 New resource / data source"
+description: Propose adding a new Terraform resource or data source
+title: "[New]: <service>:<thing>"
+labels: ["enhancement", "new-resource", "triage"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - "Resource"
+        - "Data Source"
+    validations:
+      required: true
+
+  - type: input
+    id: name
+    attributes:
+      label: Proposed name
+      placeholder: "uptimerobot_monitor_http / uptimerobot_integration / data.uptimerobot_account"
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: What real workflows does this unlock?
+      placeholder: |
+        Create specialized HTTP monitors with extra checks; manage Slack/PagerDuty/email integrations per team; fetch account limits; etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: schema
+    attributes:
+      label: Rough schema (optional)
+      render: terraform
+      placeholder: |
+        # Example: new/extended monitor resource
+        resource "uptimerobot_monitor_http" "api" {
+          name      = "API Health"
+          url       = "https://example.com/healthz"
+          interval  = 60
+          timeout   = 10
+          method    = "GET"
+          # new fields you want to propose go here...
+        }
+
+        # Example: integration
+        resource "uptimerobot_integration" "slack" {
+          name  = "Team Slack"
+          type  = "slack"
+          value = "https://hooks.slack.com/services/XXXXX/YYYYY/ZZZZZ"
+        }
+
+        # Example: data source
+        # data "uptimerobot_account" "current" {}
+
+  - type: textarea
+    id: api
+    attributes:
+      label: API references (optional)
+      description: Links to endpoints/docs if you have them.
+      placeholder: |
+        POST /v3/monitors
+        GET  /v3/monitors/{id}
+        POST /v3/integrations
+        GET  /v3/integrations/{id}
+
+  - type: textarea
+    id: plan_behavior
+    attributes:
+      label: Plan/Apply semantics & import (optional)
+      description: ForceNew fields, import ID format, expected diffs, etc.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Reporter checks (optional)
+      options:
+        - label: I found public API docs that appear to support create/read/update/delete

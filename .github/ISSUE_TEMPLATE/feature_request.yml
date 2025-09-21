@@ -1,0 +1,102 @@
+name: "✨ Feature request"
+description: Improve existing provider behavior (not a new resource)
+title: "[Feat]: <short summary>"
+labels: ["enhancement", "triage"]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component (if applicable)
+      options:
+        - "Provider (authentication/configuration)"
+        - "Resource: Monitor"
+        - "Resource: Integration"
+        - "Resource: Public Status Page (PSP)"
+        - "Resource: Maintenance Window"
+        - "Data Source"
+        - "Import"
+        - "Plan/State"
+        - "Documentation"
+        - "Other / Unsure"
+
+  - type: input
+    id: resource_name
+    attributes:
+      label: Resource/Data Source name (if applicable)
+      placeholder: "e.g., uptimerobot_monitor / data.uptimerobot_account / uptimerobot_integration"
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What is the pain or limitation today?
+      placeholder: "E.g., Updating 'interval' forces replacement but should be in-place; missing 'method' on HTTP monitor; etc."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Be specific (new arguments, env vars, diff rules, import, docs).
+      placeholder: "Add 'method' argument to uptimerobot_monitor, default GET; mark as ForceNew=false; validate against allowed values."
+    validations:
+      required: true
+
+  - type: textarea
+    id: config_example
+    attributes:
+      label: Example config (optional)
+      description: Minimal snippet showing the proposed change.
+      render: terraform
+      placeholder: |
+        resource "uptimerobot_monitor" "api" {
+          name     = "API"
+          url      = "https://example.com/healthz"
+          type     = "HTTP"
+          # proposal: method support
+          method   = "HEAD"
+        }
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives/workarounds tried
+      placeholder: "Workarounds, external scripts, manual steps, etc."
+
+  - type: input
+    id: tf_or_tofu_version
+    attributes:
+      label: Terraform/OpenTofu version (optional)
+      placeholder: "Terraform 1.9.5 or OpenTofu 1.7.3"
+
+  - type: input
+    id: provider_version
+    attributes:
+      label: Provider version (optional)
+      placeholder: "v1.1.1"
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact / Priority (self-assessed)
+      options:
+        - Nice to have
+        - Important
+        - Critical
+
+  - type: checkboxes
+    id: flags
+    attributes:
+      label: Flags
+      description: "Note: maintainers will assess and decide whether a change is actually breaking."
+      options:
+        - label: This may be a breaking change (needs migration or could change plan behavior)
+        - label: I'm willing to help test a PR/build
+
+  - type: textarea
+    id: docs_tests
+    attributes:
+      label: Docs/tests impact (optional)
+      description: Docs pages to update, acceptance tests to add/adjust, import format details, etc. If you're unsure, leave blank.
+      placeholder: "Docs: monitor resource page; Tests: add update test for 'method'; Import: unchanged"

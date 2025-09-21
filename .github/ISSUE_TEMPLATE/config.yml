@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & usage help
+    url: https://github.com/uptimerobot/terraform-provider-uptimerobot/discussions
+    about: Please use Discussions for “how do I…?” questions.
+  # - name: Security vulnerability
+  #   url: https://github.com/<org>/<repo>/security/policy
+  #   about: Report security issues privately.
