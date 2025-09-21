@@ -220,15 +220,15 @@ Optional:
 
 Optional:
 
-- `enable_details_page` (String) Whether to enable details page
-- `enable_floating_status` (String) Whether to enable floating status
-- `hide_paused_monitors` (String) Whether to hide paused monitors
-- `show_bars` (String) Whether to show bars
-- `show_monitor_url` (String) Whether to show monitor URL
-- `show_outage_details` (String) Whether to show outage details
-- `show_outage_updates` (String) Whether to show outage updates
-- `show_overall_uptime` (String) Whether to show overall uptime
-- `show_uptime_percentage` (String) Whether to show uptime percentage
+- `enable_details_page` (Boolean) Whether to enable details page
+- `enable_floating_status` (Boolean) Whether to enable floating status
+- `hide_paused_monitors` (Boolean) Whether to hide paused monitors
+- `show_bars` (Boolean) Whether to show bars
+- `show_monitor_url` (Boolean) Whether to show monitor URL
+- `show_outage_details` (Boolean) Whether to show outage details
+- `show_outage_updates` (Boolean) Whether to show outage updates
+- `show_overall_uptime` (Boolean) Whether to show overall uptime
+- `show_uptime_percentage` (Boolean) Whether to show uptime percentage
 
 
 <a id="nestedatt--custom_settings--font"></a>
