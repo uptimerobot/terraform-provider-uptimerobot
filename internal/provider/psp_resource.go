@@ -145,6 +145,9 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			"monitor_ids": schema.SetAttribute{
 				Description: "Set of monitor IDs",
 				Optional:    true,
+				// Computed is set due to the bug in the API which returns empty monitor_ids all the time.
+				// Remove Computed after bug fix
+				Computed:    true,
 				ElementType: types.Int64Type,
 			},
 			"monitors_count": schema.Int64Attribute{
@@ -498,9 +501,19 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
+	managedColors := plan.CustomSettings != nil && plan.CustomSettings.Colors != nil
+	managedFeatures := plan.CustomSettings != nil && plan.CustomSettings.Features != nil
+
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
 	pspToResourceData(ctx, newPSP, &updatedPlan, false)
+
+	if !managedColors && updatedPlan.CustomSettings != nil {
+		updatedPlan.CustomSettings.Colors = nil
+	}
+	if !managedFeatures && updatedPlan.CustomSettings != nil {
+		updatedPlan.CustomSettings.Features = nil
+	}
 
 	// Set state to fully populated data
 	stateSet := resp.State.Set(ctx, updatedPlan)
@@ -540,9 +553,19 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	// During import, only the ID is set
 	isImport := state.Name.IsNull()
 
+	managedColors := state.CustomSettings != nil && state.CustomSettings.Colors != nil
+	managedFeatures := state.CustomSettings != nil && state.CustomSettings.Features != nil
+
 	updatedState := state
 
 	pspToResourceData(ctx, psp, &updatedState, isImport)
+
+	if !managedColors && updatedState.CustomSettings != nil {
+		updatedState.CustomSettings.Colors = nil
+	}
+	if !managedFeatures && updatedState.CustomSettings != nil {
+		updatedState.CustomSettings.Features = nil
+	}
 
 	diags = resp.State.Set(ctx, &updatedState)
 	resp.Diagnostics.Append(diags...)
@@ -733,6 +756,19 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 
 	var newState = state
 	pspToResourceData(ctx, updatedPSP, &newState, false)
+
+	// Respect current plan: if omitted, clear from state
+	if plan.CustomSettings == nil || plan.CustomSettings.Colors == nil {
+		if newState.CustomSettings != nil {
+			newState.CustomSettings.Colors = nil
+		}
+	}
+	if plan.CustomSettings == nil || plan.CustomSettings.Features == nil {
+		if newState.CustomSettings != nil {
+			newState.CustomSettings.Features = nil
+		}
+	}
+
 	if diags := resp.State.Set(ctx, newState); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
@@ -831,32 +867,14 @@ func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceMo
 
 	// Handle monitor IDs - always update with what the API returns
 	if len(psp.MonitorIDs) > 0 {
-		// Create the monitor IDs set from API response
-		monitorIDs := make([]int64, len(psp.MonitorIDs))
-		copy(monitorIDs, psp.MonitorIDs)
-		// for i, id := range psp.MonitorIDs {
-		// 	monitorIDsElements[i] = types.Int64Value(id)
-		// }
-
-		monitorIDsSet, diags := types.SetValueFrom(ctx, types.Int64Type, monitorIDs)
+		monitorIDsSet, diags := types.SetValueFrom(ctx, types.Int64Type, psp.MonitorIDs)
 		if diags == nil || !diags.HasError() {
 			plan.MonitorIDs = monitorIDsSet
 		}
 	} else {
-		// If the API returns empty or nil, handle based on context
-		if isImport {
-			// During import, always set to empty set if API returns no monitor IDs
-			emptySet, _ := types.SetValue(types.Int64Type, []attr.Value{})
-			plan.MonitorIDs = emptySet
-		} else {
-			// For normal operations, preserve the existing state to avoid unnecessary diffs
-			// Only set to empty if the current state is null or unknown
-			if plan.MonitorIDs.IsNull() || plan.MonitorIDs.IsUnknown() {
-				emptySet, _ := types.SetValue(types.Int64Type, []attr.Value{})
-				plan.MonitorIDs = emptySet
-			}
-			// Otherwise, keep the existing value
-		}
+		// API returned none so empty set in state
+		emptySet, _ := types.SetValue(types.Int64Type, []attr.Value{})
+		plan.MonitorIDs = emptySet
 	}
 
 	// Handle CustomSettings if present in the API response
