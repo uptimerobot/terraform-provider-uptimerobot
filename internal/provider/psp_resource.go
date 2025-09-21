@@ -21,7 +21,6 @@ import (
 var (
 	_ resource.Resource                 = &pspResource{}
 	_ resource.ResourceWithConfigure    = &pspResource{}
-	_ resource.ResourceWithModifyPlan   = &pspResource{}
 	_ resource.ResourceWithImportState  = &pspResource{}
 	_ resource.ResourceWithUpgradeState = &pspResource{}
 )
@@ -42,7 +41,7 @@ type pspResourceModel struct {
 	Name                       types.String         `tfsdk:"name"`
 	CustomDomain               types.String         `tfsdk:"custom_domain"`
 	IsPasswordSet              types.Bool           `tfsdk:"is_password_set"`
-	MonitorIDs                 types.List           `tfsdk:"monitor_ids"`
+	MonitorIDs                 types.Set            `tfsdk:"monitor_ids"`
 	MonitorsCount              types.Int64          `tfsdk:"monitors_count"`
 	Status                     types.String         `tfsdk:"status"`
 	URLKey                     types.String         `tfsdk:"url_key"`
@@ -143,8 +142,8 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Description: "Whether a password is set for the PSP",
 				Computed:    true,
 			},
-			"monitor_ids": schema.ListAttribute{
-				Description: "List of monitor IDs",
+			"monitor_ids": schema.SetAttribute{
+				Description: "Set of monitor IDs",
 				Required:    true,
 				ElementType: types.Int64Type,
 			},
@@ -501,7 +500,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
-	pspToResourceData(newPSP, &updatedPlan, false)
+	pspToResourceData(ctx, newPSP, &updatedPlan, false)
 
 	// Set state to fully populated data
 	stateSet := resp.State.Set(ctx, updatedPlan)
@@ -541,13 +540,9 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	// During import, only the ID is set
 	isImport := state.Name.IsNull()
 
-	// First make a copy of the current state to preserve user-defined order of monitor IDs
-	// and to ensure we don't lose any user configuration
 	updatedState := state
 
-	// Now update the state with the response data, preserving existing monitor IDs order
-	// and handling all computed values properly
-	pspToResourceData(psp, &updatedState, isImport)
+	pspToResourceData(ctx, psp, &updatedState, isImport)
 
 	diags = resp.State.Set(ctx, &updatedState)
 	resp.Diagnostics.Append(diags...)
@@ -618,12 +613,12 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		psp.Logo = &logo
 	}
 
-	// Convert []attr.Value to []int64 for MonitorIDs
 	if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
-		monitorIDs := make([]int64, 0, len(plan.MonitorIDs.Elements()))
-		for _, id := range plan.MonitorIDs.Elements() {
-			idValue, _ := id.(types.Int64)
-			monitorIDs = append(monitorIDs, idValue.ValueInt64())
+		var monitorIDs []int64
+		diags := plan.MonitorIDs.ElementsAs(ctx, &monitorIDs, false)
+		if diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
 		}
 		psp.MonitorIDs = monitorIDs
 	}
@@ -800,7 +795,7 @@ func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 	}
 }
 
-func pspToResourceData(psp *client.PSP, plan *pspResourceModel, isImport bool) {
+func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceModel, isImport bool) {
 	plan.ID = types.StringValue(strconv.FormatInt(psp.ID, 10))
 	plan.Name = types.StringValue(psp.Name)
 	plan.Status = types.StringValue(psp.Status)
@@ -833,30 +828,26 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel, isImport bool) {
 	// Handle other optional fields
 	if psp.CustomDomain != nil {
 		plan.CustomDomain = types.StringValue(*psp.CustomDomain)
-	} else if !plan.CustomDomain.IsNull() {
-		// Keep the existing value if it's set
-		plan.CustomDomain = types.StringValue("")
+	} else {
+		plan.CustomDomain = types.StringNull()
 	}
 
 	if psp.GACode != nil {
 		plan.GACode = types.StringValue(*psp.GACode)
-	} else if !plan.GACode.IsNull() {
-		// Keep the existing value if it's set
-		plan.GACode = types.StringValue("")
+	} else {
+		plan.GACode = types.StringNull()
 	}
 
 	if psp.Icon != nil {
 		plan.Icon = types.StringValue(*psp.Icon)
-	} else if !plan.Icon.IsNull() {
-		// Keep the existing value if it's set
-		plan.Icon = types.StringValue("")
+	} else {
+		plan.Icon = types.StringNull()
 	}
 
 	if psp.Logo != nil {
 		plan.Logo = types.StringValue(*psp.Logo)
-	} else if !plan.Logo.IsNull() {
-		// Keep the existing value if it's set
-		plan.Logo = types.StringValue("")
+	} else {
+		plan.Logo = types.StringNull()
 	}
 
 	if psp.PinnedAnnouncementID != nil {
@@ -868,28 +859,29 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel, isImport bool) {
 
 	// Handle monitor IDs - always update with what the API returns
 	if len(psp.MonitorIDs) > 0 {
-		// Create the monitor IDs list from API response
-		monitorIDsElements := make([]attr.Value, len(psp.MonitorIDs))
-		for i, id := range psp.MonitorIDs {
-			monitorIDsElements[i] = types.Int64Value(id)
-		}
+		// Create the monitor IDs set from API response
+		monitorIDs := make([]int64, len(psp.MonitorIDs))
+		copy(monitorIDs, psp.MonitorIDs)
+		// for i, id := range psp.MonitorIDs {
+		// 	monitorIDsElements[i] = types.Int64Value(id)
+		// }
 
-		monitorIDsList, diags := types.ListValue(types.Int64Type, monitorIDsElements)
+		monitorIDsSet, diags := types.SetValueFrom(ctx, types.Int64Type, monitorIDs)
 		if diags == nil || !diags.HasError() {
-			plan.MonitorIDs = monitorIDsList
+			plan.MonitorIDs = monitorIDsSet
 		}
 	} else {
 		// If the API returns empty or nil, handle based on context
 		if isImport {
-			// During import, always set to empty list if API returns no monitor IDs
-			emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
-			plan.MonitorIDs = emptyList
+			// During import, always set to empty set if API returns no monitor IDs
+			emptySet, _ := types.SetValue(types.Int64Type, []attr.Value{})
+			plan.MonitorIDs = emptySet
 		} else {
 			// For normal operations, preserve the existing state to avoid unnecessary diffs
 			// Only set to empty if the current state is null or unknown
 			if plan.MonitorIDs.IsNull() || plan.MonitorIDs.IsUnknown() {
-				emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
-				plan.MonitorIDs = emptyList
+				emptySet, _ := types.SetValue(types.Int64Type, []attr.Value{})
+				plan.MonitorIDs = emptySet
 			}
 			// Otherwise, keep the existing value
 		}
@@ -1006,49 +998,6 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel, isImport bool) {
 	}
 }
 
-// ModifyPlan modifies the plan to handle list field consistency issues.
-func (r *pspResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// If we don't have a plan or state, there's nothing to modify
-	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
-		return
-	}
-
-	// Retrieve values from plan and state
-	var plan, state pspResourceModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	diags = req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// Handle monitor IDs list consistency
-	pspModifyPlanForListField(ctx, &plan.MonitorIDs, &state.MonitorIDs, resp, "monitor_ids")
-}
-
-// pspModifyPlanForListField handles the special case for list fields that might be null vs empty lists.
-func pspModifyPlanForListField(ctx context.Context, planField, stateField *types.List, resp *resource.ModifyPlanResponse, fieldName string) {
-	// If we don't have both plan and state, nothing to modify
-	if planField == nil || stateField == nil {
-		return
-	}
-
-	// Case 1: State is null, plan has an empty list -> convert plan to null for consistency
-	if stateField.IsNull() && !planField.IsNull() {
-		var planItems []int64
-		diags := planField.ElementsAs(ctx, &planItems, false)
-		if !diags.HasError() && len(planItems) == 0 {
-			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.ListNull(planField.ElementType(ctx)))
-		}
-	}
-	// Case 2: State has items, plan is null -> This is a user-intended removal, don't modify
-	// Case 3: State has items, plan has different items -> This is a user-intended change, don't modify
-}
-
 // ImportState imports an existing resource into Terraform.
 func (r *pspResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
@@ -1056,28 +1005,41 @@ func (r *pspResource) ImportState(ctx context.Context, req resource.ImportStateR
 
 func (r *pspResource) UpgradeState(_ context.Context) map[int64]resource.StateUpgrader {
 	// from version 0 where features.* were strings to 1 where features.* are bools
+	// and list to set for monitors ids
 	return map[int64]resource.StateUpgrader{
 		0: {
 			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
 				base := path.Root("custom_settings").AtName("features")
+				// Strings -> bools
+				{
+					// Read the entire features object as a generic map which may not exist
+					var old map[string]any
+					if diags := req.State.GetAttribute(ctx, base, &old); diags.HasError() {
+						// If not present, nothing to do
+						return
+					}
+					if old == nil {
+						return
+					}
 
-				// Read the entire features object as a generic map which may not exist
-				var old map[string]any
-				if diags := req.State.GetAttribute(ctx, base, &old); diags.HasError() {
-					// If not present, nothing to do
-					return
+					upgraded := upgradeFeaturesMap(old)
+
+					// Overwrite with Upgraded map. Empty map is ok and will remove attrs
+					if diags := resp.State.SetAttribute(ctx, base, upgraded); diags.HasError() {
+						resp.Diagnostics.Append(diags...)
+					}
 				}
-				if old == nil {
-					return
+				// monitor_ids: list -> set
+				{
+					var ids []int64
+					if diags := req.State.GetAttribute(ctx, path.Root("monitor_ids"), &ids); diags.HasError() {
+						// nothing to convert
+						return
+					}
+					if diags := resp.State.SetAttribute(ctx, path.Root("monitor_ids"), ids); diags.HasError() {
+						resp.Diagnostics.Append(diags...)
+					}
 				}
-
-				upgraded := upgradeFeaturesMap(old)
-
-				// Overwrite with Upgraded map. Empty map is ok and will remove attrs
-				if diags := resp.State.SetAttribute(ctx, base, upgraded); diags.HasError() {
-					resp.Diagnostics.Append(diags...)
-				}
-
 			},
 		},
 	}
