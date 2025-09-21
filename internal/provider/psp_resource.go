@@ -967,32 +967,32 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel, isImport bool) {
 		hasCustomSettings = true
 		featureSettings := &featureSettingsModel{}
 
-		if p := psp.CustomSettings.Features.ShowBars; p != nil {
-			featureSettings.ShowBars = types.BoolValue(*p)
+		if p := psp.CustomSettings.Features.ShowBars; p != nil && p.Val != nil {
+			featureSettings.ShowBars = types.BoolValue(*p.Val)
 		}
-		if p := psp.CustomSettings.Features.ShowUptimePercentage; p != nil {
-			featureSettings.ShowUptimePercentage = types.BoolValue(*p)
+		if p := psp.CustomSettings.Features.ShowUptimePercentage; p != nil && p.Val != nil {
+			featureSettings.ShowUptimePercentage = types.BoolValue(*p.Val)
 		}
-		if p := psp.CustomSettings.Features.EnableFloatingStatus; p != nil {
-			featureSettings.EnableFloatingStatus = types.BoolValue(*p)
+		if p := psp.CustomSettings.Features.EnableFloatingStatus; p != nil && p.Val != nil {
+			featureSettings.EnableFloatingStatus = types.BoolValue(*p.Val)
 		}
-		if p := psp.CustomSettings.Features.ShowOverallUptime; p != nil {
-			featureSettings.ShowOverallUptime = types.BoolValue(*p)
+		if p := psp.CustomSettings.Features.ShowOverallUptime; p != nil && p.Val != nil {
+			featureSettings.ShowOverallUptime = types.BoolValue(*p.Val)
 		}
-		if p := psp.CustomSettings.Features.ShowOutageUpdates; p != nil {
-			featureSettings.ShowOutageUpdates = types.BoolValue(*p)
+		if p := psp.CustomSettings.Features.ShowOutageUpdates; p != nil && p.Val != nil {
+			featureSettings.ShowOutageUpdates = types.BoolValue(*p.Val)
 		}
-		if p := psp.CustomSettings.Features.ShowOutageDetails; p != nil {
-			featureSettings.ShowOutageDetails = types.BoolValue(*p)
+		if p := psp.CustomSettings.Features.ShowOutageDetails; p != nil && p.Val != nil {
+			featureSettings.ShowOutageDetails = types.BoolValue(*p.Val)
 		}
-		if p := psp.CustomSettings.Features.EnableDetailsPage; p != nil {
-			featureSettings.EnableDetailsPage = types.BoolValue(*p)
+		if p := psp.CustomSettings.Features.EnableDetailsPage; p != nil && p.Val != nil {
+			featureSettings.EnableDetailsPage = types.BoolValue(*p.Val)
 		}
-		if p := psp.CustomSettings.Features.ShowMonitorURL; p != nil {
-			featureSettings.ShowMonitorURL = types.BoolValue(*p)
+		if p := psp.CustomSettings.Features.ShowMonitorURL; p != nil && p.Val != nil {
+			featureSettings.ShowMonitorURL = types.BoolValue(*p.Val)
 		}
-		if p := psp.CustomSettings.Features.HidePausedMonitors; p != nil {
-			featureSettings.HidePausedMonitors = types.BoolValue(*p)
+		if p := psp.CustomSettings.Features.HidePausedMonitors; p != nil && p.Val != nil {
+			featureSettings.HidePausedMonitors = types.BoolValue(*p.Val)
 		}
 
 		customSettings.Features = featureSettings
