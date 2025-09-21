@@ -57,15 +57,15 @@ type ColorSettings struct {
 
 // FeatureSettings represents the feature settings.
 type FeatureSettings struct {
-	ShowBars             *string `json:"showBars,omitempty"`
-	ShowUptimePercentage *string `json:"showUptimePercentage,omitempty"`
-	EnableFloatingStatus *string `json:"enableFloatingStatus,omitempty"`
-	ShowOverallUptime    *string `json:"showOverallUptime,omitempty"`
-	ShowOutageUpdates    *string `json:"showOutageUpdates,omitempty"`
-	ShowOutageDetails    *string `json:"showOutageDetails,omitempty"`
-	EnableDetailsPage    *string `json:"enableDetailsPage,omitempty"`
-	ShowMonitorURL       *string `json:"showMonitorURL,omitempty"`
-	HidePausedMonitors   *string `json:"hidePausedMonitors,omitempty"`
+	ShowBars             *bool `json:"showBars,omitempty"`
+	ShowUptimePercentage *bool `json:"showUptimePercentage,omitempty"`
+	EnableFloatingStatus *bool `json:"enableFloatingStatus,omitempty"`
+	ShowOverallUptime    *bool `json:"showOverallUptime,omitempty"`
+	ShowOutageUpdates    *bool `json:"showOutageUpdates,omitempty"`
+	ShowOutageDetails    *bool `json:"showOutageDetails,omitempty"`
+	EnableDetailsPage    *bool `json:"enableDetailsPage,omitempty"`
+	ShowMonitorURL       *bool `json:"showMonitorURL,omitempty"`
+	HidePausedMonitors   *bool `json:"hidePausedMonitors,omitempty"`
 }
 
 // CreatePSPRequest represents the request to create a new PSP.
