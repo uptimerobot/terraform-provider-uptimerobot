@@ -144,7 +144,7 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			},
 			"monitor_ids": schema.SetAttribute{
 				Description: "Set of monitor IDs",
-				Required:    true,
+				Optional:    true,
 				ElementType: types.Int64Type,
 			},
 			"monitors_count": schema.Int64Attribute{
@@ -635,7 +635,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		// Handle Font settings
 		if plan.CustomSettings.Font != nil {
 			psp.CustomSettings.Font = &client.FontSettings{}
-			if !plan.CustomSettings.Font.Family.IsNull() {
+			if !plan.CustomSettings.Font.Family.IsNull() && !plan.CustomSettings.Font.Family.IsUnknown() {
 				family := plan.CustomSettings.Font.Family.ValueString()
 				psp.CustomSettings.Font.Family = &family
 			}
@@ -643,32 +643,32 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 
 		// Handle Page settings
 		if plan.CustomSettings.Page != nil {
-			if !plan.CustomSettings.Page.Layout.IsNull() {
+			if !plan.CustomSettings.Page.Layout.IsNull() && !plan.CustomSettings.Page.Layout.IsUnknown() {
 				psp.CustomSettings.Page.Layout = plan.CustomSettings.Page.Layout.ValueString()
 			}
 
-			if !plan.CustomSettings.Page.Theme.IsNull() {
+			if !plan.CustomSettings.Page.Theme.IsNull() && !plan.CustomSettings.Page.Theme.IsUnknown() {
 				psp.CustomSettings.Page.Theme = plan.CustomSettings.Page.Theme.ValueString()
 			}
 
-			if !plan.CustomSettings.Page.Density.IsNull() {
+			if !plan.CustomSettings.Page.Density.IsNull() && !plan.CustomSettings.Page.Density.IsUnknown() {
 				psp.CustomSettings.Page.Density = plan.CustomSettings.Page.Density.ValueString()
 			}
 		}
 
 		// Handle Colors settings
 		if plan.CustomSettings.Colors != nil {
-			if !plan.CustomSettings.Colors.Main.IsNull() {
+			if !plan.CustomSettings.Colors.Main.IsNull() && !plan.CustomSettings.Colors.Main.IsUnknown() {
 				main := plan.CustomSettings.Colors.Main.ValueString()
 				psp.CustomSettings.Colors.Main = &main
 			}
 
-			if !plan.CustomSettings.Colors.Text.IsNull() {
+			if !plan.CustomSettings.Colors.Text.IsNull() && !plan.CustomSettings.Colors.Text.IsUnknown() {
 				text := plan.CustomSettings.Colors.Text.ValueString()
 				psp.CustomSettings.Colors.Text = &text
 			}
 
-			if !plan.CustomSettings.Colors.Link.IsNull() {
+			if !plan.CustomSettings.Colors.Link.IsNull() && !plan.CustomSettings.Colors.Link.IsUnknown() {
 				link := plan.CustomSettings.Colors.Link.ValueString()
 				psp.CustomSettings.Colors.Link = &link
 			}
@@ -732,6 +732,15 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		)
 		return
 	}
+
+	/*
+		var newState = state
+		pspToResourceData(ctx, updatedPSP, &newState, false)
+		if diags := resp.State.Set(ctx, newState); diags.HasError() {
+		    resp.Diagnostics.Append(diags...)
+		    return
+		}
+	*/
 
 	// Map response body to schema and populate Computed attribute values
 	plan.Status = types.StringValue(updatedPSP.Status)
