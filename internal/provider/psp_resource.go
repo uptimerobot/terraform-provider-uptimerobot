@@ -242,10 +242,16 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 							"theme": schema.StringAttribute{
 								Description: "Page theme",
 								Optional:    true,
+								Validators: []validator.String{
+									stringvalidator.OneOf("light", "dark"),
+								},
 							},
 							"density": schema.StringAttribute{
 								Description: "Page density",
 								Optional:    true,
+								Validators: []validator.String{
+									stringvalidator.OneOf("normal", "compact"),
+								},
 							},
 						},
 					},
