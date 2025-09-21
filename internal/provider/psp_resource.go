@@ -1036,7 +1036,19 @@ func (r *pspResource) UpgradeState(_ context.Context) map[int64]resource.StateUp
 						// nothing to convert
 						return
 					}
-					if diags := resp.State.SetAttribute(ctx, path.Root("monitor_ids"), ids); diags.HasError() {
+
+					vals := make([]attr.Value, len(ids))
+					for i, v := range ids {
+						vals[i] = types.Int64Value(v)
+					}
+
+					setVal, diags := types.SetValue(types.Int64Type, vals)
+					if diags.HasError() {
+						resp.Diagnostics.Append(diags...)
+						return
+					}
+
+					if diags := resp.State.SetAttribute(ctx, path.Root("monitor_ids"), setVal); diags.HasError() {
 						resp.Diagnostics.Append(diags...)
 					}
 				}
