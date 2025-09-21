@@ -168,7 +168,7 @@ You can include specific monitors in your status page by providing their IDs in 
 
 ### Required
 
-- `monitor_ids` (List of Number) List of monitor IDs
+- `monitor_ids` (Set of Number) Set of monitor IDs
 - `name` (String) Name of the PSP
 
 ### Optional
