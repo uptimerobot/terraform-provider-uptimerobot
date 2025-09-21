@@ -161,7 +161,7 @@ func (r *UpdatePSPRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(req)
 }
 
-// Helper for PSP response due to unstability and inconsistency of API with strings and bools
+// Helper for PSP response due to unstability and inconsistency of API with strings and bools.
 type BoolOrString struct {
 	Val *bool
 }
@@ -206,7 +206,7 @@ type FeatureSettingsResp struct {
 	HidePausedMonitors   *BoolOrString `json:"hidePausedMonitors,omitempty"`
 }
 
-// CustomSettingsResp response structs differ from request structs due to API returning string booleans instead of bools
+// CustomSettingsResp response structs differ from request structs due to API returning string booleans instead of bools.
 type CustomSettingsResp struct {
 	Font     *FontSettings        `json:"font,omitempty"`
 	Page     *PageSettings        `json:"page"`

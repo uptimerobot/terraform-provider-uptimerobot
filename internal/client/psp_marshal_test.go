@@ -50,7 +50,10 @@ func TestCreatePSPRequest_Marshal_CustomSettingsWithFeatures(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatalf("re-unmarshal: %v", err)
 	}
-	cs := m["customSettings"].(map[string]any)
+	cs, ok := m["customSettings"].(map[string]any)
+	if !ok {
+		t.Fatalf("customSettings should be an object, got: %T (%v)", m["customSettings"], m["customSettings"])
+	}
 
 	// page/colors present as objects
 	if _, ok := cs["page"].(map[string]any); !ok {
@@ -60,7 +63,11 @@ func TestCreatePSPRequest_Marshal_CustomSettingsWithFeatures(t *testing.T) {
 		t.Fatalf("colors must be object")
 	}
 
-	features := cs["features"].(map[string]any)
+	features, ok := cs["features"].(map[string]any)
+	if !ok {
+		t.Fatalf("customSettings.features should be an object, got: %T (%v)", cs["features"], cs["features"])
+	}
+
 	if v, ok := features["showBars"].(bool); !ok || !v {
 		t.Fatalf("features.showBars must be true, got %#v", features["showBars"])
 	}
@@ -79,7 +86,10 @@ func TestUpdatePSPRequest_Marshal_CustomSettingsEmptyObjects(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatalf("re-unmarshal: %v", err)
 	}
-	cs := m["customSettings"].(map[string]any)
+	cs, ok := m["customSettings"].(map[string]any)
+	if !ok {
+		t.Fatalf("customSettings should be an object, got: %T (%v)", m["customSettings"], m["customSettings"])
+	}
 	for _, k := range []string{"page", "colors", "features"} {
 		if _, ok := cs[k].(map[string]any); !ok {
 			t.Fatalf("customSettings.%s must be an object, got %#v", k, cs[k])
