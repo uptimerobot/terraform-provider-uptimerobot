@@ -82,7 +82,7 @@ func TestAccPSPResource(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.0", "12345"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.1", "67890"),
 					// nested: page
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.page.layout", "grid"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.page.layout", "logo_on_left"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.page.theme", "dark"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.page.density", "compact"),
 					// nested: colors
