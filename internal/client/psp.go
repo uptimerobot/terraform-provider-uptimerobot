@@ -2,30 +2,33 @@ package client
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
 )
 
 // PSP represents a Public Status Page.
 type PSP struct {
-	ID                         int64           `json:"id"`
-	Name                       string          `json:"friendlyName"`
-	CustomDomain               *string         `json:"customDomain,omitempty"`
-	IsPasswordSet              bool            `json:"isPasswordSet"`
-	MonitorIDs                 []int64         `json:"monitorIds,omitempty"`
-	MonitorsCount              *int            `json:"monitorsCount,omitempty"`
-	Status                     string          `json:"status"`
-	URLKey                     string          `json:"urlKey"`
-	HomepageLink               *string         `json:"homepageLink,omitempty"`
-	GACode                     *string         `json:"gaCode,omitempty"`
-	ShareAnalyticsConsent      bool            `json:"shareAnalyticsConsent"`
-	UseSmallCookieConsentModal bool            `json:"useSmallCookieConsentModal"`
-	Icon                       *string         `json:"icon,omitempty"`
-	NoIndex                    bool            `json:"noIndex"`
-	Logo                       *string         `json:"logo,omitempty"`
-	HideURLLinks               bool            `json:"hideUrlLinks"`
-	Subscription               bool            `json:"subscription"`
-	ShowCookieBar              bool            `json:"showCookieBar"`
-	PinnedAnnouncementID       *int64          `json:"pinnedAnnouncementId,omitempty"`
-	CustomSettings             *CustomSettings `json:"customSettings,omitempty"`
+	ID                         int64               `json:"id"`
+	Name                       string              `json:"friendlyName"`
+	CustomDomain               *string             `json:"customDomain,omitempty"`
+	IsPasswordSet              bool                `json:"isPasswordSet"`
+	MonitorIDs                 []int64             `json:"monitorIds,omitempty"`
+	MonitorsCount              *int                `json:"monitorsCount,omitempty"`
+	Status                     string              `json:"status"`
+	URLKey                     string              `json:"urlKey"`
+	HomepageLink               *string             `json:"homepageLink,omitempty"`
+	GACode                     *string             `json:"gaCode,omitempty"`
+	ShareAnalyticsConsent      bool                `json:"shareAnalyticsConsent"`
+	UseSmallCookieConsentModal bool                `json:"useSmallCookieConsentModal"`
+	Icon                       *string             `json:"icon,omitempty"`
+	NoIndex                    bool                `json:"noIndex"`
+	Logo                       *string             `json:"logo,omitempty"`
+	HideURLLinks               bool                `json:"hideUrlLinks"`
+	Subscription               bool                `json:"subscription"`
+	ShowCookieBar              bool                `json:"showCookieBar"`
+	PinnedAnnouncementID       *int64              `json:"pinnedAnnouncementId,omitempty"`
+	CustomSettings             *CustomSettingsResp `json:"customSettings,omitempty"`
 }
 
 // CustomSettings represents the custom settings for a PSP.
@@ -57,15 +60,15 @@ type ColorSettings struct {
 
 // FeatureSettings represents the feature settings.
 type FeatureSettings struct {
-	ShowBars             *string `json:"showBars,omitempty"`
-	ShowUptimePercentage *string `json:"showUptimePercentage,omitempty"`
-	EnableFloatingStatus *string `json:"enableFloatingStatus,omitempty"`
-	ShowOverallUptime    *string `json:"showOverallUptime,omitempty"`
-	ShowOutageUpdates    *string `json:"showOutageUpdates,omitempty"`
-	ShowOutageDetails    *string `json:"showOutageDetails,omitempty"`
-	EnableDetailsPage    *string `json:"enableDetailsPage,omitempty"`
-	ShowMonitorURL       *string `json:"showMonitorURL,omitempty"`
-	HidePausedMonitors   *string `json:"hidePausedMonitors,omitempty"`
+	ShowBars             *bool `json:"showBars,omitempty"`
+	ShowUptimePercentage *bool `json:"showUptimePercentage,omitempty"`
+	EnableFloatingStatus *bool `json:"enableFloatingStatus,omitempty"`
+	ShowOverallUptime    *bool `json:"showOverallUptime,omitempty"`
+	ShowOutageUpdates    *bool `json:"showOutageUpdates,omitempty"`
+	ShowOutageDetails    *bool `json:"showOutageDetails,omitempty"`
+	EnableDetailsPage    *bool `json:"enableDetailsPage,omitempty"`
+	ShowMonitorURL       *bool `json:"showMonitorURL,omitempty"`
+	HidePausedMonitors   *bool `json:"hidePausedMonitors,omitempty"`
 }
 
 // CreatePSPRequest represents the request to create a new PSP.
@@ -156,6 +159,59 @@ func (r *UpdatePSPRequest) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(req)
+}
+
+// Helper for PSP response due to unstability and inconsistency of API with strings and bools.
+type BoolOrString struct {
+	Val *bool
+}
+
+func (b *BoolOrString) UnmarshalJSON(data []byte) error {
+
+	// null keeps data as nil
+	if string(data) == "null" {
+		b.Val = nil
+		return nil
+	}
+
+	var vb bool
+	if err := json.Unmarshal(data, &vb); err == nil {
+		b.Val = &vb
+		return nil
+	}
+
+	var vs string
+	if err := json.Unmarshal(data, &vs); err == nil {
+		s := strings.ToLower(strings.TrimSpace(vs))
+		v, err := strconv.ParseBool(s)
+		if err != nil {
+			return err
+		}
+		b.Val = &v
+		return nil
+	}
+
+	return fmt.Errorf("BoolOrString: unsupported JSON: %s", string(data))
+}
+
+type FeatureSettingsResp struct {
+	ShowBars             *BoolOrString `json:"showBars,omitempty"`
+	ShowUptimePercentage *BoolOrString `json:"showUptimePercentage,omitempty"`
+	EnableFloatingStatus *BoolOrString `json:"enableFloatingStatus,omitempty"`
+	ShowOverallUptime    *BoolOrString `json:"showOverallUptime,omitempty"`
+	ShowOutageUpdates    *BoolOrString `json:"showOutageUpdates,omitempty"`
+	ShowOutageDetails    *BoolOrString `json:"showOutageDetails,omitempty"`
+	EnableDetailsPage    *BoolOrString `json:"enableDetailsPage,omitempty"`
+	ShowMonitorURL       *BoolOrString `json:"showMonitorURL,omitempty"`
+	HidePausedMonitors   *BoolOrString `json:"hidePausedMonitors,omitempty"`
+}
+
+// CustomSettingsResp response structs differ from request structs due to API returning string booleans instead of bools.
+type CustomSettingsResp struct {
+	Font     *FontSettings        `json:"font,omitempty"`
+	Page     *PageSettings        `json:"page"`
+	Colors   *ColorSettings       `json:"colors"`
+	Features *FeatureSettingsResp `json:"features"`
 }
 
 // CreatePSP creates a new PSP.
