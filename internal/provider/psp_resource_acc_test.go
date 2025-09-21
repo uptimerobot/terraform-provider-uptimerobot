@@ -16,7 +16,7 @@ resource "uptimerobot_psp" "test" {
 
   custom_settings = {
     page = {
-      layout  = "grid"
+      layout  = "logo_on_left"
       theme   = "dark"
       density = "compact"
     }
@@ -46,7 +46,7 @@ resource "uptimerobot_psp" "test" {
 
   custom_settings = {
     page = {
-      layout  = "grid"
+      layout  = "logo_on_left"
       theme   = "light"   // changed
       density = "compact"
     }

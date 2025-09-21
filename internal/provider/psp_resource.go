@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -11,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
@@ -233,6 +235,9 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 							"layout": schema.StringAttribute{
 								Description: "Page layout",
 								Optional:    true,
+								Validators: []validator.String{
+									stringvalidator.OneOf("logo_on_left", "logo_on_center"),
+								},
 							},
 							"theme": schema.StringAttribute{
 								Description: "Page theme",
