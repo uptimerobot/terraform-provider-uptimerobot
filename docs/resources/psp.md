@@ -168,7 +168,6 @@ You can include specific monitors in your status page by providing their IDs in 
 
 ### Required
 
-- `monitor_ids` (List of Number) List of monitor IDs
 - `name` (String) Name of the PSP
 
 ### Optional
@@ -179,6 +178,7 @@ You can include specific monitors in your status page by providing their IDs in 
 - `hide_url_links` (Boolean) Whether to hide URL links
 - `icon` (String) Icon for the PSP
 - `logo` (String) Logo for the PSP
+- `monitor_ids` (Set of Number) Set of monitor IDs
 - `no_index` (Boolean) Whether to prevent indexing
 - `pinned_announcement_id` (Number) ID of pinned announcement
 - `share_analytics_consent` (Boolean) Whether analytics sharing is consented

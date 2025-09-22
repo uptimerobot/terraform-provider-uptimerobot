@@ -21,7 +21,6 @@ import (
 var (
 	_ resource.Resource                 = &pspResource{}
 	_ resource.ResourceWithConfigure    = &pspResource{}
-	_ resource.ResourceWithModifyPlan   = &pspResource{}
 	_ resource.ResourceWithImportState  = &pspResource{}
 	_ resource.ResourceWithUpgradeState = &pspResource{}
 )
@@ -42,7 +41,7 @@ type pspResourceModel struct {
 	Name                       types.String         `tfsdk:"name"`
 	CustomDomain               types.String         `tfsdk:"custom_domain"`
 	IsPasswordSet              types.Bool           `tfsdk:"is_password_set"`
-	MonitorIDs                 types.List           `tfsdk:"monitor_ids"`
+	MonitorIDs                 types.Set            `tfsdk:"monitor_ids"`
 	MonitorsCount              types.Int64          `tfsdk:"monitors_count"`
 	Status                     types.String         `tfsdk:"status"`
 	URLKey                     types.String         `tfsdk:"url_key"`
@@ -143,9 +142,12 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Description: "Whether a password is set for the PSP",
 				Computed:    true,
 			},
-			"monitor_ids": schema.ListAttribute{
-				Description: "List of monitor IDs",
-				Required:    true,
+			"monitor_ids": schema.SetAttribute{
+				Description: "Set of monitor IDs",
+				Optional:    true,
+				// Computed is set due to the bug in the API which returns empty monitor_ids all the time.
+				// Remove Computed after bug fix
+				Computed:    true,
 				ElementType: types.Int64Type,
 			},
 			"monitors_count": schema.Int64Attribute{
@@ -499,9 +501,19 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
+	managedColors := plan.CustomSettings != nil && plan.CustomSettings.Colors != nil
+	managedFeatures := plan.CustomSettings != nil && plan.CustomSettings.Features != nil
+
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
-	pspToResourceData(newPSP, &updatedPlan, false)
+	pspToResourceData(ctx, newPSP, &updatedPlan)
+
+	if !managedColors && updatedPlan.CustomSettings != nil {
+		updatedPlan.CustomSettings.Colors = nil
+	}
+	if !managedFeatures && updatedPlan.CustomSettings != nil {
+		updatedPlan.CustomSettings.Features = nil
+	}
 
 	// Set state to fully populated data
 	stateSet := resp.State.Set(ctx, updatedPlan)
@@ -537,17 +549,34 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	// Check if we're in an import operation by seeing if all required fields are null
-	// During import, only the ID is set
 	isImport := state.Name.IsNull()
 
-	// First make a copy of the current state to preserve user-defined order of monitor IDs
-	// and to ensure we don't lose any user configuration
+	managedColors := state.CustomSettings != nil && state.CustomSettings.Colors != nil
+	managedFeatures := state.CustomSettings != nil && state.CustomSettings.Features != nil
+
 	updatedState := state
 
-	// Now update the state with the response data, preserving existing monitor IDs order
-	// and handling all computed values properly
-	pspToResourceData(psp, &updatedState, isImport)
+	pspToResourceData(ctx, psp, &updatedState)
+
+	if len(psp.MonitorIDs) > 0 {
+		setVal, d := types.SetValueFrom(ctx, types.Int64Type, psp.MonitorIDs)
+		resp.Diagnostics.Append(d...)
+		updatedState.MonitorIDs = setVal
+	} else if isImport || updatedState.MonitorIDs.IsNull() || updatedState.MonitorIDs.IsUnknown() {
+		// import or was unset represents "no monitors"
+		emptySet, _ := types.SetValue(types.Int64Type, []attr.Value{})
+		updatedState.MonitorIDs = emptySet
+	} else {
+		// regular read and API returned nothing preserve prior state to avoid drift
+		updatedState.MonitorIDs = state.MonitorIDs
+	}
+
+	if !managedColors && updatedState.CustomSettings != nil {
+		updatedState.CustomSettings.Colors = nil
+	}
+	if !managedFeatures && updatedState.CustomSettings != nil {
+		updatedState.CustomSettings.Features = nil
+	}
 
 	diags = resp.State.Set(ctx, &updatedState)
 	resp.Diagnostics.Append(diags...)
@@ -559,14 +588,12 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	// Retrieve values from plan and state
 	var plan, state pspResourceModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	if diags := req.Plan.Get(ctx, &plan); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
 		return
 	}
-	diags = req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	if diags := req.State.Get(ctx, &state); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
 		return
 	}
 
@@ -618,111 +645,105 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		psp.Logo = &logo
 	}
 
-	// Convert []attr.Value to []int64 for MonitorIDs
 	if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
-		monitorIDs := make([]int64, 0, len(plan.MonitorIDs.Elements()))
-		for _, id := range plan.MonitorIDs.Elements() {
-			idValue, _ := id.(types.Int64)
-			monitorIDs = append(monitorIDs, idValue.ValueInt64())
+		var monitorIDs []int64
+		diags := plan.MonitorIDs.ElementsAs(ctx, &monitorIDs, false)
+		if diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
 		}
 		psp.MonitorIDs = monitorIDs
 	}
 
 	// Handle CustomSettings if set
 	if plan.CustomSettings != nil {
-		psp.CustomSettings = &client.CustomSettings{
-			// Always initialize these as empty objects instead of null
-			Page:     &client.PageSettings{},
-			Colors:   &client.ColorSettings{},
-			Features: &client.FeatureSettings{},
-		}
+		psp.CustomSettings = &client.CustomSettings{}
 
 		// Handle Font settings
 		if plan.CustomSettings.Font != nil {
 			psp.CustomSettings.Font = &client.FontSettings{}
-			if !plan.CustomSettings.Font.Family.IsNull() {
-				family := plan.CustomSettings.Font.Family.ValueString()
+			if v := plan.CustomSettings.Font.Family; !v.IsNull() && !v.IsUnknown() {
+				family := v.ValueString()
 				psp.CustomSettings.Font.Family = &family
 			}
 		}
 
 		// Handle Page settings
 		if plan.CustomSettings.Page != nil {
-			if !plan.CustomSettings.Page.Layout.IsNull() {
-				psp.CustomSettings.Page.Layout = plan.CustomSettings.Page.Layout.ValueString()
+			psp.CustomSettings.Page = &client.PageSettings{}
+			if v := plan.CustomSettings.Page.Layout; !v.IsNull() && !v.IsUnknown() {
+				psp.CustomSettings.Page.Layout = v.ValueString()
 			}
-
-			if !plan.CustomSettings.Page.Theme.IsNull() {
-				psp.CustomSettings.Page.Theme = plan.CustomSettings.Page.Theme.ValueString()
+			if v := plan.CustomSettings.Page.Theme; !v.IsNull() && !v.IsUnknown() {
+				psp.CustomSettings.Page.Theme = v.ValueString()
 			}
-
-			if !plan.CustomSettings.Page.Density.IsNull() {
-				psp.CustomSettings.Page.Density = plan.CustomSettings.Page.Density.ValueString()
+			if v := plan.CustomSettings.Page.Density; !v.IsNull() && !v.IsUnknown() {
+				psp.CustomSettings.Page.Density = v.ValueString()
 			}
 		}
 
 		// Handle Colors settings
 		if plan.CustomSettings.Colors != nil {
-			if !plan.CustomSettings.Colors.Main.IsNull() {
-				main := plan.CustomSettings.Colors.Main.ValueString()
+			psp.CustomSettings.Colors = &client.ColorSettings{}
+			if v := plan.CustomSettings.Colors.Main; !v.IsNull() && !v.IsUnknown() {
+				main := v.ValueString()
 				psp.CustomSettings.Colors.Main = &main
 			}
-
-			if !plan.CustomSettings.Colors.Text.IsNull() {
-				text := plan.CustomSettings.Colors.Text.ValueString()
+			if v := plan.CustomSettings.Colors.Text; !v.IsNull() && !v.IsUnknown() {
+				text := v.ValueString()
 				psp.CustomSettings.Colors.Text = &text
 			}
-
-			if !plan.CustomSettings.Colors.Link.IsNull() {
-				link := plan.CustomSettings.Colors.Link.ValueString()
+			if v := plan.CustomSettings.Colors.Link; !v.IsNull() && !v.IsUnknown() {
+				link := v.ValueString()
 				psp.CustomSettings.Colors.Link = &link
 			}
 		}
 
 		// Handle Features settings
 		if plan.CustomSettings.Features != nil {
-			if !plan.CustomSettings.Features.ShowBars.IsNull() && !plan.CustomSettings.Features.ShowBars.IsUnknown() {
-				showBars := plan.CustomSettings.Features.ShowBars.ValueBool()
+			psp.CustomSettings.Features = &client.FeatureSettings{}
+			if v := plan.CustomSettings.Features.ShowBars; !v.IsNull() && !v.IsUnknown() {
+				showBars := v.ValueBool()
 				psp.CustomSettings.Features.ShowBars = &showBars
 			}
 
-			if !plan.CustomSettings.Features.ShowUptimePercentage.IsNull() && !plan.CustomSettings.Features.ShowUptimePercentage.IsUnknown() {
-				showUptimePercentage := plan.CustomSettings.Features.ShowUptimePercentage.ValueBool()
+			if v := plan.CustomSettings.Features.ShowUptimePercentage; !v.IsNull() && !v.IsUnknown() {
+				showUptimePercentage := v.ValueBool()
 				psp.CustomSettings.Features.ShowUptimePercentage = &showUptimePercentage
 			}
 
-			if !plan.CustomSettings.Features.EnableFloatingStatus.IsNull() && !plan.CustomSettings.Features.EnableFloatingStatus.IsUnknown() {
-				enableFloatingStatus := plan.CustomSettings.Features.EnableFloatingStatus.ValueBool()
+			if v := plan.CustomSettings.Features.EnableFloatingStatus; !v.IsNull() && !v.IsUnknown() {
+				enableFloatingStatus := v.ValueBool()
 				psp.CustomSettings.Features.EnableFloatingStatus = &enableFloatingStatus
 			}
 
-			if !plan.CustomSettings.Features.ShowOverallUptime.IsNull() && !plan.CustomSettings.Features.ShowOverallUptime.IsUnknown() {
-				showOverallUptime := plan.CustomSettings.Features.ShowOverallUptime.ValueBool()
+			if v := plan.CustomSettings.Features.ShowOverallUptime; !v.IsNull() && !v.IsUnknown() {
+				showOverallUptime := v.ValueBool()
 				psp.CustomSettings.Features.ShowOverallUptime = &showOverallUptime
 			}
 
-			if !plan.CustomSettings.Features.ShowOutageUpdates.IsNull() && !plan.CustomSettings.Features.ShowOutageUpdates.IsUnknown() {
-				showOutageUpdates := plan.CustomSettings.Features.ShowOutageUpdates.ValueBool()
+			if v := plan.CustomSettings.Features.ShowOutageUpdates; !v.IsNull() && !v.IsUnknown() {
+				showOutageUpdates := v.ValueBool()
 				psp.CustomSettings.Features.ShowOutageUpdates = &showOutageUpdates
 			}
 
-			if !plan.CustomSettings.Features.ShowOutageDetails.IsNull() && !plan.CustomSettings.Features.ShowOutageDetails.IsUnknown() {
-				showOutageDetails := plan.CustomSettings.Features.ShowOutageDetails.ValueBool()
+			if v := plan.CustomSettings.Features.ShowOutageDetails; !v.IsNull() && !v.IsUnknown() {
+				showOutageDetails := v.ValueBool()
 				psp.CustomSettings.Features.ShowOutageDetails = &showOutageDetails
 			}
 
-			if !plan.CustomSettings.Features.EnableDetailsPage.IsNull() && !plan.CustomSettings.Features.EnableDetailsPage.IsUnknown() {
-				enableDetailsPage := plan.CustomSettings.Features.EnableDetailsPage.ValueBool()
+			if v := plan.CustomSettings.Features.EnableDetailsPage; !v.IsNull() && !v.IsUnknown() {
+				enableDetailsPage := v.ValueBool()
 				psp.CustomSettings.Features.EnableDetailsPage = &enableDetailsPage
 			}
 
-			if !plan.CustomSettings.Features.ShowMonitorURL.IsNull() && !plan.CustomSettings.Features.ShowMonitorURL.IsUnknown() {
-				showMonitorURL := plan.CustomSettings.Features.ShowMonitorURL.ValueBool()
+			if v := plan.CustomSettings.Features.ShowMonitorURL; !v.IsNull() && !v.IsUnknown() {
+				showMonitorURL := v.ValueBool()
 				psp.CustomSettings.Features.ShowMonitorURL = &showMonitorURL
 			}
 
-			if !plan.CustomSettings.Features.HidePausedMonitors.IsNull() && !plan.CustomSettings.Features.HidePausedMonitors.IsUnknown() {
-				hidePausedMonitors := plan.CustomSettings.Features.HidePausedMonitors.ValueBool()
+			if v := plan.CustomSettings.Features.HidePausedMonitors; !v.IsNull() && !v.IsUnknown() {
+				hidePausedMonitors := v.ValueBool()
 				psp.CustomSettings.Features.HidePausedMonitors = &hidePausedMonitors
 			}
 		}
@@ -738,36 +759,31 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	// Map response body to schema and populate Computed attribute values
-	plan.Status = types.StringValue(updatedPSP.Status)
-	plan.URLKey = types.StringValue(updatedPSP.URLKey)
-	plan.IsPasswordSet = types.BoolValue(updatedPSP.IsPasswordSet)
-	plan.Subscription = types.BoolValue(updatedPSP.Subscription)
+	var newState = state
+	pspToResourceData(ctx, updatedPSP, &newState)
 
-	// Handle nullable fields in response
-	if updatedPSP.MonitorsCount != nil {
-		plan.MonitorsCount = types.Int64Value(int64(*updatedPSP.MonitorsCount))
-	} else {
-		plan.MonitorsCount = types.Int64Value(0)
+	if len(updatedPSP.MonitorIDs) == 0 {
+		if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
+			newState.MonitorIDs = plan.MonitorIDs
+		} else {
+			newState.MonitorIDs = state.MonitorIDs
+		}
 	}
 
-	if updatedPSP.HomepageLink != nil {
-		plan.HomepageLink = types.StringValue(*updatedPSP.HomepageLink)
-	} else {
-		plan.HomepageLink = types.StringValue("")
+	// Respect current plan: if omitted, clear from state
+	if plan.CustomSettings == nil || plan.CustomSettings.Colors == nil {
+		if newState.CustomSettings != nil {
+			newState.CustomSettings.Colors = nil
+		}
+	}
+	if plan.CustomSettings == nil || plan.CustomSettings.Features == nil {
+		if newState.CustomSettings != nil {
+			newState.CustomSettings.Features = nil
+		}
 	}
 
-	if updatedPSP.PinnedAnnouncementID != nil {
-		plan.PinnedAnnouncementID = types.Int64Value(*updatedPSP.PinnedAnnouncementID)
-	} else {
-		// Keep as null if not set
-		plan.PinnedAnnouncementID = types.Int64Null()
-	}
-
-	// Set state to fully populated data
-	stateDiags := resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(stateDiags...)
-	if resp.Diagnostics.HasError() {
+	if diags := resp.State.Set(ctx, newState); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
 		return
 	}
 }
@@ -800,7 +816,7 @@ func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 	}
 }
 
-func pspToResourceData(psp *client.PSP, plan *pspResourceModel, isImport bool) {
+func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceModel) {
 	plan.ID = types.StringValue(strconv.FormatInt(psp.ID, 10))
 	plan.Name = types.StringValue(psp.Name)
 	plan.Status = types.StringValue(psp.Status)
@@ -833,30 +849,26 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel, isImport bool) {
 	// Handle other optional fields
 	if psp.CustomDomain != nil {
 		plan.CustomDomain = types.StringValue(*psp.CustomDomain)
-	} else if !plan.CustomDomain.IsNull() {
-		// Keep the existing value if it's set
-		plan.CustomDomain = types.StringValue("")
+	} else {
+		plan.CustomDomain = types.StringNull()
 	}
 
 	if psp.GACode != nil {
 		plan.GACode = types.StringValue(*psp.GACode)
-	} else if !plan.GACode.IsNull() {
-		// Keep the existing value if it's set
-		plan.GACode = types.StringValue("")
+	} else {
+		plan.GACode = types.StringNull()
 	}
 
 	if psp.Icon != nil {
 		plan.Icon = types.StringValue(*psp.Icon)
-	} else if !plan.Icon.IsNull() {
-		// Keep the existing value if it's set
-		plan.Icon = types.StringValue("")
+	} else {
+		plan.Icon = types.StringNull()
 	}
 
 	if psp.Logo != nil {
 		plan.Logo = types.StringValue(*psp.Logo)
-	} else if !plan.Logo.IsNull() {
-		// Keep the existing value if it's set
-		plan.Logo = types.StringValue("")
+	} else {
+		plan.Logo = types.StringNull()
 	}
 
 	if psp.PinnedAnnouncementID != nil {
@@ -868,31 +880,14 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel, isImport bool) {
 
 	// Handle monitor IDs - always update with what the API returns
 	if len(psp.MonitorIDs) > 0 {
-		// Create the monitor IDs list from API response
-		monitorIDsElements := make([]attr.Value, len(psp.MonitorIDs))
-		for i, id := range psp.MonitorIDs {
-			monitorIDsElements[i] = types.Int64Value(id)
-		}
-
-		monitorIDsList, diags := types.ListValue(types.Int64Type, monitorIDsElements)
+		monitorIDsSet, diags := types.SetValueFrom(ctx, types.Int64Type, psp.MonitorIDs)
 		if diags == nil || !diags.HasError() {
-			plan.MonitorIDs = monitorIDsList
+			plan.MonitorIDs = monitorIDsSet
 		}
 	} else {
-		// If the API returns empty or nil, handle based on context
-		if isImport {
-			// During import, always set to empty list if API returns no monitor IDs
-			emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
-			plan.MonitorIDs = emptyList
-		} else {
-			// For normal operations, preserve the existing state to avoid unnecessary diffs
-			// Only set to empty if the current state is null or unknown
-			if plan.MonitorIDs.IsNull() || plan.MonitorIDs.IsUnknown() {
-				emptyList, _ := types.ListValue(types.Int64Type, []attr.Value{})
-				plan.MonitorIDs = emptyList
-			}
-			// Otherwise, keep the existing value
-		}
+		// API returned none so empty set in state
+		emptySet, _ := types.SetValue(types.Int64Type, []attr.Value{})
+		plan.MonitorIDs = emptySet
 	}
 
 	// Handle CustomSettings if present in the API response
@@ -1006,49 +1001,6 @@ func pspToResourceData(psp *client.PSP, plan *pspResourceModel, isImport bool) {
 	}
 }
 
-// ModifyPlan modifies the plan to handle list field consistency issues.
-func (r *pspResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// If we don't have a plan or state, there's nothing to modify
-	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
-		return
-	}
-
-	// Retrieve values from plan and state
-	var plan, state pspResourceModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	diags = req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// Handle monitor IDs list consistency
-	pspModifyPlanForListField(ctx, &plan.MonitorIDs, &state.MonitorIDs, resp, "monitor_ids")
-}
-
-// pspModifyPlanForListField handles the special case for list fields that might be null vs empty lists.
-func pspModifyPlanForListField(ctx context.Context, planField, stateField *types.List, resp *resource.ModifyPlanResponse, fieldName string) {
-	// If we don't have both plan and state, nothing to modify
-	if planField == nil || stateField == nil {
-		return
-	}
-
-	// Case 1: State is null, plan has an empty list -> convert plan to null for consistency
-	if stateField.IsNull() && !planField.IsNull() {
-		var planItems []int64
-		diags := planField.ElementsAs(ctx, &planItems, false)
-		if !diags.HasError() && len(planItems) == 0 {
-			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.ListNull(planField.ElementType(ctx)))
-		}
-	}
-	// Case 2: State has items, plan is null -> This is a user-intended removal, don't modify
-	// Case 3: State has items, plan has different items -> This is a user-intended change, don't modify
-}
-
 // ImportState imports an existing resource into Terraform.
 func (r *pspResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
@@ -1056,28 +1008,53 @@ func (r *pspResource) ImportState(ctx context.Context, req resource.ImportStateR
 
 func (r *pspResource) UpgradeState(_ context.Context) map[int64]resource.StateUpgrader {
 	// from version 0 where features.* were strings to 1 where features.* are bools
+	// and list to set for monitors ids
 	return map[int64]resource.StateUpgrader{
 		0: {
 			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
 				base := path.Root("custom_settings").AtName("features")
+				// Strings -> bools
+				{
+					// Read the entire features object as a generic map which may not exist
+					var old map[string]any
+					if diags := req.State.GetAttribute(ctx, base, &old); diags.HasError() {
+						// If not present, nothing to do
+						return
+					}
+					if old == nil {
+						return
+					}
 
-				// Read the entire features object as a generic map which may not exist
-				var old map[string]any
-				if diags := req.State.GetAttribute(ctx, base, &old); diags.HasError() {
-					// If not present, nothing to do
-					return
+					upgraded := upgradeFeaturesMap(old)
+
+					// Overwrite with Upgraded map. Empty map is ok and will remove attrs
+					if diags := resp.State.SetAttribute(ctx, base, upgraded); diags.HasError() {
+						resp.Diagnostics.Append(diags...)
+					}
 				}
-				if old == nil {
-					return
+				// monitor_ids: list -> set
+				{
+					var ids []int64
+					if diags := req.State.GetAttribute(ctx, path.Root("monitor_ids"), &ids); diags.HasError() {
+						// nothing to convert
+						return
+					}
+
+					vals := make([]attr.Value, len(ids))
+					for i, v := range ids {
+						vals[i] = types.Int64Value(v)
+					}
+
+					setVal, diags := types.SetValue(types.Int64Type, vals)
+					if diags.HasError() {
+						resp.Diagnostics.Append(diags...)
+						return
+					}
+
+					if diags := resp.State.SetAttribute(ctx, path.Root("monitor_ids"), setVal); diags.HasError() {
+						resp.Diagnostics.Append(diags...)
+					}
 				}
-
-				upgraded := upgradeFeaturesMap(old)
-
-				// Overwrite with Upgraded map. Empty map is ok and will remove attrs
-				if diags := resp.State.SetAttribute(ctx, base, upgraded); diags.HasError() {
-					resp.Diagnostics.Append(diags...)
-				}
-
 			},
 		},
 	}
