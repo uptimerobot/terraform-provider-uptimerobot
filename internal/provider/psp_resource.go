@@ -506,7 +506,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
-	pspToResourceData(ctx, newPSP, &updatedPlan, false)
+	pspToResourceData(ctx, newPSP, &updatedPlan)
 
 	if !managedColors && updatedPlan.CustomSettings != nil {
 		updatedPlan.CustomSettings.Colors = nil
@@ -549,8 +549,6 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	// Check if we're in an import operation by seeing if all required fields are null
-	// During import, only the ID is set
 	isImport := state.Name.IsNull()
 
 	managedColors := state.CustomSettings != nil && state.CustomSettings.Colors != nil
@@ -558,7 +556,20 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 
 	updatedState := state
 
-	pspToResourceData(ctx, psp, &updatedState, isImport)
+	pspToResourceData(ctx, psp, &updatedState)
+
+	if len(psp.MonitorIDs) > 0 {
+		setVal, d := types.SetValueFrom(ctx, types.Int64Type, psp.MonitorIDs)
+		resp.Diagnostics.Append(d...)
+		updatedState.MonitorIDs = setVal
+	} else if isImport || updatedState.MonitorIDs.IsNull() || updatedState.MonitorIDs.IsUnknown() {
+		// import or was unset represents "no monitors"
+		emptySet, _ := types.SetValue(types.Int64Type, []attr.Value{})
+		updatedState.MonitorIDs = emptySet
+	} else {
+		// regular read and API returned nothing preserve prior state to avoid drift
+		updatedState.MonitorIDs = state.MonitorIDs
+	}
 
 	if !managedColors && updatedState.CustomSettings != nil {
 		updatedState.CustomSettings.Colors = nil
@@ -646,99 +657,93 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 
 	// Handle CustomSettings if set
 	if plan.CustomSettings != nil {
-		psp.CustomSettings = &client.CustomSettings{
-			// Always initialize these as empty objects instead of null
-			Page:     &client.PageSettings{},
-			Colors:   &client.ColorSettings{},
-			Features: &client.FeatureSettings{},
-		}
+		psp.CustomSettings = &client.CustomSettings{}
 
 		// Handle Font settings
 		if plan.CustomSettings.Font != nil {
 			psp.CustomSettings.Font = &client.FontSettings{}
-			if !plan.CustomSettings.Font.Family.IsNull() && !plan.CustomSettings.Font.Family.IsUnknown() {
-				family := plan.CustomSettings.Font.Family.ValueString()
+			if v := plan.CustomSettings.Font.Family; !v.IsNull() && !v.IsUnknown() {
+				family := v.ValueString()
 				psp.CustomSettings.Font.Family = &family
 			}
 		}
 
 		// Handle Page settings
 		if plan.CustomSettings.Page != nil {
-			if !plan.CustomSettings.Page.Layout.IsNull() && !plan.CustomSettings.Page.Layout.IsUnknown() {
-				psp.CustomSettings.Page.Layout = plan.CustomSettings.Page.Layout.ValueString()
+			psp.CustomSettings.Page = &client.PageSettings{}
+			if v := plan.CustomSettings.Page.Layout; !v.IsNull() && !v.IsUnknown() {
+				psp.CustomSettings.Page.Layout = v.ValueString()
 			}
-
-			if !plan.CustomSettings.Page.Theme.IsNull() && !plan.CustomSettings.Page.Theme.IsUnknown() {
-				psp.CustomSettings.Page.Theme = plan.CustomSettings.Page.Theme.ValueString()
+			if v := plan.CustomSettings.Page.Theme; !v.IsNull() && !v.IsUnknown() {
+				psp.CustomSettings.Page.Theme = v.ValueString()
 			}
-
-			if !plan.CustomSettings.Page.Density.IsNull() && !plan.CustomSettings.Page.Density.IsUnknown() {
-				psp.CustomSettings.Page.Density = plan.CustomSettings.Page.Density.ValueString()
+			if v := plan.CustomSettings.Page.Density; !v.IsNull() && !v.IsUnknown() {
+				psp.CustomSettings.Page.Density = v.ValueString()
 			}
 		}
 
 		// Handle Colors settings
 		if plan.CustomSettings.Colors != nil {
-			if !plan.CustomSettings.Colors.Main.IsNull() && !plan.CustomSettings.Colors.Main.IsUnknown() {
-				main := plan.CustomSettings.Colors.Main.ValueString()
+			psp.CustomSettings.Colors = &client.ColorSettings{}
+			if v := plan.CustomSettings.Colors.Main; !v.IsNull() && !v.IsUnknown() {
+				main := v.ValueString()
 				psp.CustomSettings.Colors.Main = &main
 			}
-
-			if !plan.CustomSettings.Colors.Text.IsNull() && !plan.CustomSettings.Colors.Text.IsUnknown() {
-				text := plan.CustomSettings.Colors.Text.ValueString()
+			if v := plan.CustomSettings.Colors.Text; !v.IsNull() && !v.IsUnknown() {
+				text := v.ValueString()
 				psp.CustomSettings.Colors.Text = &text
 			}
-
-			if !plan.CustomSettings.Colors.Link.IsNull() && !plan.CustomSettings.Colors.Link.IsUnknown() {
-				link := plan.CustomSettings.Colors.Link.ValueString()
+			if v := plan.CustomSettings.Colors.Link; !v.IsNull() && !v.IsUnknown() {
+				link := v.ValueString()
 				psp.CustomSettings.Colors.Link = &link
 			}
 		}
 
 		// Handle Features settings
 		if plan.CustomSettings.Features != nil {
-			if !plan.CustomSettings.Features.ShowBars.IsNull() && !plan.CustomSettings.Features.ShowBars.IsUnknown() {
-				showBars := plan.CustomSettings.Features.ShowBars.ValueBool()
+			psp.CustomSettings.Features = &client.FeatureSettings{}
+			if v := plan.CustomSettings.Features.ShowBars; !v.IsNull() && !v.IsUnknown() {
+				showBars := v.ValueBool()
 				psp.CustomSettings.Features.ShowBars = &showBars
 			}
 
-			if !plan.CustomSettings.Features.ShowUptimePercentage.IsNull() && !plan.CustomSettings.Features.ShowUptimePercentage.IsUnknown() {
-				showUptimePercentage := plan.CustomSettings.Features.ShowUptimePercentage.ValueBool()
+			if v := plan.CustomSettings.Features.ShowUptimePercentage; !v.IsNull() && !v.IsUnknown() {
+				showUptimePercentage := v.ValueBool()
 				psp.CustomSettings.Features.ShowUptimePercentage = &showUptimePercentage
 			}
 
-			if !plan.CustomSettings.Features.EnableFloatingStatus.IsNull() && !plan.CustomSettings.Features.EnableFloatingStatus.IsUnknown() {
-				enableFloatingStatus := plan.CustomSettings.Features.EnableFloatingStatus.ValueBool()
+			if v := plan.CustomSettings.Features.EnableFloatingStatus; !v.IsNull() && !v.IsUnknown() {
+				enableFloatingStatus := v.ValueBool()
 				psp.CustomSettings.Features.EnableFloatingStatus = &enableFloatingStatus
 			}
 
-			if !plan.CustomSettings.Features.ShowOverallUptime.IsNull() && !plan.CustomSettings.Features.ShowOverallUptime.IsUnknown() {
-				showOverallUptime := plan.CustomSettings.Features.ShowOverallUptime.ValueBool()
+			if v := plan.CustomSettings.Features.ShowOverallUptime; !v.IsNull() && !v.IsUnknown() {
+				showOverallUptime := v.ValueBool()
 				psp.CustomSettings.Features.ShowOverallUptime = &showOverallUptime
 			}
 
-			if !plan.CustomSettings.Features.ShowOutageUpdates.IsNull() && !plan.CustomSettings.Features.ShowOutageUpdates.IsUnknown() {
-				showOutageUpdates := plan.CustomSettings.Features.ShowOutageUpdates.ValueBool()
+			if v := plan.CustomSettings.Features.ShowOutageUpdates; !v.IsNull() && !v.IsUnknown() {
+				showOutageUpdates := v.ValueBool()
 				psp.CustomSettings.Features.ShowOutageUpdates = &showOutageUpdates
 			}
 
-			if !plan.CustomSettings.Features.ShowOutageDetails.IsNull() && !plan.CustomSettings.Features.ShowOutageDetails.IsUnknown() {
-				showOutageDetails := plan.CustomSettings.Features.ShowOutageDetails.ValueBool()
+			if v := plan.CustomSettings.Features.ShowOutageDetails; !v.IsNull() && !v.IsUnknown() {
+				showOutageDetails := v.ValueBool()
 				psp.CustomSettings.Features.ShowOutageDetails = &showOutageDetails
 			}
 
-			if !plan.CustomSettings.Features.EnableDetailsPage.IsNull() && !plan.CustomSettings.Features.EnableDetailsPage.IsUnknown() {
-				enableDetailsPage := plan.CustomSettings.Features.EnableDetailsPage.ValueBool()
+			if v := plan.CustomSettings.Features.EnableDetailsPage; !v.IsNull() && !v.IsUnknown() {
+				enableDetailsPage := v.ValueBool()
 				psp.CustomSettings.Features.EnableDetailsPage = &enableDetailsPage
 			}
 
-			if !plan.CustomSettings.Features.ShowMonitorURL.IsNull() && !plan.CustomSettings.Features.ShowMonitorURL.IsUnknown() {
-				showMonitorURL := plan.CustomSettings.Features.ShowMonitorURL.ValueBool()
+			if v := plan.CustomSettings.Features.ShowMonitorURL; !v.IsNull() && !v.IsUnknown() {
+				showMonitorURL := v.ValueBool()
 				psp.CustomSettings.Features.ShowMonitorURL = &showMonitorURL
 			}
 
-			if !plan.CustomSettings.Features.HidePausedMonitors.IsNull() && !plan.CustomSettings.Features.HidePausedMonitors.IsUnknown() {
-				hidePausedMonitors := plan.CustomSettings.Features.HidePausedMonitors.ValueBool()
+			if v := plan.CustomSettings.Features.HidePausedMonitors; !v.IsNull() && !v.IsUnknown() {
+				hidePausedMonitors := v.ValueBool()
 				psp.CustomSettings.Features.HidePausedMonitors = &hidePausedMonitors
 			}
 		}
@@ -755,7 +760,15 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	var newState = state
-	pspToResourceData(ctx, updatedPSP, &newState, false)
+	pspToResourceData(ctx, updatedPSP, &newState)
+
+	if len(updatedPSP.MonitorIDs) == 0 {
+		if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
+			newState.MonitorIDs = plan.MonitorIDs
+		} else {
+			newState.MonitorIDs = state.MonitorIDs
+		}
+	}
 
 	// Respect current plan: if omitted, clear from state
 	if plan.CustomSettings == nil || plan.CustomSettings.Colors == nil {
@@ -803,7 +816,7 @@ func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 	}
 }
 
-func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceModel, isImport bool) {
+func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceModel) {
 	plan.ID = types.StringValue(strconv.FormatInt(psp.ID, 10))
 	plan.Name = types.StringValue(psp.Name)
 	plan.Status = types.StringValue(psp.Status)
