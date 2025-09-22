@@ -145,7 +145,7 @@ func parseWebhookStateFields(customValue string) (*webhookStateFields, error) {
 		}
 		fields.PostValue = types.StringValue(string(postValueJSON))
 	} else {
-		fields.PostValue = types.StringValue("")
+		fields.PostValue = types.StringNull()
 	}
 
 	return fields, nil
@@ -231,6 +231,7 @@ func (r *integrationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 			"value": schema.StringAttribute{
 				Required:            true,
+				Sensitive:           true,
 				MarkdownDescription: "The value for the integration (e.g. webhook URL).",
 			},
 			"custom_value": schema.StringAttribute{
@@ -381,8 +382,10 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 
 	if integration.WebhookURL != "" {
 		state.Value = types.StringValue(integration.WebhookURL)
-	} else {
+	} else if strings.TrimSpace(integration.Value) != "" {
 		state.Value = types.StringValue(integration.Value)
+	} else {
+		state.Value = types.StringNull() // normalize empty. null on read
 	}
 
 	state.EnableNotificationsFor = types.Int64Value(convertNotificationsForFromString(integration.EnableNotificationsFor))
@@ -408,8 +411,12 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.PostValue = webhookFields.PostValue
 		state.CustomValue = webhookFields.CustomValue
 	} else {
-		// For non-webhook integrations, use customValue directly
-		state.CustomValue = types.StringValue(integration.CustomValue)
+		// For non-webhook integrations, normalize empty to null to avoid perpetual diffs
+		if strings.TrimSpace(integration.CustomValue) == "" {
+			state.CustomValue = types.StringNull()
+		} else {
+			state.CustomValue = types.StringValue(integration.CustomValue)
+		}
 
 		// Set webhook-specific fields to null for non-webhook integrations
 		state.SendAsJSON = types.BoolNull()
