@@ -33,6 +33,15 @@ type SlackIntegrationData struct {
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
 }
 
+// DiscordIntegrationData represents the data structure for Discord integrations.
+type DiscordIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	WebhookURL             string `json:"webhookURL,omitempty"`
+	CustomValue            string `json:"customValue,omitempty"`
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
 // WebhookIntegrationData represents the data structure for Webhook integrations.
 type WebhookIntegrationData struct {
 	FriendlyName           string `json:"friendlyName,omitempty"`

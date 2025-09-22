@@ -291,6 +291,14 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
+	case "discord":
+		integrationData = &client.DiscordIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
+			CustomValue:            plan.CustomValue.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
 	case "webhook":
 		integrationData = &client.WebhookIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
@@ -444,6 +452,14 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 	switch strings.ToLower(plan.Type.ValueString()) {
 	case "slack":
 		integrationData = &client.SlackIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
+			CustomValue:            plan.CustomValue.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "discord":
+		integrationData = &client.DiscordIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
 			WebhookURL:             plan.Value.ValueString(),
 			CustomValue:            plan.CustomValue.ValueString(),
