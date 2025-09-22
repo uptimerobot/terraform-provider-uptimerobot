@@ -259,7 +259,7 @@ resource "uptimerobot_integration" "webhook" {
 - `name` (String) The name of the integration.
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders.
 - `type` (String) The type of the integration (slack, webhook, discord, telegram, pushover, pushbullet, msteams, zapier, pagerduty, googlechat, splunk, mattermost).
-- `value` (String) The value for the integration (e.g. webhook URL).
+- `value` (String, Sensitive) The value for the integration (e.g. webhook URL).
 
 ### Optional
 
