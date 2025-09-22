@@ -408,8 +408,12 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.PostValue = webhookFields.PostValue
 		state.CustomValue = webhookFields.CustomValue
 	} else {
-		// For non-webhook integrations, use customValue directly
-		state.CustomValue = types.StringValue(integration.CustomValue)
+		// For non-webhook integrations, normalize empty to null to avoid perpetual diffs
+		if strings.TrimSpace(integration.CustomValue) == "" {
+			state.CustomValue = types.StringNull()
+		} else {
+			state.CustomValue = types.StringValue(integration.CustomValue)
+		}
 
 		// Set webhook-specific fields to null for non-webhook integrations
 		state.SendAsJSON = types.BoolNull()
