@@ -10,6 +10,9 @@ on:
       - '!.github/**'
       - '.github/workflows/test.yml'
 
+  push:
+    branches: [ main ]
+
   workflow_dispatch:
 
 permissions:
@@ -62,6 +65,11 @@ jobs:
         run: git diff --compact-summary --exit-code || (echo -e "\nDocumentation is out of sync. Run 'go generate ./...' to update and commit the changes." && exit 1)
 
   acceptance:
+    if: >
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.actor != 'dependabot[bot]' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 30
     runs-on: ubuntu-latest
     strategy:
