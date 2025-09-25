@@ -686,6 +686,16 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		}
 	}
 
+	if len(monitor.CustomHTTPHeaders) > 0 {
+		m := make(map[string]attr.Value, len(monitor.CustomHTTPHeaders))
+		for k, v := range monitor.CustomHTTPHeaders {
+			m[k] = types.StringValue(v)
+		}
+		state.CustomHTTPHeaders = types.MapValueMust(types.StringType, m)
+	} else {
+		state.CustomHTTPHeaders = types.MapNull(types.StringType)
+	}
+
 	if len(monitor.AssignedAlertContacts) > 0 {
 		alertContacts := make([]attr.Value, 0)
 		for _, contact := range monitor.AssignedAlertContacts {
@@ -851,6 +861,22 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updateReq.SuccessHTTPResponseCodes = statuses
 	}
 
+	if !plan.CustomHTTPHeaders.IsUnknown() {
+		if plan.CustomHTTPHeaders.IsNull() {
+			// block was removed from state. clear on server
+			empty := map[string]string{}
+			updateReq.CustomHTTPHeaders = &empty
+		} else {
+			var headers map[string]string
+			diags = plan.CustomHTTPHeaders.ElementsAs(ctx, &headers, false)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			updateReq.CustomHTTPHeaders = &headers
+		}
+	}
+
 	if !plan.MaintenanceWindowIDs.IsNull() {
 		var windowIDs []int64
 		diags = plan.MaintenanceWindowIDs.ElementsAs(ctx, &windowIDs, false)
@@ -976,6 +1002,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		// User didn't specify regional data, keep it null
 		updatedState.RegionalData = types.StringNull()
 	}
+
 	if len(updatedMonitor.Tags) > 0 {
 		tagNames := make([]string, 0, len(updatedMonitor.Tags))
 		for _, tag := range updatedMonitor.Tags {
@@ -988,6 +1015,16 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updatedState.Tags = types.SetValueMust(types.StringType, tagValues)
 	} else if plan.Tags.IsNull() {
 		updatedState.Tags = types.SetNull(types.StringType)
+	}
+
+	if len(updatedMonitor.CustomHTTPHeaders) > 0 {
+		m := make(map[string]attr.Value, len(updatedMonitor.CustomHTTPHeaders))
+		for k, v := range updatedMonitor.CustomHTTPHeaders {
+			m[k] = types.StringValue(v)
+		}
+		updatedState.CustomHTTPHeaders = types.MapValueMust(types.StringType, m)
+	} else {
+		updatedState.CustomHTTPHeaders = types.MapNull(types.StringType)
 	}
 
 	// Update assigned alert contacts

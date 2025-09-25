@@ -51,34 +51,34 @@ type CreateMonitorRequest struct {
 
 // UpdateMonitorRequest represents the request to update an existing monitor.
 type UpdateMonitorRequest struct {
-	Name                     string            `json:"friendlyName"`
-	URL                      string            `json:"url"`
-	Type                     MonitorType       `json:"type"`
-	Interval                 int               `json:"interval"`
-	Timeout                  *int              `json:"timeout,omitempty"`
-	HTTPAuthType             string            `json:"authType,omitempty"`
-	HTTPMethodType           string            `json:"httpMethodType,omitempty"`
-	HTTPUsername             string            `json:"httpUsername,omitempty"`
-	HTTPPassword             string            `json:"httpPassword,omitempty"`
-	Port                     int               `json:"port,omitempty"`
-	KeywordType              string            `json:"keywordType,omitempty"`
-	KeywordValue             string            `json:"keywordValue,omitempty"`
-	KeywordCaseType          int               `json:"keywordCaseType,omitempty"`
-	AssignedAlertContacts    []interface{}     `json:"assignedAlertContacts"`
-	CheckSSLErrors           bool              `json:"checkSSLErrors"`
-	SSLCheckEnabled          bool              `json:"sslCheckEnabled,omitempty"`
-	CustomHTTPHeaders        map[string]string `json:"customHttpHeaders,omitempty"`
-	SuccessHTTPResponseCodes []string          `json:"successHttpResponseCodes,omitempty"`
-	MaintenanceWindowIDs     []int64           `json:"maintenanceWindowsIds,omitempty"`
-	Tags                     []string          `json:"tagNames"`
-	GracePeriod              int               `json:"gracePeriod,omitempty"`
-	PostValueData            interface{}       `json:"postValueData,omitempty"`
-	PostValueType            string            `json:"postValueType,omitempty"`
-	SSLExpirationReminder    bool              `json:"sslExpirationReminder"`
-	DomainExpirationReminder bool              `json:"domainExpirationReminder"`
-	FollowRedirections       bool              `json:"followRedirections"`
-	ResponseTimeThreshold    *int              `json:"responseTimeThreshold,omitempty"`
-	RegionalData             *string           `json:"regionalData,omitempty"`
+	Name                     string             `json:"friendlyName"`
+	URL                      string             `json:"url"`
+	Type                     MonitorType        `json:"type"`
+	Interval                 int                `json:"interval"`
+	Timeout                  *int               `json:"timeout,omitempty"`
+	HTTPAuthType             string             `json:"authType,omitempty"`
+	HTTPMethodType           string             `json:"httpMethodType,omitempty"`
+	HTTPUsername             string             `json:"httpUsername,omitempty"`
+	HTTPPassword             string             `json:"httpPassword,omitempty"`
+	Port                     int                `json:"port,omitempty"`
+	KeywordType              string             `json:"keywordType,omitempty"`
+	KeywordValue             string             `json:"keywordValue,omitempty"`
+	KeywordCaseType          int                `json:"keywordCaseType,omitempty"`
+	AssignedAlertContacts    []interface{}      `json:"assignedAlertContacts"`
+	CheckSSLErrors           bool               `json:"checkSSLErrors"`
+	SSLCheckEnabled          bool               `json:"sslCheckEnabled,omitempty"`
+	CustomHTTPHeaders        *map[string]string `json:"customHttpHeaders,omitempty"`
+	SuccessHTTPResponseCodes []string           `json:"successHttpResponseCodes,omitempty"`
+	MaintenanceWindowIDs     []int64            `json:"maintenanceWindowsIds,omitempty"`
+	Tags                     []string           `json:"tagNames"`
+	GracePeriod              int                `json:"gracePeriod,omitempty"`
+	PostValueData            interface{}        `json:"postValueData,omitempty"`
+	PostValueType            string             `json:"postValueType,omitempty"`
+	SSLExpirationReminder    bool               `json:"sslExpirationReminder"`
+	DomainExpirationReminder bool               `json:"domainExpirationReminder"`
+	FollowRedirections       bool               `json:"followRedirections"`
+	ResponseTimeThreshold    *int               `json:"responseTimeThreshold,omitempty"`
+	RegionalData             *string            `json:"regionalData,omitempty"`
 }
 
 // Monitor represents a monitor.
