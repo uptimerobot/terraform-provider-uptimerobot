@@ -234,10 +234,10 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "Name of the monitor",
 				Required:    true,
 			},
-			// Status may change it's values fast due to changes on API side.
+			// Status may change its values quickly due to changes on the API side.
 			// On create after operation it should be a known value.
 			// On update use state's value.
-			// On read it will always be set becase read is used for after apply sync as well.
+			// On read it will always be set because read is used for after-apply sync as well.
 			"status": schema.StringAttribute{
 				Description: "Status of the monitor",
 				Computed:    true,
