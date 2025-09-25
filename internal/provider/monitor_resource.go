@@ -856,9 +856,6 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 				return
 			}
 			updateReq.CustomHTTPHeaders = &headers
-			// if len(headers) == 0 {
-			// 	updatedState.CustomHTTPHeaders
-			// }
 		}
 	}
 
