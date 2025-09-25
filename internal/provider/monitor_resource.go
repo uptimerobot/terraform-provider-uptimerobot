@@ -1143,37 +1143,6 @@ func stringValue(s *string) string {
 // UpgradeState used for migration between schemas.
 func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
 
-	type v0Model struct {
-		Type                     types.String `tfsdk:"type"`
-		Interval                 types.Int64  `tfsdk:"interval"`
-		SSLExpirationReminder    types.Bool   `tfsdk:"ssl_expiration_reminder"`
-		DomainExpirationReminder types.Bool   `tfsdk:"domain_expiration_reminder"`
-		FollowRedirections       types.Bool   `tfsdk:"follow_redirections"`
-		AuthType                 types.String `tfsdk:"auth_type"`
-		HTTPUsername             types.String `tfsdk:"http_username"`
-		HTTPPassword             types.String `tfsdk:"http_password"`
-		CustomHTTPHeaders        types.Map    `tfsdk:"custom_http_headers"`
-		HTTPMethodType           types.String `tfsdk:"http_method_type"`
-		SuccessHTTPResponseCodes types.List   `tfsdk:"success_http_response_codes"`
-		Timeout                  types.Int64  `tfsdk:"timeout"`
-		PostValueData            types.String `tfsdk:"post_value_data"`
-		PostValueType            types.String `tfsdk:"post_value_type"`
-		Port                     types.Int64  `tfsdk:"port"`
-		GracePeriod              types.Int64  `tfsdk:"grace_period"`
-		KeywordValue             types.String `tfsdk:"keyword_value"`
-		KeywordCaseType          types.String `tfsdk:"keyword_case_type"`
-		KeywordType              types.String `tfsdk:"keyword_type"`
-		MaintenanceWindowIDs     types.List   `tfsdk:"maintenance_window_ids"`
-		ID                       types.String `tfsdk:"id"`
-		Name                     types.String `tfsdk:"name"`
-		Status                   types.String `tfsdk:"status"`
-		URL                      types.String `tfsdk:"url"`
-		Tags                     types.List   `tfsdk:"tags"`
-		AssignedAlertContacts    types.List   `tfsdk:"assigned_alert_contacts"`
-		ResponseTimeThreshold    types.Int64  `tfsdk:"response_time_threshold"`
-		RegionalData             types.String `tfsdk:"regional_data"`
-	}
-
 	priorSchema := &schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"type":                       schema.StringAttribute{Required: true},
@@ -1228,66 +1197,20 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 			PriorSchema: priorSchema,
 			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
 				// 1. Read prior state that is decoded using PriorSchema
-				var prior v0Model
+				var prior monitorV0Model
 				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
 				if resp.Diagnostics.HasError() {
 					return
 				}
 
 				// 2. Convert tags: list -> set and dedupe as a courtesy
-				toSet := func(l types.List) types.Set {
-					if l.IsNull() || l.IsUnknown() {
-						return types.SetNull(types.StringType)
-					}
-					var ss []string
-					resp.Diagnostics.Append(l.ElementsAs(ctx, &ss, false)...)
-					if resp.Diagnostics.HasError() {
-						return types.SetNull(types.StringType)
-					}
-					seen := make(map[string]struct{}, len(ss))
-					vals := make([]attr.Value, 0, len(ss))
-					for _, s := range ss {
-						if _, ok := seen[s]; ok {
-							continue
-						}
-						seen[s] = struct{}{}
-						vals = append(vals, types.StringValue(s))
-					}
-					return types.SetValueMust(types.StringType, vals)
+				upgraded, diag := upgradeMonitorFromV0(ctx, prior)
+				resp.Diagnostics.Append(diag...)
+				if resp.Diagnostics.HasError() {
+					return
 				}
 
 				// 3. Write upgraded state
-				upgraded := monitorResourceModel{
-					Type:                     prior.Type,
-					Interval:                 prior.Interval,
-					SSLExpirationReminder:    prior.SSLExpirationReminder,
-					DomainExpirationReminder: prior.DomainExpirationReminder,
-					FollowRedirections:       prior.FollowRedirections,
-					AuthType:                 prior.AuthType,
-					HTTPUsername:             prior.HTTPUsername,
-					HTTPPassword:             prior.HTTPPassword,
-					CustomHTTPHeaders:        prior.CustomHTTPHeaders,
-					HTTPMethodType:           prior.HTTPMethodType,
-					SuccessHTTPResponseCodes: prior.SuccessHTTPResponseCodes,
-					Timeout:                  prior.Timeout,
-					PostValueData:            prior.PostValueData,
-					PostValueType:            prior.PostValueType,
-					Port:                     prior.Port,
-					GracePeriod:              prior.GracePeriod,
-					KeywordValue:             prior.KeywordValue,
-					KeywordCaseType:          prior.KeywordCaseType,
-					KeywordType:              prior.KeywordType,
-					MaintenanceWindowIDs:     prior.MaintenanceWindowIDs,
-					ID:                       prior.ID,
-					Name:                     prior.Name,
-					Status:                   prior.Status,
-					URL:                      prior.URL,
-					Tags:                     toSet(prior.Tags), // conversion of list
-					AssignedAlertContacts:    prior.AssignedAlertContacts,
-					ResponseTimeThreshold:    prior.ResponseTimeThreshold,
-					RegionalData:             prior.RegionalData,
-				}
-
 				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
 
 				// NOTE: For a fully correct upgrade ALL attributes in resp.State should be populated.
