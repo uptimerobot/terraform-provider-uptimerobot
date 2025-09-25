@@ -301,11 +301,11 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 			},
 			// 3) Change headers to ensures that update path works
 			{
-				Config: testAccMonitorResourceConfigWithHeaders(name, map[string]string{"dog": "woof"}),
+				Config: testAccMonitorResourceConfigWithHeaders(name, map[string]string{"foo": "bar"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.%", "1"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_http_headers.cat"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.dog", "woof"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.foo", "bar"),
 				),
 			},
 			// 4) Clear by sending {}

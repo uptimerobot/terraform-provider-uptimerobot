@@ -406,7 +406,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Handle custom HTTP headers
-	if !plan.CustomHTTPHeaders.IsNull() {
+	if !plan.CustomHTTPHeaders.IsNull() && !plan.CustomHTTPHeaders.IsUnknown() {
 		var headers map[string]string
 		diags = plan.CustomHTTPHeaders.ElementsAs(ctx, &headers, false)
 		resp.Diagnostics.Append(diags...)
@@ -417,7 +417,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Handle success HTTP response codes
-	if !plan.SuccessHTTPResponseCodes.IsNull() {
+	if !plan.SuccessHTTPResponseCodes.IsNull() && !plan.SuccessHTTPResponseCodes.IsUnknown() {
 		var codes []string
 		diags = plan.SuccessHTTPResponseCodes.ElementsAs(ctx, &codes, false)
 		resp.Diagnostics.Append(diags...)
@@ -428,7 +428,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Handle maintenance window IDs
-	if !plan.MaintenanceWindowIDs.IsNull() {
+	if !plan.MaintenanceWindowIDs.IsNull() && !plan.MaintenanceWindowIDs.IsUnknown() {
 		var windowIDs []int64
 		diags = plan.MaintenanceWindowIDs.ElementsAs(ctx, &windowIDs, false)
 		resp.Diagnostics.Append(diags...)
@@ -453,7 +453,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Handle assigned alert contacts
-	if !plan.AssignedAlertContacts.IsNull() {
+	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
 		var alertContactIds []string
 		diags = plan.AssignedAlertContacts.ElementsAs(ctx, &alertContactIds, false)
 		resp.Diagnostics.Append(diags...)
@@ -645,17 +645,17 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.RegionalData = types.StringNull()
 	} else if !state.RegionalData.IsNull() {
 		// During regular read, only update if it was originally set in the plan
-		if monitor.RegionalData != nil {
-			if regionData, ok := monitor.RegionalData.(map[string]interface{}); ok {
-				if regions, ok := regionData["REGION"].([]interface{}); ok && len(regions) > 0 {
-					if region, ok := regions[0].(string); ok {
-						state.RegionalData = types.StringValue(region)
-					}
-				}
-			}
-		} else {
-			state.RegionalData = types.StringNull()
-		}
+		// if monitor.RegionalData != nil {
+		// 	if regionData, ok := monitor.RegionalData.(map[string]interface{}); ok {
+		// 		if regions, ok := regionData["REGION"].([]interface{}); ok && len(regions) > 0 {
+		// 			if region, ok := regions[0].(string); ok {
+		// 				state.RegionalData = types.StringValue(region)
+		// 			}
+		// 		}
+		// 	}
+		// } else {
+		// state.RegionalData = types.StringNull()
+		// }
 	}
 	// If regional_data was not in the original plan and this is not an import, keep it as-is (null)
 
@@ -869,6 +869,9 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 				return
 			}
 			updateReq.CustomHTTPHeaders = &headers
+			// if len(headers) == 0 {
+			// 	updatedState.CustomHTTPHeaders
+			// }
 		}
 	}
 
