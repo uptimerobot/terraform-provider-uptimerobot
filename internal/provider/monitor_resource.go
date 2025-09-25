@@ -1143,50 +1143,75 @@ func stringValue(s *string) string {
 // UpgradeState used for migration between schemas.
 func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
 
-	type v0Model struct {
-		Tags types.List `tfsdk:"tags"` // this was an old type that should be set now
+	priorSchema := &schema.Schema{
+		Attributes: map[string]schema.Attribute{
+			"type":                       schema.StringAttribute{Required: true},
+			"interval":                   schema.Int64Attribute{Required: true},
+			"ssl_expiration_reminder":    schema.BoolAttribute{Optional: true, Computed: true},
+			"domain_expiration_reminder": schema.BoolAttribute{Optional: true, Computed: true},
+			"follow_redirections":        schema.BoolAttribute{Optional: true, Computed: true},
+			"auth_type":                  schema.StringAttribute{Optional: true, Computed: true},
+			"http_username":              schema.StringAttribute{Optional: true},
+			"http_password":              schema.StringAttribute{Optional: true, Sensitive: true},
+			"custom_http_headers":        schema.MapAttribute{Optional: true, ElementType: types.StringType},
+			"http_method_type":           schema.StringAttribute{Optional: true, Computed: true},
+			"success_http_response_codes": schema.ListAttribute{
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+			},
+			"timeout":           schema.Int64Attribute{Optional: true, Computed: true},
+			"post_value_data":   schema.StringAttribute{Optional: true},
+			"post_value_type":   schema.StringAttribute{Optional: true},
+			"port":              schema.Int64Attribute{Optional: true},
+			"grace_period":      schema.Int64Attribute{Optional: true, Computed: true},
+			"keyword_value":     schema.StringAttribute{Optional: true},
+			"keyword_case_type": schema.StringAttribute{Optional: true, Computed: true},
+			"keyword_type":      schema.StringAttribute{Optional: true},
+			"maintenance_window_ids": schema.ListAttribute{
+				Optional:    true,
+				ElementType: types.Int64Type,
+			},
+			"id":     schema.StringAttribute{Computed: true},
+			"name":   schema.StringAttribute{Required: true},
+			"status": schema.StringAttribute{Computed: true},
+			"url":    schema.StringAttribute{Required: true},
+
+			// The only difference vs current schema is tags
+			"tags": schema.ListAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+
+			"assigned_alert_contacts": schema.ListAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"response_time_threshold": schema.Int64Attribute{Optional: true},
+			"regional_data":           schema.StringAttribute{Optional: true},
+		},
 	}
+
 	return map[int64]resource.StateUpgrader{
 		0: {
-			PriorSchema: &schema.Schema{
-				Attributes: map[string]schema.Attribute{
-					"tags": schema.ListAttribute{
-						ElementType: types.StringType,
-						Optional:    true,
-					},
-				},
-			}, StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+			PriorSchema: priorSchema,
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
 				// 1. Read prior state that is decoded using PriorSchema
-				var prior v0Model
+				var prior monitorV0Model
 				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
 				if resp.Diagnostics.HasError() {
 					return
 				}
 
 				// 2. Convert tags: list -> set and dedupe as a courtesy
-				if prior.Tags.IsNull() || prior.Tags.IsUnknown() {
-					resp.Diagnostics.Append(
-						resp.State.SetAttribute(ctx, path.Root("tags"), types.SetNull(types.StringType))...,
-					)
-				} else {
-					var tags []string
-					resp.Diagnostics.Append(prior.Tags.ElementsAs(ctx, &tags, false)...)
-					if resp.Diagnostics.HasError() {
-						return
-					}
-					seen := make(map[string]struct{}, len(tags))
-					vals := make([]attr.Value, 0, len(tags))
-					for _, t := range tags {
-						if _, ok := seen[t]; ok {
-							continue
-						}
-						seen[t] = struct{}{}
-						vals = append(vals, types.StringValue(t))
-					}
-					resp.Diagnostics.Append(
-						resp.State.SetAttribute(ctx, path.Root("tags"), types.SetValueMust(types.StringType, vals))...,
-					)
+				upgraded, diag := upgradeMonitorFromV0(ctx, prior)
+				resp.Diagnostics.Append(diag...)
+				if resp.Diagnostics.HasError() {
+					return
 				}
+
+				// 3. Write upgraded state
+				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
 
 				// NOTE: For a fully correct upgrade ALL attributes in resp.State should be populated.
 				// Known values should be set/assign or setted to null value. Terrafrom framework do not copy them.
