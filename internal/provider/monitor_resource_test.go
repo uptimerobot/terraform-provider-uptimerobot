@@ -8,6 +8,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
+// Configs for tests --------------------------------------------------
+
 func testAccMonitorResourceConfig(name string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
@@ -87,6 +89,47 @@ resource "uptimerobot_monitor" "test" {
 `, name, responseCodesStr)
 }
 
+func testAccMonitorResourceConfigWithHeaders(name string, headers map[string]string) string {
+	hdr := ""
+	if headers != nil {
+		// build a literal headers map
+		hdr = "\n  custom_http_headers = {"
+		first := true
+		for k, v := range headers {
+			if first {
+				first = false
+			} else {
+				hdr += ","
+			}
+			hdr += fmt.Sprintf(` %q = %q`, k, v)
+		}
+		hdr += " }"
+	}
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300%s
+}
+`, name, hdr)
+}
+
+// headers block explicitly empty as {}
+func testAccMonitorResourceConfigWithEmptyHeaders(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300
+  custom_http_headers = {}
+}
+`, name)
+}
+
+// Helpers ------------------------------------------------------
+
 func joinQuotedStrings(strings []string) string {
 	var result string
 	for i, s := range strings {
@@ -108,6 +151,8 @@ func joinInts(ints []int) string {
 	}
 	return result
 }
+
+// Acceptance tests ------------------------------------------------
 
 func TestAccMonitorResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
@@ -226,6 +271,63 @@ func TestAccMonitorResource_Tags(t *testing.T) {
 					// Verify tags are removed
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "tags.#", "0"),
 				),
+			},
+		},
+	})
+}
+
+func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
+	name := "test-monitor-headers"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			// 1) Create without headers
+			{
+				Config: testAccMonitorResourceConfig(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_http_headers"),
+				),
+			},
+			// 2) Add headers
+			{
+				Config: testAccMonitorResourceConfigWithHeaders(name, map[string]string{"cat": "meow"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.%", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.cat", "meow"),
+				),
+			},
+			// 3) Change headers to ensures that update path works
+			{
+				Config: testAccMonitorResourceConfigWithHeaders(name, map[string]string{"dog": "woof"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.%", "1"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_http_headers.cat"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.dog", "woof"),
+				),
+			},
+			// 4) Clear by sending {}
+			{
+				Config: testAccMonitorResourceConfigWithEmptyHeaders(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.%", "0"),
+				),
+			},
+			// 5) Clear by removing the block entirely
+			{
+				Config: testAccMonitorResourceConfig(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_http_headers"),
+				),
+			},
+			// 6) Import to ensure state matches API (no headers)
+			{
+				ResourceName:            "uptimerobot_monitor.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"timeout"},
 			},
 		},
 	})
