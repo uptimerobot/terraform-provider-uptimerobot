@@ -1009,51 +1009,101 @@ func (r *pspResource) ImportState(ctx context.Context, req resource.ImportStateR
 func (r *pspResource) UpgradeState(_ context.Context) map[int64]resource.StateUpgrader {
 	// from version 0 where features.* were strings to 1 where features.* are bools
 	// and list to set for monitors ids
+
+	prior := &schema.Schema{
+		Attributes: map[string]schema.Attribute{
+			// we only need attributes we touch/read
+			"monitor_ids": schema.ListAttribute{
+				ElementType: types.Int64Type,
+				Optional:    true,
+				Computed:    true, // matches old behavior where it could exist even if API was flaky
+			},
+			"custom_settings": schema.SingleNestedAttribute{
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"features": schema.SingleNestedAttribute{
+						Optional: true,
+						Attributes: map[string]schema.Attribute{
+							// v0 stored strings here
+							"show_bars":              schema.StringAttribute{Optional: true},
+							"show_uptime_percentage": schema.StringAttribute{Optional: true},
+							"enable_floating_status": schema.StringAttribute{Optional: true},
+							"show_overall_uptime":    schema.StringAttribute{Optional: true},
+							"show_outage_updates":    schema.StringAttribute{Optional: true},
+							"show_outage_details":    schema.StringAttribute{Optional: true},
+							"enable_details_page":    schema.StringAttribute{Optional: true},
+							"show_monitor_url":       schema.StringAttribute{Optional: true},
+							"hide_paused_monitors":   schema.StringAttribute{Optional: true},
+						},
+					},
+				},
+			},
+		},
+	}
+
 	return map[int64]resource.StateUpgrader{
 		0: {
+			PriorSchema: prior,
 			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
-				base := path.Root("custom_settings").AtName("features")
-				// Strings -> bools
+
 				{
-					// Read the entire features object as a generic map which may not exist
-					var old map[string]any
-					if diags := req.State.GetAttribute(ctx, base, &old); diags.HasError() {
-						// If not present, nothing to do
+					var cs map[string]any
+					diags := req.State.GetAttribute(ctx, path.Root("custom_settings"), &cs)
+					resp.Diagnostics.Append(diags...)
+					if resp.Diagnostics.HasError() {
 						return
 					}
-					if old == nil {
-						return
-					}
+					if cs != nil {
+						base := path.Root("custom_settings").AtName("features")
 
-					upgraded := upgradeFeaturesMap(old)
-
-					// Overwrite with Upgraded map. Empty map is ok and will remove attrs
-					if diags := resp.State.SetAttribute(ctx, base, upgraded); diags.HasError() {
+						var old map[string]any
+						diags = req.State.GetAttribute(ctx, base, &old)
 						resp.Diagnostics.Append(diags...)
+						if resp.Diagnostics.HasError() {
+							return
+						}
+						if old != nil {
+							upgraded := upgradeFeaturesMap(old) // returns nil if nothing to set
+							if upgraded != nil {
+								diags = resp.State.SetAttribute(ctx, base, upgraded)
+								resp.Diagnostics.Append(diags...)
+								if resp.Diagnostics.HasError() {
+									return
+								}
+							}
+						}
 					}
 				}
+
 				// monitor_ids: list -> set
 				{
 					var ids []int64
-					if diags := req.State.GetAttribute(ctx, path.Root("monitor_ids"), &ids); diags.HasError() {
-						// nothing to convert
+					diags := req.State.GetAttribute(ctx, path.Root("monitor_ids"), &ids)
+					resp.Diagnostics.Append(diags...)
+					if resp.Diagnostics.HasError() {
 						return
 					}
 
-					vals := make([]attr.Value, len(ids))
-					for i, v := range ids {
-						vals[i] = types.Int64Value(v)
+					// skip if attributes were not present
+					if ids == nil {
+						return
 					}
 
-					setVal, diags := types.SetValue(types.Int64Type, vals)
-					if diags.HasError() {
+					// if it was present and empty
+					if len(ids) == 0 {
+						empty, _ := types.SetValue(types.Int64Type, []attr.Value{})
+						diags = resp.State.SetAttribute(ctx, path.Root("monitor_ids"), empty)
 						resp.Diagnostics.Append(diags...)
 						return
 					}
 
-					if diags := resp.State.SetAttribute(ctx, path.Root("monitor_ids"), setVal); diags.HasError() {
-						resp.Diagnostics.Append(diags...)
+					setVal, diags := types.SetValueFrom(ctx, types.Int64Type, ids)
+					resp.Diagnostics.Append(diags...)
+					if resp.Diagnostics.HasError() {
+						return
 					}
+					diags = resp.State.SetAttribute(ctx, path.Root("monitor_ids"), setVal)
+					resp.Diagnostics.Append(diags...)
 				}
 			},
 		},
