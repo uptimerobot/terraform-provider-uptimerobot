@@ -115,7 +115,7 @@ resource "uptimerobot_monitor" "test" {
 `, name, hdr)
 }
 
-// headers block explicitly empty as {}
+// headers block explicitly empty as {}.
 func testAccMonitorResourceConfigWithEmptyHeaders(name string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
