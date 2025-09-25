@@ -643,19 +643,6 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		// During import, keep regional data null unless it was manually set by user
 		// The API always returns regionalData, but we only want to set it if user explicitly configured it
 		state.RegionalData = types.StringNull()
-	} else if !state.RegionalData.IsNull() {
-		// During regular read, only update if it was originally set in the plan
-		// if monitor.RegionalData != nil {
-		// 	if regionData, ok := monitor.RegionalData.(map[string]interface{}); ok {
-		// 		if regions, ok := regionData["REGION"].([]interface{}); ok && len(regions) > 0 {
-		// 			if region, ok := regions[0].(string); ok {
-		// 				state.RegionalData = types.StringValue(region)
-		// 			}
-		// 		}
-		// 	}
-		// } else {
-		// state.RegionalData = types.StringNull()
-		// }
 	}
 	// If regional_data was not in the original plan and this is not an import, keep it as-is (null)
 

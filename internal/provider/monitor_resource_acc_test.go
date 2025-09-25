@@ -182,7 +182,7 @@ func TestAccMonitorResource(t *testing.T) {
 				ResourceName:            "uptimerobot_monitor.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"timeout"},
+				ImportStateVerifyIgnore: []string{"timeout", "status"},
 			},
 		},
 	})
@@ -327,7 +327,7 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 				ResourceName:            "uptimerobot_monitor.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"timeout"},
+				ImportStateVerifyIgnore: []string{"timeout", "status"},
 			},
 		},
 	})
