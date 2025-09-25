@@ -680,7 +680,11 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		}
 		state.CustomHTTPHeaders = types.MapValueMust(types.StringType, m)
 	} else {
-		state.CustomHTTPHeaders = types.MapNull(types.StringType)
+		if isImport || state.CustomHTTPHeaders.IsNull() {
+			state.CustomHTTPHeaders = types.MapNull(types.StringType)
+		} else {
+			state.CustomHTTPHeaders = types.MapValueMust(types.StringType, map[string]attr.Value{})
+		}
 	}
 
 	if len(monitor.AssignedAlertContacts) > 0 {
@@ -1004,14 +1008,20 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updatedState.Tags = types.SetNull(types.StringType)
 	}
 
-	if len(updatedMonitor.CustomHTTPHeaders) > 0 {
-		m := make(map[string]attr.Value, len(updatedMonitor.CustomHTTPHeaders))
-		for k, v := range updatedMonitor.CustomHTTPHeaders {
-			m[k] = types.StringValue(v)
-		}
-		updatedState.CustomHTTPHeaders = types.MapValueMust(types.StringType, m)
-	} else {
+	if plan.CustomHTTPHeaders.IsNull() {
+		// user removed block and it became null, however api returns {} so we need to make state consistent with null
 		updatedState.CustomHTTPHeaders = types.MapNull(types.StringType)
+	} else {
+		if len(updatedMonitor.CustomHTTPHeaders) > 0 {
+			m := make(map[string]attr.Value, len(updatedMonitor.CustomHTTPHeaders))
+			for k, v := range updatedMonitor.CustomHTTPHeaders {
+				m[k] = types.StringValue(v)
+			}
+			updatedState.CustomHTTPHeaders = types.MapValueMust(types.StringType, m)
+		} else {
+			// API returned empty headers and user had the block so it will be empty map
+			updatedState.CustomHTTPHeaders = types.MapValueMust(types.StringType, map[string]attr.Value{})
+		}
 	}
 
 	// Update assigned alert contacts
@@ -1086,6 +1096,8 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	modifyPlanForListField(ctx, &plan.MaintenanceWindowIDs, &state.MaintenanceWindowIDs, resp, "maintenance_window_ids")
 	modifyPlanForListField(ctx, &plan.SuccessHTTPResponseCodes, &state.SuccessHTTPResponseCodes, resp, "success_http_response_codes")
 
+	modifyPlanForMapField(ctx, &plan.CustomHTTPHeaders, &state.CustomHTTPHeaders, resp, "custom_http_headers")
+
 	// Ensure boolean defaults are consistently applied
 	if !plan.SSLExpirationReminder.IsNull() && !state.SSLExpirationReminder.IsNull() {
 		// If both values are present and equal, preserve the state value
@@ -1149,6 +1161,20 @@ func modifyPlanForSetField(ctx context.Context, planField, stateField *types.Set
 			types.SetValueMust(stateField.ElementType(ctx), []attr.Value{}),
 		)
 		return
+	}
+}
+
+func modifyPlanForMapField(
+	ctx context.Context,
+	planField *types.Map,
+	stateField *types.Map,
+	resp *resource.ModifyPlanResponse,
+	fieldName string,
+) {
+	if stateField.IsNull() && !planField.IsNull() && !planField.IsUnknown() {
+		if len(planField.Elements()) == 0 {
+			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.MapNull(planField.ElementType(ctx)))
+		}
 	}
 }
 
