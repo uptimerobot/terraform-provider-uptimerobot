@@ -234,6 +234,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "Name of the monitor",
 				Required:    true,
 			},
+			// Status have to be set to null on create and update and being set to actual value on read
+			// because this field may change fast between apply and sync stages, producing different results
+			// from API which will be highligted by terraform consistency checks
 			"status": schema.StringAttribute{
 				Description: "Status of the monitor",
 				Computed:    true,
@@ -494,7 +497,10 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 
 	// Map response body to schema and populate Computed attribute values
 	plan.ID = types.StringValue(strconv.FormatInt(newMonitor.ID, 10))
-	plan.Status = types.StringValue(newMonitor.Status)
+
+	// Status is explicitly set to null because this is volatile field that may change between create
+	// and sync / read stages, so it have to be set in read and be omitted in create and update
+	plan.Status = types.StringNull()
 
 	// Handle keyword case type conversion from API numeric value to string enum
 	var keywordCaseTypeValue string
@@ -953,7 +959,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	var updatedState = plan
-	updatedState.Status = types.StringValue(updatedMonitor.Status)
+	updatedState.Status = types.StringNull()
 	var keywordCaseTypeValue string
 	if updatedMonitor.KeywordCaseType == 0 {
 		keywordCaseTypeValue = "CaseSensitive"
