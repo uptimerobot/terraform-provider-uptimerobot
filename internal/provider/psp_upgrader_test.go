@@ -1,30 +1,75 @@
-// provider/upgrader_helpers_test.go
 package provider
 
-import "testing"
+import (
+	"context"
+	"testing"
 
-func TestUpgradeFeaturesMap(t *testing.T) {
-	old := map[string]any{
-		"show_bars":           "true",
-		"show_monitor_url":    "0",
-		"enable_details_page": "YES",
-		"garbage":             "maybe",
-		"empty":               "",
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/stretchr/testify/require"
+)
+
+func listInt64(vals ...int64) types.List {
+	avs := make([]attr.Value, len(vals))
+	for i, v := range vals {
+		avs[i] = types.Int64Value(v)
 	}
-	got := upgradeFeaturesMap(old)
-	if got["show_bars"] != true {
-		t.Fatalf("show_bars expected true, got %#v", got["show_bars"])
+	return types.ListValueMust(types.Int64Type, avs)
+}
+
+func TestUpgradePSPFromV0_MonitorIDs(t *testing.T) {
+	ctx := context.Background()
+	prior := pspV0Model{
+		Name:       types.StringValue("PSP"),
+		MonitorIDs: listInt64(1, 2, 3),
 	}
-	if got["show_monitor_url"] != false {
-		t.Fatalf("show_monitor_url expected false, got %#v", got["show_monitor_url"])
+	up, diags := upgradePSPFromV0(ctx, prior)
+	require.False(t, diags.HasError(), "upgrade diags: %+v", diags)
+	require.False(t, up.MonitorIDs.IsNull())
+
+	var got []int64
+	eds := up.MonitorIDs.ElementsAs(ctx, &got, false)
+	require.False(t, eds.HasError(), "elementsAs diags: %+v", eds)
+	require.ElementsMatch(t, []int64{1, 2, 3}, got)
+}
+
+func TestUpgradePSPFromV0_FeaturesStringsToBools(t *testing.T) {
+	ctx := context.Background()
+	prior := pspV0Model{
+		Name: types.StringValue("PSP"),
+		CustomSettings: &pspV0CustomSettings{
+			Features: &pspV0Features{
+				ShowBars:             types.StringValue("true"),
+				ShowUptimePercentage: types.StringValue("0"),
+				EnableFloatingStatus: types.StringValue("yes"), // not ParseBool-valid -> null
+				ShowMonitorURL:       types.StringValue("false"),
+			},
+		},
 	}
-	if _, ok := got["enable_details_page"]; ok {
-		t.Fatalf("enable_details_page should be dropped for non-ParseBool strings")
+	up, diags := upgradePSPFromV0(ctx, prior)
+	require.False(t, diags.HasError(), "upgrade diags: %+v", diags)
+
+	require.NotNil(t, up.CustomSettings)
+	require.NotNil(t, up.CustomSettings.Features)
+
+	require.Equal(t, true, up.CustomSettings.Features.ShowBars.ValueBool())
+	require.Equal(t, false, up.CustomSettings.Features.ShowUptimePercentage.ValueBool())
+	require.True(t, up.CustomSettings.Features.EnableFloatingStatus.IsNull())
+	require.Equal(t, false, up.CustomSettings.Features.ShowMonitorURL.ValueBool())
+}
+
+func TestUpgradePSPFromV0_MonitorIDs_EmptyListToEmptySet(t *testing.T) {
+	ctx := context.Background()
+	prior := pspV0Model{
+		Name:       types.StringValue("PSP"),
+		MonitorIDs: listInt64(), // empty
 	}
-	if _, ok := got["garbage"]; ok {
-		t.Fatalf("garbage should be dropped")
-	}
-	if _, ok := got["empty"]; ok {
-		t.Fatalf("empty should be dropped")
-	}
+	up, diags := upgradePSPFromV0(ctx, prior)
+	require.False(t, diags.HasError())
+
+	require.False(t, up.MonitorIDs.IsNull())
+	var got []int64
+	eds := up.MonitorIDs.ElementsAs(ctx, &got, false)
+	require.False(t, eds.HasError())
+	require.Len(t, got, 0)
 }

@@ -564,8 +564,7 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		updatedState.MonitorIDs = setVal
 	} else if isImport || updatedState.MonitorIDs.IsNull() || updatedState.MonitorIDs.IsUnknown() {
 		// import or was unset represents "no monitors"
-		emptySet, _ := types.SetValue(types.Int64Type, []attr.Value{})
-		updatedState.MonitorIDs = emptySet
+		updatedState.MonitorIDs = types.SetValueMust(types.Int64Type, []attr.Value{})
 	} else {
 		// regular read and API returned nothing preserve prior state to avoid drift
 		updatedState.MonitorIDs = state.MonitorIDs
@@ -886,8 +885,7 @@ func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceMo
 		}
 	} else {
 		// API returned none so empty set in state
-		emptySet, _ := types.SetValue(types.Int64Type, []attr.Value{})
-		plan.MonitorIDs = emptySet
+		plan.MonitorIDs = types.SetValueMust(types.Int64Type, []attr.Value{})
 	}
 
 	// Handle CustomSettings if present in the API response
@@ -1012,19 +1010,55 @@ func (r *pspResource) UpgradeState(_ context.Context) map[int64]resource.StateUp
 
 	prior := &schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			// we only need attributes we touch/read
-			"monitor_ids": schema.ListAttribute{
-				ElementType: types.Int64Type,
-				Optional:    true,
-				Computed:    true, // matches old behavior where it could exist even if API was flaky
-			},
+			"id":                             schema.StringAttribute{Computed: true},
+			"name":                           schema.StringAttribute{Required: true},
+			"custom_domain":                  schema.StringAttribute{Optional: true},
+			"is_password_set":                schema.BoolAttribute{Computed: true},
+			"monitor_ids":                    schema.ListAttribute{ElementType: types.Int64Type, Optional: true, Computed: true},
+			"monitors_count":                 schema.Int64Attribute{Computed: true},
+			"status":                         schema.StringAttribute{Computed: true},
+			"url_key":                        schema.StringAttribute{Computed: true},
+			"homepage_link":                  schema.StringAttribute{Computed: true},
+			"ga_code":                        schema.StringAttribute{Optional: true},
+			"share_analytics_consent":        schema.BoolAttribute{Optional: true, Computed: true},
+			"use_small_cookie_consent_modal": schema.BoolAttribute{Optional: true, Computed: true},
+			"icon":                           schema.StringAttribute{Optional: true},
+			"no_index":                       schema.BoolAttribute{Optional: true, Computed: true},
+			"logo":                           schema.StringAttribute{Optional: true},
+			"hide_url_links":                 schema.BoolAttribute{Optional: true, Computed: true},
+			"subscription":                   schema.BoolAttribute{Computed: true},
+			"show_cookie_bar":                schema.BoolAttribute{Optional: true, Computed: true},
+			"pinned_announcement_id":         schema.Int64Attribute{Optional: true},
+
 			"custom_settings": schema.SingleNestedAttribute{
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
+					"font": schema.SingleNestedAttribute{
+						Optional: true,
+						Attributes: map[string]schema.Attribute{
+							"family": schema.StringAttribute{Optional: true},
+						},
+					},
+					"page": schema.SingleNestedAttribute{
+						Optional: true,
+						Attributes: map[string]schema.Attribute{
+							"layout":  schema.StringAttribute{Optional: true},
+							"theme":   schema.StringAttribute{Optional: true},
+							"density": schema.StringAttribute{Optional: true},
+						},
+					},
+					"colors": schema.SingleNestedAttribute{
+						Optional: true,
+						Attributes: map[string]schema.Attribute{
+							"main": schema.StringAttribute{Optional: true},
+							"text": schema.StringAttribute{Optional: true},
+							"link": schema.StringAttribute{Optional: true},
+						},
+					},
 					"features": schema.SingleNestedAttribute{
 						Optional: true,
 						Attributes: map[string]schema.Attribute{
-							// v0 stored strings here
+							// v0 types = string
 							"show_bars":              schema.StringAttribute{Optional: true},
 							"show_uptime_percentage": schema.StringAttribute{Optional: true},
 							"enable_floating_status": schema.StringAttribute{Optional: true},
@@ -1046,65 +1080,21 @@ func (r *pspResource) UpgradeState(_ context.Context) map[int64]resource.StateUp
 			PriorSchema: prior,
 			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
 
-				{
-					var cs map[string]any
-					diags := req.State.GetAttribute(ctx, path.Root("custom_settings"), &cs)
-					resp.Diagnostics.Append(diags...)
-					if resp.Diagnostics.HasError() {
-						return
-					}
-					if cs != nil {
-						base := path.Root("custom_settings").AtName("features")
-
-						var old map[string]any
-						diags = req.State.GetAttribute(ctx, base, &old)
-						resp.Diagnostics.Append(diags...)
-						if resp.Diagnostics.HasError() {
-							return
-						}
-						if old != nil {
-							upgraded := upgradeFeaturesMap(old) // returns nil if nothing to set
-							if upgraded != nil {
-								diags = resp.State.SetAttribute(ctx, base, upgraded)
-								resp.Diagnostics.Append(diags...)
-								if resp.Diagnostics.HasError() {
-									return
-								}
-							}
-						}
-					}
+				var priorModel pspV0Model
+				resp.Diagnostics.Append(req.State.Get(ctx, &priorModel)...)
+				if resp.Diagnostics.HasError() {
+					return
 				}
 
-				// monitor_ids: list -> set
-				{
-					var ids []int64
-					diags := req.State.GetAttribute(ctx, path.Root("monitor_ids"), &ids)
-					resp.Diagnostics.Append(diags...)
-					if resp.Diagnostics.HasError() {
-						return
-					}
-
-					// skip if attributes were not present
-					if ids == nil {
-						return
-					}
-
-					// if it was present and empty
-					if len(ids) == 0 {
-						empty, _ := types.SetValue(types.Int64Type, []attr.Value{})
-						diags = resp.State.SetAttribute(ctx, path.Root("monitor_ids"), empty)
-						resp.Diagnostics.Append(diags...)
-						return
-					}
-
-					setVal, diags := types.SetValueFrom(ctx, types.Int64Type, ids)
-					resp.Diagnostics.Append(diags...)
-					if resp.Diagnostics.HasError() {
-						return
-					}
-					diags = resp.State.SetAttribute(ctx, path.Root("monitor_ids"), setVal)
-					resp.Diagnostics.Append(diags...)
+				// Convert to the v1 model
+				up, diags := upgradePSPFromV0(ctx, priorModel)
+				resp.Diagnostics.Append(diags...)
+				if resp.Diagnostics.HasError() {
+					return
 				}
+
+				// Write the whole upgraded model
+				resp.Diagnostics.Append(resp.State.Set(ctx, up)...)
 			},
 		},
 	}
