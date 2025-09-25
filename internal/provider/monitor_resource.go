@@ -236,7 +236,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			// Status have to be set to null on create and update and being set to actual value on read
 			// because this field may change fast between apply and sync stages, producing different results
-			// from API which will be highligted by terraform consistency checks
+			// from API which will be highlighted by terraform consistency checks
 			"status": schema.StringAttribute{
 				Description: "Status of the monitor",
 				Computed:    true,
