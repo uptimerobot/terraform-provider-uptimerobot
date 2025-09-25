@@ -563,19 +563,6 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	} else if !state.HTTPPassword.IsNull() {
 		state.HTTPPassword = types.StringNull()
 	}
-
-	headers := make(map[string]attr.Value)
-	if !state.CustomHTTPHeaders.IsNull() {
-		state.CustomHTTPHeaders.ElementsAs(ctx, &headers, false)
-	} else if len(monitor.CustomHTTPHeaders) > 0 {
-		for k, v := range monitor.CustomHTTPHeaders {
-			headers[k] = types.StringValue(v)
-		}
-		state.CustomHTTPHeaders = types.MapValueMust(types.StringType, headers)
-	} else {
-		state.CustomHTTPHeaders = types.MapNull(types.StringType)
-	}
-
 	if monitor.HTTPMethodType != "" {
 		state.HTTPMethodType = types.StringValue(monitor.HTTPMethodType)
 	} else if !state.HTTPMethodType.IsNull() {
