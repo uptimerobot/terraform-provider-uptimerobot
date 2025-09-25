@@ -234,6 +234,10 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "Name of the monitor",
 				Required:    true,
 			},
+			// Status may change its values quickly due to changes on the API side.
+			// On create after operation it should be a known value.
+			// On update use state's value.
+			// On read it will always be set because read is used for after-apply sync as well.
 			"status": schema.StringAttribute{
 				Description: "Status of the monitor",
 				Computed:    true,
@@ -402,7 +406,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Handle custom HTTP headers
-	if !plan.CustomHTTPHeaders.IsNull() {
+	if !plan.CustomHTTPHeaders.IsNull() && !plan.CustomHTTPHeaders.IsUnknown() {
 		var headers map[string]string
 		diags = plan.CustomHTTPHeaders.ElementsAs(ctx, &headers, false)
 		resp.Diagnostics.Append(diags...)
@@ -413,7 +417,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Handle success HTTP response codes
-	if !plan.SuccessHTTPResponseCodes.IsNull() {
+	if !plan.SuccessHTTPResponseCodes.IsNull() && !plan.SuccessHTTPResponseCodes.IsUnknown() {
 		var codes []string
 		diags = plan.SuccessHTTPResponseCodes.ElementsAs(ctx, &codes, false)
 		resp.Diagnostics.Append(diags...)
@@ -424,7 +428,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Handle maintenance window IDs
-	if !plan.MaintenanceWindowIDs.IsNull() {
+	if !plan.MaintenanceWindowIDs.IsNull() && !plan.MaintenanceWindowIDs.IsUnknown() {
 		var windowIDs []int64
 		diags = plan.MaintenanceWindowIDs.ElementsAs(ctx, &windowIDs, false)
 		resp.Diagnostics.Append(diags...)
@@ -449,7 +453,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Handle assigned alert contacts
-	if !plan.AssignedAlertContacts.IsNull() {
+	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
 		var alertContactIds []string
 		diags = plan.AssignedAlertContacts.ElementsAs(ctx, &alertContactIds, false)
 		resp.Diagnostics.Append(diags...)
@@ -563,19 +567,6 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	} else if !state.HTTPPassword.IsNull() {
 		state.HTTPPassword = types.StringNull()
 	}
-
-	headers := make(map[string]attr.Value)
-	if !state.CustomHTTPHeaders.IsNull() {
-		state.CustomHTTPHeaders.ElementsAs(ctx, &headers, false)
-	} else if len(monitor.CustomHTTPHeaders) > 0 {
-		for k, v := range monitor.CustomHTTPHeaders {
-			headers[k] = types.StringValue(v)
-		}
-		state.CustomHTTPHeaders = types.MapValueMust(types.StringType, headers)
-	} else {
-		state.CustomHTTPHeaders = types.MapNull(types.StringType)
-	}
-
 	if monitor.HTTPMethodType != "" {
 		state.HTTPMethodType = types.StringValue(monitor.HTTPMethodType)
 	} else if !state.HTTPMethodType.IsNull() {
@@ -652,19 +643,6 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		// During import, keep regional data null unless it was manually set by user
 		// The API always returns regionalData, but we only want to set it if user explicitly configured it
 		state.RegionalData = types.StringNull()
-	} else if !state.RegionalData.IsNull() {
-		// During regular read, only update if it was originally set in the plan
-		if monitor.RegionalData != nil {
-			if regionData, ok := monitor.RegionalData.(map[string]interface{}); ok {
-				if regions, ok := regionData["REGION"].([]interface{}); ok && len(regions) > 0 {
-					if region, ok := regions[0].(string); ok {
-						state.RegionalData = types.StringValue(region)
-					}
-				}
-			}
-		} else {
-			state.RegionalData = types.StringNull()
-		}
 	}
 	// If regional_data was not in the original plan and this is not an import, keep it as-is (null)
 
@@ -683,6 +661,20 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 			state.Tags = types.SetNull(types.StringType)
 		} else {
 			state.Tags = types.SetValueMust(types.StringType, []attr.Value{})
+		}
+	}
+
+	if len(monitor.CustomHTTPHeaders) > 0 {
+		m := make(map[string]attr.Value, len(monitor.CustomHTTPHeaders))
+		for k, v := range monitor.CustomHTTPHeaders {
+			m[k] = types.StringValue(v)
+		}
+		state.CustomHTTPHeaders = types.MapValueMust(types.StringType, m)
+	} else {
+		if isImport || state.CustomHTTPHeaders.IsNull() {
+			state.CustomHTTPHeaders = types.MapNull(types.StringType)
+		} else {
+			state.CustomHTTPHeaders = types.MapValueMust(types.StringType, map[string]attr.Value{})
 		}
 	}
 
@@ -851,6 +843,22 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updateReq.SuccessHTTPResponseCodes = statuses
 	}
 
+	if !plan.CustomHTTPHeaders.IsUnknown() {
+		if plan.CustomHTTPHeaders.IsNull() {
+			// block was removed from state. clear on server
+			empty := map[string]string{}
+			updateReq.CustomHTTPHeaders = &empty
+		} else {
+			var headers map[string]string
+			diags = plan.CustomHTTPHeaders.ElementsAs(ctx, &headers, false)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			updateReq.CustomHTTPHeaders = &headers
+		}
+	}
+
 	if !plan.MaintenanceWindowIDs.IsNull() {
 		var windowIDs []int64
 		diags = plan.MaintenanceWindowIDs.ElementsAs(ctx, &windowIDs, false)
@@ -936,7 +944,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	var updatedState = plan
-	updatedState.Status = types.StringValue(updatedMonitor.Status)
+	updatedState.Status = state.Status
 	var keywordCaseTypeValue string
 	if updatedMonitor.KeywordCaseType == 0 {
 		keywordCaseTypeValue = "CaseSensitive"
@@ -976,6 +984,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		// User didn't specify regional data, keep it null
 		updatedState.RegionalData = types.StringNull()
 	}
+
 	if len(updatedMonitor.Tags) > 0 {
 		tagNames := make([]string, 0, len(updatedMonitor.Tags))
 		for _, tag := range updatedMonitor.Tags {
@@ -988,6 +997,22 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updatedState.Tags = types.SetValueMust(types.StringType, tagValues)
 	} else if plan.Tags.IsNull() {
 		updatedState.Tags = types.SetNull(types.StringType)
+	}
+
+	if plan.CustomHTTPHeaders.IsNull() {
+		// user removed block and it became null, however api returns {} so we need to make state consistent with null
+		updatedState.CustomHTTPHeaders = types.MapNull(types.StringType)
+	} else {
+		if len(updatedMonitor.CustomHTTPHeaders) > 0 {
+			m := make(map[string]attr.Value, len(updatedMonitor.CustomHTTPHeaders))
+			for k, v := range updatedMonitor.CustomHTTPHeaders {
+				m[k] = types.StringValue(v)
+			}
+			updatedState.CustomHTTPHeaders = types.MapValueMust(types.StringType, m)
+		} else {
+			// API returned empty headers and user had the block so it will be empty map
+			updatedState.CustomHTTPHeaders = types.MapValueMust(types.StringType, map[string]attr.Value{})
+		}
 	}
 
 	// Update assigned alert contacts
@@ -1062,6 +1087,8 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	modifyPlanForListField(ctx, &plan.MaintenanceWindowIDs, &state.MaintenanceWindowIDs, resp, "maintenance_window_ids")
 	modifyPlanForListField(ctx, &plan.SuccessHTTPResponseCodes, &state.SuccessHTTPResponseCodes, resp, "success_http_response_codes")
 
+	modifyPlanForMapField(ctx, &plan.CustomHTTPHeaders, &state.CustomHTTPHeaders, resp, "custom_http_headers")
+
 	// Ensure boolean defaults are consistently applied
 	if !plan.SSLExpirationReminder.IsNull() && !state.SSLExpirationReminder.IsNull() {
 		// If both values are present and equal, preserve the state value
@@ -1125,6 +1152,20 @@ func modifyPlanForSetField(ctx context.Context, planField, stateField *types.Set
 			types.SetValueMust(stateField.ElementType(ctx), []attr.Value{}),
 		)
 		return
+	}
+}
+
+func modifyPlanForMapField(
+	ctx context.Context,
+	planField *types.Map,
+	stateField *types.Map,
+	resp *resource.ModifyPlanResponse,
+	fieldName string,
+) {
+	if stateField.IsNull() && !planField.IsNull() && !planField.IsUnknown() {
+		if len(planField.Elements()) == 0 {
+			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.MapNull(planField.ElementType(ctx)))
+		}
 	}
 }
 
