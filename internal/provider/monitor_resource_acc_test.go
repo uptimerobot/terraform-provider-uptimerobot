@@ -8,7 +8,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-// Configs for tests --------------------------------------------------
+/*
+	Config addition rules:
+
+	- Config helpers for the common, repeatable configs like HTTP base monitor, headers, tags, MWs, etc.
+	They reduces duplication and makes refactors, such as adding a timeout = 30 to HTTP easy to be performed.
+
+	- Inline configs only when the test’s readability depends on seeing the exact HCL schema in the test.
+	For example, negative cases that assert a specific validation error, or tiny one-off / one time scenarios.
+*/
+
+// Config helpers for tests --------------------------------------------------
 
 func testAccMonitorResourceConfig(name string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
@@ -17,6 +27,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300
+	timeout   	 = 30
 }
 `, name)
 }
@@ -34,6 +45,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout  	 = 30
 }
 `, name, alertContactsStr)
 }
@@ -51,6 +63,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout      = 30
 }
 `, name, tagsStr)
 }
@@ -68,6 +81,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout      = 30
 }
 `, name, maintenanceWindowsStr)
 }
@@ -85,6 +99,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout      = 30
 }
 `, name, responseCodesStr)
 }
@@ -111,6 +126,7 @@ resource "uptimerobot_monitor" "test" {
   url      = "https://example.com"
   type     = "HTTP"
   interval = 300%s
+  timeout  = 30
 }
 `, name, hdr)
 }
@@ -123,6 +139,7 @@ resource "uptimerobot_monitor" "test" {
   url      = "https://example.com"
   type     = "HTTP"
   interval = 300
+  timeout  = 30
   custom_http_headers = {}
 }
 `, name)
@@ -571,7 +588,6 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HEARTBEAT"
     interval     = 300
-	timeout 	 = 30
     grace_period = 60
 }
 `,
@@ -704,7 +720,6 @@ resource "uptimerobot_monitor" "test" {
   url      = "https://example.com"
   interval = 300
   timeout  = 30
-  // grace_period intentionally omitted
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -730,7 +745,6 @@ resource "uptimerobot_monitor" "hb" {
   url          = "https://example.com"
   interval     = 300
   grace_period = 120
-  // timeout intentionally omitted
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
