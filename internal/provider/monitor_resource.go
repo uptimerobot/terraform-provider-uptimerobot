@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -30,11 +32,13 @@ func NewMonitorResource() resource.Resource {
 
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ resource.Resource                 = &monitorResource{}
-	_ resource.ResourceWithConfigure    = &monitorResource{}
-	_ resource.ResourceWithModifyPlan   = &monitorResource{}
-	_ resource.ResourceWithImportState  = &monitorResource{}
-	_ resource.ResourceWithUpgradeState = &monitorResource{}
+	_ resource.Resource                     = &monitorResource{}
+	_ resource.ResourceWithConfigure        = &monitorResource{}
+	_ resource.ResourceWithModifyPlan       = &monitorResource{}
+	_ resource.ResourceWithImportState      = &monitorResource{}
+	_ resource.ResourceWithUpgradeState     = &monitorResource{}
+	_ resource.ResourceWithConfigValidators = &monitorResource{}
+	_ resource.ResourceWithValidateConfig   = &monitorResource{}
 )
 
 // monitorResource is the resource implementation.
@@ -274,6 +278,68 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 	}
 }
 
+func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		resourcevalidator.Conflicting(
+			path.MatchRoot("timeout"),
+			path.MatchRoot("grace_period"),
+		),
+	}
+}
+
+func (r *monitorResource) ValidateConfig(
+	ctx context.Context,
+	req resource.ValidateConfigRequest,
+	resp *resource.ValidateConfigResponse,
+) {
+	var data monitorResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if data.Type.IsUnknown() || data.Type.IsNull() {
+		return
+	}
+
+	t := strings.ToUpper(data.Type.ValueString())
+
+	switch t {
+	case "HEARTBEAT":
+		// heartbeat MUST use grace_period and MUST NOT use timeout
+		if data.GracePeriod.IsNull() || data.GracePeriod.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("grace_period"),
+				"Missing grace_period for heartbeat monitor",
+				"When type is HEARTBEAT, you must set grace_period and omit timeout.",
+			)
+		}
+		if !data.Timeout.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("timeout"),
+				"timeout not allowed for heartbeat monitor",
+				"When type is HEARTBEAT, omit timeout and use grace_period instead.",
+			)
+		}
+	default:
+		// all non-heartbeat MUST use timeout and MUST NOT use grace_period
+		if data.Timeout.IsNull() || data.Timeout.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("timeout"),
+				"Missing timeout for non-heartbeat monitor",
+				"When type is not HEARTBEAT, you must set timeout and omit grace_period.",
+			)
+		}
+		if !data.GracePeriod.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("grace_period"),
+				"grace_period not allowed for non-heartbeat monitor",
+				"When type is not HEARTBEAT, omit grace_period and use timeout instead.",
+			)
+		}
+	}
+}
+
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan monitorResourceModel
 	diags := req.Plan.Get(ctx, &plan)
@@ -347,11 +413,23 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		Interval: int(plan.Interval.ValueInt64()),
 	}
 
-	// Add optional fields if set
-	if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
-		t := int(plan.Timeout.ValueInt64())
-		createReq.Timeout = &t
+	if strings.EqualFold(plan.Type.ValueString(), "HEARTBEAT") {
+		// If heartbeat - send grace_period and omit timeout
+		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
+			v := int(plan.GracePeriod.ValueInt64())
+			createReq.GracePeriod = &v
+		}
+		createReq.Timeout = nil
+	} else {
+		// All other - send timeout and omit grace_period
+		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+			v := int(plan.Timeout.ValueInt64())
+			createReq.Timeout = &v
+		}
+		createReq.GracePeriod = nil
 	}
+
+	// Add optional fields if set
 	if !plan.HTTPMethodType.IsNull() {
 		createReq.HTTPMethodType = plan.HTTPMethodType.ValueString()
 	}
@@ -394,9 +472,6 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 	if !plan.PostValueType.IsNull() {
 		createReq.PostValueType = plan.PostValueType.ValueString()
-	}
-	if !plan.GracePeriod.IsNull() {
-		createReq.GracePeriod = int(plan.GracePeriod.ValueInt64())
 	}
 	if !plan.ResponseTimeThreshold.IsNull() {
 		createReq.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
@@ -793,10 +868,22 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		URL:      plan.URL.ValueString(),
 	}
 
-	if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
-		t := int(plan.Timeout.ValueInt64())
-		updateReq.Timeout = &t
+	if strings.EqualFold(plan.Type.ValueString(), "HEARTBEAT") {
+		// If heartbeat - send grace_period and omit timeout
+		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
+			v := int(plan.GracePeriod.ValueInt64())
+			updateReq.GracePeriod = &v
+		}
+		updateReq.Timeout = nil
+	} else {
+		// All other - send timeout and omit grace_period
+		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+			v := int(plan.Timeout.ValueInt64())
+			updateReq.Timeout = &v
+		}
+		updateReq.GracePeriod = nil
 	}
+
 	if !plan.HTTPMethodType.IsNull() {
 		updateReq.HTTPMethodType = plan.HTTPMethodType.ValueString()
 	}
@@ -922,7 +1009,6 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq.HTTPAuthType = plan.AuthType.ValueString()
 	updateReq.PostValueData = plan.PostValueData.ValueString()
 	updateReq.PostValueType = plan.PostValueType.ValueString()
-	updateReq.GracePeriod = int(plan.GracePeriod.ValueInt64())
 
 	// Add new fields
 	if !plan.ResponseTimeThreshold.IsNull() {

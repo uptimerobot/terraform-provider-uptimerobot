@@ -39,7 +39,7 @@ type CreateMonitorRequest struct {
 	SuccessHTTPResponseCodes []string          `json:"successHttpResponseCodes,omitempty"`
 	MaintenanceWindowIDs     []int64           `json:"maintenanceWindowsIds,omitempty"`
 	Tags                     []string          `json:"tagNames"`
-	GracePeriod              int               `json:"gracePeriod,omitempty"`
+	GracePeriod              *int              `json:"gracePeriod,omitempty"`
 	PostValueData            interface{}       `json:"postValueData,omitempty"`
 	PostValueType            string            `json:"postValueType,omitempty"`
 	SSLExpirationReminder    bool              `json:"sslExpirationReminder"`
@@ -71,7 +71,7 @@ type UpdateMonitorRequest struct {
 	SuccessHTTPResponseCodes []string           `json:"successHttpResponseCodes,omitempty"`
 	MaintenanceWindowIDs     []int64            `json:"maintenanceWindowsIds,omitempty"`
 	Tags                     []string           `json:"tagNames"`
-	GracePeriod              int                `json:"gracePeriod,omitempty"`
+	GracePeriod              *int               `json:"gracePeriod,omitempty"`
 	PostValueData            interface{}        `json:"postValueData,omitempty"`
 	PostValueType            string             `json:"postValueType,omitempty"`
 	SSLExpirationReminder    bool               `json:"sslExpirationReminder"`
