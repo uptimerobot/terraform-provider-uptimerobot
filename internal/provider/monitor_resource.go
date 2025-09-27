@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -173,10 +172,8 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2xx"), types.StringValue("3xx")})),
 			},
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the monitoring check (in seconds)",
+				Description: "Timeout for the monitoring check (in seconds). Required for non-HEARTBEAT",
 				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(30),
 				Validators: []validator.Int64{
 					int64validator.Between(0, 60),
 				},
@@ -197,10 +194,8 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:    true,
 			},
 			"grace_period": schema.Int64Attribute{
-				Description: "The grace period (in seconds)",
+				Description: "The grace period (in seconds). Only for HEARTBEAT monitors",
 				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(30),
 				Validators: []validator.Int64{
 					int64validator.Between(0, 86400),
 				},
