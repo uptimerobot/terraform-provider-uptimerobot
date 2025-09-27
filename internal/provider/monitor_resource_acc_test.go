@@ -690,3 +690,55 @@ resource "uptimerobot_monitor" "test" {
 		},
 	})
 }
+
+func TestAcc_Monitor_HTTP_UsesTimeout(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "uptimerobot_monitor" "test" {
+  name     = "acc-http"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  timeout  = 30
+  // grace_period intentionally omitted
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "timeout", "30"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "grace_period"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Heartbeat_UsesGrace(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "uptimerobot_monitor" "hb" {
+  name         = "acc-heartbeat"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = 120
+  // timeout intentionally omitted
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "type", "HEARTBEAT"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "120"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.hb", "timeout"),
+				),
+			},
+		},
+	})
+}
