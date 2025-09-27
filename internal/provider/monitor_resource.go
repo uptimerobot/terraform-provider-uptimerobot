@@ -419,12 +419,15 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 		createReq.Timeout = nil
 	} else {
+		// API expects numeric value for gracePeriod and shows validation related to numeric value even when not used
+		zero := 0
+		createReq.GracePeriod = &zero
+
 		// All other - send timeout and omit grace_period
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
 			createReq.Timeout = &v
 		}
-		createReq.GracePeriod = nil
 	}
 
 	// Add optional fields if set
@@ -623,6 +626,19 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	state.Type = types.StringValue(monitor.Type)
 	state.Interval = types.Int64Value(int64(monitor.Interval))
 
+	t := strings.ToUpper(state.Type.ValueString())
+
+	if t == "HEARTBEAT" {
+		// keep the API's gracePeriod, but hide timeout
+		state.Timeout = types.Int64Null()
+		// to ensure grace is present
+		state.GracePeriod = types.Int64Value(int64(monitor.GracePeriod))
+	} else {
+		// keep the API's timeout and ensure grace_period is hidden from the API responses
+		state.GracePeriod = types.Int64Null()
+		state.Timeout = types.Int64Value(int64(monitor.Timeout))
+	}
+
 	// For optional fields with defaults, set them during import or if already set in state
 	if isImport || !state.FollowRedirections.IsNull() {
 		state.FollowRedirections = types.BoolValue(monitor.FollowRedirections)
@@ -681,11 +697,6 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 			keywordCaseTypeValue = "CaseInsensitive"
 		}
 		state.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
-	}
-
-	// Set grace period during import or if already set in state
-	if isImport || !state.GracePeriod.IsNull() {
-		state.GracePeriod = types.Int64Value(int64(monitor.GracePeriod))
 	}
 
 	state.Name = types.StringValue(monitor.Name)
@@ -874,12 +885,15 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 		updateReq.Timeout = nil
 	} else {
+		// API expects numeric value for gracePeriod and shows validation related to numeric value even when not used
+		zero := 0
+		updateReq.GracePeriod = &zero
+
 		// All other - send timeout and omit grace_period
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
 			updateReq.Timeout = &v
 		}
-		updateReq.GracePeriod = nil
 	}
 
 	if !plan.HTTPMethodType.IsNull() {
@@ -1185,6 +1199,17 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		// If both values are present and equal, preserve the state value
 		if plan.DomainExpirationReminder.ValueBool() == state.DomainExpirationReminder.ValueBool() {
 			resp.Plan.SetAttribute(ctx, path.Root("domain_expiration_reminder"), state.DomainExpirationReminder)
+		}
+	}
+
+	if !plan.Type.IsNull() && !plan.Type.IsUnknown() {
+		switch strings.ToUpper(plan.Type.ValueString()) {
+		case "HEARTBEAT":
+			// heartbeat: omit timeout
+			resp.Plan.SetAttribute(ctx, path.Root("timeout"), types.Int64Null())
+		default:
+			// non-heartbeat: omit grace_period
+			resp.Plan.SetAttribute(ctx, path.Root("grace_period"), types.Int64Null())
 		}
 	}
 }
