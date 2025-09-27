@@ -605,7 +605,6 @@ resource "uptimerobot_monitor" "test" {
     url          = "example.com"
     type         = "DNS"
     interval     = 300
-	timeout 	 = 30
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -726,6 +725,73 @@ resource "uptimerobot_monitor" "test" {
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "timeout", "30"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "grace_period"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_HTTP_DefaultTimeout_WhenOmitted(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name     = "acc-http-no-timeout"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  // timeout omitted on purpose
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
+					// Must be concretized by provider after apply
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "timeout", "30"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "grace_period"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_DNS_And_PING_IgnoreTimeoutAndGrace(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// DNS with neither timeout nor grace_period
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "dns" {
+  name     = "acc-dns"
+  type     = "DNS"
+  url      = "example.com"
+  interval = 300
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.dns", "type", "DNS"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.dns", "timeout"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.dns", "grace_period"),
+				),
+			},
+			{
+				// PING with neither timeout nor grace_period
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "ping" {
+  name     = "acc-ping"
+  type     = "PING"
+  url      = "1.1.1.1"
+  interval = 300
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.ping", "type", "PING"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.ping", "timeout"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.ping", "grace_period"),
 				),
 			},
 		},
