@@ -3,6 +3,7 @@ resource "uptimerobot_monitor" "protected_api" {
   type     = "HTTP"
   url      = "https://api.example.com/protected"
   interval = 300
+  timeout  = 30
 
   # HTTP Basic Authentication
   auth_type     = "HTTP_BASIC"

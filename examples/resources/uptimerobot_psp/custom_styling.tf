@@ -3,6 +3,7 @@ resource "uptimerobot_monitor" "website" {
   type     = "HTTP"
   url      = "https://example.com"
   interval = 300
+  timeout  = 30
 }
 
 resource "uptimerobot_psp" "branded_status" {
