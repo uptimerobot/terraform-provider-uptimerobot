@@ -19,6 +19,7 @@ resource "uptimerobot_monitor" "website" {
   type     = "HTTP"
   url      = "https://example.com"
   interval = 300
+  timeout  = 30
 }
 
 resource "uptimerobot_monitor" "api" {
@@ -26,6 +27,7 @@ resource "uptimerobot_monitor" "api" {
   type     = "HTTP"
   url      = "https://api.example.com"
   interval = 300
+  timeout  = 30
 }
 
 resource "uptimerobot_psp" "public_status" {
@@ -45,6 +47,7 @@ resource "uptimerobot_monitor" "website" {
   type     = "HTTP"
   url      = "https://example.com"
   interval = 300
+  timeout  = 30
 }
 
 resource "uptimerobot_psp" "custom_domain_status" {
@@ -70,6 +73,7 @@ resource "uptimerobot_monitor" "internal_api" {
   type     = "HTTP"
   url      = "https://internal-api.example.com"
   interval = 300
+  timeout  = 30
 }
 
 resource "uptimerobot_psp" "internal_status" {
@@ -101,6 +105,7 @@ resource "uptimerobot_monitor" "website" {
   type     = "HTTP"
   url      = "https://example.com"
   interval = 300
+  timeout  = 30
 }
 
 resource "uptimerobot_psp" "branded_status" {

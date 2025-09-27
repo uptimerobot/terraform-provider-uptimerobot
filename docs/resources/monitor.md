@@ -19,15 +19,13 @@ resource "uptimerobot_monitor" "website" {
   type     = "HTTP"
   url      = "https://example.com"
   interval = 300
+  timeout  = 30
 
   # Optional: SSL certificate expiration monitoring
   ssl_expiration_reminder = true
 
   # Optional: Follow HTTP redirects
   follow_redirections = true
-
-  # Optional: Custom timeout (default is 30 seconds)
-  timeout = 30
 
   # Optional: Tags for organization
   tags = ["production", "web"]
@@ -42,6 +40,7 @@ resource "uptimerobot_monitor" "api_health" {
   type     = "KEYWORD"
   url      = "https://api.example.com/health"
   interval = 60
+  timeout  = 30
 
   # Look for "healthy" in the response
   keyword_type  = "exists"
@@ -74,6 +73,7 @@ resource "uptimerobot_monitor" "protected_api" {
   type     = "HTTP"
   url      = "https://api.example.com/protected"
   interval = 300
+  timeout  = 30
 
   # HTTP Basic Authentication
   auth_type     = "HTTP_BASIC"
@@ -147,6 +147,7 @@ resource "uptimerobot_monitor" "ssh_port" {
   url      = "server.example.com"
   port     = 22
   interval = 900
+  timeout  = 30
 
   tags = ["ssh", "server"]
 }
@@ -161,9 +162,6 @@ resource "uptimerobot_monitor" "server_ping" {
   url      = "server.example.com"
   interval = 300
 
-  # Ping timeout in seconds
-  timeout = 5
-
   tags = ["ping", "server", "network"]
 }
 
@@ -172,9 +170,6 @@ resource "uptimerobot_monitor" "gateway_ping" {
   type     = "PING"
   url      = "gateway.example.com"
   interval = 60
-
-  # Shorter timeout for critical infrastructure
-  timeout = 3
 
   tags = ["gateway", "critical", "network"]
 }
@@ -230,7 +225,7 @@ Common monitoring intervals:
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
 - `success_http_response_codes` (List of String) The expected HTTP response codes
 - `tags` (Set of String) Tags for the monitor
-- `timeout` (Number) Timeout for the monitoring check (in seconds). Required for non-HEARTBEAT
+- `timeout` (Number) Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, API default is used
 
 ### Read-Only
 
