@@ -172,7 +172,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2xx"), types.StringValue("3xx")})),
 			},
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the monitoring check (in seconds). Required for non-HEARTBEAT",
+				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, API default is used",
 				Optional:    true,
 				Validators: []validator.Int64{
 					int64validator.Between(0, 60),
@@ -312,27 +312,37 @@ func (r *monitorResource) ValidateConfig(
 				"When type is HEARTBEAT, you must set grace_period and omit timeout.",
 			)
 		}
-		if !data.Timeout.IsNull() {
+		if !data.Timeout.IsNull() && !data.Timeout.IsUnknown() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("timeout"),
 				"timeout not allowed for heartbeat monitor",
 				"When type is HEARTBEAT, omit timeout and use grace_period instead.",
 			)
 		}
-	default:
-		// all non-heartbeat MUST use timeout and MUST NOT use grace_period
-		if data.Timeout.IsNull() || data.Timeout.IsUnknown() {
-			resp.Diagnostics.AddAttributeError(
+	case "DNS", "PING":
+		// do not require a timeout
+		if !data.Timeout.IsNull() && !data.Timeout.IsUnknown() {
+			resp.Diagnostics.AddAttributeWarning(
 				path.Root("timeout"),
-				"Missing timeout for non-heartbeat monitor",
-				"When type is not HEARTBEAT, you must set timeout and omit grace_period.",
+				"timeout is ignored for DNS/PING monitors",
+				"The UptimeRobot API does not use timeout for DNS or PING monitors."+
+					"The provider will omit it when calling the API. You can remove it from the config.",
 			)
 		}
-		if !data.GracePeriod.IsNull() {
+		if !data.GracePeriod.IsNull() && !data.GracePeriod.IsUnknown() {
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("grace_period"),
+				"grace_period is ignored for DNS/PING monitors",
+				"The API does not use grace_period for DNS/PING. The provider will omit it.",
+			)
+		}
+	default: // HTTP, KEYWORD, PORT
+
+		if !data.GracePeriod.IsNull() && !data.GracePeriod.IsUnknown() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("grace_period"),
 				"grace_period not allowed for non-heartbeat monitor",
-				"When type is not HEARTBEAT, omit grace_period and use timeout instead.",
+				"When type is not HEARTBEAT, omit grace_period.",
 			)
 		}
 	}
@@ -411,22 +421,27 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		Interval: int(plan.Interval.ValueInt64()),
 	}
 
-	if strings.EqualFold(plan.Type.ValueString(), "HEARTBEAT") {
-		// If heartbeat - send grace_period and omit timeout
+	switch strings.ToUpper(plan.Type.ValueString()) {
+	case "HEARTBEAT":
 		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
 			v := int(plan.GracePeriod.ValueInt64())
 			createReq.GracePeriod = &v
+		} else {
+			createReq.GracePeriod = nil
 		}
 		createReq.Timeout = nil
-	} else {
-		// API expects numeric value for gracePeriod and shows validation related to numeric value even when not used
-		zero := 0
-		createReq.GracePeriod = &zero
-
-		// All other - send timeout and omit grace_period
+	case "DNS", "PING":
+		// not applicable and omitted
+		createReq.GracePeriod = nil
+		createReq.Timeout = nil
+	default:
+		// HTTP, KEYWORD, PORT
+		// send only if user provided, otherwise omitted
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
 			createReq.Timeout = &v
+		} else {
+			createReq.Timeout = nil
 		}
 	}
 
@@ -627,13 +642,19 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	state.Interval = types.Int64Value(int64(monitor.Interval))
 
 	t := strings.ToUpper(state.Type.ValueString())
-
-	if t == "HEARTBEAT" {
+	switch t {
+	case "HEARTBEAT":
 		// keep the API's gracePeriod, but hide timeout
 		state.Timeout = types.Int64Null()
 		// to ensure grace is present
 		state.GracePeriod = types.Int64Value(int64(monitor.GracePeriod))
-	} else {
+	case "DNS", "PING":
+		// If user had a value in state leave it
+		if state.Timeout.IsNull() {
+			state.Timeout = types.Int64Null()
+		}
+		state.GracePeriod = types.Int64Null()
+	default:
 		// keep the API's timeout and ensure grace_period is hidden from the API responses
 		state.GracePeriod = types.Int64Null()
 		state.Timeout = types.Int64Value(int64(monitor.Timeout))
@@ -877,22 +898,26 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		URL:      plan.URL.ValueString(),
 	}
 
-	if strings.EqualFold(plan.Type.ValueString(), "HEARTBEAT") {
+	t := strings.ToUpper(plan.Type.ValueString())
+	switch t {
+	case "HEARTBEAT":
 		// If heartbeat - send grace_period and omit timeout
 		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
 			v := int(plan.GracePeriod.ValueInt64())
 			updateReq.GracePeriod = &v
+		} else {
+			updateReq.GracePeriod = nil
 		}
 		updateReq.Timeout = nil
-	} else {
-		// API expects numeric value for gracePeriod and shows validation related to numeric value even when not used
-		zero := 0
-		updateReq.GracePeriod = &zero
-
-		// All other - send timeout and omit grace_period
+	case "DNS", "PING":
+		updateReq.GracePeriod = nil
+		updateReq.Timeout = nil
+	default:
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
 			updateReq.Timeout = &v
+		} else {
+			updateReq.Timeout = nil
 		}
 	}
 
@@ -1205,11 +1230,21 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	if !plan.Type.IsNull() && !plan.Type.IsUnknown() {
 		switch strings.ToUpper(plan.Type.ValueString()) {
 		case "HEARTBEAT":
-			// heartbeat: omit timeout
-			resp.Plan.SetAttribute(ctx, path.Root("timeout"), types.Int64Null())
+			if plan.Timeout.IsUnknown() || plan.Timeout.IsNull() {
+				resp.Plan.SetAttribute(ctx, path.Root("timeout"), types.Int64Null())
+			}
+		case "DNS", "PING":
+			// Only null if user didn’t set a value. Otherwise leave it as is.
+			if plan.Timeout.IsUnknown() {
+				resp.Plan.SetAttribute(ctx, path.Root("timeout"), types.Int64Null())
+			}
+			if plan.GracePeriod.IsUnknown() {
+				resp.Plan.SetAttribute(ctx, path.Root("grace_period"), types.Int64Null())
+			}
 		default:
-			// non-heartbeat: omit grace_period
-			resp.Plan.SetAttribute(ctx, path.Root("grace_period"), types.Int64Null())
+			if plan.GracePeriod.IsUnknown() {
+				resp.Plan.SetAttribute(ctx, path.Root("grace_period"), types.Int64Null())
+			}
 		}
 	}
 }
