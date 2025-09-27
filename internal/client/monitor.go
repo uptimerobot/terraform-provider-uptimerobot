@@ -47,6 +47,7 @@ type CreateMonitorRequest struct {
 	FollowRedirections       bool              `json:"followRedirections"`
 	ResponseTimeThreshold    int               `json:"responseTimeThreshold,omitempty"`
 	RegionalData             string            `json:"regionalData,omitempty"`
+	Config                   map[string]any    `json:"config,omitempty"` // DNS config field
 }
 
 // UpdateMonitorRequest represents the request to update an existing monitor.
@@ -79,6 +80,7 @@ type UpdateMonitorRequest struct {
 	FollowRedirections       bool               `json:"followRedirections"`
 	ResponseTimeThreshold    *int               `json:"responseTimeThreshold,omitempty"`
 	RegionalData             *string            `json:"regionalData,omitempty"`
+	Config                   map[string]any     `json:"config,omitempty"` // DNS config field
 }
 
 // Monitor represents a monitor.

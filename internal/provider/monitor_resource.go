@@ -107,6 +107,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
+
+				// NOTE: DNS monitors currently include a minimal placeholder `config` and do not yet expose DNS record options in the schema.",
+
 				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)",
 				Required:    true,
 				Validators: []validator.String{
@@ -321,6 +324,16 @@ func (r *monitorResource) ValidateConfig(
 			)
 		}
 	case "DNS", "PING":
+		// just additional validation while DNS is not properly impleemnted in case of config field.
+		// this t == "DNS" segment will be romoved after proper implementation.
+		if t == "DNS" {
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("type"),
+				"DNS monitor support is limited",
+				"DNS monitors currently send a minimal placeholder `config` to satisfy the API and do not expose DNS record settings in the Terraform schema. `timeout` and `grace_period` are ignored. Behavior may change in a future release.",
+			)
+		}
+
 		// do not require a timeout
 		if !data.Timeout.IsNull() && !data.Timeout.IsUnknown() {
 			resp.Diagnostics.AddAttributeWarning(
@@ -434,10 +447,21 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 			createReq.GracePeriod = nil
 		}
 		createReq.Timeout = nil
-	case "DNS", "PING":
+
+	case "DNS":
+		createReq.GracePeriod = &zero
+		createReq.Timeout = &zero
+		createReq.Config = map[string]any{
+			"dnsRecords": map[string][]string{
+				"CNAME": {"example.com"},
+			},
+		}
+
+	case "PING":
 		// not applicable and omitted
 		createReq.GracePeriod = &zero
 		createReq.Timeout = &zero
+
 	default:
 		// HTTP, KEYWORD, PORT
 		// send only if user provided, otherwise omitted
@@ -940,9 +964,20 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			updateReq.GracePeriod = nil
 		}
 		updateReq.Timeout = nil
-	case "DNS", "PING":
+
+	case "DNS":
 		updateReq.GracePeriod = &zero
 		updateReq.Timeout = &zero
+		updateReq.Config = map[string]any{
+			"dnsRecords": map[string][]string{
+				"CNAME": {"example.com"},
+			},
+		}
+
+	case "PING":
+		updateReq.GracePeriod = &zero
+		updateReq.Timeout = &zero
+
 	default:
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
