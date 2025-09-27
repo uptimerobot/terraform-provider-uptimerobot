@@ -214,7 +214,7 @@ Common monitoring intervals:
 - `custom_http_headers` (Map of String) Custom HTTP headers
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
 - `follow_redirections` (Boolean) Whether to follow redirections
-- `grace_period` (Number) The grace period (in seconds)
+- `grace_period` (Number) The grace period (in seconds). Only for HEARTBEAT monitors
 - `http_method_type` (String) The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS)
 - `http_password` (String, Sensitive) The password for HTTP authentication
 - `http_username` (String) The username for HTTP authentication
@@ -230,7 +230,7 @@ Common monitoring intervals:
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
 - `success_http_response_codes` (List of String) The expected HTTP response codes
 - `tags` (Set of String) Tags for the monitor
-- `timeout` (Number) Timeout for the monitoring check (in seconds)
+- `timeout` (Number) Timeout for the monitoring check (in seconds). Required for non-HEARTBEAT
 
 ### Read-Only
 
