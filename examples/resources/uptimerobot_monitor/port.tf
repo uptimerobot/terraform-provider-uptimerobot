@@ -27,6 +27,7 @@ resource "uptimerobot_monitor" "ssh_port" {
   url      = "server.example.com"
   port     = 22
   interval = 900
+  timeout  = 30
 
   tags = ["ssh", "server"]
 }

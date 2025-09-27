@@ -3,6 +3,7 @@ resource "uptimerobot_monitor" "internal_api" {
   type     = "HTTP"
   url      = "https://internal-api.example.com"
   interval = 300
+  timeout  = 30
 }
 
 resource "uptimerobot_psp" "internal_status" {

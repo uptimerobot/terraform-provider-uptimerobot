@@ -33,6 +33,7 @@ resource "uptimerobot_monitor" "website_with_contacts" {
   type     = "HTTP"
   url      = "https://example.com"
   interval = 300
+  timeout  = 30
 
   # Adding alert contacts to an existing monitor now works
   assigned_alert_contacts = [
@@ -48,6 +49,7 @@ resource "uptimerobot_monitor" "website_no_contacts" {
   type     = "HTTP"
   url      = "https://example.com"
   interval = 300
+  timeout  = 30
 
   # No assigned_alert_contacts field = remove all alert contacts
 }

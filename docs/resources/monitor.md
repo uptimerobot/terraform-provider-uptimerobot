@@ -74,6 +74,7 @@ resource "uptimerobot_monitor" "protected_api" {
   type     = "HTTP"
   url      = "https://api.example.com/protected"
   interval = 300
+  timeout  = 30
 
   # HTTP Basic Authentication
   auth_type     = "HTTP_BASIC"
@@ -147,6 +148,7 @@ resource "uptimerobot_monitor" "ssh_port" {
   url      = "server.example.com"
   port     = 22
   interval = 900
+  timeout  = 30
 
   tags = ["ssh", "server"]
 }
@@ -161,9 +163,6 @@ resource "uptimerobot_monitor" "server_ping" {
   url      = "server.example.com"
   interval = 300
 
-  # Ping timeout in seconds
-  timeout = 5
-
   tags = ["ping", "server", "network"]
 }
 
@@ -172,9 +171,6 @@ resource "uptimerobot_monitor" "gateway_ping" {
   type     = "PING"
   url      = "gateway.example.com"
   interval = 60
-
-  # Shorter timeout for critical infrastructure
-  timeout = 3
 
   tags = ["gateway", "critical", "network"]
 }
@@ -214,7 +210,7 @@ Common monitoring intervals:
 - `custom_http_headers` (Map of String) Custom HTTP headers
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
 - `follow_redirections` (Boolean) Whether to follow redirections
-- `grace_period` (Number) The grace period (in seconds)
+- `grace_period` (Number) The grace period (in seconds). Only for HEARTBEAT monitors
 - `http_method_type` (String) The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS)
 - `http_password` (String, Sensitive) The password for HTTP authentication
 - `http_username` (String) The username for HTTP authentication
@@ -230,7 +226,7 @@ Common monitoring intervals:
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
 - `success_http_response_codes` (List of String) The expected HTTP response codes
 - `tags` (Set of String) Tags for the monitor
-- `timeout` (Number) Timeout for the monitoring check (in seconds)
+- `timeout` (Number) Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, API default is used
 
 ### Read-Only
 

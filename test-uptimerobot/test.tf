@@ -20,7 +20,7 @@ resource "uptimerobot_monitor" "keyword_test" {
   keyword_value    = "Example Domain"
   keyword_case_type = "CaseInsensitive"
   http_method_type = "GET"
-  grace_period     = 30
+  timeout          = 30
 }
 
 # Example Port monitor

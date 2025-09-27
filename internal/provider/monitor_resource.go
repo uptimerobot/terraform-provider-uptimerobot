@@ -4,15 +4,16 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -30,11 +31,13 @@ func NewMonitorResource() resource.Resource {
 
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ resource.Resource                 = &monitorResource{}
-	_ resource.ResourceWithConfigure    = &monitorResource{}
-	_ resource.ResourceWithModifyPlan   = &monitorResource{}
-	_ resource.ResourceWithImportState  = &monitorResource{}
-	_ resource.ResourceWithUpgradeState = &monitorResource{}
+	_ resource.Resource                     = &monitorResource{}
+	_ resource.ResourceWithConfigure        = &monitorResource{}
+	_ resource.ResourceWithModifyPlan       = &monitorResource{}
+	_ resource.ResourceWithImportState      = &monitorResource{}
+	_ resource.ResourceWithUpgradeState     = &monitorResource{}
+	_ resource.ResourceWithConfigValidators = &monitorResource{}
+	_ resource.ResourceWithValidateConfig   = &monitorResource{}
 )
 
 // monitorResource is the resource implementation.
@@ -104,6 +107,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
+
+				// NOTE: DNS monitors currently include a minimal placeholder `config` and do not yet expose DNS record options in the schema.",
+
 				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)",
 				Required:    true,
 				Validators: []validator.String{
@@ -169,10 +175,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2xx"), types.StringValue("3xx")})),
 			},
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the monitoring check (in seconds)",
+				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, API default is used",
 				Optional:    true,
 				Computed:    true,
-				Default:     int64default.StaticInt64(30),
 				Validators: []validator.Int64{
 					int64validator.Between(0, 60),
 				},
@@ -193,10 +198,11 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:    true,
 			},
 			"grace_period": schema.Int64Attribute{
-				Description: "The grace period (in seconds)",
+				Description: "The grace period (in seconds). Only for HEARTBEAT monitors",
 				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(30),
+				Validators: []validator.Int64{
+					int64validator.Between(0, 86400),
+				},
 			},
 			"keyword_value": schema.StringAttribute{
 				Description: "The keyword to search for",
@@ -274,6 +280,88 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 	}
 }
 
+func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		resourcevalidator.Conflicting(
+			path.MatchRoot("timeout"),
+			path.MatchRoot("grace_period"),
+		),
+	}
+}
+
+func (r *monitorResource) ValidateConfig(
+	ctx context.Context,
+	req resource.ValidateConfigRequest,
+	resp *resource.ValidateConfigResponse,
+) {
+	var data monitorResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if data.Type.IsUnknown() || data.Type.IsNull() {
+		return
+	}
+
+	t := strings.ToUpper(data.Type.ValueString())
+
+	switch t {
+	case "HEARTBEAT":
+		// heartbeat MUST use grace_period and MUST NOT use timeout
+		if data.GracePeriod.IsNull() || data.GracePeriod.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("grace_period"),
+				"Missing grace_period for heartbeat monitor",
+				"When type is HEARTBEAT, you must set grace_period and omit timeout.",
+			)
+		}
+		if !data.Timeout.IsNull() && !data.Timeout.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("timeout"),
+				"timeout not allowed for heartbeat monitor",
+				"When type is HEARTBEAT, omit timeout and use grace_period instead.",
+			)
+		}
+	case "DNS", "PING":
+		// just additional validation while DNS is not properly impleemnted in case of config field.
+		// this t == "DNS" segment will be romoved after proper implementation.
+		if t == "DNS" {
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("type"),
+				"DNS monitor support is limited",
+				"DNS monitors currently send a minimal placeholder `config` to satisfy the API and do not expose DNS record settings in the Terraform schema. `timeout` and `grace_period` are ignored. Behavior may change in a future release.",
+			)
+		}
+
+		// do not require a timeout
+		if !data.Timeout.IsNull() && !data.Timeout.IsUnknown() {
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("timeout"),
+				"timeout is ignored for DNS/PING monitors",
+				"The UptimeRobot API does not use timeout for DNS or PING monitors."+
+					"The provider will omit it when calling the API. You can remove it from the config.",
+			)
+		}
+		if !data.GracePeriod.IsNull() && !data.GracePeriod.IsUnknown() {
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("grace_period"),
+				"grace_period is ignored for DNS/PING monitors",
+				"The API does not use grace_period for DNS/PING. The provider will omit it.",
+			)
+		}
+	default: // HTTP, KEYWORD, PORT
+
+		if !data.GracePeriod.IsNull() && !data.GracePeriod.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("grace_period"),
+				"grace_period not allowed for non-heartbeat monitor",
+				"When type is not HEARTBEAT, omit grace_period.",
+			)
+		}
+	}
+}
+
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan monitorResourceModel
 	diags := req.Plan.Get(ctx, &plan)
@@ -347,11 +435,47 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		Interval: int(plan.Interval.ValueInt64()),
 	}
 
-	// Add optional fields if set
-	if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
-		t := int(plan.Timeout.ValueInt64())
-		createReq.Timeout = &t
+	zero := 0
+	defaultTimeout := 30
+
+	switch strings.ToUpper(plan.Type.ValueString()) {
+	case "HEARTBEAT":
+		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
+			v := int(plan.GracePeriod.ValueInt64())
+			createReq.GracePeriod = &v
+		} else {
+			createReq.GracePeriod = nil
+		}
+		createReq.Timeout = nil
+
+	case "DNS":
+		createReq.GracePeriod = &zero
+		createReq.Timeout = &zero
+		createReq.Config = map[string]any{
+			"dnsRecords": map[string][]string{
+				"CNAME": {"example.com"},
+			},
+		}
+
+	case "PING":
+		// not applicable and omitted
+		createReq.GracePeriod = &zero
+		createReq.Timeout = &zero
+
+	default:
+		// HTTP, KEYWORD, PORT
+		// send only if user provided, otherwise omitted
+		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+			v := int(plan.Timeout.ValueInt64())
+			createReq.Timeout = &v
+		} else {
+			// user omitted
+			createReq.Timeout = &defaultTimeout
+		}
+		createReq.GracePeriod = &zero
 	}
+
+	// Add optional fields if set
 	if !plan.HTTPMethodType.IsNull() {
 		createReq.HTTPMethodType = plan.HTTPMethodType.ValueString()
 	}
@@ -394,9 +518,6 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 	if !plan.PostValueType.IsNull() {
 		createReq.PostValueType = plan.PostValueType.ValueString()
-	}
-	if !plan.GracePeriod.IsNull() {
-		createReq.GracePeriod = int(plan.GracePeriod.ValueInt64())
 	}
 	if !plan.ResponseTimeThreshold.IsNull() {
 		createReq.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
@@ -509,6 +630,29 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 	plan.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
 
+	switch strings.ToUpper(plan.Type.ValueString()) {
+	case "HEARTBEAT":
+		// show grace, hide timeout
+		plan.Timeout = types.Int64Null()
+		plan.GracePeriod = types.Int64Value(int64(newMonitor.GracePeriod))
+
+	case "DNS", "PING":
+		// both are not applicable
+		plan.Timeout = types.Int64Null()
+		plan.GracePeriod = types.Int64Null()
+
+	default: // HTTP, KEYWORD, PORT
+		// hide grace, show timeout - prefer API’s value, else what was sent
+		plan.GracePeriod = types.Int64Null()
+		if newMonitor.Timeout > 0 {
+			plan.Timeout = types.Int64Value(int64(newMonitor.Timeout))
+		} else if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+			plan.Timeout = types.Int64Value(plan.Timeout.ValueInt64())
+		} else {
+			plan.Timeout = types.Int64Value(30)
+		}
+	}
+
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -549,6 +693,25 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	state.Type = types.StringValue(monitor.Type)
 	state.Interval = types.Int64Value(int64(monitor.Interval))
+
+	t := strings.ToUpper(state.Type.ValueString())
+	switch t {
+	case "HEARTBEAT":
+		// keep the API's gracePeriod, but hide timeout
+		state.Timeout = types.Int64Null()
+		// to ensure grace is present
+		state.GracePeriod = types.Int64Value(int64(monitor.GracePeriod))
+	case "DNS", "PING":
+		// If user had a value in state leave it
+		if state.Timeout.IsNull() {
+			state.Timeout = types.Int64Null()
+		}
+		state.GracePeriod = types.Int64Null()
+	default:
+		// keep the API's timeout and ensure grace_period is hidden from the API responses
+		state.GracePeriod = types.Int64Null()
+		state.Timeout = types.Int64Value(int64(monitor.Timeout))
+	}
 
 	// For optional fields with defaults, set them during import or if already set in state
 	if isImport || !state.FollowRedirections.IsNull() {
@@ -608,11 +771,6 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 			keywordCaseTypeValue = "CaseInsensitive"
 		}
 		state.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
-	}
-
-	// Set grace period during import or if already set in state
-	if isImport || !state.GracePeriod.IsNull() {
-		state.GracePeriod = types.Int64Value(int64(monitor.GracePeriod))
 	}
 
 	state.Name = types.StringValue(monitor.Name)
@@ -793,10 +951,43 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		URL:      plan.URL.ValueString(),
 	}
 
-	if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
-		t := int(plan.Timeout.ValueInt64())
-		updateReq.Timeout = &t
+	zero := 0
+	defaultTimeout := 30
+
+	switch strings.ToUpper(plan.Type.ValueString()) {
+	case "HEARTBEAT":
+		// If heartbeat - send grace_period and omit timeout
+		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
+			v := int(plan.GracePeriod.ValueInt64())
+			updateReq.GracePeriod = &v
+		} else {
+			updateReq.GracePeriod = nil
+		}
+		updateReq.Timeout = nil
+
+	case "DNS":
+		updateReq.GracePeriod = &zero
+		updateReq.Timeout = &zero
+		updateReq.Config = map[string]any{
+			"dnsRecords": map[string][]string{
+				"CNAME": {"example.com"},
+			},
+		}
+
+	case "PING":
+		updateReq.GracePeriod = &zero
+		updateReq.Timeout = &zero
+
+	default:
+		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+			v := int(plan.Timeout.ValueInt64())
+			updateReq.Timeout = &v
+		} else {
+			updateReq.Timeout = &defaultTimeout
+		}
+		updateReq.GracePeriod = &zero
 	}
+
 	if !plan.HTTPMethodType.IsNull() {
 		updateReq.HTTPMethodType = plan.HTTPMethodType.ValueString()
 	}
@@ -922,7 +1113,6 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq.HTTPAuthType = plan.AuthType.ValueString()
 	updateReq.PostValueData = plan.PostValueData.ValueString()
 	updateReq.PostValueType = plan.PostValueType.ValueString()
-	updateReq.GracePeriod = int(plan.GracePeriod.ValueInt64())
 
 	// Add new fields
 	if !plan.ResponseTimeThreshold.IsNull() {
@@ -1027,6 +1217,24 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updatedState.AssignedAlertContacts = types.ListNull(types.StringType)
 	}
 
+	switch strings.ToUpper(plan.Type.ValueString()) {
+	case "HEARTBEAT":
+		updatedState.Timeout = types.Int64Null()
+		updatedState.GracePeriod = types.Int64Value(int64(updatedMonitor.GracePeriod))
+	case "DNS", "PING":
+		updatedState.Timeout = types.Int64Null()
+		updatedState.GracePeriod = types.Int64Null()
+	default:
+		updatedState.GracePeriod = types.Int64Null()
+		if updatedMonitor.Timeout > 0 {
+			updatedState.Timeout = types.Int64Value(int64(updatedMonitor.Timeout))
+		} else if !state.Timeout.IsNull() && !state.Timeout.IsUnknown() {
+			updatedState.Timeout = state.Timeout
+		} else {
+			updatedState.Timeout = types.Int64Value(30)
+		}
+	}
+
 	diags = resp.State.Set(ctx, updatedState)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -1101,6 +1309,27 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		// If both values are present and equal, preserve the state value
 		if plan.DomainExpirationReminder.ValueBool() == state.DomainExpirationReminder.ValueBool() {
 			resp.Plan.SetAttribute(ctx, path.Root("domain_expiration_reminder"), state.DomainExpirationReminder)
+		}
+	}
+
+	if !plan.Type.IsNull() && !plan.Type.IsUnknown() {
+		switch strings.ToUpper(plan.Type.ValueString()) {
+		case "HEARTBEAT":
+			if plan.Timeout.IsUnknown() || plan.Timeout.IsNull() {
+				resp.Plan.SetAttribute(ctx, path.Root("timeout"), types.Int64Null())
+			}
+		case "DNS", "PING":
+			// Only null if user didn’t set a value. Otherwise leave it as is.
+			if plan.Timeout.IsUnknown() {
+				resp.Plan.SetAttribute(ctx, path.Root("timeout"), types.Int64Null())
+			}
+			if plan.GracePeriod.IsUnknown() {
+				resp.Plan.SetAttribute(ctx, path.Root("grace_period"), types.Int64Null())
+			}
+		default:
+			if plan.GracePeriod.IsUnknown() {
+				resp.Plan.SetAttribute(ctx, path.Root("grace_period"), types.Int64Null())
+			}
 		}
 	}
 }

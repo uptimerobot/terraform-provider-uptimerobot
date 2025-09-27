@@ -8,7 +8,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-// Configs for tests --------------------------------------------------
+/*
+	Config addition rules:
+
+	- Config helpers for the common, repeatable configs like HTTP base monitor, headers, tags, MWs, etc.
+	They reduces duplication and makes refactors, such as adding a timeout = 30 to HTTP easy to be performed.
+
+	- Inline configs only when the test’s readability depends on seeing the exact HCL schema in the test.
+	For example, negative cases that assert a specific validation error, or tiny one-off / one time scenarios.
+*/
+
+// Config helpers for tests --------------------------------------------------
 
 func testAccMonitorResourceConfig(name string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
@@ -17,6 +27,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300
+	timeout   	 = 30
 }
 `, name)
 }
@@ -34,6 +45,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout  	 = 30
 }
 `, name, alertContactsStr)
 }
@@ -51,6 +63,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout      = 30
 }
 `, name, tagsStr)
 }
@@ -68,6 +81,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout      = 30
 }
 `, name, maintenanceWindowsStr)
 }
@@ -85,6 +99,7 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
+	timeout      = 30
 }
 `, name, responseCodesStr)
 }
@@ -111,6 +126,7 @@ resource "uptimerobot_monitor" "test" {
   url      = "https://example.com"
   type     = "HTTP"
   interval = 300%s
+  timeout  = 30
 }
 `, name, hdr)
 }
@@ -123,6 +139,7 @@ resource "uptimerobot_monitor" "test" {
   url      = "https://example.com"
   type     = "HTTP"
   interval = 300
+  timeout  = 30
   custom_http_headers = {}
 }
 `, name)
@@ -571,7 +588,6 @@ resource "uptimerobot_monitor" "test" {
     url          = "https://example.com"
     type         = "HEARTBEAT"
     interval     = 300
-	timeout 	 = 30
     grace_period = 60
 }
 `,
@@ -589,7 +605,6 @@ resource "uptimerobot_monitor" "test" {
     url          = "example.com"
     type         = "DNS"
     interval     = 300
-	timeout 	 = 30
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -686,6 +701,193 @@ resource "uptimerobot_monitor" "test" {
 }
 `,
 				ExpectError: regexp.MustCompile(`(?s)value must be one of:.*HTTP.*KEYWORD.*PING.*PORT.*HEARTBEAT.*DNS`),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_HTTP_UsesTimeout(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "uptimerobot_monitor" "test" {
+  name     = "acc-http"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  timeout  = 30
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "timeout", "30"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "grace_period"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_HTTP_DefaultTimeout_WhenOmitted(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name     = "acc-http-no-timeout"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  // timeout omitted on purpose
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
+					// Must be concretized by provider after apply
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "timeout", "30"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "grace_period"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_DNS_And_PING_IgnoreTimeoutAndGrace(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// DNS with neither timeout nor grace_period
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "dns" {
+  name     = "acc-dns"
+  type     = "DNS"
+  url      = "example.com"
+  interval = 300
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.dns", "type", "DNS"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.dns", "timeout"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.dns", "grace_period"),
+				),
+			},
+			{
+				// PING with neither timeout nor grace_period
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "ping" {
+  name     = "acc-ping"
+  type     = "PING"
+  url      = "1.1.1.1"
+  interval = 300
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.ping", "type", "PING"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.ping", "timeout"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.ping", "grace_period"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Heartbeat_UsesGrace(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "uptimerobot_monitor" "hb" {
+  name         = "acc-heartbeat"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = 120
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "type", "HEARTBEAT"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "120"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.hb", "timeout"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Heartbeat_Grace_Bounds_OK(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{ // min=0
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "hb" {
+  name         = "hb-min"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = 0
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "0"),
+				),
+			},
+			{ // max=86400
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "hb" {
+  name         = "hb-max"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = 86400
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "86400"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Heartbeat_Grace_Invalid(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "hb" {
+  name         = "hb-bad-low"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = -1
+}
+`,
+				ExpectError: regexp.MustCompile(`must be between 0 and 86400`),
+			},
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "hb" {
+  name         = "hb-bad-high"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = 86401
+}
+`,
+				ExpectError: regexp.MustCompile(`must be between 0 and 86400`),
 			},
 		},
 	})

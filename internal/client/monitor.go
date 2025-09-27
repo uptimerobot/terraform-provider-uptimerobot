@@ -39,7 +39,7 @@ type CreateMonitorRequest struct {
 	SuccessHTTPResponseCodes []string          `json:"successHttpResponseCodes,omitempty"`
 	MaintenanceWindowIDs     []int64           `json:"maintenanceWindowsIds,omitempty"`
 	Tags                     []string          `json:"tagNames"`
-	GracePeriod              int               `json:"gracePeriod,omitempty"`
+	GracePeriod              *int              `json:"gracePeriod,omitempty"`
 	PostValueData            interface{}       `json:"postValueData,omitempty"`
 	PostValueType            string            `json:"postValueType,omitempty"`
 	SSLExpirationReminder    bool              `json:"sslExpirationReminder"`
@@ -47,6 +47,7 @@ type CreateMonitorRequest struct {
 	FollowRedirections       bool              `json:"followRedirections"`
 	ResponseTimeThreshold    int               `json:"responseTimeThreshold,omitempty"`
 	RegionalData             string            `json:"regionalData,omitempty"`
+	Config                   map[string]any    `json:"config,omitempty"` // DNS config field
 }
 
 // UpdateMonitorRequest represents the request to update an existing monitor.
@@ -71,7 +72,7 @@ type UpdateMonitorRequest struct {
 	SuccessHTTPResponseCodes []string           `json:"successHttpResponseCodes,omitempty"`
 	MaintenanceWindowIDs     []int64            `json:"maintenanceWindowsIds,omitempty"`
 	Tags                     []string           `json:"tagNames"`
-	GracePeriod              int                `json:"gracePeriod,omitempty"`
+	GracePeriod              *int               `json:"gracePeriod,omitempty"`
 	PostValueData            interface{}        `json:"postValueData,omitempty"`
 	PostValueType            string             `json:"postValueType,omitempty"`
 	SSLExpirationReminder    bool               `json:"sslExpirationReminder"`
@@ -79,6 +80,7 @@ type UpdateMonitorRequest struct {
 	FollowRedirections       bool               `json:"followRedirections"`
 	ResponseTimeThreshold    *int               `json:"responseTimeThreshold,omitempty"`
 	RegionalData             *string            `json:"regionalData,omitempty"`
+	Config                   map[string]any     `json:"config,omitempty"` // DNS config field
 }
 
 // Monitor represents a monitor.
