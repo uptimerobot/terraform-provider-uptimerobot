@@ -742,3 +742,73 @@ resource "uptimerobot_monitor" "hb" {
 		},
 	})
 }
+
+func TestAcc_Monitor_Heartbeat_Grace_Bounds_OK(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{ // min=0
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "hb" {
+  name         = "hb-min"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = 0
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "0"),
+				),
+			},
+			{ // max=86400
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "hb" {
+  name         = "hb-max"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = 86400
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "86400"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Heartbeat_Grace_Invalid(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "hb" {
+  name         = "hb-bad-low"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = -1
+}
+`,
+				ExpectError: regexp.MustCompile(`must be between 0 and 86400`),
+			},
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "hb" {
+  name         = "hb-bad-high"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = 86401
+}
+`,
+				ExpectError: regexp.MustCompile(`must be between 0 and 86400`),
+			},
+		},
+	})
+}
