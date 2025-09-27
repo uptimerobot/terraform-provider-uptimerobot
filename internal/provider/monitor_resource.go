@@ -174,6 +174,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"timeout": schema.Int64Attribute{
 				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, API default is used",
 				Optional:    true,
+				Computed:    true,
 				Validators: []validator.Int64{
 					int64validator.Between(0, 60),
 				},
@@ -421,6 +422,9 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		Interval: int(plan.Interval.ValueInt64()),
 	}
 
+	zero := 0
+	defaultTimeout := 30
+
 	switch strings.ToUpper(plan.Type.ValueString()) {
 	case "HEARTBEAT":
 		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
@@ -432,8 +436,8 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		createReq.Timeout = nil
 	case "DNS", "PING":
 		// not applicable and omitted
-		createReq.GracePeriod = nil
-		createReq.Timeout = nil
+		createReq.GracePeriod = &zero
+		createReq.Timeout = &zero
 	default:
 		// HTTP, KEYWORD, PORT
 		// send only if user provided, otherwise omitted
@@ -441,8 +445,10 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 			v := int(plan.Timeout.ValueInt64())
 			createReq.Timeout = &v
 		} else {
-			createReq.Timeout = nil
+			// user omitted
+			createReq.Timeout = &defaultTimeout
 		}
+		createReq.GracePeriod = &zero
 	}
 
 	// Add optional fields if set
@@ -599,6 +605,29 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		keywordCaseTypeValue = "CaseInsensitive"
 	}
 	plan.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
+
+	switch strings.ToUpper(plan.Type.ValueString()) {
+	case "HEARTBEAT":
+		// show grace, hide timeout
+		plan.Timeout = types.Int64Null()
+		plan.GracePeriod = types.Int64Value(int64(newMonitor.GracePeriod))
+
+	case "DNS", "PING":
+		// both are not applicable
+		plan.Timeout = types.Int64Null()
+		plan.GracePeriod = types.Int64Null()
+
+	default: // HTTP, KEYWORD, PORT
+		// hide grace, show timeout - prefer API’s value, else what was sent
+		plan.GracePeriod = types.Int64Null()
+		if newMonitor.Timeout > 0 {
+			plan.Timeout = types.Int64Value(int64(newMonitor.Timeout))
+		} else if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+			plan.Timeout = types.Int64Value(plan.Timeout.ValueInt64())
+		} else {
+			plan.Timeout = types.Int64Value(30)
+		}
+	}
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -898,8 +927,10 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		URL:      plan.URL.ValueString(),
 	}
 
-	t := strings.ToUpper(plan.Type.ValueString())
-	switch t {
+	zero := 0
+	defaultTimeout := 30
+
+	switch strings.ToUpper(plan.Type.ValueString()) {
 	case "HEARTBEAT":
 		// If heartbeat - send grace_period and omit timeout
 		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
@@ -910,15 +941,16 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 		updateReq.Timeout = nil
 	case "DNS", "PING":
-		updateReq.GracePeriod = nil
-		updateReq.Timeout = nil
+		updateReq.GracePeriod = &zero
+		updateReq.Timeout = &zero
 	default:
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
 			updateReq.Timeout = &v
 		} else {
-			updateReq.Timeout = nil
+			updateReq.Timeout = &defaultTimeout
 		}
+		updateReq.GracePeriod = &zero
 	}
 
 	if !plan.HTTPMethodType.IsNull() {
@@ -1148,6 +1180,24 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	} else {
 		// If no alert contacts returned from API, set to null (no attribute)
 		updatedState.AssignedAlertContacts = types.ListNull(types.StringType)
+	}
+
+	switch strings.ToUpper(plan.Type.ValueString()) {
+	case "HEARTBEAT":
+		updatedState.Timeout = types.Int64Null()
+		updatedState.GracePeriod = types.Int64Value(int64(updatedMonitor.GracePeriod))
+	case "DNS", "PING":
+		updatedState.Timeout = types.Int64Null()
+		updatedState.GracePeriod = types.Int64Null()
+	default:
+		updatedState.GracePeriod = types.Int64Null()
+		if updatedMonitor.Timeout > 0 {
+			updatedState.Timeout = types.Int64Value(int64(updatedMonitor.Timeout))
+		} else if !state.Timeout.IsNull() && !state.Timeout.IsUnknown() {
+			updatedState.Timeout = state.Timeout
+		} else {
+			updatedState.Timeout = types.Int64Value(30)
+		}
 	}
 
 	diags = resp.State.Set(ctx, updatedState)
