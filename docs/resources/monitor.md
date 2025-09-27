@@ -19,13 +19,15 @@ resource "uptimerobot_monitor" "website" {
   type     = "HTTP"
   url      = "https://example.com"
   interval = 300
-  timeout  = 30
 
   # Optional: SSL certificate expiration monitoring
   ssl_expiration_reminder = true
 
   # Optional: Follow HTTP redirects
   follow_redirections = true
+
+  # Optional: Custom timeout (default is 30 seconds)
+  timeout = 30
 
   # Optional: Tags for organization
   tags = ["production", "web"]
@@ -40,7 +42,6 @@ resource "uptimerobot_monitor" "api_health" {
   type     = "KEYWORD"
   url      = "https://api.example.com/health"
   interval = 60
-  timeout  = 30
 
   # Look for "healthy" in the response
   keyword_type  = "exists"
