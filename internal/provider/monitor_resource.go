@@ -201,6 +201,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:    true,
 				Computed:    true,
 				Default:     int64default.StaticInt64(30),
+				Validators: []validator.Int64{
+					int64validator.Between(0, 86400),
+				},
 			},
 			"keyword_value": schema.StringAttribute{
 				Description: "The keyword to search for",
