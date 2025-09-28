@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -59,8 +60,9 @@ type monitorResourceModel struct {
 	HTTPMethodType           types.String `tfsdk:"http_method_type"`
 	SuccessHTTPResponseCodes types.List   `tfsdk:"success_http_response_codes"`
 	Timeout                  types.Int64  `tfsdk:"timeout"`
-	PostValueData            types.String `tfsdk:"post_value_data"`
 	PostValueType            types.String `tfsdk:"post_value_type"`
+	PostValueData            types.String `tfsdk:"post_value_data"`
+	PostValueKV              types.Map    `tfsdk:"post_value_kv"`
 	Port                     types.Int64  `tfsdk:"port"`
 	GracePeriod              types.Int64  `tfsdk:"grace_period"`
 	KeywordValue             types.String `tfsdk:"keyword_value"`
@@ -186,12 +188,21 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"post_value_data": schema.StringAttribute{
-				Description: "The data to send with POST request",
+				Description: "JSON string payload used when post_value_type = RAW_JSON.",
 				Optional:    true,
+			},
+
+			"post_value_kv": schema.MapAttribute{
+				Description: "Key/Value payload used when post_value_type = KEY_VALUE.",
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 			"post_value_type": schema.StringAttribute{
 				Description: "The type of data to send with POST request",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("RAW_JSON", "KEY_VALUE"),
+				},
 			},
 			"port": schema.Int64Attribute{
 				Description: "The port to monitor",
@@ -300,6 +311,8 @@ func (r *monitorResource) ValidateConfig(
 		return
 	}
 
+	// grace_period and timeout validation segment
+
 	if data.Type.IsUnknown() || data.Type.IsNull() {
 		return
 	}
@@ -360,6 +373,9 @@ func (r *monitorResource) ValidateConfig(
 			)
 		}
 	}
+
+	// post data and their methods validation segment
+
 }
 
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -513,12 +529,28 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	if !plan.KeywordType.IsNull() {
 		createReq.KeywordType = plan.KeywordType.ValueString()
 	}
-	if !plan.PostValueData.IsNull() {
-		createReq.PostValueData = plan.PostValueData.ValueString()
-	}
+
 	if !plan.PostValueType.IsNull() {
 		createReq.PostValueType = plan.PostValueType.ValueString()
 	}
+	switch strings.ToUpper(stringOrEmpty(plan.PostValueType)) {
+	case "RAW_JSON":
+		if !plan.PostValueData.IsNull() {
+			createReq.PostValueData = plan.PostValueData.ValueString()
+		}
+	case "KEY_VALUE":
+		if !plan.PostValueKV.IsNull() {
+			var kv map[string]string
+			resp.Diagnostics.Append(plan.PostValueKV.ElementsAs(ctx, &kv, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			createReq.PostValueData = kv
+		}
+	default:
+		// if method is body-capable but have no type - omit body completely
+	}
+
 	if !plan.ResponseTimeThreshold.IsNull() {
 		createReq.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
 	}
@@ -735,16 +767,36 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	} else if !state.HTTPMethodType.IsNull() {
 		state.HTTPMethodType = types.StringNull()
 	}
+
 	if monitor.PostValueType != nil && *monitor.PostValueType != "" {
 		state.PostValueType = types.StringValue(*monitor.PostValueType)
 	} else if !state.PostValueType.IsNull() {
 		state.PostValueType = types.StringNull()
 	}
-	if monitor.PostValueData != nil && *monitor.PostValueData != "" {
-		state.PostValueData = types.StringValue(*monitor.PostValueData)
-	} else if !state.PostValueData.IsNull() {
+	if len(monitor.PostValueData) > 0 {
+		var kv map[string]string
+		if err := json.Unmarshal(monitor.PostValueData, &kv); err == nil {
+			state.PostValueKV = types.MapValueMust(types.StringType, stringMapToAttr(kv))
+			state.PostValueData = types.StringNull()
+		} else {
+			var s string
+			if err := json.Unmarshal(monitor.PostValueData, &s); err == nil {
+				state.PostValueData = types.StringValue(s)
+				state.PostValueKV = types.MapNull(types.StringType)
+			} else {
+				// Unknown shape of data
+				resp.Diagnostics.AddWarning(
+					"Unexpected postValueData shape",
+					"API returned an unsupported postValueData format; keeping existing state.",
+				)
+			}
+		}
+	} else {
+		// Clear both in state
 		state.PostValueData = types.StringNull()
+		state.PostValueKV = types.MapNull(types.StringType)
 	}
+
 	if monitor.Port != nil {
 		state.Port = types.Int64Value(int64(*monitor.Port))
 	} else {
@@ -1111,8 +1163,31 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq.DomainExpirationReminder = plan.DomainExpirationReminder.ValueBool()
 	updateReq.FollowRedirections = plan.FollowRedirections.ValueBool()
 	updateReq.HTTPAuthType = plan.AuthType.ValueString()
-	updateReq.PostValueData = plan.PostValueData.ValueString()
-	updateReq.PostValueType = plan.PostValueType.ValueString()
+
+	updateReq.PostValueType = stringOrEmpty(plan.PostValueType)
+	switch strings.ToUpper(updateReq.PostValueType) {
+	case "RAW_JSON":
+		if !plan.PostValueData.IsNull() {
+			updateReq.PostValueData = plan.PostValueData.ValueString()
+		} else {
+			// Explicitly clear if user removed it
+			updateReq.PostValueData = nil
+		}
+	case "KEY_VALUE":
+		if !plan.PostValueKV.IsNull() {
+			var kv map[string]string
+			resp.Diagnostics.Append(plan.PostValueKV.ElementsAs(ctx, &kv, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			updateReq.PostValueData = kv
+		} else {
+			updateReq.PostValueData = nil
+		}
+	default:
+		// No body
+		updateReq.PostValueData = nil
+	}
 
 	// Add new fields
 	if !plan.ResponseTimeThreshold.IsNull() {
@@ -1490,4 +1565,19 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 			},
 		},
 	}
+}
+
+func stringOrEmpty(v types.String) string {
+	if v.IsNull() || v.IsUnknown() {
+		return ""
+	}
+	return v.ValueString()
+}
+
+func stringMapToAttr(m map[string]string) map[string]attr.Value {
+	out := make(map[string]attr.Value, len(m))
+	for k, v := range m {
+		out[k] = types.StringValue(v)
+	}
+	return out
 }

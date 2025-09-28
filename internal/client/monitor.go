@@ -40,8 +40,8 @@ type CreateMonitorRequest struct {
 	MaintenanceWindowIDs     []int64           `json:"maintenanceWindowsIds,omitempty"`
 	Tags                     []string          `json:"tagNames"`
 	GracePeriod              *int              `json:"gracePeriod,omitempty"`
-	PostValueData            interface{}       `json:"postValueData,omitempty"`
 	PostValueType            string            `json:"postValueType,omitempty"`
+	PostValueData            interface{}       `json:"postValueData,omitempty"`
 	SSLExpirationReminder    bool              `json:"sslExpirationReminder"`
 	DomainExpirationReminder bool              `json:"domainExpirationReminder"`
 	FollowRedirections       bool              `json:"followRedirections"`
@@ -73,8 +73,8 @@ type UpdateMonitorRequest struct {
 	MaintenanceWindowIDs     []int64            `json:"maintenanceWindowsIds,omitempty"`
 	Tags                     []string           `json:"tagNames"`
 	GracePeriod              *int               `json:"gracePeriod,omitempty"`
-	PostValueData            interface{}        `json:"postValueData,omitempty"`
 	PostValueType            string             `json:"postValueType,omitempty"`
+	PostValueData            interface{}        `json:"postValueData,omitempty"`
 	SSLExpirationReminder    bool               `json:"sslExpirationReminder"`
 	DomainExpirationReminder bool               `json:"domainExpirationReminder"`
 	FollowRedirections       bool               `json:"followRedirections"`
@@ -101,8 +101,8 @@ type Monitor struct {
 	HTTPMethodType           string              `json:"httpMethodType"`
 	SuccessHTTPResponseCodes []string            `json:"successHttpResponseCodes"`
 	Timeout                  int                 `json:"timeout"`
-	PostValueData            *string             `json:"postValueData"`
 	PostValueType            *string             `json:"postValueType"`
+	PostValueData            json.RawMessage     `json:"postValueData"`
 	Port                     *int                `json:"port"`
 	GracePeriod              int                 `json:"gracePeriod"`
 	KeywordValue             string              `json:"keywordValue"`
