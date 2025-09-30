@@ -195,12 +195,12 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"post_value_data_json": schema.StringAttribute{
-				Description: "JSON string payload used when post_value_type = RAW_JSON.",
+				Description: "JSON payload body as a string (use jsonencode). Mutually exclusive with post_value_data_kv. Used when post_value_type = RAW_JSON.",
 				Optional:    true,
 			},
-
+			// API always echoes post value data as object, so KV is canonical and json is just a convenience
 			"post_value_data_kv": schema.MapAttribute{
-				Description: "Key/Value payload used when post_value_type = KEY_VALUE.",
+				Description: "Key/Value payload body. Mutually exclusive with post_value_data_json. Used when post_value_type = KEY_VALUE.",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
