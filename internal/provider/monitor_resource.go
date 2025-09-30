@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -297,6 +298,10 @@ func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.Confi
 			path.MatchRoot("timeout"),
 			path.MatchRoot("grace_period"),
 		),
+		resourcevalidator.Conflicting(
+			path.MatchRoot("post_value_data_json"),
+			path.MatchRoot("post_value_data_kv"),
+		),
 	}
 }
 
@@ -380,14 +385,14 @@ func (r *monitorResource) ValidateConfig(
 	pvt := strings.ToUpper(stringOrEmpty(data.PostValueType))
 
 	hasRaw := !data.PostValueDataJSON.IsNull() && !data.PostValueDataJSON.IsUnknown()
-	hasKV := !data.PostValueDataJSON.IsNull() && !data.PostValueDataJSON.IsUnknown()
+	hasKV := !data.PostValueDataKV.IsNull() && !data.PostValueDataKV.IsUnknown()
 
 	if pvt == "RAW_JSON" && hasRaw {
 		if !json.Valid([]byte(data.PostValueDataJSON.ValueString())) {
 			resp.Diagnostics.AddAttributeError(
-				path.Root("post_value_data"),
+				path.Root("post_value_data_json"),
 				"Invalid JSON",
-				"post_value_data must be a valid JSON string when post_value_type=RAW_JSON.",
+				"post_value_data_json must be a valid JSON string when post_value_type=RAW_JSON.",
 			)
 		}
 	}
@@ -406,31 +411,31 @@ func (r *monitorResource) ValidateConfig(
 		if pvt == "RAW_JSON" {
 			if !hasRaw {
 				resp.Diagnostics.AddAttributeError(
-					path.Root("post_value_data"),
-					"RAW_JSON requires post_value_data",
+					path.Root("post_value_data_json"),
+					"RAW_JSON requires post_value_data_json",
 					"Provide JSON string (use jsonencode(...) in HCL) or switch post_value_type.",
 				)
 			}
 			if hasKV {
 				resp.Diagnostics.AddAttributeError(
-					path.Root("post_value_kv"),
+					path.Root("post_value_data_kv"),
 					"Conflicting payload fields",
-					"When post_value_type=RAW_JSON, do not set post_value_kv.",
+					"When post_value_type=RAW_JSON, do not set post_value_data_kv.",
 				)
 			}
 		} else if pvt == "KEY_VALUE" {
 			if !hasKV {
 				resp.Diagnostics.AddAttributeError(
-					path.Root("post_value_kv"),
-					"KEY_VALUE requires post_value_kv",
+					path.Root("post_value_data_kv"),
+					"KEY_VALUE requires post_value_data_kv",
 					"Provide a map of string key/values or switch post_value_type.",
 				)
 			}
 			if hasRaw {
 				resp.Diagnostics.AddAttributeError(
-					path.Root("post_value_data"),
+					path.Root("post_value_data_json"),
 					"Conflicting payload fields",
-					"When post_value_type=KEY_VALUE, do not set post_value_data.",
+					"When post_value_type=KEY_VALUE, do not set post_value_data_json.",
 				)
 			}
 		} else if pvt != "" { // invalid and already caught by enum validator of input values
@@ -1231,13 +1236,14 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq.FollowRedirections = plan.FollowRedirections.ValueBool()
 	updateReq.HTTPAuthType = plan.AuthType.ValueString()
 
-	updateReq.PostValueType = stringOrEmpty(plan.PostValueType)
-	switch strings.ToUpper(updateReq.PostValueType) {
+	switch strings.ToUpper(stringOrEmpty(plan.PostValueType)) {
 	case "RAW_JSON":
 		if !plan.PostValueDataJSON.IsNull() {
+			updateReq.PostValueType = "RAW_JSON"
 			updateReq.PostValueData = plan.PostValueDataJSON.ValueString()
 		} else {
 			// Explicitly clear if user removed it
+			updateReq.PostValueType = ""
 			updateReq.PostValueData = nil
 		}
 	case "KEY_VALUE":
@@ -1247,13 +1253,14 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			if resp.Diagnostics.HasError() {
 				return
 			}
+			updateReq.PostValueType = "KEY_VALUE"
 			updateReq.PostValueData = kv
 		} else {
+			updateReq.PostValueType = ""
 			updateReq.PostValueData = nil
 		}
 	default:
-		// No body
-		updateReq.PostValueData = nil
+		// No body, just omit to preserver on server
 	}
 
 	// Add new fields
@@ -1474,6 +1481,8 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 			}
 		}
 	}
+
+	normalizePostValueDataInPlan(ctx, &plan, &state, resp)
 }
 
 // modifyPlanForListField handles the special case for list fields that might be null vs empty lists.
@@ -1647,4 +1656,43 @@ func stringMapToAttr(m map[string]string) map[string]attr.Value {
 		out[k] = types.StringValue(v)
 	}
 	return out
+}
+
+func normalizePostValueDataInPlan(
+	ctx context.Context,
+	plan, state *monitorResourceModel,
+	resp *resource.ModifyPlanResponse,
+) {
+	meth := strings.ToUpper(stringOrEmpty(plan.HTTPMethodType))
+	if meth == "GET" || meth == "HEAD" {
+		return
+	}
+
+	// If plan has JSON and state has KV, compare and drop JSON if equal. KV is canonical and JSON is convenience
+	if !plan.PostValueDataJSON.IsNull() &&
+		!plan.PostValueDataJSON.IsUnknown() &&
+		!state.PostValueDataKV.IsNull() &&
+		!state.PostValueDataKV.IsUnknown() {
+
+		var fromPlan map[string]interface{}
+		if err := json.Unmarshal([]byte(plan.PostValueDataJSON.ValueString()), &fromPlan); err != nil {
+			return // invalid JSON is handled in ValidateConfig
+		}
+
+		kv := map[string]string{}
+		if diags := state.PostValueDataKV.ElementsAs(ctx, &kv, false); diags.HasError() {
+			return
+		}
+		fromState := make(map[string]interface{}, len(kv))
+		for k, v := range kv {
+			fromState[k] = v
+		}
+
+		if reflect.DeepEqual(fromPlan, fromState) {
+			// Align plan to state so there is no diff because kv is canonical and JSON is convenience
+			resp.Plan.SetAttribute(ctx, path.Root("post_value_data_json"), types.StringNull())
+			resp.Plan.SetAttribute(ctx, path.Root("post_value_data_kv"), state.PostValueDataKV)
+		}
+
+	}
 }
