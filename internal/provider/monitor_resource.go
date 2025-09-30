@@ -187,6 +187,13 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					int64planmodifier.UseStateForUnknown(),
 				},
 			},
+			"post_value_type": schema.StringAttribute{
+				Description: "The type of data to send with POST request",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("RAW_JSON", "KEY_VALUE"),
+				},
+			},
 			"post_value_data": schema.StringAttribute{
 				Description: "JSON string payload used when post_value_type = RAW_JSON.",
 				Optional:    true,
@@ -196,13 +203,6 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "Key/Value payload used when post_value_type = KEY_VALUE.",
 				Optional:    true,
 				ElementType: types.StringType,
-			},
-			"post_value_type": schema.StringAttribute{
-				Description: "The type of data to send with POST request",
-				Optional:    true,
-				Validators: []validator.String{
-					stringvalidator.OneOf("RAW_JSON", "KEY_VALUE"),
-				},
 			},
 			"port": schema.Int64Attribute{
 				Description: "The port to monitor",
@@ -376,6 +376,73 @@ func (r *monitorResource) ValidateConfig(
 
 	// post data and their methods validation segment
 
+	meth := strings.ToUpper(stringOrEmpty(data.HTTPMethodType))
+	pvt := strings.ToUpper(stringOrEmpty(data.PostValueType))
+
+	hasRaw := !data.PostValueData.IsNull() && !data.PostValueData.IsUnknown()
+	hasKV := !data.PostValueKV.IsNull() && !data.PostValueKV.IsUnknown()
+
+	if pvt == "RAW_JSON" && hasRaw {
+		if !json.Valid([]byte(data.PostValueData.ValueString())) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("post_value_data"),
+				"Invalid JSON",
+				"post_value_data must be a valid JSON string when post_value_type=RAW_JSON.",
+			)
+		}
+	}
+
+	// Methods that must not have a body
+	if meth == "GET" || meth == "HEAD" {
+		if pvt != "" || hasRaw || hasKV {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("http_method_type"),
+				"Request body not allowed for this method",
+				"GET/HEAD cannot have post_value_type/data. Remove body or change method.",
+			)
+		}
+	} else if meth != "" {
+		// Methods that may have a body
+		if pvt == "RAW_JSON" {
+			if !hasRaw {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("post_value_data"),
+					"RAW_JSON requires post_value_data",
+					"Provide JSON string (use jsonencode(...) in HCL) or switch post_value_type.",
+				)
+			}
+			if hasKV {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("post_value_kv"),
+					"Conflicting payload fields",
+					"When post_value_type=RAW_JSON, do not set post_value_kv.",
+				)
+			}
+		} else if pvt == "KEY_VALUE" {
+			if !hasKV {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("post_value_kv"),
+					"KEY_VALUE requires post_value_kv",
+					"Provide a map of string key/values or switch post_value_type.",
+				)
+			}
+			if hasRaw {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("post_value_data"),
+					"Conflicting payload fields",
+					"When post_value_type=KEY_VALUE, do not set post_value_data.",
+				)
+			}
+		} else if pvt != "" { // invalid and already caught by enum validator of input values
+			// nothing
+		} else if hasRaw || hasKV {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("post_value_type"),
+				"post_value_type is required when a body is provided",
+				"Set post_value_type to RAW_JSON or KEY_VALUE.",
+			)
+		}
+	}
 }
 
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
