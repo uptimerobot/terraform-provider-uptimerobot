@@ -61,8 +61,8 @@ type monitorResourceModel struct {
 	SuccessHTTPResponseCodes types.List   `tfsdk:"success_http_response_codes"`
 	Timeout                  types.Int64  `tfsdk:"timeout"`
 	PostValueType            types.String `tfsdk:"post_value_type"`
-	PostValueData            types.String `tfsdk:"post_value_data"`
-	PostValueKV              types.Map    `tfsdk:"post_value_kv"`
+	PostValueDataJSON        types.String `tfsdk:"post_value_data_json"`
+	PostValueDataKV          types.Map    `tfsdk:"post_value_data_kv"`
 	Port                     types.Int64  `tfsdk:"port"`
 	GracePeriod              types.Int64  `tfsdk:"grace_period"`
 	KeywordValue             types.String `tfsdk:"keyword_value"`
@@ -194,12 +194,12 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					stringvalidator.OneOf("RAW_JSON", "KEY_VALUE"),
 				},
 			},
-			"post_value_data": schema.StringAttribute{
+			"post_value_data_json": schema.StringAttribute{
 				Description: "JSON string payload used when post_value_type = RAW_JSON.",
 				Optional:    true,
 			},
 
-			"post_value_kv": schema.MapAttribute{
+			"post_value_data_kv": schema.MapAttribute{
 				Description: "Key/Value payload used when post_value_type = KEY_VALUE.",
 				Optional:    true,
 				ElementType: types.StringType,
@@ -379,11 +379,11 @@ func (r *monitorResource) ValidateConfig(
 	meth := strings.ToUpper(stringOrEmpty(data.HTTPMethodType))
 	pvt := strings.ToUpper(stringOrEmpty(data.PostValueType))
 
-	hasRaw := !data.PostValueData.IsNull() && !data.PostValueData.IsUnknown()
-	hasKV := !data.PostValueKV.IsNull() && !data.PostValueKV.IsUnknown()
+	hasRaw := !data.PostValueDataJSON.IsNull() && !data.PostValueDataJSON.IsUnknown()
+	hasKV := !data.PostValueDataJSON.IsNull() && !data.PostValueDataJSON.IsUnknown()
 
 	if pvt == "RAW_JSON" && hasRaw {
-		if !json.Valid([]byte(data.PostValueData.ValueString())) {
+		if !json.Valid([]byte(data.PostValueDataJSON.ValueString())) {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("post_value_data"),
 				"Invalid JSON",
@@ -602,13 +602,13 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 	switch strings.ToUpper(stringOrEmpty(plan.PostValueType)) {
 	case "RAW_JSON":
-		if !plan.PostValueData.IsNull() {
-			createReq.PostValueData = plan.PostValueData.ValueString()
+		if !plan.PostValueDataJSON.IsNull() {
+			createReq.PostValueData = plan.PostValueDataJSON.ValueString()
 		}
 	case "KEY_VALUE":
-		if !plan.PostValueKV.IsNull() {
+		if !plan.PostValueDataKV.IsNull() {
 			var kv map[string]string
-			resp.Diagnostics.Append(plan.PostValueKV.ElementsAs(ctx, &kv, false)...)
+			resp.Diagnostics.Append(plan.PostValueDataKV.ElementsAs(ctx, &kv, false)...)
 			if resp.Diagnostics.HasError() {
 				return
 			}
@@ -843,13 +843,13 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	if len(monitor.PostValueData) > 0 {
 		var kv map[string]string
 		if err := json.Unmarshal(monitor.PostValueData, &kv); err == nil {
-			state.PostValueKV = types.MapValueMust(types.StringType, stringMapToAttr(kv))
-			state.PostValueData = types.StringNull()
+			state.PostValueDataKV = types.MapValueMust(types.StringType, stringMapToAttr(kv))
+			state.PostValueDataJSON = types.StringNull()
 		} else {
 			var s string
 			if err := json.Unmarshal(monitor.PostValueData, &s); err == nil {
-				state.PostValueData = types.StringValue(s)
-				state.PostValueKV = types.MapNull(types.StringType)
+				state.PostValueDataJSON = types.StringValue(s)
+				state.PostValueDataKV = types.MapNull(types.StringType)
 			} else {
 				// Unknown shape of data
 				resp.Diagnostics.AddWarning(
@@ -860,8 +860,8 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		}
 	} else {
 		// Clear both in state
-		state.PostValueData = types.StringNull()
-		state.PostValueKV = types.MapNull(types.StringType)
+		state.PostValueDataJSON = types.StringNull()
+		state.PostValueDataKV = types.MapNull(types.StringType)
 	}
 
 	if monitor.Port != nil {
@@ -1234,16 +1234,16 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq.PostValueType = stringOrEmpty(plan.PostValueType)
 	switch strings.ToUpper(updateReq.PostValueType) {
 	case "RAW_JSON":
-		if !plan.PostValueData.IsNull() {
-			updateReq.PostValueData = plan.PostValueData.ValueString()
+		if !plan.PostValueDataJSON.IsNull() {
+			updateReq.PostValueData = plan.PostValueDataJSON.ValueString()
 		} else {
 			// Explicitly clear if user removed it
 			updateReq.PostValueData = nil
 		}
 	case "KEY_VALUE":
-		if !plan.PostValueKV.IsNull() {
+		if !plan.PostValueDataKV.IsNull() {
 			var kv map[string]string
-			resp.Diagnostics.Append(plan.PostValueKV.ElementsAs(ctx, &kv, false)...)
+			resp.Diagnostics.Append(plan.PostValueDataKV.ElementsAs(ctx, &kv, false)...)
 			if resp.Diagnostics.HasError() {
 				return
 			}
