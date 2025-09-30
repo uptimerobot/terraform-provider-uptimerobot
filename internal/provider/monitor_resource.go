@@ -26,6 +26,11 @@ import (
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
+const (
+	PostTypeRawJSON = "RAW_JSON"
+	PostTypeKV      = "KEY_VALUE"
+)
+
 // NewMonitorResource is a helper function to simplify the provider implementation.
 func NewMonitorResource() resource.Resource {
 	return &monitorResource{}
@@ -192,7 +197,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "The type of data to send with POST request",
 				Optional:    true,
 				Validators: []validator.String{
-					stringvalidator.OneOf("RAW_JSON", "KEY_VALUE"),
+					stringvalidator.OneOf(PostTypeRawJSON, PostTypeKV),
 				},
 			},
 			"post_value_data_json": schema.StringAttribute{
@@ -387,7 +392,7 @@ func (r *monitorResource) ValidateConfig(
 	hasRaw := !data.PostValueDataJSON.IsNull() && !data.PostValueDataJSON.IsUnknown()
 	hasKV := !data.PostValueDataKV.IsNull() && !data.PostValueDataKV.IsUnknown()
 
-	if pvt == "RAW_JSON" && hasRaw {
+	if pvt == PostTypeRawJSON && hasRaw {
 		if !json.Valid([]byte(data.PostValueDataJSON.ValueString())) {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("post_value_data_json"),
@@ -408,7 +413,7 @@ func (r *monitorResource) ValidateConfig(
 		}
 	} else if meth != "" {
 		// Methods that may have a body
-		if pvt == "RAW_JSON" {
+		if pvt == PostTypeRawJSON {
 			if !hasRaw {
 				resp.Diagnostics.AddAttributeError(
 					path.Root("post_value_data_json"),
@@ -423,7 +428,7 @@ func (r *monitorResource) ValidateConfig(
 					"When post_value_type=RAW_JSON, do not set post_value_data_kv.",
 				)
 			}
-		} else if pvt == "KEY_VALUE" {
+		} else if pvt == PostTypeKV {
 			if !hasKV {
 				resp.Diagnostics.AddAttributeError(
 					path.Root("post_value_data_kv"),
@@ -606,11 +611,11 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		createReq.PostValueType = plan.PostValueType.ValueString()
 	}
 	switch strings.ToUpper(stringOrEmpty(plan.PostValueType)) {
-	case "RAW_JSON":
+	case PostTypeRawJSON:
 		if !plan.PostValueDataJSON.IsNull() {
 			createReq.PostValueData = plan.PostValueDataJSON.ValueString()
 		}
-	case "KEY_VALUE":
+	case PostTypeKV:
 		if !plan.PostValueDataKV.IsNull() {
 			var kv map[string]string
 			resp.Diagnostics.Append(plan.PostValueDataKV.ElementsAs(ctx, &kv, false)...)
@@ -1237,23 +1242,23 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq.HTTPAuthType = plan.AuthType.ValueString()
 
 	switch strings.ToUpper(stringOrEmpty(plan.PostValueType)) {
-	case "RAW_JSON":
+	case PostTypeRawJSON:
 		if !plan.PostValueDataJSON.IsNull() {
-			updateReq.PostValueType = "RAW_JSON"
+			updateReq.PostValueType = PostTypeRawJSON
 			updateReq.PostValueData = plan.PostValueDataJSON.ValueString()
 		} else {
 			// Explicitly clear if user removed it
 			updateReq.PostValueType = ""
 			updateReq.PostValueData = nil
 		}
-	case "KEY_VALUE":
+	case PostTypeKV:
 		if !plan.PostValueDataKV.IsNull() {
 			var kv map[string]string
 			resp.Diagnostics.Append(plan.PostValueDataKV.ElementsAs(ctx, &kv, false)...)
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			updateReq.PostValueType = "KEY_VALUE"
+			updateReq.PostValueType = PostTypeKV
 			updateReq.PostValueData = kv
 		} else {
 			updateReq.PostValueType = ""
