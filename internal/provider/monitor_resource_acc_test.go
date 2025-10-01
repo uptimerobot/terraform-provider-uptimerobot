@@ -160,6 +160,61 @@ resource "uptimerobot_monitor" "test" {
 `, name, body)
 }
 
+func testAccMonitorResourceConfigWithKV(name string, kv map[string]string) string {
+	body := ""
+	if kv != nil {
+		body = "\n  post_value_kv = {"
+		first := true
+		for k, v := range kv {
+			if first {
+				first = false
+			} else {
+				body += ","
+			}
+			body += fmt.Sprintf(` %q = %q`, k, v)
+		}
+		body += " }"
+	}
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "https://example.com/echo"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "POST"
+  custom_http_headers = { "Content-Type" = "application/x-www-form-urlencoded" }%s
+}
+`, name, body)
+}
+
+func testAccMonitorResourceConfigPostNoBody(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "https://example.com/echo"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "POST"
+  // no post_value_data / post_value_kv on purpose
+}
+`, name)
+}
+
+func testAccMonitorResourceConfigGetNoBody(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "https://example.com"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "GET"
+}
+`, name)
+}
+
 // Helpers ------------------------------------------------------
 
 func joinQuotedStrings(strings []string) string {
@@ -443,12 +498,11 @@ func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.2", "202"),
 				),
 			},
-			// Step 3: Set to empty list (should revert to defaults?)
+			// Step 3: Set to empty list (we accept empty and round-trip it as empty)
 			{
 				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", []string{}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-response-codes"),
-					// This might expose the issue - what happens with empty vs default?
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.#", "0"),
 				),
 			},
 		},
@@ -987,7 +1041,127 @@ resource "uptimerobot_monitor" "test" {
   http_method_type = "GET"
   post_value_data  = jsonencode({oops="nope"})
 }`,
-				ExpectError: regexp.MustCompile(`Request body not allowed for this method`),
+				ExpectError: regexp.MustCompile(`Request body not allowed for GET/HEAD`),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_HTTP_PostKV_RoundTrip(t *testing.T) {
+	name := "acc-kv"
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			// Create with KV
+			{
+				Config: testAccMonitorResourceConfigWithKV(name, map[string]string{"a": "1", "b": "2"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "KEY_VALUE"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_kv.%", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_kv.a", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_kv.b", "2"),
+				),
+			},
+			// Update KV
+			{
+				Config: testAccMonitorResourceConfigWithKV(name, map[string]string{"a": "9"}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "KEY_VALUE"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_kv.%", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_kv.a", "9"),
+				),
+			},
+			// Clear by removing post_value_kv
+			{
+				Config: testAccMonitorResourceConfigPostNoBody(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_type"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_data"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_HTTP_Post_NoBody_StablePlan(t *testing.T) {
+	name := "acc-post-nobody"
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			// Start at GET with no body
+			{Config: testAccMonitorResourceConfigGetNoBody(name)},
+			// Switch to POST with no body – plan must be valid (this used to fail)
+			{Config: testAccMonitorResourceConfigPostNoBody(name), PlanOnly: true, ExpectNonEmptyPlan: true},
+			// Apply it – still no body attrs
+			{
+				Config: testAccMonitorResourceConfigPostNoBody(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_type"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_data"),
+				),
+			},
+			// Re-plan same config – must be idempotent
+			{Config: testAccMonitorResourceConfigPostNoBody(name), PlanOnly: true, ExpectNonEmptyPlan: false},
+		},
+	})
+}
+
+func TestAcc_Monitor_HTTP_MethodSwitch_ClearsBody(t *testing.T) {
+	name := "acc-method-switch"
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			// POST + JSON
+			{
+				Config: testAccMonitorResourceConfigWithBody(name, `jsonencode({hello="world"})`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "RAW_JSON"),
+					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
+				),
+			},
+			// Switch to GET – body must be cleared
+			{
+				Config: testAccMonitorResourceConfigGetNoBody(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "GET"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_type"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_data"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
+				),
+			},
+			// Switch back to POST – still no body provided, must remain empty and stable
+			{
+				Config: testAccMonitorResourceConfigPostNoBody(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_type"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_data"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_HTTP_DefaultMethod_GET(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccMonitorResourceConfig("acc-default-method"),
+				Check:  resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "GET"),
 			},
 		},
 	})
