@@ -86,6 +86,7 @@ resource "uptimerobot_monitor" "test" {
 `, name, maintenanceWindowsStr)
 }
 
+// nolint:unparam // kept for symmetry with other helpers & future reuse
 func testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name string, responseCodes []string) string {
 	var responseCodesStr string
 	if responseCodes != nil {
