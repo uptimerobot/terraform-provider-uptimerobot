@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
@@ -28,7 +29,6 @@ import (
 
 const (
 	PostTypeRawJSON = "RAW_JSON"
-	PostTypeKV      = "KEY_VALUE"
 )
 
 // NewMonitorResource is a helper function to simplify the provider implementation.
@@ -54,35 +54,34 @@ type monitorResource struct {
 
 // monitorResourceModel maps the resource schema data.
 type monitorResourceModel struct {
-	Type                     types.String `tfsdk:"type"`
-	Interval                 types.Int64  `tfsdk:"interval"`
-	SSLExpirationReminder    types.Bool   `tfsdk:"ssl_expiration_reminder"`
-	DomainExpirationReminder types.Bool   `tfsdk:"domain_expiration_reminder"`
-	FollowRedirections       types.Bool   `tfsdk:"follow_redirections"`
-	AuthType                 types.String `tfsdk:"auth_type"`
-	HTTPUsername             types.String `tfsdk:"http_username"`
-	HTTPPassword             types.String `tfsdk:"http_password"`
-	CustomHTTPHeaders        types.Map    `tfsdk:"custom_http_headers"`
-	HTTPMethodType           types.String `tfsdk:"http_method_type"`
-	SuccessHTTPResponseCodes types.List   `tfsdk:"success_http_response_codes"`
-	Timeout                  types.Int64  `tfsdk:"timeout"`
-	PostValueType            types.String `tfsdk:"post_value_type"`
-	PostValueDataJSON        types.String `tfsdk:"post_value_data_json"`
-	PostValueDataKV          types.Map    `tfsdk:"post_value_data_kv"`
-	Port                     types.Int64  `tfsdk:"port"`
-	GracePeriod              types.Int64  `tfsdk:"grace_period"`
-	KeywordValue             types.String `tfsdk:"keyword_value"`
-	KeywordCaseType          types.String `tfsdk:"keyword_case_type"`
-	KeywordType              types.String `tfsdk:"keyword_type"`
-	MaintenanceWindowIDs     types.List   `tfsdk:"maintenance_window_ids"`
-	ID                       types.String `tfsdk:"id"`
-	Name                     types.String `tfsdk:"name"`
-	Status                   types.String `tfsdk:"status"`
-	URL                      types.String `tfsdk:"url"`
-	Tags                     types.Set    `tfsdk:"tags"`
-	AssignedAlertContacts    types.List   `tfsdk:"assigned_alert_contacts"`
-	ResponseTimeThreshold    types.Int64  `tfsdk:"response_time_threshold"`
-	RegionalData             types.String `tfsdk:"regional_data"`
+	Type                     types.String         `tfsdk:"type"`
+	Interval                 types.Int64          `tfsdk:"interval"`
+	SSLExpirationReminder    types.Bool           `tfsdk:"ssl_expiration_reminder"`
+	DomainExpirationReminder types.Bool           `tfsdk:"domain_expiration_reminder"`
+	FollowRedirections       types.Bool           `tfsdk:"follow_redirections"`
+	AuthType                 types.String         `tfsdk:"auth_type"`
+	HTTPUsername             types.String         `tfsdk:"http_username"`
+	HTTPPassword             types.String         `tfsdk:"http_password"`
+	CustomHTTPHeaders        types.Map            `tfsdk:"custom_http_headers"`
+	HTTPMethodType           types.String         `tfsdk:"http_method_type"`
+	SuccessHTTPResponseCodes types.List           `tfsdk:"success_http_response_codes"`
+	Timeout                  types.Int64          `tfsdk:"timeout"`
+	PostValueType            types.String         `tfsdk:"post_value_type"`
+	PostValueData            jsontypes.Normalized `tfsdk:"post_value_data"`
+	Port                     types.Int64          `tfsdk:"port"`
+	GracePeriod              types.Int64          `tfsdk:"grace_period"`
+	KeywordValue             types.String         `tfsdk:"keyword_value"`
+	KeywordCaseType          types.String         `tfsdk:"keyword_case_type"`
+	KeywordType              types.String         `tfsdk:"keyword_type"`
+	MaintenanceWindowIDs     types.List           `tfsdk:"maintenance_window_ids"`
+	ID                       types.String         `tfsdk:"id"`
+	Name                     types.String         `tfsdk:"name"`
+	Status                   types.String         `tfsdk:"status"`
+	URL                      types.String         `tfsdk:"url"`
+	Tags                     types.Set            `tfsdk:"tags"`
+	AssignedAlertContacts    types.List           `tfsdk:"assigned_alert_contacts"`
+	ResponseTimeThreshold    types.Int64          `tfsdk:"response_time_threshold"`
+	RegionalData             types.String         `tfsdk:"regional_data"`
 }
 
 // Configure adds the provider configured client to the resource.
@@ -194,21 +193,18 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"post_value_type": schema.StringAttribute{
-				Description: "The type of data to send with POST request",
-				Optional:    true,
-				Validators: []validator.String{
-					stringvalidator.OneOf(PostTypeRawJSON, PostTypeKV),
+				Description: "The type of data to send with POST request. Server value is RAW_JSON when body is present",
+				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"post_value_data_json": schema.StringAttribute{
-				Description: "JSON payload body as a string (use jsonencode). Mutually exclusive with post_value_data_kv. Used when post_value_type = RAW_JSON.",
+			"post_value_data": schema.StringAttribute{
+				Description: "JSON payload body as a string. Use jsonencode.",
 				Optional:    true,
-			},
-			// API always echoes post value data as object, so KV is canonical and json is just a convenience
-			"post_value_data_kv": schema.MapAttribute{
-				Description: "Key/Value payload body. Mutually exclusive with post_value_data_json. Used when post_value_type = KEY_VALUE.",
-				Optional:    true,
-				ElementType: types.StringType,
+				Computed:    true,
+				Sensitive:   true,
+				CustomType:  jsontypes.NormalizedType{},
 			},
 			"port": schema.Int64Attribute{
 				Description: "The port to monitor",
@@ -303,10 +299,6 @@ func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.Confi
 			path.MatchRoot("timeout"),
 			path.MatchRoot("grace_period"),
 		),
-		resourcevalidator.Conflicting(
-			path.MatchRoot("post_value_data_json"),
-			path.MatchRoot("post_value_data_kv"),
-		),
 	}
 }
 
@@ -387,71 +379,13 @@ func (r *monitorResource) ValidateConfig(
 	// post data and their methods validation segment
 
 	meth := strings.ToUpper(stringOrEmpty(data.HTTPMethodType))
-	pvt := strings.ToUpper(stringOrEmpty(data.PostValueType))
 
-	hasRaw := !data.PostValueDataJSON.IsNull() && !data.PostValueDataJSON.IsUnknown()
-	hasKV := !data.PostValueDataKV.IsNull() && !data.PostValueDataKV.IsUnknown()
-
-	if pvt == PostTypeRawJSON && hasRaw {
-		if !json.Valid([]byte(data.PostValueDataJSON.ValueString())) {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("post_value_data_json"),
-				"Invalid JSON",
-				"post_value_data_json must be a valid JSON string when post_value_type=RAW_JSON.",
-			)
-		}
-	}
-
-	// Methods that must not have a body
-	if meth == "GET" || meth == "HEAD" {
-		if pvt != "" || hasRaw || hasKV {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("http_method_type"),
-				"Request body not allowed for this method",
-				"GET/HEAD cannot have post_value_type/data. Remove body or change method.",
-			)
-		}
-	} else if meth != "" {
-		// Methods that may have a body
-		if pvt == PostTypeRawJSON {
-			if !hasRaw {
-				resp.Diagnostics.AddAttributeError(
-					path.Root("post_value_data_json"),
-					"RAW_JSON requires post_value_data_json",
-					"Provide JSON string (use jsonencode(...) in HCL) or switch post_value_type.",
-				)
-			}
-			if hasKV {
-				resp.Diagnostics.AddAttributeError(
-					path.Root("post_value_data_kv"),
-					"Conflicting payload fields",
-					"When post_value_type=RAW_JSON, do not set post_value_data_kv.",
-				)
-			}
-		} else if pvt == PostTypeKV {
-			if !hasKV {
-				resp.Diagnostics.AddAttributeError(
-					path.Root("post_value_data_kv"),
-					"KEY_VALUE requires post_value_data_kv",
-					"Provide a map of string key/values or switch post_value_type.",
-				)
-			}
-			if hasRaw {
-				resp.Diagnostics.AddAttributeError(
-					path.Root("post_value_data_json"),
-					"Conflicting payload fields",
-					"When post_value_type=KEY_VALUE, do not set post_value_data_json.",
-				)
-			}
-		} else if pvt != "" { // invalid and already caught by enum validator of input values
-			// nothing
-		} else if hasRaw || hasKV {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("post_value_type"),
-				"post_value_type is required when a body is provided",
-				"Set post_value_type to RAW_JSON or KEY_VALUE.",
-			)
-		}
+	if (meth == "GET" || meth == "HEAD") && !data.PostValueData.IsNull() && !data.PostValueData.IsUnknown() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("http_method_type"),
+			"Request body not allowed for this method",
+			"GET/HEAD cannot have a body. Remove post_value_data or change method.",
+		)
 	}
 }
 
@@ -607,25 +541,22 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		createReq.KeywordType = plan.KeywordType.ValueString()
 	}
 
-	if !plan.PostValueType.IsNull() {
-		createReq.PostValueType = plan.PostValueType.ValueString()
-	}
-	switch strings.ToUpper(stringOrEmpty(plan.PostValueType)) {
-	case PostTypeRawJSON:
-		if !plan.PostValueDataJSON.IsNull() {
-			createReq.PostValueData = plan.PostValueDataJSON.ValueString()
-		}
-	case PostTypeKV:
-		if !plan.PostValueDataKV.IsNull() {
-			var kv map[string]string
-			resp.Diagnostics.Append(plan.PostValueDataKV.ElementsAs(ctx, &kv, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			createReq.PostValueData = kv
-		}
+	switch strings.ToUpper(stringOrEmpty(plan.HTTPMethodType)) {
+	case "GET", "HEAD":
+		// no body allowed; do nothing
 	default:
-		// if method is body-capable but have no type - omit body completely
+		if plan.PostValueData.IsUnknown() {
+			// preserve server value: do NOT set PostValueType or PostValueData
+		} else if plan.PostValueData.IsNull() {
+			// explicit clear
+			createReq.PostValueType = PostTypeRawJSON
+			createReq.PostValueData = nil
+		} else {
+			// set body
+			b := plan.PostValueData.ValueString() // normalized JSON text
+			createReq.PostValueType = PostTypeRawJSON
+			createReq.PostValueData = json.RawMessage([]byte(b))
+		}
 	}
 
 	if !plan.ResponseTimeThreshold.IsNull() {
@@ -762,6 +693,18 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
+	if newMonitor.PostValueType != nil && *newMonitor.PostValueType != "" {
+		plan.PostValueType = types.StringValue(*newMonitor.PostValueType)
+	} else {
+		plan.PostValueType = types.StringNull()
+	}
+
+	if len(newMonitor.PostValueData) > 0 {
+		plan.PostValueData = jsontypes.NewNormalizedValue(string(newMonitor.PostValueData))
+	} else if plan.PostValueData.IsNull() {
+		plan.PostValueData = jsontypes.NewNormalizedNull()
+	}
+
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -850,28 +793,11 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	} else if !state.PostValueType.IsNull() {
 		state.PostValueType = types.StringNull()
 	}
+
 	if len(monitor.PostValueData) > 0 {
-		var kv map[string]string
-		if err := json.Unmarshal(monitor.PostValueData, &kv); err == nil {
-			state.PostValueDataKV = types.MapValueMust(types.StringType, stringMapToAttr(kv))
-			state.PostValueDataJSON = types.StringNull()
-		} else {
-			var s string
-			if err := json.Unmarshal(monitor.PostValueData, &s); err == nil {
-				state.PostValueDataJSON = types.StringValue(s)
-				state.PostValueDataKV = types.MapNull(types.StringType)
-			} else {
-				// Unknown shape of data
-				resp.Diagnostics.AddWarning(
-					"Unexpected postValueData shape",
-					"API returned an unsupported postValueData format; keeping existing state.",
-				)
-			}
-		}
+		state.PostValueData = jsontypes.NewNormalizedValue(string(monitor.PostValueData))
 	} else {
-		// Clear both in state
-		state.PostValueDataJSON = types.StringNull()
-		state.PostValueDataKV = types.MapNull(types.StringType)
+		state.PostValueData = jsontypes.NewNormalizedNull()
 	}
 
 	if monitor.Port != nil {
@@ -1241,31 +1167,20 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq.FollowRedirections = plan.FollowRedirections.ValueBool()
 	updateReq.HTTPAuthType = plan.AuthType.ValueString()
 
-	switch strings.ToUpper(stringOrEmpty(plan.PostValueType)) {
-	case PostTypeRawJSON:
-		if !plan.PostValueDataJSON.IsNull() {
-			updateReq.PostValueType = PostTypeRawJSON
-			updateReq.PostValueData = plan.PostValueDataJSON.ValueString()
-		} else {
-			// Explicitly clear if user removed it
-			updateReq.PostValueType = ""
-			updateReq.PostValueData = nil
-		}
-	case PostTypeKV:
-		if !plan.PostValueDataKV.IsNull() {
-			var kv map[string]string
-			resp.Diagnostics.Append(plan.PostValueDataKV.ElementsAs(ctx, &kv, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			updateReq.PostValueType = PostTypeKV
-			updateReq.PostValueData = kv
-		} else {
-			updateReq.PostValueType = ""
-			updateReq.PostValueData = nil
-		}
+	switch strings.ToUpper(stringOrEmpty(plan.HTTPMethodType)) {
+	case "GET", "HEAD":
+		// ignore body
 	default:
-		// No body, just omit to preserver on server
+		if plan.PostValueData.IsUnknown() {
+			// preserve
+		} else if plan.PostValueData.IsNull() {
+			updateReq.PostValueType = PostTypeRawJSON
+			updateReq.PostValueData = nil
+		} else {
+			b := plan.PostValueData.ValueString()
+			updateReq.PostValueType = PostTypeRawJSON
+			updateReq.PostValueData = json.RawMessage([]byte(b))
+		}
 	}
 
 	// Add new fields
@@ -1389,6 +1304,18 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
+	if updatedMonitor.PostValueType != nil && *updatedMonitor.PostValueType != "" {
+		updatedState.PostValueType = types.StringValue(*updatedMonitor.PostValueType)
+	} else {
+		updatedState.PostValueType = types.StringNull()
+	}
+
+	if len(updatedMonitor.PostValueData) > 0 {
+		updatedState.PostValueData = jsontypes.NewNormalizedValue(string(updatedMonitor.PostValueData))
+	} else if plan.PostValueData.IsNull() {
+		updatedState.PostValueData = jsontypes.NewNormalizedNull()
+	}
+
 	diags = resp.State.Set(ctx, updatedState)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -1486,8 +1413,6 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 			}
 		}
 	}
-
-	normalizePostValueDataInPlan(ctx, &plan, &state, resp)
 }
 
 // modifyPlanForListField handles the special case for list fields that might be null vs empty lists.
@@ -1661,43 +1586,4 @@ func stringMapToAttr(m map[string]string) map[string]attr.Value {
 		out[k] = types.StringValue(v)
 	}
 	return out
-}
-
-func normalizePostValueDataInPlan(
-	ctx context.Context,
-	plan, state *monitorResourceModel,
-	resp *resource.ModifyPlanResponse,
-) {
-	meth := strings.ToUpper(stringOrEmpty(plan.HTTPMethodType))
-	if meth == "GET" || meth == "HEAD" {
-		return
-	}
-
-	// If plan has JSON and state has KV, compare and drop JSON if equal. KV is canonical and JSON is convenience
-	if !plan.PostValueDataJSON.IsNull() &&
-		!plan.PostValueDataJSON.IsUnknown() &&
-		!state.PostValueDataKV.IsNull() &&
-		!state.PostValueDataKV.IsUnknown() {
-
-		var fromPlan map[string]interface{}
-		if err := json.Unmarshal([]byte(plan.PostValueDataJSON.ValueString()), &fromPlan); err != nil {
-			return // invalid JSON is handled in ValidateConfig
-		}
-
-		kv := map[string]string{}
-		if diags := state.PostValueDataKV.ElementsAs(ctx, &kv, false); diags.HasError() {
-			return
-		}
-		fromState := make(map[string]interface{}, len(kv))
-		for k, v := range kv {
-			fromState[k] = v
-		}
-
-		if reflect.DeepEqual(fromPlan, fromState) {
-			// Align plan to state so there is no diff because kv is canonical and JSON is convenience
-			resp.Plan.SetAttribute(ctx, path.Root("post_value_data_json"), types.StringNull())
-			resp.Plan.SetAttribute(ctx, path.Root("post_value_data_kv"), state.PostValueDataKV)
-		}
-
-	}
 }
