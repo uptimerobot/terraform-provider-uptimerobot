@@ -19,7 +19,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -197,7 +196,6 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"post_value_type": schema.StringAttribute{
 				Description: "Computed body type used by UptimeRobot when sending the monitor request. Set automatically to RAW_JSON or KEY_VALUE.",
-				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
@@ -206,20 +204,12 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"post_value_data": schema.StringAttribute{
 				Description: "JSON body (use jsonencode). Mutually exclusive with post_value_kv.",
 				Optional:    true,
-				Computed:    true,
 				CustomType:  jsontypes.NormalizedType{},
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"post_value_kv": schema.MapAttribute{
 				Description: "Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.",
 				Optional:    true,
-				Computed:    true,
 				ElementType: types.StringType,
-				PlanModifiers: []planmodifier.Map{
-					mapplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"port": schema.Int64Attribute{
 				Description: "The port to monitor",
@@ -814,10 +804,13 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	} else if !state.HTTPPassword.IsNull() {
 		state.HTTPPassword = types.StringNull()
 	}
-	if monitor.HTTPMethodType != "" {
-		state.HTTPMethodType = types.StringValue(monitor.HTTPMethodType)
-	} else if !state.HTTPMethodType.IsNull() {
-		state.HTTPMethodType = types.StringNull()
+	// Preserve user's method unless this is an import. The API may not return it reliably.
+	if isImport {
+		if monitor.HTTPMethodType != "" {
+			state.HTTPMethodType = types.StringValue(monitor.HTTPMethodType)
+		} else {
+			state.HTTPMethodType = types.StringNull()
+		}
 	}
 
 	// Normalize unknowns to nulls
@@ -830,20 +823,23 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	// Derive type from method + presence of body in *state*
 	meth := strings.ToUpper(stringOrEmpty(state.HTTPMethodType))
+
+	// For GET/HEAD body is not allowed - clear everything
 	if meth == "GET" || meth == "HEAD" {
 		state.PostValueType = types.StringNull()
 		state.PostValueData = jsontypes.NewNormalizedNull()
 		state.PostValueKV = types.MapNull(types.StringType)
 	} else {
-		switch {
-		case !state.PostValueData.IsNull():
-			state.PostValueType = types.StringValue(PostTypeRawJSON)
-			state.PostValueKV = types.MapNull(types.StringType)
-		case !state.PostValueKV.IsNull():
-			state.PostValueType = types.StringValue(PostTypeKeyValue)
-			state.PostValueData = jsontypes.NewNormalizedNull()
-		default:
-			state.PostValueType = types.StringNull()
+		// For non-GET/HEAD treat body as write-only
+		// Do NOT overwrite whatever is already in state
+		if state.PostValueType.IsNull() || state.PostValueType.IsUnknown() {
+			if !state.PostValueData.IsNull() {
+				state.PostValueType = types.StringValue(PostTypeRawJSON)
+			} else if !state.PostValueKV.IsNull() {
+				state.PostValueType = types.StringValue(PostTypeKeyValue)
+			} else {
+				state.PostValueType = types.StringNull()
+			}
 		}
 	}
 
@@ -1492,10 +1488,20 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		return
 	}
 
-	noneSet := (plan.PostValueData.IsNull() || plan.PostValueData.IsUnknown()) &&
-		(plan.PostValueKV.IsNull() || plan.PostValueKV.IsUnknown())
+	hasJSON := !plan.PostValueData.IsNull() && !plan.PostValueData.IsUnknown()
+	hasKV := !plan.PostValueKV.IsNull() && !plan.PostValueKV.IsUnknown()
 
-	if noneSet {
+	switch {
+	case hasJSON && hasKV:
+		// handled by validation in plan
+	case hasJSON:
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringValue(PostTypeRawJSON))
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
+	case hasKV:
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringValue(PostTypeKeyValue))
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
+	default:
+		// none provided -> let server echo values by keeping Unknowns
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedUnknown())
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapUnknown(types.StringType))
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringUnknown())
