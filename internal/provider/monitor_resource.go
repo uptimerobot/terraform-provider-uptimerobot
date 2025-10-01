@@ -182,7 +182,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2xx"), types.StringValue("3xx")})),
 			},
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used",
+				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used.",
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.Int64{
@@ -193,14 +193,12 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"post_value_type": schema.StringAttribute{
-				Description: "The type of data to send with POST request. Server value is RAW_JSON when body is present",
+				Description: "The type of data to send with POST request. Server value is RAW_JSON when body is present.",
 				Computed:    true,
 			},
 			"post_value_data": schema.StringAttribute{
 				Description: "JSON payload body as a string. Use jsonencode.",
 				Optional:    true,
-				Computed:    true,
-				Sensitive:   true,
 				CustomType:  jsontypes.NormalizedType{},
 			},
 			"port": schema.Int64Attribute{
@@ -690,16 +688,12 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
-	if newMonitor.PostValueType != nil && *newMonitor.PostValueType != "" {
-		plan.PostValueType = types.StringValue(*newMonitor.PostValueType)
-	} else {
+	meth := strings.ToUpper(stringOrEmpty(plan.HTTPMethodType))
+	if meth == "GET" || meth == "HEAD" || plan.PostValueData.IsNull() || plan.PostValueData.IsUnknown() {
 		plan.PostValueType = types.StringNull()
-	}
-
-	if len(newMonitor.PostValueData) > 0 {
-		plan.PostValueData = jsontypes.NewNormalizedValue(string(newMonitor.PostValueData))
-	} else if plan.PostValueData.IsNull() {
 		plan.PostValueData = jsontypes.NewNormalizedNull()
+	} else {
+		plan.PostValueType = types.StringValue(PostTypeRawJSON)
 	}
 
 	// Set state to fully populated data
@@ -785,16 +779,16 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.HTTPMethodType = types.StringNull()
 	}
 
-	if monitor.PostValueType != nil && *monitor.PostValueType != "" {
-		state.PostValueType = types.StringValue(*monitor.PostValueType)
-	} else if !state.PostValueType.IsNull() {
-		state.PostValueType = types.StringNull()
+	if state.PostValueData.IsUnknown() {
+		state.PostValueData = jsontypes.NewNormalizedNull()
 	}
 
-	if len(monitor.PostValueData) > 0 {
-		state.PostValueData = jsontypes.NewNormalizedValue(string(monitor.PostValueData))
+	// Derive type from method + presence of body in state
+	meth := strings.ToUpper(stringOrEmpty(state.HTTPMethodType))
+	if meth == "GET" || meth == "HEAD" || state.PostValueData.IsNull() {
+		state.PostValueType = types.StringNull()
 	} else {
-		state.PostValueData = jsontypes.NewNormalizedNull()
+		state.PostValueType = types.StringValue(PostTypeRawJSON)
 	}
 
 	if monitor.Port != nil {
@@ -1301,16 +1295,13 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
-	if updatedMonitor.PostValueType != nil && *updatedMonitor.PostValueType != "" {
-		updatedState.PostValueType = types.StringValue(*updatedMonitor.PostValueType)
-	} else {
+	meth := strings.ToUpper(stringOrEmpty(plan.HTTPMethodType))
+	if meth == "GET" || meth == "HEAD" || plan.PostValueData.IsNull() || plan.PostValueData.IsUnknown() {
 		updatedState.PostValueType = types.StringNull()
-	}
-
-	if len(updatedMonitor.PostValueData) > 0 {
-		updatedState.PostValueData = jsontypes.NewNormalizedValue(string(updatedMonitor.PostValueData))
-	} else if plan.PostValueData.IsNull() {
 		updatedState.PostValueData = jsontypes.NewNormalizedNull()
+	} else {
+		updatedState.PostValueType = types.StringValue(PostTypeRawJSON)
+		updatedState.PostValueData = plan.PostValueData // keep exactly what user planned
 	}
 
 	diags = resp.State.Set(ctx, updatedState)
@@ -1593,38 +1584,4 @@ func stringOrEmpty(v types.String) string {
 		return ""
 	}
 	return v.ValueString()
-}
-
-type postValueTypeInfer struct{}
-
-func (postValueTypeInfer) Description(_ context.Context) string {
-	return "Infer RAW_JSON when a request body will be sent"
-}
-func (postValueTypeInfer) MarkdownDescription(_ context.Context) string {
-	return "Infer RAW_JSON when a request body will be sent"
-}
-
-func (postValueTypeInfer) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
-	// If user explicitly set a value in config (shouldn’t be possible since Computed), leave it.
-	if !req.ConfigValue.IsNull() && !req.ConfigValue.IsUnknown() {
-		return
-	}
-
-	var p monitorResourceModel
-	if diags := req.Plan.Get(ctx, &p); diags.HasError() {
-		resp.Diagnostics.Append(diags...)
-		return
-	}
-
-	m := strings.ToUpper(stringOrEmpty(p.HTTPMethodType))
-	if m == "GET" || m == "HEAD" {
-		resp.PlanValue = types.StringNull()
-		return
-	}
-
-	if !p.PostValueData.IsUnknown() && !p.PostValueData.IsNull() {
-		resp.PlanValue = types.StringValue(PostTypeRawJSON)
-	} else {
-		resp.PlanValue = types.StringNull()
-	}
 }
