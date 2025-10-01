@@ -219,16 +219,16 @@ Common monitoring intervals:
 - `keyword_value` (String) The keyword to search for
 - `maintenance_window_ids` (List of Number) The maintenance window IDs
 - `port` (Number) The port to monitor
-- `post_value_data` (String) The data to send with POST request
-- `post_value_type` (String) The type of data to send with POST request
+- `post_value_data` (String) JSON payload body as a string. Use jsonencode.
 - `regional_data` (String) Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)
 - `response_time_threshold` (Number) Response time threshold in milliseconds. Response time over this threshold will trigger an incident
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
 - `success_http_response_codes` (List of String) The expected HTTP response codes
 - `tags` (Set of String) Tags for the monitor
-- `timeout` (Number) Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, API default is used
+- `timeout` (Number) Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used.
 
 ### Read-Only
 
 - `id` (String) Monitor ID
+- `post_value_type` (String) The type of data to send with POST request. Server value is RAW_JSON when body is present.
 - `status` (String) Status of the monitor
