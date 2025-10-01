@@ -87,19 +87,23 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name string, responseCodes []string) string {
-	responseCodesStr := ""
-	if len(responseCodes) > 0 {
-		responseCodesStr = fmt.Sprintf(`
+	var responseCodesStr string
+	if responseCodes != nil {
+		if len(responseCodes) == 0 {
+			responseCodesStr = `
+    success_http_response_codes = []`
+		} else {
+			responseCodesStr = fmt.Sprintf(`
     success_http_response_codes = [%s]`, joinQuotedStrings(responseCodes))
+		}
 	}
-
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = "https://example.com"
     type         = "HTTP"
     interval     = 300%s
-	timeout      = 30
+    timeout      = 30
 }
 `, name, responseCodesStr)
 }
