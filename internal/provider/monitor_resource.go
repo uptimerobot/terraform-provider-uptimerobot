@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -28,7 +29,8 @@ import (
 )
 
 const (
-	PostTypeRawJSON = "RAW_JSON"
+	PostTypeRawJSON  = "RAW_JSON"
+	PostTypeKeyValue = "KEY_VALUE"
 )
 
 // NewMonitorResource is a helper function to simplify the provider implementation.
@@ -68,6 +70,7 @@ type monitorResourceModel struct {
 	Timeout                  types.Int64          `tfsdk:"timeout"`
 	PostValueType            types.String         `tfsdk:"post_value_type"`
 	PostValueData            jsontypes.Normalized `tfsdk:"post_value_data"`
+	PostValueKV              types.Map            `tfsdk:"post_value_kv"`
 	Port                     types.Int64          `tfsdk:"port"`
 	GracePeriod              types.Int64          `tfsdk:"grace_period"`
 	KeywordValue             types.String         `tfsdk:"keyword_value"`
@@ -193,7 +196,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"post_value_type": schema.StringAttribute{
-				Description: "The type of data to send with POST request. Server value is RAW_JSON when body is present.",
+				Description: "Computed body type used by UptimeRobot when sending the monitor request. Set automatically to RAW_JSON or KEY_VALUE.",
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
@@ -201,12 +204,21 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"post_value_data": schema.StringAttribute{
-				Description: "JSON payload body as a string. Use jsonencode.",
+				Description: "JSON body (use jsonencode). Mutually exclusive with post_value_kv.",
 				Optional:    true,
 				Computed:    true,
 				CustomType:  jsontypes.NormalizedType{},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"post_value_kv": schema.MapAttribute{
+				Description: "Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.",
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"port": schema.Int64Attribute{
@@ -302,6 +314,10 @@ func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.Confi
 			path.MatchRoot("timeout"),
 			path.MatchRoot("grace_period"),
 		),
+		resourcevalidator.Conflicting(
+			path.MatchRoot("post_value_data"),
+			path.MatchRoot("post_value_kv"),
+		),
 	}
 }
 
@@ -381,14 +397,16 @@ func (r *monitorResource) ValidateConfig(
 
 	// post data and their methods validation segment
 
-	meth := strings.ToUpper(stringOrEmpty(data.HTTPMethodType))
-
-	if (meth == "GET" || meth == "HEAD") && !data.PostValueData.IsNull() && !data.PostValueData.IsUnknown() {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("http_method_type"),
-			"Request body not allowed for this method",
-			"GET/HEAD cannot have a body. Remove post_value_data or change method.",
-		)
+	m := strings.ToUpper(stringOrEmpty(data.HTTPMethodType))
+	if m == "GET" || m == "HEAD" {
+		if (!data.PostValueData.IsNull() && !data.PostValueData.IsUnknown()) ||
+			(!data.PostValueKV.IsNull() && !data.PostValueKV.IsUnknown()) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("http_method_type"),
+				"Request body not allowed for GET/HEAD",
+				"Remove post_value_data/post_value_kv or change method.",
+			)
+		}
 	}
 }
 
@@ -546,19 +564,22 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 
 	switch strings.ToUpper(stringOrEmpty(plan.HTTPMethodType)) {
 	case "GET", "HEAD":
-		// no body allowed; do nothing
+		// no body
 	default:
-		if plan.PostValueData.IsUnknown() {
-			// preserve server value: do NOT set PostValueType or PostValueData
-		} else if plan.PostValueData.IsNull() {
-			// explicit clear
+		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
+			// JSON body
+			b := []byte(plan.PostValueData.ValueString())
 			createReq.PostValueType = PostTypeRawJSON
-			createReq.PostValueData = nil
-		} else {
-			// set body
-			b := plan.PostValueData.ValueString() // normalized JSON text
-			createReq.PostValueType = PostTypeRawJSON
-			createReq.PostValueData = json.RawMessage([]byte(b))
+			createReq.PostValueData = json.RawMessage(b)
+		} else if !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull() {
+			// KV body
+			var kv map[string]string
+			resp.Diagnostics.Append(plan.PostValueKV.ElementsAs(ctx, &kv, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			createReq.PostValueType = PostTypeKeyValue
+			createReq.PostValueData = kv
 		}
 	}
 
@@ -696,12 +717,24 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
-	meth := strings.ToUpper(stringOrEmpty(plan.HTTPMethodType))
-	if meth == "GET" || meth == "HEAD" || plan.PostValueData.IsNull() || plan.PostValueData.IsUnknown() {
+	method := strings.ToUpper(stringOrEmpty(plan.HTTPMethodType))
+	if method == "GET" || method == "HEAD" {
 		plan.PostValueType = types.StringNull()
 		plan.PostValueData = jsontypes.NewNormalizedNull()
+		plan.PostValueKV = types.MapNull(types.StringType)
 	} else {
-		plan.PostValueType = types.StringValue(PostTypeRawJSON)
+		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
+			plan.PostValueType = types.StringValue(PostTypeRawJSON)
+			plan.PostValueKV = types.MapNull(types.StringType)
+		} else if !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull() {
+			plan.PostValueType = types.StringValue(PostTypeKeyValue)
+			plan.PostValueData = jsontypes.NewNormalizedNull()
+		} else {
+			// user didn’t set any body so we leave all three as null so we don't invent values
+			plan.PostValueType = types.StringNull()
+			plan.PostValueData = jsontypes.NewNormalizedNull()
+			plan.PostValueKV = types.MapNull(types.StringType)
+		}
 	}
 
 	// Set state to fully populated data
@@ -787,16 +820,31 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.HTTPMethodType = types.StringNull()
 	}
 
+	// Normalize unknowns to nulls
 	if state.PostValueData.IsUnknown() {
 		state.PostValueData = jsontypes.NewNormalizedNull()
 	}
+	if state.PostValueKV.IsUnknown() {
+		state.PostValueKV = types.MapNull(types.StringType)
+	}
 
-	// Derive type from method + presence of body in state
+	// Derive type from method + presence of body in *state*
 	meth := strings.ToUpper(stringOrEmpty(state.HTTPMethodType))
-	if meth == "GET" || meth == "HEAD" || state.PostValueData.IsNull() {
+	if meth == "GET" || meth == "HEAD" {
 		state.PostValueType = types.StringNull()
+		state.PostValueData = jsontypes.NewNormalizedNull()
+		state.PostValueKV = types.MapNull(types.StringType)
 	} else {
-		state.PostValueType = types.StringValue(PostTypeRawJSON)
+		switch {
+		case !state.PostValueData.IsNull():
+			state.PostValueType = types.StringValue(PostTypeRawJSON)
+			state.PostValueKV = types.MapNull(types.StringType)
+		case !state.PostValueKV.IsNull():
+			state.PostValueType = types.StringValue(PostTypeKeyValue)
+			state.PostValueData = jsontypes.NewNormalizedNull()
+		default:
+			state.PostValueType = types.StringNull()
+		}
 	}
 
 	if monitor.Port != nil {
@@ -1170,15 +1218,20 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	case "GET", "HEAD":
 		// ignore body
 	default:
-		if plan.PostValueData.IsUnknown() {
-			// preserve
-		} else if plan.PostValueData.IsNull() {
+		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
+			// JSON body
+			b := []byte(plan.PostValueData.ValueString())
 			updateReq.PostValueType = PostTypeRawJSON
-			updateReq.PostValueData = nil
-		} else {
-			b := plan.PostValueData.ValueString()
-			updateReq.PostValueType = PostTypeRawJSON
-			updateReq.PostValueData = json.RawMessage([]byte(b))
+			updateReq.PostValueData = json.RawMessage(b)
+		} else if !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull() {
+			// KV body
+			var kv map[string]string
+			resp.Diagnostics.Append(plan.PostValueKV.ElementsAs(ctx, &kv, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			updateReq.PostValueType = PostTypeKeyValue
+			updateReq.PostValueData = kv
 		}
 	}
 
@@ -1303,27 +1356,28 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
-	meth := strings.ToUpper(stringOrEmpty(plan.HTTPMethodType))
-	if meth == "GET" || meth == "HEAD" || plan.PostValueData.IsNull() || plan.PostValueData.IsUnknown() {
+	method := strings.ToUpper(firstNonEmpty(
+		stringOrEmpty(plan.HTTPMethodType),
+		stringOrEmpty(state.HTTPMethodType),
+	))
+	if method == "GET" || method == "HEAD" {
 		updatedState.PostValueType = types.StringNull()
 		updatedState.PostValueData = jsontypes.NewNormalizedNull()
+		updatedState.PostValueKV = types.MapNull(types.StringType)
 	} else {
-		updatedState.PostValueType = types.StringValue(PostTypeRawJSON)
-		updatedState.PostValueData = plan.PostValueData // keep exactly what user planned
-	}
-
-	method := strings.ToUpper(stringOrEmpty(state.HTTPMethodType))
-	if method == "GET" || method == "HEAD" {
-		state.PostValueData = jsontypes.NewNormalizedNull()
-		state.PostValueType = types.StringNull()
-	} else {
-		if state.PostValueData.IsNull() || state.PostValueData.IsUnknown() {
-			// user never configured it -> keep it null, even if API stores/echoes something
-			state.PostValueData = jsontypes.NewNormalizedNull()
-			state.PostValueType = types.StringNull()
+		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
+			updatedState.PostValueType = types.StringValue(PostTypeRawJSON)
+			updatedState.PostValueData = plan.PostValueData
+			updatedState.PostValueKV = types.MapNull(types.StringType)
+		} else if !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull() {
+			updatedState.PostValueType = types.StringValue(PostTypeKeyValue)
+			updatedState.PostValueData = jsontypes.NewNormalizedNull()
+			updatedState.PostValueKV = plan.PostValueKV
 		} else {
-			// user configured it at least once -> keep their value and reflect type
-			state.PostValueType = types.StringValue(PostTypeRawJSON)
+			// user didn’t change body -> preserve previous state
+			updatedState.PostValueType = state.PostValueType
+			updatedState.PostValueData = state.PostValueData
+			updatedState.PostValueKV = state.PostValueKV
 		}
 	}
 
@@ -1425,28 +1479,37 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		}
 	}
 
-	m := strings.ToUpper(stringOrEmpty(plan.HTTPMethodType))
-	if m == "" {
-		m = strings.ToUpper(stringOrEmpty(state.HTTPMethodType))
-	}
-	if m == "" {
-		m = "GET"
-	}
+	method := strings.ToUpper(firstNonEmpty(
+		stringOrEmpty(plan.HTTPMethodType),
+		stringOrEmpty(state.HTTPMethodType),
+		"GET",
+	))
 
-	// For GET/HEAD, body must be null
-	if m == "GET" || m == "HEAD" {
+	if method == "GET" || method == "HEAD" {
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringNull())
 		return
 	}
 
-	// For non-GET methods:
-	// If the user did not specify body in the plan (null or unknown), leave it UNKNOWN so provider can preserve server value.
-	// This covers both create and update.
-	if plan.PostValueData.IsNull() || plan.PostValueData.IsUnknown() {
+	noneSet := (plan.PostValueData.IsNull() || plan.PostValueData.IsUnknown()) &&
+		(plan.PostValueKV.IsNull() || plan.PostValueKV.IsUnknown())
+
+	if noneSet {
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedUnknown())
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapUnknown(types.StringType))
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringUnknown())
 	}
+
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // modifyPlanForListField handles the special case for list fields that might be null vs empty lists.
