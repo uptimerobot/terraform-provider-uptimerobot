@@ -110,7 +110,7 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Version:     1,
+		Version:     2,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
@@ -182,7 +182,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2xx"), types.StringValue("3xx")})),
 			},
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, API default is used",
+				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used",
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.Int64{
@@ -1494,7 +1494,7 @@ func stringValue(s *string) string {
 // UpgradeState used for migration between schemas.
 func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
 
-	priorSchema := &schema.Schema{
+	priorSchemaV0 := &schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"type":                       schema.StringAttribute{Required: true},
 			"interval":                   schema.Int64Attribute{Required: true},
@@ -1545,7 +1545,7 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 
 	return map[int64]resource.StateUpgrader{
 		0: {
-			PriorSchema: priorSchema,
+			PriorSchema: priorSchemaV0,
 			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
 				// 1. Read prior state that is decoded using PriorSchema
 				var prior monitorV0Model
@@ -1568,6 +1568,24 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 				// Known values should be set/assign or setted to null value. Terrafrom framework do not copy them.
 				// For simple one-attribute changes, only one field may be setted as well.
 				// Nice practice and convenience way is to map the whole prior model to the current model and do resp.State.Set(ctx, upgradedModel).
+			},
+		},
+		1: {
+			PriorSchema: priorSchemaV1(),
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				var prior monitorV1Model
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				upgraded, diags := upgradeMonitorFromV1(ctx, prior)
+				resp.Diagnostics.Append(diags...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
 			},
 		},
 	}
