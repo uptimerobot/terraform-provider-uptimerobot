@@ -1361,19 +1361,20 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updatedState.PostValueData = jsontypes.NewNormalizedNull()
 		updatedState.PostValueKV = types.MapNull(types.StringType)
 	} else {
-		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
+		switch {
+		case !plan.PostValueData.IsNull():
 			updatedState.PostValueType = types.StringValue(PostTypeRawJSON)
 			updatedState.PostValueData = plan.PostValueData
 			updatedState.PostValueKV = types.MapNull(types.StringType)
-		} else if !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull() {
+		case !plan.PostValueKV.IsNull():
 			updatedState.PostValueType = types.StringValue(PostTypeKeyValue)
 			updatedState.PostValueData = jsontypes.NewNormalizedNull()
 			updatedState.PostValueKV = plan.PostValueKV
-		} else {
-			// user didn’t change body -> preserve previous state
-			updatedState.PostValueType = state.PostValueType
-			updatedState.PostValueData = state.PostValueData
-			updatedState.PostValueKV = state.PostValueKV
+		default:
+			// plan provided no body, clear state as well
+			updatedState.PostValueType = types.StringNull()
+			updatedState.PostValueData = jsontypes.NewNormalizedNull()
+			updatedState.PostValueKV = types.MapNull(types.StringType)
 		}
 	}
 
@@ -1502,9 +1503,9 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
 	default:
 		// none provided -> let server echo values by keeping Unknowns
-		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedUnknown())
-		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapUnknown(types.StringType))
-		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringUnknown())
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringNull())
 	}
 
 }
