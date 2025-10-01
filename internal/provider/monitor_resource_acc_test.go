@@ -145,6 +145,21 @@ resource "uptimerobot_monitor" "test" {
 `, name)
 }
 
+func testAccMonitorResourceConfigWithBody(name string, body string) string {
+	// body should be an HCL expression, e.g. `jsonencode({foo="bar", n=1})` or `null`
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "https://example.com/echo"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "POST"
+  post_value_data  = %s
+}
+`, name, body)
+}
+
 // Helpers ------------------------------------------------------
 
 func joinQuotedStrings(strings []string) string {
@@ -167,6 +182,13 @@ func joinInts(ints []int) string {
 		result += fmt.Sprintf(`%d`, val)
 	}
 	return result
+}
+
+func testCheckNoPostBody(addr string) resource.TestCheckFunc {
+	return resource.ComposeAggregateTestCheckFunc(
+		resource.TestCheckNoResourceAttr(addr, "post_value_data"),
+		resource.TestCheckNoResourceAttr(addr, "post_value_type"),
+	)
 }
 
 // Acceptance tests ------------------------------------------------
@@ -888,6 +910,91 @@ resource "uptimerobot_monitor" "hb" {
 }
 `,
 				ExpectError: regexp.MustCompile(`must be between 0 and 86400`),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_HTTP_PostBody_RoundTrip(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// create with body
+			{
+				Config: testAccMonitorResourceConfigWithBody("acc-body", `jsonencode({foo="bar", n=1})`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
+					// type should be computed to RAW_JSON
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "RAW_JSON"),
+					// body should be set; we don't assert exact string to avoid normalization brittleness
+					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
+				),
+			},
+			// update with different body (no diff loops)
+			{
+				Config: testAccMonitorResourceConfigWithBody("acc-body", `jsonencode({foo="baz", m=2})`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "RAW_JSON"),
+					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_HTTP_PostBody_ClearByRemoving(t *testing.T) {
+	name := "acc-body-clear"
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// set a body first
+			{
+				Config: testAccMonitorResourceConfigWithBody(name, `jsonencode({hello="world"})`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "RAW_JSON"),
+					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
+				),
+			},
+			// remove the attribute from config → should clear on server (requires post_value_data NOT Computed)
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "https://example.com/echo"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "POST"
+}
+`, name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_data"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_type"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_HTTP_GetHead_NoBodyAllowed(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name             = "acc-get-body-error"
+  url              = "https://example.com"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "GET"
+  post_value_data  = jsonencode({oops="nope"})
+}`,
+				ExpectError: regexp.MustCompile(`Request body not allowed for this method`),
 			},
 		},
 	})
