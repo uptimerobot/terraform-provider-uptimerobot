@@ -194,12 +194,20 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"post_value_type": schema.StringAttribute{
 				Description: "The type of data to send with POST request. Server value is RAW_JSON when body is present.",
+				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"post_value_data": schema.StringAttribute{
 				Description: "JSON payload body as a string. Use jsonencode.",
 				Optional:    true,
+				Computed:    true,
 				CustomType:  jsontypes.NormalizedType{},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"port": schema.Int64Attribute{
 				Description: "The port to monitor",
@@ -1304,6 +1312,21 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updatedState.PostValueData = plan.PostValueData // keep exactly what user planned
 	}
 
+	method := strings.ToUpper(stringOrEmpty(state.HTTPMethodType))
+	if method == "GET" || method == "HEAD" {
+		state.PostValueData = jsontypes.NewNormalizedNull()
+		state.PostValueType = types.StringNull()
+	} else {
+		if state.PostValueData.IsNull() || state.PostValueData.IsUnknown() {
+			// user never configured it -> keep it null, even if API stores/echoes something
+			state.PostValueData = jsontypes.NewNormalizedNull()
+			state.PostValueType = types.StringNull()
+		} else {
+			// user configured it at least once -> keep their value and reflect type
+			state.PostValueType = types.StringValue(PostTypeRawJSON)
+		}
+	}
+
 	diags = resp.State.Set(ctx, updatedState)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -1400,6 +1423,29 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 				resp.Plan.SetAttribute(ctx, path.Root("grace_period"), types.Int64Null())
 			}
 		}
+	}
+
+	m := strings.ToUpper(stringOrEmpty(plan.HTTPMethodType))
+	if m == "" {
+		m = strings.ToUpper(stringOrEmpty(state.HTTPMethodType))
+	}
+	if m == "" {
+		m = "GET"
+	}
+
+	// For GET/HEAD, body must be null
+	if m == "GET" || m == "HEAD" {
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringNull())
+		return
+	}
+
+	// For non-GET methods:
+	// If the user did not specify body in the plan (null or unknown), leave it UNKNOWN so provider can preserve server value.
+	// This covers both create and update.
+	if plan.PostValueData.IsNull() || plan.PostValueData.IsUnknown() {
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedUnknown())
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringUnknown())
 	}
 }
 
