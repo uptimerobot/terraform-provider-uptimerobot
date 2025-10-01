@@ -195,9 +195,6 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"post_value_type": schema.StringAttribute{
 				Description: "The type of data to send with POST request. Server value is RAW_JSON when body is present",
 				Computed:    true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"post_value_data": schema.StringAttribute{
 				Description: "JSON payload body as a string. Use jsonencode.",
@@ -1598,10 +1595,36 @@ func stringOrEmpty(v types.String) string {
 	return v.ValueString()
 }
 
-func stringMapToAttr(m map[string]string) map[string]attr.Value {
-	out := make(map[string]attr.Value, len(m))
-	for k, v := range m {
-		out[k] = types.StringValue(v)
+type postValueTypeInfer struct{}
+
+func (postValueTypeInfer) Description(_ context.Context) string {
+	return "Infer RAW_JSON when a request body will be sent"
+}
+func (postValueTypeInfer) MarkdownDescription(_ context.Context) string {
+	return "Infer RAW_JSON when a request body will be sent"
+}
+
+func (postValueTypeInfer) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	// If user explicitly set a value in config (shouldn’t be possible since Computed), leave it.
+	if !req.ConfigValue.IsNull() && !req.ConfigValue.IsUnknown() {
+		return
 	}
-	return out
+
+	var p monitorResourceModel
+	if diags := req.Plan.Get(ctx, &p); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	m := strings.ToUpper(stringOrEmpty(p.HTTPMethodType))
+	if m == "GET" || m == "HEAD" {
+		resp.PlanValue = types.StringNull()
+		return
+	}
+
+	if !p.PostValueData.IsUnknown() && !p.PostValueData.IsNull() {
+		resp.PlanValue = types.StringValue(PostTypeRawJSON)
+	} else {
+		resp.PlanValue = types.StringNull()
+	}
 }
