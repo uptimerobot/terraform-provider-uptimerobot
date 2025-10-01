@@ -221,7 +221,6 @@ Common monitoring intervals:
 - `port` (Number) The port to monitor
 - `post_value_data` (String) JSON body (use jsonencode). Mutually exclusive with post_value_kv.
 - `post_value_kv` (Map of String) Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.
-- `post_value_type` (String) Computed body type used by UptimeRobot when sending the monitor request. Set automatically to RAW_JSON or KEY_VALUE.
 - `regional_data` (String) Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)
 - `response_time_threshold` (Number) Response time threshold in milliseconds. Response time over this threshold will trigger an incident
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
@@ -232,4 +231,5 @@ Common monitoring intervals:
 ### Read-Only
 
 - `id` (String) Monitor ID
+- `post_value_type` (String) Computed body type used by UptimeRobot when sending the monitor request. Set automatically to RAW_JSON or KEY_VALUE.
 - `status` (String) Status of the monitor
