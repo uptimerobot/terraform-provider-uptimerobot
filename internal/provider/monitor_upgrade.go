@@ -347,8 +347,8 @@ func priorSchemaV1() *schema.Schema {
 	return s
 }
 
-// Converter: v1 (String) -> v2 (jsontypes.Normalized)
-func upgradeMonitorFromV1(ctx context.Context, prior monitorV1Model) (monitorResourceModel, diag.Diagnostics) {
+// Converter: v1 (String) -> v2 (jsontypes.Normalized).
+func upgradeMonitorFromV1(_ context.Context, prior monitorV1Model) (monitorResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	// Convert post_value_data
@@ -361,7 +361,7 @@ func upgradeMonitorFromV1(ctx context.Context, prior monitorV1Model) (monitorRes
 		if json.Valid([]byte(raw)) {
 			normalized = jsontypes.NewNormalizedValue(raw)
 		} else {
-			// Best-effort safety: if state held non-JSON, clear it with a warning.
+			// if state held non-JSON, clear it with a warning
 			diags.AddWarning(
 				"Invalid JSON in prior state for post_value_data",
 				"The previous state stored a non-JSON string. The value has been cleared. "+
@@ -371,7 +371,7 @@ func upgradeMonitorFromV1(ctx context.Context, prior monitorV1Model) (monitorRes
 		}
 	}
 
-	// Map everything over; only difference is PostValueData type.
+	// Only difference is in PostValueData type
 	up := monitorResourceModel{
 		Type:                     prior.Type,
 		Interval:                 prior.Interval,
@@ -385,8 +385,8 @@ func upgradeMonitorFromV1(ctx context.Context, prior monitorV1Model) (monitorRes
 		HTTPMethodType:           prior.HTTPMethodType,
 		SuccessHTTPResponseCodes: prior.SuccessHTTPResponseCodes,
 		Timeout:                  prior.Timeout,
-		PostValueData:            normalized,          // <-- converted
-		PostValueType:            prior.PostValueType, // unchanged
+		PostValueData:            normalized, // converted to json
+		PostValueType:            prior.PostValueType,
 		Port:                     prior.Port,
 		GracePeriod:              prior.GracePeriod,
 		KeywordValue:             prior.KeywordValue,

@@ -184,13 +184,6 @@ func joinInts(ints []int) string {
 	return result
 }
 
-func testCheckNoPostBody(addr string) resource.TestCheckFunc {
-	return resource.ComposeAggregateTestCheckFunc(
-		resource.TestCheckNoResourceAttr(addr, "post_value_data"),
-		resource.TestCheckNoResourceAttr(addr, "post_value_type"),
-	)
-}
-
 // Acceptance tests ------------------------------------------------
 
 func TestAccMonitorResource(t *testing.T) {
