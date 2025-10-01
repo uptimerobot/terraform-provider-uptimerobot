@@ -502,12 +502,20 @@ func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.2", "202"),
 				),
 			},
-			// Step 3: Set to empty list (we accept empty and round-trip it as empty)
+			// Step 3: Remove the attribute. Back to defaults
 			{
-				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", []string{}),
+				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.#", "0"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.#", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.0", "2xx"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.1", "3xx"),
 				),
+			},
+			// Idempotency
+			{
+				Config:             testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", nil),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
