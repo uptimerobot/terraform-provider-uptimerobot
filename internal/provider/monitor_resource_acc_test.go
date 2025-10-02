@@ -1179,3 +1179,38 @@ func TestAcc_Monitor_HTTP_DefaultMethod_GET(t *testing.T) {
 		},
 	})
 }
+
+func TestAcc_Monitor_HTTP_Body_Switch_JSON_KV(t *testing.T) {
+	name := "acc-switch-json-kv"
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{ // start JSON
+				Config: testAccMonitorResourceConfigWithBody(name, `jsonencode({a="1"})`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "RAW_JSON"),
+					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
+				),
+			},
+			{ // switch to KV
+				Config: testAccMonitorResourceConfigWithKV(name, map[string]string{"a": "1"}),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "KEY_VALUE"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_kv.%", "1"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_data"),
+				),
+			},
+			{ // back to JSON
+				Config: testAccMonitorResourceConfigWithBody(name, `jsonencode({b="2"})`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "RAW_JSON"),
+					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
+				),
+			},
+		},
+	})
+}
