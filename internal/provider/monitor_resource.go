@@ -2,9 +2,12 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
@@ -22,6 +25,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+)
+
+const (
+	PostTypeRawJSON  = "RAW_JSON"
+	PostTypeKeyValue = "KEY_VALUE"
 )
 
 // NewMonitorResource is a helper function to simplify the provider implementation.
@@ -47,34 +55,35 @@ type monitorResource struct {
 
 // monitorResourceModel maps the resource schema data.
 type monitorResourceModel struct {
-	Type                     types.String `tfsdk:"type"`
-	Interval                 types.Int64  `tfsdk:"interval"`
-	SSLExpirationReminder    types.Bool   `tfsdk:"ssl_expiration_reminder"`
-	DomainExpirationReminder types.Bool   `tfsdk:"domain_expiration_reminder"`
-	FollowRedirections       types.Bool   `tfsdk:"follow_redirections"`
-	AuthType                 types.String `tfsdk:"auth_type"`
-	HTTPUsername             types.String `tfsdk:"http_username"`
-	HTTPPassword             types.String `tfsdk:"http_password"`
-	CustomHTTPHeaders        types.Map    `tfsdk:"custom_http_headers"`
-	HTTPMethodType           types.String `tfsdk:"http_method_type"`
-	SuccessHTTPResponseCodes types.List   `tfsdk:"success_http_response_codes"`
-	Timeout                  types.Int64  `tfsdk:"timeout"`
-	PostValueData            types.String `tfsdk:"post_value_data"`
-	PostValueType            types.String `tfsdk:"post_value_type"`
-	Port                     types.Int64  `tfsdk:"port"`
-	GracePeriod              types.Int64  `tfsdk:"grace_period"`
-	KeywordValue             types.String `tfsdk:"keyword_value"`
-	KeywordCaseType          types.String `tfsdk:"keyword_case_type"`
-	KeywordType              types.String `tfsdk:"keyword_type"`
-	MaintenanceWindowIDs     types.List   `tfsdk:"maintenance_window_ids"`
-	ID                       types.String `tfsdk:"id"`
-	Name                     types.String `tfsdk:"name"`
-	Status                   types.String `tfsdk:"status"`
-	URL                      types.String `tfsdk:"url"`
-	Tags                     types.Set    `tfsdk:"tags"`
-	AssignedAlertContacts    types.List   `tfsdk:"assigned_alert_contacts"`
-	ResponseTimeThreshold    types.Int64  `tfsdk:"response_time_threshold"`
-	RegionalData             types.String `tfsdk:"regional_data"`
+	Type                     types.String         `tfsdk:"type"`
+	Interval                 types.Int64          `tfsdk:"interval"`
+	SSLExpirationReminder    types.Bool           `tfsdk:"ssl_expiration_reminder"`
+	DomainExpirationReminder types.Bool           `tfsdk:"domain_expiration_reminder"`
+	FollowRedirections       types.Bool           `tfsdk:"follow_redirections"`
+	AuthType                 types.String         `tfsdk:"auth_type"`
+	HTTPUsername             types.String         `tfsdk:"http_username"`
+	HTTPPassword             types.String         `tfsdk:"http_password"`
+	CustomHTTPHeaders        types.Map            `tfsdk:"custom_http_headers"`
+	HTTPMethodType           types.String         `tfsdk:"http_method_type"`
+	SuccessHTTPResponseCodes types.List           `tfsdk:"success_http_response_codes"`
+	Timeout                  types.Int64          `tfsdk:"timeout"`
+	PostValueType            types.String         `tfsdk:"post_value_type"`
+	PostValueData            jsontypes.Normalized `tfsdk:"post_value_data"`
+	PostValueKV              types.Map            `tfsdk:"post_value_kv"`
+	Port                     types.Int64          `tfsdk:"port"`
+	GracePeriod              types.Int64          `tfsdk:"grace_period"`
+	KeywordValue             types.String         `tfsdk:"keyword_value"`
+	KeywordCaseType          types.String         `tfsdk:"keyword_case_type"`
+	KeywordType              types.String         `tfsdk:"keyword_type"`
+	MaintenanceWindowIDs     types.List           `tfsdk:"maintenance_window_ids"`
+	ID                       types.String         `tfsdk:"id"`
+	Name                     types.String         `tfsdk:"name"`
+	Status                   types.String         `tfsdk:"status"`
+	URL                      types.String         `tfsdk:"url"`
+	Tags                     types.Set            `tfsdk:"tags"`
+	AssignedAlertContacts    types.List           `tfsdk:"assigned_alert_contacts"`
+	ResponseTimeThreshold    types.Int64          `tfsdk:"response_time_threshold"`
+	RegionalData             types.String         `tfsdk:"regional_data"`
 }
 
 // Configure adds the provider configured client to the resource.
@@ -103,7 +112,7 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Version:     1,
+		Version:     2,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
@@ -175,7 +184,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2xx"), types.StringValue("3xx")})),
 			},
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, API default is used",
+				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used.",
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.Int64{
@@ -185,13 +194,22 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					int64planmodifier.UseStateForUnknown(),
 				},
 			},
-			"post_value_data": schema.StringAttribute{
-				Description: "The data to send with POST request",
-				Optional:    true,
-			},
 			"post_value_type": schema.StringAttribute{
-				Description: "The type of data to send with POST request",
+				Description: "Computed body type used by UptimeRobot when sending the monitor request. Set automatically to RAW_JSON or KEY_VALUE.",
+				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"post_value_data": schema.StringAttribute{
+				Description: "JSON body (use jsonencode). Mutually exclusive with post_value_kv.",
 				Optional:    true,
+				CustomType:  jsontypes.NormalizedType{},
+			},
+			"post_value_kv": schema.MapAttribute{
+				Description: "Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.",
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 			"port": schema.Int64Attribute{
 				Description: "The port to monitor",
@@ -286,6 +304,10 @@ func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.Confi
 			path.MatchRoot("timeout"),
 			path.MatchRoot("grace_period"),
 		),
+		resourcevalidator.Conflicting(
+			path.MatchRoot("post_value_data"),
+			path.MatchRoot("post_value_kv"),
+		),
 	}
 }
 
@@ -299,6 +321,8 @@ func (r *monitorResource) ValidateConfig(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// grace_period and timeout validation segment
 
 	if data.Type.IsUnknown() || data.Type.IsNull() {
 		return
@@ -357,6 +381,20 @@ func (r *monitorResource) ValidateConfig(
 				path.Root("grace_period"),
 				"grace_period not allowed for non-heartbeat monitor",
 				"When type is not HEARTBEAT, omit grace_period.",
+			)
+		}
+	}
+
+	// post data and their methods validation segment
+
+	m := strings.ToUpper(stringOrEmpty(data.HTTPMethodType))
+	if m == "GET" || m == "HEAD" {
+		if (!data.PostValueData.IsNull() && !data.PostValueData.IsUnknown()) ||
+			(!data.PostValueKV.IsNull() && !data.PostValueKV.IsUnknown()) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("http_method_type"),
+				"Request body not allowed for GET/HEAD",
+				"Remove post_value_data/post_value_kv or change method.",
 			)
 		}
 	}
@@ -513,12 +551,28 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	if !plan.KeywordType.IsNull() {
 		createReq.KeywordType = plan.KeywordType.ValueString()
 	}
-	if !plan.PostValueData.IsNull() {
-		createReq.PostValueData = plan.PostValueData.ValueString()
+
+	switch strings.ToUpper(stringOrEmpty(plan.HTTPMethodType)) {
+	case "GET", "HEAD":
+		// no body
+	default:
+		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
+			// JSON body
+			b := []byte(plan.PostValueData.ValueString())
+			createReq.PostValueType = PostTypeRawJSON
+			createReq.PostValueData = json.RawMessage(b)
+		} else if !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull() {
+			// KV body
+			var kv map[string]string
+			resp.Diagnostics.Append(plan.PostValueKV.ElementsAs(ctx, &kv, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			createReq.PostValueType = PostTypeKeyValue
+			createReq.PostValueData = kv
+		}
 	}
-	if !plan.PostValueType.IsNull() {
-		createReq.PostValueType = plan.PostValueType.ValueString()
-	}
+
 	if !plan.ResponseTimeThreshold.IsNull() {
 		createReq.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
 	}
@@ -653,6 +707,26 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
+	method := strings.ToUpper(stringOrEmpty(plan.HTTPMethodType))
+	if method == "GET" || method == "HEAD" {
+		plan.PostValueType = types.StringNull()
+		plan.PostValueData = jsontypes.NewNormalizedNull()
+		plan.PostValueKV = types.MapNull(types.StringType)
+	} else {
+		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
+			plan.PostValueType = types.StringValue(PostTypeRawJSON)
+			plan.PostValueKV = types.MapNull(types.StringType)
+		} else if !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull() {
+			plan.PostValueType = types.StringValue(PostTypeKeyValue)
+			plan.PostValueData = jsontypes.NewNormalizedNull()
+		} else {
+			// user didn’t set any body so we leave all three as null so we don't invent values
+			plan.PostValueType = types.StringNull()
+			plan.PostValueData = jsontypes.NewNormalizedNull()
+			plan.PostValueKV = types.MapNull(types.StringType)
+		}
+	}
+
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -730,21 +804,45 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	} else if !state.HTTPPassword.IsNull() {
 		state.HTTPPassword = types.StringNull()
 	}
-	if monitor.HTTPMethodType != "" {
-		state.HTTPMethodType = types.StringValue(monitor.HTTPMethodType)
-	} else if !state.HTTPMethodType.IsNull() {
-		state.HTTPMethodType = types.StringNull()
+	// Preserve user's method unless this is an import. The API may not return it reliably.
+	if isImport {
+		if monitor.HTTPMethodType != "" {
+			state.HTTPMethodType = types.StringValue(monitor.HTTPMethodType)
+		} else {
+			state.HTTPMethodType = types.StringNull()
+		}
 	}
-	if monitor.PostValueType != nil && *monitor.PostValueType != "" {
-		state.PostValueType = types.StringValue(*monitor.PostValueType)
-	} else if !state.PostValueType.IsNull() {
+
+	// Normalize unknowns to nulls
+	if state.PostValueData.IsUnknown() {
+		state.PostValueData = jsontypes.NewNormalizedNull()
+	}
+	if state.PostValueKV.IsUnknown() {
+		state.PostValueKV = types.MapNull(types.StringType)
+	}
+
+	// Derive type from method + presence of body in *state*
+	meth := strings.ToUpper(stringOrEmpty(state.HTTPMethodType))
+
+	// For GET/HEAD body is not allowed - clear everything
+	if meth == "GET" || meth == "HEAD" {
 		state.PostValueType = types.StringNull()
+		state.PostValueData = jsontypes.NewNormalizedNull()
+		state.PostValueKV = types.MapNull(types.StringType)
+	} else {
+		// For non-GET/HEAD treat body as write-only
+		// Do NOT overwrite whatever is already in state
+		if state.PostValueType.IsNull() || state.PostValueType.IsUnknown() {
+			if !state.PostValueData.IsNull() {
+				state.PostValueType = types.StringValue(PostTypeRawJSON)
+			} else if !state.PostValueKV.IsNull() {
+				state.PostValueType = types.StringValue(PostTypeKeyValue)
+			} else {
+				state.PostValueType = types.StringNull()
+			}
+		}
 	}
-	if monitor.PostValueData != nil && *monitor.PostValueData != "" {
-		state.PostValueData = types.StringValue(*monitor.PostValueData)
-	} else if !state.PostValueData.IsNull() {
-		state.PostValueData = types.StringNull()
-	}
+
 	if monitor.Port != nil {
 		state.Port = types.Int64Value(int64(*monitor.Port))
 	} else {
@@ -1111,8 +1209,27 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq.DomainExpirationReminder = plan.DomainExpirationReminder.ValueBool()
 	updateReq.FollowRedirections = plan.FollowRedirections.ValueBool()
 	updateReq.HTTPAuthType = plan.AuthType.ValueString()
-	updateReq.PostValueData = plan.PostValueData.ValueString()
-	updateReq.PostValueType = plan.PostValueType.ValueString()
+
+	switch strings.ToUpper(stringOrEmpty(plan.HTTPMethodType)) {
+	case "GET", "HEAD":
+		// ignore body
+	default:
+		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
+			// JSON body
+			b := []byte(plan.PostValueData.ValueString())
+			updateReq.PostValueType = PostTypeRawJSON
+			updateReq.PostValueData = json.RawMessage(b)
+		} else if !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull() {
+			// KV body
+			var kv map[string]string
+			resp.Diagnostics.Append(plan.PostValueKV.ElementsAs(ctx, &kv, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			updateReq.PostValueType = PostTypeKeyValue
+			updateReq.PostValueData = kv
+		}
+	}
 
 	// Add new fields
 	if !plan.ResponseTimeThreshold.IsNull() {
@@ -1235,6 +1352,32 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
+	method := strings.ToUpper(firstNonEmpty(
+		stringOrEmpty(plan.HTTPMethodType),
+		stringOrEmpty(state.HTTPMethodType),
+	))
+	if method == "GET" || method == "HEAD" {
+		updatedState.PostValueType = types.StringNull()
+		updatedState.PostValueData = jsontypes.NewNormalizedNull()
+		updatedState.PostValueKV = types.MapNull(types.StringType)
+	} else {
+		switch {
+		case !plan.PostValueData.IsNull():
+			updatedState.PostValueType = types.StringValue(PostTypeRawJSON)
+			updatedState.PostValueData = plan.PostValueData
+			updatedState.PostValueKV = types.MapNull(types.StringType)
+		case !plan.PostValueKV.IsNull():
+			updatedState.PostValueType = types.StringValue(PostTypeKeyValue)
+			updatedState.PostValueData = jsontypes.NewNormalizedNull()
+			updatedState.PostValueKV = plan.PostValueKV
+		default:
+			// plan provided no body, clear state as well
+			updatedState.PostValueType = types.StringNull()
+			updatedState.PostValueData = jsontypes.NewNormalizedNull()
+			updatedState.PostValueKV = types.MapNull(types.StringType)
+		}
+	}
+
 	diags = resp.State.Set(ctx, updatedState)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -1332,6 +1475,48 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 			}
 		}
 	}
+
+	method := strings.ToUpper(firstNonEmpty(
+		stringOrEmpty(plan.HTTPMethodType),
+		stringOrEmpty(state.HTTPMethodType),
+		"GET",
+	))
+
+	if method == "GET" || method == "HEAD" {
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringNull())
+		return
+	}
+
+	hasJSON := !plan.PostValueData.IsNull() && !plan.PostValueData.IsUnknown()
+	hasKV := !plan.PostValueKV.IsNull() && !plan.PostValueKV.IsUnknown()
+
+	switch {
+	case hasJSON && hasKV:
+		// handled by validation in plan
+	case hasJSON:
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringValue(PostTypeRawJSON))
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
+	case hasKV:
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringValue(PostTypeKeyValue))
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
+	default:
+		// none provided -> let server echo values by keeping Unknowns
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
+		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringNull())
+	}
+
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // modifyPlanForListField handles the special case for list fields that might be null vs empty lists.
@@ -1413,7 +1598,7 @@ func stringValue(s *string) string {
 // UpgradeState used for migration between schemas.
 func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
 
-	priorSchema := &schema.Schema{
+	priorSchemaV0 := &schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"type":                       schema.StringAttribute{Required: true},
 			"interval":                   schema.Int64Attribute{Required: true},
@@ -1464,7 +1649,7 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 
 	return map[int64]resource.StateUpgrader{
 		0: {
-			PriorSchema: priorSchema,
+			PriorSchema: priorSchemaV0,
 			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
 				// 1. Read prior state that is decoded using PriorSchema
 				var prior monitorV0Model
@@ -1489,5 +1674,30 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 				// Nice practice and convenience way is to map the whole prior model to the current model and do resp.State.Set(ctx, upgradedModel).
 			},
 		},
+		1: {
+			PriorSchema: priorSchemaV1(),
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				var prior monitorV1Model
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				upgraded, diags := upgradeMonitorFromV1(ctx, prior)
+				resp.Diagnostics.Append(diags...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
+			},
+		},
 	}
+}
+
+func stringOrEmpty(v types.String) string {
+	if v.IsNull() || v.IsUnknown() {
+		return ""
+	}
+	return v.ValueString()
 }
