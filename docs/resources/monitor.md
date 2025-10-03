@@ -205,7 +205,7 @@ Common monitoring intervals:
 
 ### Optional
 
-- `assigned_alert_contacts` (List of String) Alert contact IDs to assign to the monitor
+- `assigned_alert_contacts` (Attributes Set) Alert contacts to assign. threshold/recurrence are minutes. Free plan uses 0. (see [below for nested schema](#nestedatt--assigned_alert_contacts))
 - `auth_type` (String) The authentication type (HTTP_BASIC)
 - `custom_http_headers` (Map of String) Custom HTTP headers
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
@@ -233,3 +233,15 @@ Common monitoring intervals:
 - `id` (String) Monitor ID
 - `post_value_type` (String) Computed body type used by UptimeRobot when sending the monitor request. Set automatically to RAW_JSON or KEY_VALUE.
 - `status` (String) Status of the monitor
+
+<a id="nestedatt--assigned_alert_contacts"></a>
+### Nested Schema for `assigned_alert_contacts`
+
+Required:
+
+- `alert_contact_id` (String)
+
+Optional:
+
+- `recurrence` (Number)
+- `threshold` (Number)

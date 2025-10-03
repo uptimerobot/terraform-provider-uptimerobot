@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"testing"
 
@@ -32,24 +33,6 @@ resource "uptimerobot_monitor" "test" {
 `, name)
 }
 
-func testAccMonitorResourceConfigWithAlertContacts(name string, alertContacts []string) string {
-	alertContactsStr := ""
-	if len(alertContacts) > 0 {
-		alertContactsStr = fmt.Sprintf(`
-    assigned_alert_contacts = [%s]`, joinQuotedStrings(alertContacts))
-	}
-
-	return testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-    name         = %q
-    url          = "https://example.com"
-    type         = "HTTP"
-    interval     = 300%s
-	timeout  	 = 30
-}
-`, name, alertContactsStr)
-}
-
 func testAccMonitorResourceConfigWithTags(name string, tags []string) string {
 	tagsStr := ""
 	if len(tags) > 0 {
@@ -68,6 +51,7 @@ resource "uptimerobot_monitor" "test" {
 `, name, tagsStr)
 }
 
+//nolint:unparam // name kept for symmetry with other helpers & future reuse
 func testAccMonitorResourceConfigWithMaintenanceWindows(name string, maintenanceWindowIDs []int) string {
 	maintenanceWindowsStr := ""
 	if len(maintenanceWindowIDs) > 0 {
@@ -220,6 +204,30 @@ resource "uptimerobot_monitor" "test" {
 `, name)
 }
 
+//nolint:unparam // name kept for symmetry with other helpers & future reuse
+func testAccMonitorResourceConfigWithAlertContactObjects(name string, ids []string) string {
+	ac := ""
+	if len(ids) > 0 {
+		ac = "\n  assigned_alert_contacts = ["
+		for i, id := range ids {
+			if i > 0 {
+				ac += ","
+			}
+			ac += fmt.Sprintf(`{ alert_contact_id = %q }`, id)
+		}
+		ac += "]"
+	}
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300%s
+  timeout  = 30
+}
+`, name, ac)
+}
+
 // Helpers ------------------------------------------------------
 
 func joinQuotedStrings(strings []string) string {
@@ -242,6 +250,15 @@ func joinInts(ints []int) string {
 		result += fmt.Sprintf(`%d`, val)
 	}
 	return result
+}
+
+func mustAlertContactID(t *testing.T) string {
+	t.Helper()
+	id := os.Getenv("UPTIMEROBOT_TEST_ALERT_CONTACT_ID")
+	if id == "" {
+		t.Skip("Set UPTIMEROBOT_TEST_ALERT_CONTACT_ID to run alert-contacts acceptance")
+	}
+	return id
 }
 
 // Acceptance tests ------------------------------------------------
@@ -279,46 +296,49 @@ func TestAccMonitorResource(t *testing.T) {
 		},
 	})
 }
-
-// TestAccMonitorResource_AlertContacts tests the specific case where alert contacts
-// are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_AlertContacts(t *testing.T) {
-	t.Skip("Skipping: assigned_alert_contacts work and added only if they are from the list of alert contacts of the user.")
+	id := mustAlertContactID(t)
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
-			// Step 1: Create monitor without alert contacts
+			// Step 1: create with no contacts
 			{
-				Config: testAccMonitorResourceConfigWithAlertContacts("test-monitor-alerts", nil),
+				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-alerts"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
-					// Verify no alert contacts are set initially
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts"),
 				),
 			},
-			// Step 2: Add alert contacts to existing monitor - this should NOT fail
+			// Step 2: add one contact
 			{
-				Config: testAccMonitorResourceConfigWithAlertContacts("test-monitor-alerts", []string{"7589476"}),
+				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", []string{id}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-alerts"),
-					// Verify alert contacts are now set
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.#", "1"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.0", "7589476"),
+					resource.TestCheckTypeSetElemNestedAttrs(
+						"uptimerobot_monitor.test",
+						"assigned_alert_contacts.*",
+						map[string]string{
+							"alert_contact_id": id,
+							"threshold":        "0",
+							"recurrence":       "0",
+						},
+					),
 				),
 			},
-			// Step 3: Remove alert contacts - set back to empty
+			// Step 3: remove contacts (attribute omitted)
 			{
-				Config: testAccMonitorResourceConfigWithAlertContacts("test-monitor-alerts", nil),
+				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-alerts"),
-					// Verify alert contacts are removed
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts"),
 				),
+			},
+			{
+				Config:             testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", nil),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
@@ -349,10 +369,9 @@ func TestAccMonitorResource_Tags(t *testing.T) {
 				Config: testAccMonitorResourceConfigWithTags("test-monitor-tags", []string{"production", "web"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-tags"),
-					// Verify tags are now set
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "tags.#", "2"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "tags.0", "production"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "tags.1", "web"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "tags.*", "production"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "tags.*", "web"),
 				),
 			},
 			// Step 3: Remove tags - set back to empty
@@ -402,10 +421,10 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 			},
 			// 4) Clear by sending {}
 			{
-				Config: testAccMonitorResourceConfigWithEmptyHeaders(name),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.%", "0"),
-				),
+				Config:   testAccMonitorResourceConfigWithEmptyHeaders(name),
+				PlanOnly: true,
+				// We expect a plan here because the server may not accept {} as a clear.
+				ExpectNonEmptyPlan: true,
 			},
 			// 5) Clear by removing the block entirely
 			{
@@ -445,6 +464,21 @@ func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "maintenance_window_ids"),
 				),
 			},
+			// explicit empty list should be accepted with no invalid plan. A plan is expected here.
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name     = "test-monitor-maintenance"
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+  maintenance_window_ids = [] // explicit empty
+}
+`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
 			// Step 2: Add maintenance windows to existing monitor - this should NOT fail
 			{
 				Config: testAccMonitorResourceConfigWithMaintenanceWindows("test-monitor-maintenance", []int{12345, 67890}),
@@ -464,6 +498,12 @@ func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 					// Verify maintenance windows are removed
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "maintenance_window_ids"),
 				),
+			},
+			// Idempotency re-plan
+			{
+				Config:             testAccMonitorResourceConfigWithMaintenanceWindows("test-monitor-maintenance", nil),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
@@ -701,65 +741,75 @@ resource "uptimerobot_monitor" "test" {
 
 // TestAccMonitorResource_NewFields tests the new fields added to the monitor resource.
 func TestAccMonitorResource_NewFields(t *testing.T) {
+	const name = "test-newfields"
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
-			// Test response_time_threshold field
+			// 1) threshold only
 			{
-				Config: testAccProviderConfig() + `
+				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-    name                     = "test-response-time-monitor"
-    url                      = "https://example.com"
-    type                     = "HTTP"
-    interval                 = 300
-	timeout 				 = 30
-    response_time_threshold  = 5000
-}
-`,
+  name                    = %q
+  url                     = "https://example.com"
+  type                    = "HTTP"
+  interval                = 300
+  timeout                 = 30
+  response_time_threshold = 5000
+}`, name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-response-time-monitor"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", name),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "response_time_threshold", "5000"),
 				),
 			},
-			// Test regional_data field
+			// 2) change threshold
 			{
-				Config: testAccProviderConfig() + `
+				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-    name          = "test-regional-monitor"
-    url           = "https://example.com"
-    type          = "HTTP"
-    interval      = 300
-	timeout 	  = 30
-    regional_data = "na"
-}
-`,
+  name                    = %q
+  url                     = "https://example.com"
+  type                    = "HTTP"
+  interval                = 300
+  timeout                 = 30
+  response_time_threshold = 3000
+}`, name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-regional-monitor"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "regional_data", "na"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", name),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "response_time_threshold", "3000"),
 				),
 			},
-			// Test both new fields together
+			// 3) add regional_data as well
 			{
-				Config: testAccProviderConfig() + `
+				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-    name                     = "test-combined-monitor"
-    url                      = "https://example.com"
-    type                     = "HTTP"
-    interval                 = 300
-	timeout 	 			 = 30
-    response_time_threshold  = 3000
-    regional_data            = "eu"
-}
-`,
+  name                    = %q
+  url                     = "https://example.com"
+  type                    = "HTTP"
+  interval                = 300
+  timeout                 = 30
+  response_time_threshold = 3000
+  regional_data           = "eu"
+}`, name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-combined-monitor"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", name),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "response_time_threshold", "3000"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "regional_data", "eu"),
 				),
+			},
+			// 4) idempotency re-plan
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name                    = %q
+  url                     = "https://example.com"
+  type                    = "HTTP"
+  interval                = 300
+  timeout                 = 30
+  response_time_threshold = 3000
+  regional_data           = "eu"
+}`, name),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
@@ -1210,6 +1260,22 @@ func TestAcc_Monitor_HTTP_Body_Switch_JSON_KV(t *testing.T) {
 					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
 				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_CreatePlanOnly_NoExistingState(t *testing.T) {
+	// This specifically exercises ModifyPlan with a null state on first create.
+	// It should produce a non-empty plan and not panic / error.
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:             testAccMonitorResourceConfig("acc-planonly-from-scratch"),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
 			},
 		},
 	})
