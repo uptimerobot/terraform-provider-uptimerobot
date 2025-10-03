@@ -631,6 +631,7 @@ func priorSchemaV2() *schema.Schema {
 }
 
 // v2 -> v3
+
 func upgradeMonitorFromV2(ctx context.Context, prior monitorV2Model) (monitorResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 

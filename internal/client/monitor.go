@@ -135,7 +135,7 @@ type Tag struct {
 	Monitors []Monitor `json:"monitors,omitempty"`
 }
 
-// AlertContactRequest used in requests and should support omitted values
+// AlertContactRequest used in requests and should support omitted values.
 type AlertContactRequest struct {
 	AlertContactID string `json:"alertContactId"`
 	Threshold      *int64 `json:"threshold,omitempty"`
