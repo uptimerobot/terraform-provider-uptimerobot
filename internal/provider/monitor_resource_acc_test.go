@@ -462,7 +462,7 @@ func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "maintenance_window_ids"),
 				),
 			},
-			// explicit empty list should normalize to null without diff
+			// explicit empty list should be accepted with no invalid plan. A plan is expected here.
 			{
 				Config: testAccProviderConfig() + `
 resource "uptimerobot_monitor" "test" {

@@ -1547,12 +1547,8 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		}
 	}
 
-	// Preserve null vs empty list consistency between state and plan for fields
-	// that might be returned differently by the API
 	modifyPlanForSetField(ctx, &plan.Tags, &state.Tags, resp, "tags")
 	modifyPlanForSetField(ctx, &plan.AssignedAlertContacts, &state.AssignedAlertContacts, resp, "assigned_alert_contacts")
-	modifyPlanForListField(ctx, &plan.MaintenanceWindowIDs, &state.MaintenanceWindowIDs, resp, "maintenance_window_ids")
-	modifyPlanForListField(ctx, &plan.SuccessHTTPResponseCodes, &state.SuccessHTTPResponseCodes, resp, "success_http_response_codes")
 
 	modifyPlanForMapField(ctx, &plan.CustomHTTPHeaders, &state.CustomHTTPHeaders, resp, "custom_http_headers")
 
@@ -1632,30 +1628,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-// modifyPlanForListField handles the special case for list fields that might be null vs empty lists.
-func modifyPlanForListField(ctx context.Context, planField, stateField *types.List, resp *resource.ModifyPlanResponse, fieldName string) {
-	// Only modify the plan if we're dealing with empty lists vs null values
-	// DO NOT modify the plan if the user is intentionally adding/removing items
-
-	// Case 1: State is null, plan has an empty list -> convert plan to null for consistency
-	if stateField.IsNull() &&
-		!planField.IsNull() &&
-		!planField.IsUnknown() &&
-		len(planField.Elements()) == 0 {
-		// Check if plan has an empty list by getting the elements without type conversion
-		// Plan has empty list, state is null -> make plan null for consistency
-		resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.ListNull(planField.ElementType(ctx)))
-		// If plan has items, leave it alone - user is adding items to a previously null field
-	}
-
-	// Case 2: State has non-null value, plan is null -> DON'T override!
-	// The user explicitly wants to remove the items (set to null)
-	// Let the plan proceed as-is
-
-	// Case 3: Both state and plan have non-null values -> don't modify
-	// This allows users to add/remove items normally
 }
 
 func modifyPlanForSetField(ctx context.Context, planField, stateField *types.Set, resp *resource.ModifyPlanResponse, fieldName string) {
