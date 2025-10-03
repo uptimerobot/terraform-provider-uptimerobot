@@ -808,8 +808,12 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 
 	acSet, d := alertContactsFromAPI(ctx, newMonitor.AssignedAlertContacts)
 	resp.Diagnostics.Append(d...)
-	// empty set when none
-	plan.AssignedAlertContacts = acSet
+	if plan.AssignedAlertContacts.IsNull() || plan.AssignedAlertContacts.IsUnknown() {
+		// user omitted, means keep null in state to match plan
+		plan.AssignedAlertContacts = types.SetNull(alertContactObjectType())
+	} else {
+		plan.AssignedAlertContacts = acSet
+	}
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -1020,8 +1024,12 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	acSet, d := alertContactsFromAPI(ctx, monitor.AssignedAlertContacts)
 	resp.Diagnostics.Append(d...)
-	// empty set when none
-	state.AssignedAlertContacts = acSet
+	if state.AssignedAlertContacts.IsNull() {
+		// user do not have it in config - keep it null and avoid diffs
+		state.AssignedAlertContacts = types.SetNull(alertContactObjectType())
+	} else {
+		state.AssignedAlertContacts = acSet
+	}
 
 	// Set success codes during import or if already set in state
 	if isImport || !state.SuccessHTTPResponseCodes.IsNull() {
@@ -1398,8 +1406,11 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	acSet, d := alertContactsFromAPI(ctx, updatedMonitor.AssignedAlertContacts)
 	resp.Diagnostics.Append(d...)
-	// empty set when none
-	updatedState.AssignedAlertContacts = acSet
+	if plan.AssignedAlertContacts.IsNull() || plan.AssignedAlertContacts.IsUnknown() {
+		updatedState.AssignedAlertContacts = types.SetNull(alertContactObjectType())
+	} else {
+		updatedState.AssignedAlertContacts = acSet
+	}
 
 	switch strings.ToUpper(plan.Type.ValueString()) {
 	case "HEARTBEAT":
@@ -1590,23 +1601,14 @@ func modifyPlanForListField(ctx context.Context, planField, stateField *types.Li
 	// DO NOT modify the plan if the user is intentionally adding/removing items
 
 	// Case 1: State is null, plan has an empty list -> convert plan to null for consistency
-	if stateField.IsNull() && !planField.IsNull() && !planField.IsUnknown() {
+	if stateField.IsNull() &&
+		!planField.IsNull() &&
+		!planField.IsUnknown() &&
+		len(planField.Elements()) == 0 {
 		// Check if plan has an empty list by getting the elements without type conversion
-		planElements := planField.Elements()
-		if len(planElements) == 0 {
-			// Plan has empty list, state is null -> make plan null for consistency
-			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.ListNull(planField.ElementType(ctx)))
-		}
+		// Plan has empty list, state is null -> make plan null for consistency
+		resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.ListNull(planField.ElementType(ctx)))
 		// If plan has items, leave it alone - user is adding items to a previously null field
-	}
-
-	if !stateField.IsNull() && len(stateField.Elements()) == 0 && planField.IsNull() {
-		resp.Plan.SetAttribute(
-			ctx,
-			path.Root(fieldName),
-			types.ListValueMust(stateField.ElementType(ctx), []attr.Value{}),
-		)
-		return
 	}
 
 	// Case 2: State has non-null value, plan is null -> DON'T override!
@@ -1618,19 +1620,11 @@ func modifyPlanForListField(ctx context.Context, planField, stateField *types.Li
 }
 
 func modifyPlanForSetField(ctx context.Context, planField, stateField *types.Set, resp *resource.ModifyPlanResponse, fieldName string) {
-	if stateField.IsNull() && !planField.IsNull() && !planField.IsUnknown() {
-		if len(planField.Elements()) == 0 {
-			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.SetNull(planField.ElementType(ctx)))
-		}
-	}
-
-	if !stateField.IsNull() && len(stateField.Elements()) == 0 && planField.IsNull() {
-		resp.Plan.SetAttribute(
-			ctx,
-			path.Root(fieldName),
-			types.SetValueMust(stateField.ElementType(ctx), []attr.Value{}),
-		)
-		return
+	if stateField.IsNull() &&
+		!planField.IsNull() &&
+		!planField.IsUnknown() &&
+		len(planField.Elements()) == 0 {
+		resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.SetNull(planField.ElementType(ctx)))
 	}
 }
 
@@ -1641,10 +1635,11 @@ func modifyPlanForMapField(
 	resp *resource.ModifyPlanResponse,
 	fieldName string,
 ) {
-	if stateField.IsNull() && !planField.IsNull() && !planField.IsUnknown() {
-		if len(planField.Elements()) == 0 {
-			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.MapNull(planField.ElementType(ctx)))
-		}
+	if stateField.IsNull() &&
+		!planField.IsNull() &&
+		!planField.IsUnknown() &&
+		len(planField.Elements()) == 0 {
+		resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.MapNull(planField.ElementType(ctx)))
 	}
 }
 
