@@ -259,7 +259,7 @@ func (s *StringOrNumberID) UnmarshalJSON(b []byte) error {
 		*s = StringOrNumberID(v)
 		return nil
 	}
-	// elase treat it as a number and stringify
+	// else treat it as a number and stringify
 	var n json.Number
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber()
