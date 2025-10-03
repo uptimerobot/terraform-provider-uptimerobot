@@ -51,6 +51,7 @@ resource "uptimerobot_monitor" "test" {
 `, name, tagsStr)
 }
 
+//nolint:unparam // name kept for symmetry with other helpers & future reuse
 func testAccMonitorResourceConfigWithMaintenanceWindows(name string, maintenanceWindowIDs []int) string {
 	maintenanceWindowsStr := ""
 	if len(maintenanceWindowIDs) > 0 {
@@ -203,6 +204,7 @@ resource "uptimerobot_monitor" "test" {
 `, name)
 }
 
+//nolint:unparam // name kept for symmetry with other helpers & future reuse
 func testAccMonitorResourceConfigWithAlertContactObjects(name string, ids []string) string {
 	ac := ""
 	if len(ids) > 0 {
