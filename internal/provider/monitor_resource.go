@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -17,8 +18,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -81,9 +84,25 @@ type monitorResourceModel struct {
 	Status                   types.String         `tfsdk:"status"`
 	URL                      types.String         `tfsdk:"url"`
 	Tags                     types.Set            `tfsdk:"tags"`
-	AssignedAlertContacts    types.List           `tfsdk:"assigned_alert_contacts"`
+	AssignedAlertContacts    types.Set            `tfsdk:"assigned_alert_contacts"`
 	ResponseTimeThreshold    types.Int64          `tfsdk:"response_time_threshold"`
 	RegionalData             types.String         `tfsdk:"regional_data"`
+}
+
+type alertContactTF struct {
+	AlertContactID types.String `tfsdk:"alert_contact_id"` // maybe better string because id may change in future
+	Threshold      types.Int64  `tfsdk:"threshold"`
+	Recurrence     types.Int64  `tfsdk:"recurrence"`
+}
+
+func alertContactObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"alert_contact_id": types.StringType,
+			"threshold":        types.Int64Type,
+			"recurrence":       types.Int64Type,
+		},
+	}
 }
 
 // Configure adds the provider configured client to the resource.
@@ -112,7 +131,7 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Version:     2,
+		Version:     3,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
@@ -210,6 +229,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.",
 				Optional:    true,
 				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"port": schema.Int64Attribute{
 				Description: "The port to monitor",
@@ -278,10 +300,36 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:    true,
 				ElementType: types.StringType,
 			},
-			"assigned_alert_contacts": schema.ListAttribute{
-				Description: "Alert contact IDs to assign to the monitor",
+			"assigned_alert_contacts": schema.SetNestedAttribute{
+				Description: "Alert contacts to assign. threshold/recurrence are minutes. Free plan uses 0.",
 				Optional:    true,
-				ElementType: types.StringType,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"alert_contact_id": schema.StringAttribute{
+							Required: true,
+							// IDs are numeric today, but API accepts string-typed. This numeric guard will catch typos
+							Validators: []validator.String{
+								stringvalidator.RegexMatches(regexp.MustCompile(`^\d+$`), "must be a numeric ID"),
+							},
+						},
+						"threshold": schema.Int64Attribute{
+							Optional: true,
+							Computed: true,
+							Default:  int64default.StaticInt64(0),
+							Validators: []validator.Int64{
+								int64validator.AtLeast(0),
+							},
+						},
+						"recurrence": schema.Int64Attribute{
+							Optional: true,
+							Computed: true,
+							Default:  int64default.StaticInt64(0),
+							Validators: []validator.Int64{
+								int64validator.AtLeast(0),
+							},
+						},
+					},
+				},
 			},
 			"response_time_threshold": schema.Int64Attribute{
 				Description: "Response time threshold in milliseconds. Response time over this threshold will trigger an incident",
@@ -398,6 +446,38 @@ func (r *monitorResource) ValidateConfig(
 			)
 		}
 	}
+
+	// alert contacts validation
+
+	if !data.AssignedAlertContacts.IsNull() && !data.AssignedAlertContacts.IsUnknown() {
+		var acs []alertContactTF
+		resp.Diagnostics.Append(data.AssignedAlertContacts.ElementsAs(ctx, &acs, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		seen := map[string]struct{}{}
+		for _, ac := range acs {
+			if ac.AlertContactID.IsNull() || ac.AlertContactID.IsUnknown() {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("assigned_alert_contacts"),
+					"Missing alert_contact_id",
+					"Each element must set alert_contact_id.",
+				)
+				continue
+			}
+			id := ac.AlertContactID.ValueString()
+			if _, dup := seen[id]; dup {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("assigned_alert_contacts"),
+					"Duplicate alert_contact_id",
+					fmt.Sprintf("Alert contact %s is specified more than once. Assign each contact at most once.", id),
+				)
+			}
+			seen[id] = struct{}{}
+		}
+	}
+
 }
 
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -627,32 +707,30 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
-	// Handle assigned alert contacts
 	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
-		var alertContactIds []string
-		diags = plan.AssignedAlertContacts.ElementsAs(ctx, &alertContactIds, false)
-		resp.Diagnostics.Append(diags...)
+		var acs []alertContactTF
+		resp.Diagnostics.Append(plan.AssignedAlertContacts.ElementsAs(ctx, &acs, false)...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		// Convert string IDs to alert contact objects
-		alertContacts := make([]interface{}, 0, len(alertContactIds))
-		for _, contactId := range alertContactIds {
-			idInt, err := strconv.ParseInt(contactId, 10, 64)
-			if err != nil {
-				resp.Diagnostics.AddError(
-					"Invalid Alert Contact ID",
-					fmt.Sprintf("Could not parse alert contact ID '%s' to integer: %v", contactId, err),
-				)
-				return
+
+		createReq.AssignedAlertContacts = make([]client.AlertContactRequest, 0, len(acs))
+		for _, ac := range acs {
+			item := client.AlertContactRequest{
+				AlertContactID: ac.AlertContactID.ValueString(),
 			}
-			alertContacts = append(alertContacts, map[string]interface{}{
-				"alertContactId": idInt,
-				"threshold":      0,
-				"recurrence":     0,
-			})
+			if !ac.Threshold.IsNull() && !ac.Threshold.IsUnknown() {
+				v := ac.Threshold.ValueInt64()
+				item.Threshold = &v
+			}
+			if !ac.Recurrence.IsNull() && !ac.Recurrence.IsUnknown() {
+				v := ac.Recurrence.ValueInt64()
+				item.Recurrence = &v
+			}
+			createReq.AssignedAlertContacts = append(createReq.AssignedAlertContacts, item)
 		}
-		createReq.AssignedAlertContacts = alertContacts
+	} else {
+		createReq.AssignedAlertContacts = []client.AlertContactRequest{}
 	}
 
 	// Set boolean fields
@@ -935,13 +1013,25 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 
 	if len(monitor.AssignedAlertContacts) > 0 {
-		alertContacts := make([]attr.Value, 0)
-		for _, contact := range monitor.AssignedAlertContacts {
-			alertContacts = append(alertContacts, types.StringValue(strconv.FormatInt(contact.AlertContactID, 10)))
+		elts := make([]alertContactTF, 0, len(monitor.AssignedAlertContacts))
+		for _, ac := range monitor.AssignedAlertContacts {
+			elts = append(elts, alertContactTF{
+				AlertContactID: types.StringValue(ac.AlertContactID),
+				Threshold:      types.Int64Value(ac.Threshold),
+				Recurrence:     types.Int64Value(ac.Recurrence),
+			})
 		}
-		state.AssignedAlertContacts = types.ListValueMust(types.StringType, alertContacts)
+		v, d := types.SetValueFrom(ctx, alertContactObjectType(), elts)
+		resp.Diagnostics.Append(d...)
+		state.AssignedAlertContacts = v
 	} else {
-		state.AssignedAlertContacts = types.ListNull(types.StringType)
+		if isImport || state.AssignedAlertContacts.IsNull() {
+			state.AssignedAlertContacts = types.SetNull(alertContactObjectType())
+		} else {
+			empty, d := types.SetValue(alertContactObjectType(), []attr.Value{})
+			resp.Diagnostics.Append(d...)
+			state.AssignedAlertContacts = empty
+		}
 	}
 
 	// Set success codes during import or if already set in state
@@ -1174,35 +1264,30 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updateReq.Tags = []string{}
 	}
 
-	// Always set alert contacts - empty array if null, populated array if not null
-	if !plan.AssignedAlertContacts.IsNull() {
-		var alertContactIds []string
-		diags = plan.AssignedAlertContacts.ElementsAs(ctx, &alertContactIds, false)
-		resp.Diagnostics.Append(diags...)
+	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
+		var acs []alertContactTF
+		resp.Diagnostics.Append(plan.AssignedAlertContacts.ElementsAs(ctx, &acs, false)...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		// Convert string IDs to alert contact objects
-		alertContacts := make([]interface{}, 0, len(alertContactIds))
-		for _, contactId := range alertContactIds {
-			idInt, err := strconv.ParseInt(contactId, 10, 64)
-			if err != nil {
-				resp.Diagnostics.AddError(
-					"Invalid Alert Contact ID",
-					fmt.Sprintf("Could not parse alert contact ID '%s' to integer: %v", contactId, err),
-				)
-				return
+
+		updateReq.AssignedAlertContacts = make([]client.AlertContactRequest, 0, len(acs))
+		for _, ac := range acs {
+			item := client.AlertContactRequest{
+				AlertContactID: ac.AlertContactID.ValueString(),
 			}
-			alertContacts = append(alertContacts, map[string]interface{}{
-				"alertContactId": idInt,
-				"threshold":      0,
-				"recurrence":     0,
-			})
+			if !ac.Threshold.IsNull() && !ac.Threshold.IsUnknown() {
+				v := ac.Threshold.ValueInt64()
+				item.Threshold = &v
+			}
+			if !ac.Recurrence.IsNull() && !ac.Recurrence.IsUnknown() {
+				v := ac.Recurrence.ValueInt64()
+				item.Recurrence = &v
+			}
+			updateReq.AssignedAlertContacts = append(updateReq.AssignedAlertContacts, item)
 		}
-		updateReq.AssignedAlertContacts = alertContacts
 	} else {
-		// Explicitly set empty array to clear alert contacts
-		updateReq.AssignedAlertContacts = []interface{}{}
+		updateReq.AssignedAlertContacts = []client.AlertContactRequest{} // clear on server
 	}
 
 	updateReq.SSLExpirationReminder = plan.SSLExpirationReminder.ValueBool()
@@ -1322,16 +1407,20 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
-	// Update assigned alert contacts
 	if len(updatedMonitor.AssignedAlertContacts) > 0 {
-		alertContactValues := make([]attr.Value, 0, len(updatedMonitor.AssignedAlertContacts))
-		for _, contact := range updatedMonitor.AssignedAlertContacts {
-			alertContactValues = append(alertContactValues, types.StringValue(strconv.FormatInt(contact.AlertContactID, 10)))
+		elts := make([]alertContactTF, 0, len(updatedMonitor.AssignedAlertContacts))
+		for _, ac := range updatedMonitor.AssignedAlertContacts {
+			elts = append(elts, alertContactTF{
+				AlertContactID: types.StringValue(ac.AlertContactID),
+				Threshold:      types.Int64Value(ac.Threshold),
+				Recurrence:     types.Int64Value(ac.Recurrence),
+			})
 		}
-		updatedState.AssignedAlertContacts = types.ListValueMust(types.StringType, alertContactValues)
+		v, d := types.SetValueFrom(ctx, alertContactObjectType(), elts)
+		resp.Diagnostics.Append(d...)
+		updatedState.AssignedAlertContacts = v
 	} else {
-		// If no alert contacts returned from API, set to null (no attribute)
-		updatedState.AssignedAlertContacts = types.ListNull(types.StringType)
+		updatedState.AssignedAlertContacts = types.SetNull(alertContactObjectType())
 	}
 
 	switch strings.ToUpper(plan.Type.ValueString()) {
@@ -1413,8 +1502,7 @@ func (r *monitorResource) Delete(ctx context.Context, req resource.DeleteRequest
 }
 
 func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// If we don't have a plan or state, there's nothing to modify
-	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+	if req.Plan.Raw.IsNull() {
 		return
 	}
 
@@ -1434,7 +1522,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	// Preserve null vs empty list consistency between state and plan for fields
 	// that might be returned differently by the API
 	modifyPlanForSetField(ctx, &plan.Tags, &state.Tags, resp, "tags")
-	modifyPlanForListField(ctx, &plan.AssignedAlertContacts, &state.AssignedAlertContacts, resp, "assigned_alert_contacts")
+	modifyPlanForSetField(ctx, &plan.AssignedAlertContacts, &state.AssignedAlertContacts, resp, "assigned_alert_contacts")
 	modifyPlanForListField(ctx, &plan.MaintenanceWindowIDs, &state.MaintenanceWindowIDs, resp, "maintenance_window_ids")
 	modifyPlanForListField(ctx, &plan.SuccessHTTPResponseCodes, &state.SuccessHTTPResponseCodes, resp, "success_http_response_codes")
 
@@ -1493,16 +1581,15 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	hasKV := !plan.PostValueKV.IsNull() && !plan.PostValueKV.IsUnknown()
 
 	switch {
-	case hasJSON && hasKV:
-		// handled by validation in plan
 	case hasJSON:
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringValue(PostTypeRawJSON))
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
+
 	case hasKV:
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringValue(PostTypeKeyValue))
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
+
 	default:
-		// none provided -> let server echo values by keeping Unknowns
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringNull())
@@ -1684,6 +1771,24 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 				}
 
 				upgraded, diags := upgradeMonitorFromV1(ctx, prior)
+				resp.Diagnostics.Append(diags...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
+			},
+		},
+		2: {
+			PriorSchema: priorSchemaV2(),
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				var prior monitorV2Model
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				upgraded, diags := upgradeMonitorFromV2(ctx, prior)
 				resp.Diagnostics.Append(diags...)
 				if resp.Diagnostics.HasError() {
 					return
