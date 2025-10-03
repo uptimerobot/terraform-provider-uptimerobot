@@ -806,6 +806,24 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
+	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
+		want, d := planAlertIDs(ctx, plan.AssignedAlertContacts)
+		resp.Diagnostics.Append(d...)
+		got := alertIDsFromAPI(newMonitor.AssignedAlertContacts)
+		if m := missingAlertIDs(want, got); len(m) > 0 {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("assigned_alert_contacts"),
+				"Some alert contacts were not applied",
+				fmt.Sprintf(
+					"Requested IDs: %v\nApplied IDs:   %v\nMissing IDs:   %v\n"+
+						"Hint: a missing contact is often not in your team or you lack access.",
+					want, got, m,
+				),
+			)
+			return // abort to avoid 'inconsistent result after apply' due to silently omitted ids from the API
+		}
+	}
+
 	acSet, d := alertContactsFromAPI(ctx, newMonitor.AssignedAlertContacts)
 	resp.Diagnostics.Append(d...)
 	if plan.AssignedAlertContacts.IsNull() || plan.AssignedAlertContacts.IsUnknown() {
@@ -1404,6 +1422,24 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
+	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
+		want, d := planAlertIDs(ctx, plan.AssignedAlertContacts)
+		resp.Diagnostics.Append(d...)
+		got := alertIDsFromAPI(updatedMonitor.AssignedAlertContacts)
+		if m := missingAlertIDs(want, got); len(m) > 0 {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("assigned_alert_contacts"),
+				"Some alert contacts were not applied",
+				fmt.Sprintf(
+					"Requested IDs: %v\nApplied IDs:   %v\nMissing IDs:   %v\n"+
+						"Hint: a missing contact is often not in your team or you lack access.",
+					want, got, m,
+				),
+			)
+			return // abort to avoid 'inconsistent result after apply' due to silently omitted ids from the API
+		}
+	}
+
 	acSet, d := alertContactsFromAPI(ctx, updatedMonitor.AssignedAlertContacts)
 	resp.Diagnostics.Append(d...)
 	if plan.AssignedAlertContacts.IsNull() || plan.AssignedAlertContacts.IsUnknown() {
@@ -1791,7 +1827,7 @@ func alertContactsFromAPI(ctx context.Context, api []client.AlertContact) (types
 	tfAC := make([]alertContactTF, 0, len(api))
 	for _, a := range api {
 		tfAC = append(tfAC, alertContactTF{
-			AlertContactID: types.StringValue(string(a.AlertContactID)),
+			AlertContactID: types.StringValue(fmt.Sprint(a.AlertContactID)),
 			Threshold:      types.Int64Value(a.Threshold),
 			Recurrence:     types.Int64Value(a.Recurrence),
 		})
@@ -1800,4 +1836,51 @@ func alertContactsFromAPI(ctx context.Context, api []client.AlertContact) (types
 	v, d := types.SetValueFrom(ctx, alertContactObjectType(), tfAC)
 	diags.Append(d...)
 	return v, diags
+}
+
+func planAlertIDs(ctx context.Context, set types.Set) ([]string, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if set.IsNull() || set.IsUnknown() {
+		return nil, diags
+	}
+	var acs []alertContactTF
+	diags.Append(set.ElementsAs(ctx, &acs, false)...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	m := map[string]struct{}{}
+	for _, ac := range acs {
+		m[ac.AlertContactID.ValueString()] = struct{}{}
+	}
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out, diags
+}
+
+func alertIDsFromAPI(api []client.AlertContact) []string {
+	m := map[string]struct{}{}
+	for _, a := range api {
+		m[fmt.Sprint(a.AlertContactID)] = struct{}{}
+	}
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func missingAlertIDs(want, got []string) []string {
+	gotSet := map[string]struct{}{}
+	for _, g := range got {
+		gotSet[g] = struct{}{}
+	}
+	var miss []string
+	for _, w := range want {
+		if _, ok := gotSet[w]; !ok {
+			miss = append(miss, w)
+		}
+	}
+	return miss
 }
