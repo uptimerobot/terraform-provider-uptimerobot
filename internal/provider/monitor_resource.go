@@ -1251,14 +1251,18 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
-	if !plan.MaintenanceWindowIDs.IsNull() {
-		var windowIDs []int64
-		diags = plan.MaintenanceWindowIDs.ElementsAs(ctx, &windowIDs, false)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
+	if !plan.MaintenanceWindowIDs.IsUnknown() {
+		if plan.MaintenanceWindowIDs.IsNull() {
+			updateReq.MaintenanceWindowIDs = []int64{}
+		} else {
+			var windowIDs []int64
+			diags = plan.MaintenanceWindowIDs.ElementsAs(ctx, &windowIDs, false)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			updateReq.MaintenanceWindowIDs = windowIDs
 		}
-		updateReq.MaintenanceWindowIDs = windowIDs
 	}
 
 	// Always set tags - empty array if null, populated array if not null
@@ -1275,27 +1279,30 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updateReq.Tags = []string{}
 	}
 
-	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
-		var acs []alertContactTF
-		resp.Diagnostics.Append(plan.AssignedAlertContacts.ElementsAs(ctx, &acs, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
+	if !plan.AssignedAlertContacts.IsUnknown() {
+		if plan.AssignedAlertContacts.IsNull() {
+			// user removed the block - clear on server
+			updateReq.AssignedAlertContacts = []client.AlertContactRequest{}
+		} else {
+			var acs []alertContactTF
+			resp.Diagnostics.Append(plan.AssignedAlertContacts.ElementsAs(ctx, &acs, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
 
-		updateReq.AssignedAlertContacts = make([]client.AlertContactRequest, 0, len(acs))
-		for _, ac := range acs {
-			item := client.AlertContactRequest{
-				AlertContactID: ac.AlertContactID.ValueString(),
+			updateReq.AssignedAlertContacts = make([]client.AlertContactRequest, 0, len(acs))
+			for _, ac := range acs {
+				item := client.AlertContactRequest{AlertContactID: ac.AlertContactID.ValueString()}
+				if !ac.Threshold.IsNull() && !ac.Threshold.IsUnknown() {
+					v := ac.Threshold.ValueInt64()
+					item.Threshold = &v
+				}
+				if !ac.Recurrence.IsNull() && !ac.Recurrence.IsUnknown() {
+					v := ac.Recurrence.ValueInt64()
+					item.Recurrence = &v
+				}
+				updateReq.AssignedAlertContacts = append(updateReq.AssignedAlertContacts, item)
 			}
-			if !ac.Threshold.IsNull() && !ac.Threshold.IsUnknown() {
-				v := ac.Threshold.ValueInt64()
-				item.Threshold = &v
-			}
-			if !ac.Recurrence.IsNull() && !ac.Recurrence.IsUnknown() {
-				v := ac.Recurrence.ValueInt64()
-				item.Recurrence = &v
-			}
-			updateReq.AssignedAlertContacts = append(updateReq.AssignedAlertContacts, item)
 		}
 	}
 
