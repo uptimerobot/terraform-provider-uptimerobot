@@ -1016,7 +1016,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		elts := make([]alertContactTF, 0, len(monitor.AssignedAlertContacts))
 		for _, ac := range monitor.AssignedAlertContacts {
 			elts = append(elts, alertContactTF{
-				AlertContactID: types.StringValue(ac.AlertContactID),
+				AlertContactID: types.StringValue(string(ac.AlertContactID)),
 				Threshold:      types.Int64Value(ac.Threshold),
 				Recurrence:     types.Int64Value(ac.Recurrence),
 			})
@@ -1411,7 +1411,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		elts := make([]alertContactTF, 0, len(updatedMonitor.AssignedAlertContacts))
 		for _, ac := range updatedMonitor.AssignedAlertContacts {
 			elts = append(elts, alertContactTF{
-				AlertContactID: types.StringValue(ac.AlertContactID),
+				AlertContactID: types.StringValue(string(ac.AlertContactID)),
 				Threshold:      types.Int64Value(ac.Threshold),
 				Recurrence:     types.Int64Value(ac.Recurrence),
 			})

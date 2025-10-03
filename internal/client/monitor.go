@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -142,9 +143,9 @@ type AlertContactRequest struct {
 }
 
 type AlertContact struct {
-	AlertContactID string `json:"alertContactId"`
-	Threshold      int64  `json:"threshold"`
-	Recurrence     int64  `json:"recurrence"`
+	AlertContactID StringOrNumberID `json:"alertContactId"`
+	Threshold      int64            `json:"threshold"`
+	Recurrence     int64            `json:"recurrence"`
 }
 
 type Incident struct {
@@ -239,4 +240,32 @@ func (c *Client) FindExistingMonitorByNameAndURL(name, url string) (*Monitor, er
 	}
 
 	return nil, nil
+}
+
+type StringOrNumberID string
+
+func (s *StringOrNumberID) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || bytes.Equal(b, []byte("null")) {
+		*s = ""
+		return nil
+	}
+	// if it is a JSON string - "1234"
+	if b[0] == '"' {
+		var v string
+		if err := json.Unmarshal(b, &v); err != nil {
+			return err
+		}
+		*s = StringOrNumberID(v)
+		return nil
+	}
+	// elase treat it as a number and stringify
+	var n json.Number
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	if err := dec.Decode(&n); err != nil {
+		return err
+	}
+	*s = StringOrNumberID(n.String())
+	return nil
 }
