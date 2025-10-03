@@ -1270,6 +1270,9 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			return
 		}
 		updateReq.Tags = tags
+	} else {
+		// clear on server
+		updateReq.Tags = []string{}
 	}
 
 	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
