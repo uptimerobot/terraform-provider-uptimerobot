@@ -730,8 +730,6 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 			}
 			createReq.AssignedAlertContacts = append(createReq.AssignedAlertContacts, item)
 		}
-	} else {
-		createReq.AssignedAlertContacts = []client.AlertContactRequest{}
 	}
 
 	// Set boolean fields
@@ -1261,8 +1259,6 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			return
 		}
 		updateReq.MaintenanceWindowIDs = windowIDs
-	} else {
-		updateReq.MaintenanceWindowIDs = []int64{}
 	}
 
 	// Always set tags - empty array if null, populated array if not null
@@ -1274,9 +1270,6 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			return
 		}
 		updateReq.Tags = tags
-	} else {
-		// Explicitly set empty array to clear tags
-		updateReq.Tags = []string{}
 	}
 
 	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
@@ -1301,8 +1294,6 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			}
 			updateReq.AssignedAlertContacts = append(updateReq.AssignedAlertContacts, item)
 		}
-	} else {
-		updateReq.AssignedAlertContacts = []client.AlertContactRequest{} // clear on server
 	}
 
 	updateReq.SSLExpirationReminder = plan.SSLExpirationReminder.ValueBool()
@@ -1532,16 +1523,18 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	}
 
 	// Retrieve values from plan and state
-	var plan, state monitorResourceModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
+	var plan monitorResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	diags = req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+
+	var state monitorResourceModel
+	if !req.State.Raw.IsNull() {
+		resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
 	// Preserve null vs empty list consistency between state and plan for fields
