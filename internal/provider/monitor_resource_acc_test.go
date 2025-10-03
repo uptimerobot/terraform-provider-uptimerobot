@@ -33,24 +33,6 @@ resource "uptimerobot_monitor" "test" {
 `, name)
 }
 
-func testAccMonitorResourceConfigWithAlertContacts(name string, alertContacts []string) string {
-	alertContactsStr := ""
-	if len(alertContacts) > 0 {
-		alertContactsStr = fmt.Sprintf(`
-    assigned_alert_contacts = [%s]`, joinQuotedStrings(alertContacts))
-	}
-
-	return testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-    name         = %q
-    url          = "https://example.com"
-    type         = "HTTP"
-    interval     = 300%s
-	timeout  	 = 30
-}
-`, name, alertContactsStr)
-}
-
 func testAccMonitorResourceConfigWithTags(name string, tags []string) string {
 	tagsStr := ""
 	if len(tags) > 0 {
@@ -351,6 +333,11 @@ func TestAccMonitorResource_AlertContacts(t *testing.T) {
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts"),
 				),
 			},
+			{
+				Config:             testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", nil),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
 		},
 	})
 }
@@ -380,10 +367,9 @@ func TestAccMonitorResource_Tags(t *testing.T) {
 				Config: testAccMonitorResourceConfigWithTags("test-monitor-tags", []string{"production", "web"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-tags"),
-					// Verify tags are now set
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "tags.#", "2"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "tags.0", "production"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "tags.1", "web"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "tags.*", "production"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "tags.*", "web"),
 				),
 			},
 			// Step 3: Remove tags - set back to empty
@@ -495,6 +481,11 @@ func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 					// Verify maintenance windows are removed
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "maintenance_window_ids"),
 				),
+			},
+			{
+				Config:             testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-maintenance", nil),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
