@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -805,6 +806,11 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
+	acSet, d := alertContactsFromAPI(ctx, newMonitor.AssignedAlertContacts)
+	resp.Diagnostics.Append(d...)
+	// empty set when none
+	plan.AssignedAlertContacts = acSet
+
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -1012,27 +1018,10 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		}
 	}
 
-	if len(monitor.AssignedAlertContacts) > 0 {
-		elts := make([]alertContactTF, 0, len(monitor.AssignedAlertContacts))
-		for _, ac := range monitor.AssignedAlertContacts {
-			elts = append(elts, alertContactTF{
-				AlertContactID: types.StringValue(string(ac.AlertContactID)),
-				Threshold:      types.Int64Value(ac.Threshold),
-				Recurrence:     types.Int64Value(ac.Recurrence),
-			})
-		}
-		v, d := types.SetValueFrom(ctx, alertContactObjectType(), elts)
-		resp.Diagnostics.Append(d...)
-		state.AssignedAlertContacts = v
-	} else {
-		if isImport || state.AssignedAlertContacts.IsNull() {
-			state.AssignedAlertContacts = types.SetNull(alertContactObjectType())
-		} else {
-			empty, d := types.SetValue(alertContactObjectType(), []attr.Value{})
-			resp.Diagnostics.Append(d...)
-			state.AssignedAlertContacts = empty
-		}
-	}
+	acSet, d := alertContactsFromAPI(ctx, monitor.AssignedAlertContacts)
+	resp.Diagnostics.Append(d...)
+	// empty set when none
+	state.AssignedAlertContacts = acSet
 
 	// Set success codes during import or if already set in state
 	if isImport || !state.SuccessHTTPResponseCodes.IsNull() {
@@ -1407,21 +1396,10 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
-	if len(updatedMonitor.AssignedAlertContacts) > 0 {
-		elts := make([]alertContactTF, 0, len(updatedMonitor.AssignedAlertContacts))
-		for _, ac := range updatedMonitor.AssignedAlertContacts {
-			elts = append(elts, alertContactTF{
-				AlertContactID: types.StringValue(string(ac.AlertContactID)),
-				Threshold:      types.Int64Value(ac.Threshold),
-				Recurrence:     types.Int64Value(ac.Recurrence),
-			})
-		}
-		v, d := types.SetValueFrom(ctx, alertContactObjectType(), elts)
-		resp.Diagnostics.Append(d...)
-		updatedState.AssignedAlertContacts = v
-	} else {
-		updatedState.AssignedAlertContacts = types.SetNull(alertContactObjectType())
-	}
+	acSet, d := alertContactsFromAPI(ctx, updatedMonitor.AssignedAlertContacts)
+	resp.Diagnostics.Append(d...)
+	// empty set when none
+	updatedState.AssignedAlertContacts = acSet
 
 	switch strings.ToUpper(plan.Type.ValueString()) {
 	case "HEARTBEAT":
@@ -1805,4 +1783,26 @@ func stringOrEmpty(v types.String) string {
 		return ""
 	}
 	return v.ValueString()
+}
+
+func alertContactsFromAPI(ctx context.Context, api []client.AlertContact) (types.Set, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	// Always return empty set (not null) if there are none
+	if len(api) == 0 {
+		empty := []attr.Value{} // empty slice -> empty set
+		return types.SetValueMust(alertContactObjectType(), empty), diags
+	}
+
+	tfAC := make([]alertContactTF, 0, len(api))
+	for _, a := range api {
+		tfAC = append(tfAC, alertContactTF{
+			AlertContactID: types.StringValue(string(a.AlertContactID)),
+			Threshold:      types.Int64Value(a.Threshold),
+			Recurrence:     types.Int64Value(a.Recurrence),
+		})
+	}
+
+	v, d := types.SetValueFrom(ctx, alertContactObjectType(), tfAC)
+	diags.Append(d...)
+	return v, diags
 }
