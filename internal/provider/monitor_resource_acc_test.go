@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"testing"
 
@@ -220,6 +221,29 @@ resource "uptimerobot_monitor" "test" {
 `, name)
 }
 
+func testAccMonitorResourceConfigWithAlertContactObjects(name string, ids []string) string {
+	ac := ""
+	if len(ids) > 0 {
+		ac = "\n  assigned_alert_contacts = ["
+		for i, id := range ids {
+			if i > 0 {
+				ac += ","
+			}
+			ac += fmt.Sprintf(`{ alert_contact_id = %q }`, id)
+		}
+		ac += "]"
+	}
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300%s
+  timeout  = 30
+}
+`, name, ac)
+}
+
 // Helpers ------------------------------------------------------
 
 func joinQuotedStrings(strings []string) string {
@@ -242,6 +266,15 @@ func joinInts(ints []int) string {
 		result += fmt.Sprintf(`%d`, val)
 	}
 	return result
+}
+
+func mustAlertContactID(t *testing.T) string {
+	t.Helper()
+	id := os.Getenv("UPTIMEROBOT_TEST_ALERT_CONTACT_ID")
+	if id == "" {
+		t.Skip("Set UPTIMEROBOT_TEST_ALERT_CONTACT_ID to run alert-contacts acceptance")
+	}
+	return id
 }
 
 // Acceptance tests ------------------------------------------------
@@ -279,44 +312,42 @@ func TestAccMonitorResource(t *testing.T) {
 		},
 	})
 }
-
-// TestAccMonitorResource_AlertContacts tests the specific case where alert contacts
-// are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_AlertContacts(t *testing.T) {
-	t.Skip("Skipping: assigned_alert_contacts work and added only if they are from the list of alert contacts of the user.")
+	id := mustAlertContactID(t)
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
-			// Step 1: Create monitor without alert contacts
+			// Step 1: create with no contacts
 			{
-				Config: testAccMonitorResourceConfigWithAlertContacts("test-monitor-alerts", nil),
+				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-alerts"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
-					// Verify no alert contacts are set initially
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts"),
 				),
 			},
-			// Step 2: Add alert contacts to existing monitor - this should NOT fail
+			// Step 2: add one contact
 			{
-				Config: testAccMonitorResourceConfigWithAlertContacts("test-monitor-alerts", []string{"7589476"}),
+				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", []string{id}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-alerts"),
-					// Verify alert contacts are now set
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.#", "1"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.0", "7589476"),
+					resource.TestCheckTypeSetElemNestedAttrs(
+						"uptimerobot_monitor.test",
+						"assigned_alert_contacts.*",
+						map[string]string{
+							"alert_contact_id": id,
+							"threshold":        "0",
+							"recurrence":       "0",
+						},
+					),
 				),
 			},
-			// Step 3: Remove alert contacts - set back to empty
+			// Step 3: remove contacts (attribute omitted)
 			{
-				Config: testAccMonitorResourceConfigWithAlertContacts("test-monitor-alerts", nil),
+				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-alerts"),
-					// Verify alert contacts are removed
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts"),
 				),
 			},
@@ -1175,6 +1206,22 @@ func TestAcc_Monitor_HTTP_DefaultMethod_GET(t *testing.T) {
 			{
 				Config: testAccMonitorResourceConfig("acc-default-method"),
 				Check:  resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "GET"),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_CreatePlanOnly_NoExistingState(t *testing.T) {
+	// This specifically exercises ModifyPlan with a null state on first create.
+	// It should produce a non-empty plan and not panic / error.
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:             testAccMonitorResourceConfig("acc-planonly-from-scratch"),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
 			},
 		},
 	})
