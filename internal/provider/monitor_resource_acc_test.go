@@ -499,7 +499,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// Idempotency re-plan
 			{
-				Config:             testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-maintenance", nil),
+				Config:             testAccMonitorResourceConfigWithMaintenanceWindows("test-monitor-maintenance", nil),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
