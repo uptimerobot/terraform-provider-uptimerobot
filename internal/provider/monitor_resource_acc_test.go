@@ -17,6 +17,12 @@ import (
 
 	- Inline configs only when the test’s readability depends on seeing the exact HCL schema in the test.
 	For example, negative cases that assert a specific validation error, or tiny one-off / one time scenarios.
+
+	- Alert contacts currently lack resource/management functionality, so the related
+	acceptance tests only run when the environment variable UPTIMEROBOT_TEST_ALERT_CONTACT_ID
+	is set. Obtain the contact ID via API GET /user/alert-contacts and export it before running
+	them to unlock those tests locally or in CI/CD.
+
 */
 
 // Config helpers for tests --------------------------------------------------
