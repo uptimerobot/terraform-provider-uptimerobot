@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -19,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
@@ -28,6 +30,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -88,12 +91,19 @@ type monitorResourceModel struct {
 	AssignedAlertContacts    types.Set            `tfsdk:"assigned_alert_contacts"`
 	ResponseTimeThreshold    types.Int64          `tfsdk:"response_time_threshold"`
 	RegionalData             types.String         `tfsdk:"regional_data"`
+	CheckSSLErrors           types.Bool           `tfsdk:"check_ssl_errors"`
+	Config                   types.Object         `tfsdk:"config"`
 }
 
 type alertContactTF struct {
 	AlertContactID types.String `tfsdk:"alert_contact_id"` // maybe better string because id may change in future
 	Threshold      types.Int64  `tfsdk:"threshold"`
 	Recurrence     types.Int64  `tfsdk:"recurrence"`
+}
+
+type configTF struct {
+	SSLExpirationPeriodDays types.Set `tfsdk:"ssl_expiration_period_days"`
+	// DNSRecords types.Object `tfsdk:"dns_records"`
 }
 
 func alertContactObjectType() types.ObjectType {
@@ -343,6 +353,33 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					stringvalidator.OneOf("na", "eu", "as", "oc"),
 				},
 			},
+			"check_ssl_errors": schema.BoolAttribute{
+				Description: "If true, monitor checks SSL certificate errors (hostname mismatch, invalid chain, etc.).",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"config": schema.SingleNestedAttribute{
+				Description: "Advanced monitor configuration. Mirrors the API 'config' object.",
+				Optional:    true,
+				Attributes: map[string]schema.Attribute{
+					"ssl_expiration_period_days": schema.SetAttribute{
+						Description: "Custom reminder days before SSL expiry (0..365). Max 10 items. Only relevant for HTTPS.",
+						Optional:    true,
+						Computed:    true,
+						ElementType: types.Int64Type,
+						Validators: []validator.Set{
+							setvalidator.SizeAtMost(10),
+							setvalidator.ValueInt64sAre(
+								int64validator.Between(0, 365),
+							),
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -570,9 +607,9 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	case "DNS":
 		createReq.GracePeriod = &zero
 		createReq.Timeout = &zero
-		createReq.Config = map[string]any{
-			"dnsRecords": map[string][]string{
-				"CNAME": {"example.com"},
+		createReq.Config = &client.MonitorConfig{
+			DNSRecords: &client.DNSRecords{
+				CNAME: []string{"example.com"},
 			},
 		}
 
@@ -738,6 +775,31 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	createReq.FollowRedirections = plan.FollowRedirections.ValueBool()
 	createReq.HTTPAuthType = plan.AuthType.ValueString()
 
+	if !plan.CheckSSLErrors.IsNull() && !plan.CheckSSLErrors.IsUnknown() {
+		v := plan.CheckSSLErrors.ValueBool()
+		createReq.CheckSSLErrors = &v
+	}
+
+	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
+		var cfg configTF
+		resp.Diagnostics.Append(plan.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		if !cfg.SSLExpirationPeriodDays.IsNull() && !cfg.SSLExpirationPeriodDays.IsUnknown() {
+			var days []int64
+			resp.Diagnostics.Append(cfg.SSLExpirationPeriodDays.ElementsAs(ctx, &days, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+
+			createReq.Config = &client.MonitorConfig{
+				SSLExpirationPeriodDays: days,
+			}
+		}
+	}
+
 	// Create monitor
 	newMonitor, err := r.client.CreateMonitor(createReq)
 	if err != nil {
@@ -830,6 +892,8 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	} else {
 		plan.AssignedAlertContacts = acSet
 	}
+
+	plan.CheckSSLErrors = types.BoolValue(newMonitor.CheckSSLErrors)
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -1086,6 +1150,39 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		// For non-import operations, preserve the existing state to avoid unnecessary diffs
 	}
 
+	if isImport || !state.CheckSSLErrors.IsNull() {
+		state.CheckSSLErrors = types.BoolValue(monitor.CheckSSLErrors)
+	}
+
+	if monitor.Config != nil {
+		if raw, ok := monitor.Config["sslExpirationPeriodDays"]; ok && raw != nil {
+			var days []int64
+			if err := json.Unmarshal(raw, &days); err == nil && len(days) > 0 {
+				vals := make([]attr.Value, 0, len(days))
+				for _, d := range days {
+					vals = append(vals, types.Int64Value(d))
+				}
+				cfgObj, diags := types.ObjectValue(
+					configObjectType().AttrTypes,
+					map[string]attr.Value{
+						"ssl_expiration_period_days": types.SetValueMust(types.Int64Type, vals),
+					},
+				)
+				resp.Diagnostics.Append(diags...)
+				state.Config = cfgObj
+			} else {
+				// shape of data changed on server
+				resp.Diagnostics.AddAttributeWarning(
+					path.Root("config").AtName("ssl_expiration_period_days"),
+					"Unexpected shape for ssl_expiration_period_days",
+					fmt.Sprintf("The API returned data that could not be parsed (%v). "+
+						"The provider kept the previous state to avoid plan churn. "+
+						"If this persists, please update the provider.", err),
+				)
+			}
+		}
+	}
+
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -1169,9 +1266,9 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	case "DNS":
 		updateReq.GracePeriod = &zero
 		updateReq.Timeout = &zero
-		updateReq.Config = map[string]any{
-			"dnsRecords": map[string][]string{
-				"CNAME": {"example.com"},
+		updateReq.Config = &client.MonitorConfig{
+			DNSRecords: &client.DNSRecords{
+				CNAME: []string{"example.com"},
 			},
 		}
 
@@ -1340,6 +1437,31 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	if !plan.RegionalData.IsNull() {
 		value := plan.RegionalData.ValueString()
 		updateReq.RegionalData = &value
+	}
+
+	if !plan.CheckSSLErrors.IsNull() && !plan.CheckSSLErrors.IsUnknown() {
+		v := plan.CheckSSLErrors.ValueBool()
+		updateReq.CheckSSLErrors = &v
+	}
+
+	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
+		var cfg configTF
+		resp.Diagnostics.Append(plan.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		if !cfg.SSLExpirationPeriodDays.IsNull() && !cfg.SSLExpirationPeriodDays.IsUnknown() {
+			var days []int64
+			resp.Diagnostics.Append(cfg.SSLExpirationPeriodDays.ElementsAs(ctx, &days, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+
+			updateReq.Config = &client.MonitorConfig{
+				SSLExpirationPeriodDays: days,
+			}
+		}
 	}
 
 	updatedMonitor, err := r.client.UpdateMonitor(id, updateReq)
@@ -1858,4 +1980,13 @@ func missingAlertIDs(want, got []string) []string {
 		}
 	}
 	return miss
+}
+
+// configObjectType is a helper for describing the config object
+func configObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
+		},
+	}
 }

@@ -34,7 +34,7 @@ type CreateMonitorRequest struct {
 	KeywordValue             string                `json:"keywordValue,omitempty"`
 	KeywordCaseType          int                   `json:"keywordCaseType,omitempty"`
 	AssignedAlertContacts    []AlertContactRequest `json:"assignedAlertContacts"`
-	CheckSSLErrors           bool                  `json:"checkSSLErrors"`
+	CheckSSLErrors           *bool                 `json:"checkSSLErrors,omitempty"`
 	SSLCheckEnabled          bool                  `json:"sslCheckEnabled,omitempty"`
 	CustomHTTPHeaders        map[string]string     `json:"customHttpHeaders,omitempty"`
 	SuccessHTTPResponseCodes []string              `json:"successHttpResponseCodes,omitempty"`
@@ -48,7 +48,7 @@ type CreateMonitorRequest struct {
 	FollowRedirections       bool                  `json:"followRedirections"`
 	ResponseTimeThreshold    int                   `json:"responseTimeThreshold,omitempty"`
 	RegionalData             string                `json:"regionalData,omitempty"`
-	Config                   map[string]any        `json:"config,omitempty"` // DNS config field
+	Config                   *MonitorConfig        `json:"config,omitempty"`
 }
 
 // UpdateMonitorRequest represents the request to update an existing monitor.
@@ -67,7 +67,7 @@ type UpdateMonitorRequest struct {
 	KeywordValue             string                `json:"keywordValue,omitempty"`
 	KeywordCaseType          int                   `json:"keywordCaseType,omitempty"`
 	AssignedAlertContacts    []AlertContactRequest `json:"assignedAlertContacts"`
-	CheckSSLErrors           bool                  `json:"checkSSLErrors"`
+	CheckSSLErrors           *bool                 `json:"checkSSLErrors,omitempty"`
 	SSLCheckEnabled          bool                  `json:"sslCheckEnabled,omitempty"`
 	CustomHTTPHeaders        *map[string]string    `json:"customHttpHeaders,omitempty"`
 	SuccessHTTPResponseCodes []string              `json:"successHttpResponseCodes,omitempty"`
@@ -81,51 +81,52 @@ type UpdateMonitorRequest struct {
 	FollowRedirections       bool                  `json:"followRedirections"`
 	ResponseTimeThreshold    *int                  `json:"responseTimeThreshold,omitempty"`
 	RegionalData             *string               `json:"regionalData,omitempty"`
-	Config                   map[string]any        `json:"config,omitempty"` // DNS config field
+	Config                   *MonitorConfig        `json:"config,omitempty"`
 }
 
 // Monitor represents a monitor.
 type Monitor struct {
-	Type                     string              `json:"type"`
-	Interval                 int                 `json:"interval"`
-	SSLBrand                 *string             `json:"sslBrand"`
-	SSLExpiryDateTime        *string             `json:"sslExpiryDateTime"`
-	DomainExpireDate         *string             `json:"domainExpireDate"`
-	CheckSSLErrors           bool                `json:"checkSSLErrors"`
-	SSLExpirationReminder    bool                `json:"sslExpirationReminder"`
-	DomainExpirationReminder bool                `json:"domainExpirationReminder"`
-	FollowRedirections       bool                `json:"followRedirections"`
-	AuthType                 string              `json:"authType"`
-	HTTPUsername             string              `json:"httpUsername"`
-	HTTPPassword             string              `json:"httpPassword"`
-	CustomHTTPHeaders        map[string]string   `json:"customHttpHeaders"`
-	HTTPMethodType           string              `json:"httpMethodType"`
-	SuccessHTTPResponseCodes []string            `json:"successHttpResponseCodes"`
-	Timeout                  int                 `json:"timeout"`
-	PostValueType            *string             `json:"postValueType"`
-	PostValueData            json.RawMessage     `json:"postValueData"`
-	Port                     *int                `json:"port"`
-	GracePeriod              int                 `json:"gracePeriod"`
-	KeywordValue             string              `json:"keywordValue"`
-	KeywordCaseType          int                 `json:"keywordCaseType"`
-	KeywordType              *string             `json:"keywordType"`
-	MaintenanceWindows       []MaintenanceWindow `json:"maintenanceWindows"`
-	PSPs                     []PSP               `json:"psps"`
-	ID                       int64               `json:"id"`
-	Name                     string              `json:"friendlyName"`
-	Status                   string              `json:"status"`
-	URL                      string              `json:"url"`
-	CurrentStateDuration     int                 `json:"currentStateDuration"`
-	LastIncidentID           *int64              `json:"lastIncidentId"`
-	UserID                   int64               `json:"userId"`
-	Tags                     []Tag               `json:"tags"`
-	AssignedAlertContacts    []AlertContact      `json:"assignedAlertContacts"`
-	LastIncident             *Incident           `json:"lastIncident"`
-	LastDayUptimes           *UptimeStats        `json:"lastDayUptimes"`
-	CreateDateTime           string              `json:"createDateTime"`
-	APIKey                   string              `json:"apiKey"`
-	RegionalData             interface{}         `json:"regionalData"`
-	ResponseTimeThreshold    int                 `json:"responseTimeThreshold"`
+	Type                     string                     `json:"type"`
+	Interval                 int                        `json:"interval"`
+	SSLBrand                 *string                    `json:"sslBrand"`
+	SSLExpiryDateTime        *string                    `json:"sslExpiryDateTime"`
+	DomainExpireDate         *string                    `json:"domainExpireDate"`
+	CheckSSLErrors           bool                       `json:"checkSSLErrors"`
+	SSLExpirationReminder    bool                       `json:"sslExpirationReminder"`
+	DomainExpirationReminder bool                       `json:"domainExpirationReminder"`
+	FollowRedirections       bool                       `json:"followRedirections"`
+	AuthType                 string                     `json:"authType"`
+	HTTPUsername             string                     `json:"httpUsername"`
+	HTTPPassword             string                     `json:"httpPassword"`
+	CustomHTTPHeaders        map[string]string          `json:"customHttpHeaders"`
+	HTTPMethodType           string                     `json:"httpMethodType"`
+	SuccessHTTPResponseCodes []string                   `json:"successHttpResponseCodes"`
+	Timeout                  int                        `json:"timeout"`
+	PostValueType            *string                    `json:"postValueType"`
+	PostValueData            json.RawMessage            `json:"postValueData"`
+	Port                     *int                       `json:"port"`
+	GracePeriod              int                        `json:"gracePeriod"`
+	KeywordValue             string                     `json:"keywordValue"`
+	KeywordCaseType          int                        `json:"keywordCaseType"`
+	KeywordType              *string                    `json:"keywordType"`
+	MaintenanceWindows       []MaintenanceWindow        `json:"maintenanceWindows"`
+	PSPs                     []PSP                      `json:"psps"`
+	ID                       int64                      `json:"id"`
+	Name                     string                     `json:"friendlyName"`
+	Status                   string                     `json:"status"`
+	URL                      string                     `json:"url"`
+	CurrentStateDuration     int                        `json:"currentStateDuration"`
+	LastIncidentID           *int64                     `json:"lastIncidentId"`
+	UserID                   int64                      `json:"userId"`
+	Tags                     []Tag                      `json:"tags"`
+	AssignedAlertContacts    []AlertContact             `json:"assignedAlertContacts"`
+	LastIncident             *Incident                  `json:"lastIncident"`
+	LastDayUptimes           *UptimeStats               `json:"lastDayUptimes"`
+	CreateDateTime           string                     `json:"createDateTime"`
+	APIKey                   string                     `json:"apiKey"`
+	RegionalData             interface{}                `json:"regionalData"`
+	ResponseTimeThreshold    int                        `json:"responseTimeThreshold"`
+	Config                   map[string]json.RawMessage `json:"config"`
 }
 
 type Tag struct {
@@ -146,6 +147,28 @@ type AlertContact struct {
 	AlertContactID StringOrNumberID `json:"alertContactId"`
 	Threshold      int64            `json:"threshold"`
 	Recurrence     int64            `json:"recurrence"`
+}
+
+type MonitorConfig struct {
+	SSLExpirationPeriodDays []int64     `json:"sslExpirationPeriodDays,omitempty"`
+	DNSRecords              *DNSRecords `json:"dnsRecords,omitempty"`
+}
+
+type DNSRecords struct {
+	CNAME  []string `json:"CNAME,omitempty"`
+	MX     []string `json:"MX,omitempty"`
+	NS     []string `json:"NS,omitempty"`
+	A      []string `json:"A,omitempty"`
+	AAAA   []string `json:"AAAA,omitempty"`
+	TXT    []string `json:"TXT,omitempty"`
+	SRV    []string `json:"SRV,omitempty"`
+	PTR    []string `json:"PTR,omitempty"`
+	SOA    []string `json:"SOA,omitempty"`
+	SPF    []string `json:"SPF,omitempty"`
+	DNSKEY []string `json:"DNSKEY,omitempty"`
+	DS     []string `json:"DS,omitempty"`
+	NSEC   []string `json:"NSEC,omitempty"`
+	NSEC3  []string `json:"NSEC3,omitempty"`
 }
 
 type Incident struct {
