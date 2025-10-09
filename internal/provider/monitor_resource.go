@@ -1982,7 +1982,7 @@ func missingAlertIDs(want, got []string) []string {
 	return miss
 }
 
-// configObjectType is a helper for describing the config object
+// configObjectType is a helper for describing the config object.
 func configObjectType() types.ObjectType {
 	return types.ObjectType{
 		AttrTypes: map[string]attr.Type{
