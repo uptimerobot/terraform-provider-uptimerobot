@@ -239,12 +239,12 @@ func testAccMonitorResourceConfigWithSSLPeriod(name string, days []int) string {
 	if days != nil {
 		if len(days) == 0 {
 			cfg = `
-  config {
+  config = {
     ssl_expiration_period_days = []
   }`
 		} else {
 			cfg = fmt.Sprintf(`
-  config {
+  config = {
     ssl_expiration_period_days = [%s]
   }`, joinInts(days))
 		}
@@ -1420,7 +1420,7 @@ resource "uptimerobot_monitor" "test" {
   type     = "HTTP"
   interval = 300
   timeout  = 30
-  config {
+  config = {
     ssl_expiration_period_days = [-1, 366]
   }
 }
@@ -1435,7 +1435,7 @@ resource "uptimerobot_monitor" "test" {
   type     = "HTTP"
   interval = 300
   timeout  = 30
-  config {
+  config = {
     ssl_expiration_period_days = [0,1,2,3,4,5,6,7,8,9,10]
   }
 }
