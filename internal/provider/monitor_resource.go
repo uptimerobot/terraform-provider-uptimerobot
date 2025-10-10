@@ -364,10 +364,20 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"config": schema.SingleNestedAttribute{
 				Description: "Advanced monitor configuration. Mirrors the API 'config' object.",
-				Optional:    true,
+				MarkdownDescription: "Advanced monitor configuration.\n\n" +
+					"**Semantics**:\n" +
+					"- Omit the block → **clear** config on server (reset to defaults).\n" +
+					"- `config = {}` → **preserve** remote values (no change).\n" +
+					"- `ssl_expiration_period_days = []` → **clear** days on server.\n" +
+					"- Non-empty list → **set** exactly those days.\n\n" +
+					"**Tip**: To let UI changes win, use `lifecycle { ignore_changes = [config] }`.",
+				Optional: true,
 				Attributes: map[string]schema.Attribute{
 					"ssl_expiration_period_days": schema.SetAttribute{
 						Description: "Custom reminder days before SSL expiry (0..365). Max 10 items. Only relevant for HTTPS.",
+						MarkdownDescription: "Reminder days before SSL expiry (0..365). Max 10 items.\n\n" +
+							"- Omit the attribute → **preserve** remote values.\n" +
+							"- Empty set `[]` → **clear** values on server.",
 						Optional:    true,
 						Computed:    true,
 						ElementType: types.Int64Type,
