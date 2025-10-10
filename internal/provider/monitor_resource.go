@@ -907,13 +907,6 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
-	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
-		if v, d := nullIfEmptyConfig(ctx, plan.Config); !d.HasError() {
-			plan.Config = v
-		}
-		resp.Diagnostics.Append(d...)
-	}
-
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -1463,14 +1456,20 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updateReq.CheckSSLErrors = &v
 	}
 
-	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
+	stateHadCfg := !state.Config.IsNull() && !state.Config.IsUnknown()
+	cfgProvided := !plan.Config.IsNull() && !plan.Config.IsUnknown()
+
+	if cfgProvided {
 		var cfg configTF
 		resp.Diagnostics.Append(plan.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
+		if cfg.SSLExpirationPeriodDays.IsNull() || cfg.SSLExpirationPeriodDays.IsUnknown() ||
+			len(cfg.SSLExpirationPeriodDays.Elements()) == 0 {
+			updateReq.Config = &client.MonitorConfig{SSLExpirationPeriodDays: []int64{}}
+		} else {
 
-		if !cfg.SSLExpirationPeriodDays.IsNull() && !cfg.SSLExpirationPeriodDays.IsUnknown() {
 			var days []int64
 			resp.Diagnostics.Append(cfg.SSLExpirationPeriodDays.ElementsAs(ctx, &days, false)...)
 			if resp.Diagnostics.HasError() {
@@ -1480,6 +1479,10 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			updateReq.Config = &client.MonitorConfig{
 				SSLExpirationPeriodDays: days,
 			}
+		}
+	} else if stateHadCfg {
+		updateReq.Config = &client.MonitorConfig{
+			SSLExpirationPeriodDays: []int64{},
 		}
 	}
 
@@ -1637,26 +1640,26 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	if updatedMonitor.Config != nil {
 		cfgObj, has, d := configFromAPIResponse(ctx, updatedMonitor.Config)
 		resp.Diagnostics.Append(d...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
 
-		if !plan.Config.IsNull() && !plan.Config.IsUnknown() && has {
-			updatedState.Config = cfgObj
+		if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
+			// User provided a config block
+			// If API omitted or empty, keep user's representation
+			if has {
+				updatedState.Config = cfgObj
+			} else {
+				updatedState.Config = plan.Config
+			}
 		} else {
+			// No config in plan
 			updatedState.Config = types.ObjectNull(configObjectType().AttrTypes)
 		}
 	} else {
-		if plan.Config.IsNull() || plan.Config.IsUnknown() {
+		// API returned nil config
+		if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
+			updatedState.Config = plan.Config
+		} else {
 			updatedState.Config = types.ObjectNull(configObjectType().AttrTypes)
 		}
-	}
-
-	if !updatedState.Config.IsNull() && !updatedState.Config.IsUnknown() {
-		if v, d := nullIfEmptyConfig(ctx, updatedState.Config); !d.HasError() {
-			updatedState.Config = v
-		}
-		resp.Diagnostics.Append(d...)
 	}
 
 	diags = resp.State.Set(ctx, updatedState)
@@ -2068,21 +2071,4 @@ func configFromAPIResponse(_ context.Context, m map[string]json.RawMessage) (typ
 	obj, d := types.ObjectValue(attrTypes, attrs)
 	diags.Append(d...)
 	return obj, true, diags
-}
-
-func nullIfEmptyConfig(ctx context.Context, obj types.Object) (types.Object, diag.Diagnostics) {
-	if obj.IsNull() || obj.IsUnknown() {
-		return obj, nil
-	}
-	// Only look at exposed fields. If there are none - make it ObjectNull
-	var cfg configTF
-	var diags diag.Diagnostics
-	diags.Append(obj.As(ctx, &cfg, basetypes.ObjectAsOptions{})...)
-	if diags.HasError() {
-		return obj, diags
-	}
-	if cfg.SSLExpirationPeriodDays.IsNull() || cfg.SSLExpirationPeriodDays.IsUnknown() || len(cfg.SSLExpirationPeriodDays.Elements()) == 0 {
-		return types.ObjectNull(configObjectType().AttrTypes), diags
-	}
-	return obj, diags
 }
