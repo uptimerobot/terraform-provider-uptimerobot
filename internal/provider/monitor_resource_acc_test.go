@@ -1425,7 +1425,12 @@ resource "uptimerobot_monitor" "test" {
   }
 }
 `,
-				ExpectError: regexp.MustCompile(`must be between 0 and 365`),
+				ExpectError: regexp.MustCompile(
+					`(?s)` +
+						`Attribute config\.ssl_expiration_period_days\[Value\(-1\)\] value must be between[\s\S]*0 and 365, got: -1` +
+						`[\s\S]*` +
+						`Attribute config\.ssl_expiration_period_days\[Value\(366\)\] value must be between[\s\S]*0 and 365, got: 366`,
+				),
 			},
 			{ // > 10 items
 				Config: testAccProviderConfig() + `
@@ -1440,7 +1445,9 @@ resource "uptimerobot_monitor" "test" {
   }
 }
 `,
-				ExpectError: regexp.MustCompile(`at most 10`),
+				ExpectError: regexp.MustCompile(
+					`Attribute config\.ssl_expiration_period_days (?:set|value) must contain at most 10\s+elements(?:, got: \d+)?`,
+				),
 			},
 		},
 	})

@@ -895,6 +895,25 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 
 	plan.CheckSSLErrors = types.BoolValue(newMonitor.CheckSSLErrors)
 
+	if newMonitor.Config != nil {
+		cfgObj, has, d := configFromAPIResponse(ctx, newMonitor.Config)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		if !plan.Config.IsNull() && !plan.Config.IsUnknown() && has {
+			plan.Config = cfgObj
+		}
+	}
+
+	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
+		if v, d := nullIfEmptyConfig(ctx, plan.Config); !d.HasError() {
+			plan.Config = v
+		}
+		resp.Diagnostics.Append(d...)
+	}
+
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -1154,7 +1173,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.CheckSSLErrors = types.BoolValue(monitor.CheckSSLErrors)
 	}
 
-	if monitor.Config != nil {
+	if monitor.Config != nil && (isImport || (!state.Config.IsNull() && !state.Config.IsUnknown())) {
 		if raw, ok := monitor.Config["sslExpirationPeriodDays"]; ok && raw != nil {
 			var days []int64
 			if err := json.Unmarshal(raw, &days); err == nil && len(days) > 0 {
@@ -1615,6 +1634,31 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
+	if updatedMonitor.Config != nil {
+		cfgObj, has, d := configFromAPIResponse(ctx, updatedMonitor.Config)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		if !plan.Config.IsNull() && !plan.Config.IsUnknown() && has {
+			updatedState.Config = cfgObj
+		} else {
+			updatedState.Config = types.ObjectNull(configObjectType().AttrTypes)
+		}
+	} else {
+		if plan.Config.IsNull() || plan.Config.IsUnknown() {
+			updatedState.Config = types.ObjectNull(configObjectType().AttrTypes)
+		}
+	}
+
+	if !updatedState.Config.IsNull() && !updatedState.Config.IsUnknown() {
+		if v, d := nullIfEmptyConfig(ctx, updatedState.Config); !d.HasError() {
+			updatedState.Config = v
+		}
+		resp.Diagnostics.Append(d...)
+	}
+
 	diags = resp.State.Set(ctx, updatedState)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -1989,4 +2033,56 @@ func configObjectType() types.ObjectType {
 			"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
 		},
 	}
+}
+
+func configFromAPIResponse(_ context.Context, m map[string]json.RawMessage) (types.Object, bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	attrTypes := configObjectType().AttrTypes
+	attrs := map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+	}
+
+	hasValues := false
+
+	// ssl_expiration_period_days
+	if raw, ok := m["sslExpirationPeriodDays"]; ok && len(raw) > 0 {
+		var ints []int64
+		if err := json.Unmarshal(raw, &ints); err == nil && len(ints) > 0 {
+			vals := make([]attr.Value, 0, len(ints))
+			for _, d := range ints {
+				vals = append(vals, types.Int64Value(d))
+			}
+			attrs["ssl_expiration_period_days"] = types.SetValueMust(types.Int64Type, vals)
+			hasValues = true
+		} else if err != nil {
+			diags.AddError("decode sslExpirationPeriodDays", err.Error())
+		}
+	}
+
+	if !hasValues {
+		// return an ObjectNull and not an object with all null child obj
+		return types.ObjectNull(attrTypes), false, diags
+	}
+
+	obj, d := types.ObjectValue(attrTypes, attrs)
+	diags.Append(d...)
+	return obj, true, diags
+}
+
+func nullIfEmptyConfig(ctx context.Context, obj types.Object) (types.Object, diag.Diagnostics) {
+	if obj.IsNull() || obj.IsUnknown() {
+		return obj, nil
+	}
+	// Only look at exposed fields. If there are none - make it ObjectNull
+	var cfg configTF
+	var diags diag.Diagnostics
+	diags.Append(obj.As(ctx, &cfg, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return obj, diags
+	}
+	if cfg.SSLExpirationPeriodDays.IsNull() || cfg.SSLExpirationPeriodDays.IsUnknown() || len(cfg.SSLExpirationPeriodDays.Elements()) == 0 {
+		return types.ObjectNull(configObjectType().AttrTypes), diags
+	}
+	return obj, diags
 }
