@@ -526,6 +526,57 @@ func (r *monitorResource) ValidateConfig(
 		}
 	}
 
+	// config validation
+
+	var cfg configTF
+	_ = req.Config.GetAttribute(ctx, path.Root("config"), &cfg)
+
+	// Check that user set any SSL related settings
+	sslRemKnown := !data.SSLExpirationReminder.IsNull() && !data.SSLExpirationReminder.IsUnknown()
+	sslDaysKnown := !cfg.SSLExpirationPeriodDays.IsNull() && !cfg.SSLExpirationPeriodDays.IsUnknown()
+	sslTouched := sslRemKnown || sslDaysKnown
+
+	// Only HTTP/KEYWORD may use SSL settings
+	if sslTouched && !(t == "HTTP" || t == "KEYWORD") {
+		if sslRemKnown {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("ssl_expiration_reminder"),
+				"SSL reminder not allowed for this monitor type",
+				"ssl_expiration_reminder is only supported for HTTP/KEYWORD monitors.",
+			)
+		}
+		if sslDaysKnown {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("ssl_expiration_period_days"),
+				"SSL reminder days not allowed for this monitor type",
+				"ssl_expiration_period_days is only supported for HTTP/KEYWORD monitors.",
+			)
+		}
+		return
+	}
+
+	// If type is HTTP/KEYWORD but URL is not HTTPS, block SSL settings
+	if sslTouched && (t == "HTTP" || t == "KEYWORD") &&
+		!data.URL.IsNull() && !data.URL.IsUnknown() &&
+		!strings.HasPrefix(strings.ToLower(data.URL.ValueString()), "https://") {
+
+		if sslRemKnown {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("ssl_expiration_reminder"),
+				"SSL reminders require an HTTPS URL",
+				"Set an https:// URL or remove ssl_expiration_reminder.",
+			)
+		}
+		if sslDaysKnown {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("ssl_expiration_period_days"),
+				"SSL reminders require an HTTPS URL",
+				"Set an https:// URL or remove ssl_expiration_period_days.",
+			)
+		}
+		return
+	}
+
 }
 
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
