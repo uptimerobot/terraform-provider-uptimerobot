@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -19,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
@@ -28,6 +30,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -88,12 +91,19 @@ type monitorResourceModel struct {
 	AssignedAlertContacts    types.Set            `tfsdk:"assigned_alert_contacts"`
 	ResponseTimeThreshold    types.Int64          `tfsdk:"response_time_threshold"`
 	RegionalData             types.String         `tfsdk:"regional_data"`
+	CheckSSLErrors           types.Bool           `tfsdk:"check_ssl_errors"`
+	Config                   types.Object         `tfsdk:"config"`
 }
 
 type alertContactTF struct {
 	AlertContactID types.String `tfsdk:"alert_contact_id"` // maybe better string because id may change in future
 	Threshold      types.Int64  `tfsdk:"threshold"`
 	Recurrence     types.Int64  `tfsdk:"recurrence"`
+}
+
+type configTF struct {
+	SSLExpirationPeriodDays types.Set `tfsdk:"ssl_expiration_period_days"`
+	// DNSRecords types.Object `tfsdk:"dns_records"`
 }
 
 func alertContactObjectType() types.ObjectType {
@@ -343,6 +353,43 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					stringvalidator.OneOf("na", "eu", "as", "oc"),
 				},
 			},
+			"check_ssl_errors": schema.BoolAttribute{
+				Description: "If true, monitor checks SSL certificate errors (hostname mismatch, invalid chain, etc.).",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"config": schema.SingleNestedAttribute{
+				Description: "Advanced monitor configuration. Mirrors the API 'config' object.",
+				MarkdownDescription: "Advanced monitor configuration.\n\n" +
+					"**Semantics**:\n" +
+					"- Omit the block → **clear** config on server (reset to defaults).\n" +
+					"- `config = {}` → **preserve** remote values (no change).\n" +
+					"- `ssl_expiration_period_days = []` → **clear** days on server.\n" +
+					"- Non-empty list → **set** exactly those days.\n\n" +
+					"**Tip**: To let UI changes win, use `lifecycle { ignore_changes = [config] }`.",
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"ssl_expiration_period_days": schema.SetAttribute{
+						Description: "Custom reminder days before SSL expiry (0..365). Max 10 items. Only relevant for HTTPS.",
+						MarkdownDescription: "Reminder days before SSL expiry (0..365). Max 10 items.\n\n" +
+							"- Omit the attribute → **preserve** remote values.\n" +
+							"- Empty set `[]` → **clear** values on server.",
+						Optional:    true,
+						Computed:    true,
+						ElementType: types.Int64Type,
+						Validators: []validator.Set{
+							setvalidator.SizeAtMost(10),
+							setvalidator.ValueInt64sAre(
+								int64validator.Between(0, 365),
+							),
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -479,6 +526,80 @@ func (r *monitorResource) ValidateConfig(
 		}
 	}
 
+	// config validation
+
+	var cfg configTF
+	_ = req.Config.GetAttribute(ctx, path.Root("config"), &cfg)
+
+	// Check that user set any SSL related settings
+	sslRemTouched := !data.SSLExpirationReminder.IsNull() &&
+		!data.SSLExpirationReminder.IsUnknown() &&
+		data.SSLExpirationReminder.ValueBool()
+
+	sslDaysTouched := !cfg.SSLExpirationPeriodDays.IsNull() &&
+		!cfg.SSLExpirationPeriodDays.IsUnknown()
+
+	sslCheckErrTouched := !data.CheckSSLErrors.IsNull() &&
+		!data.CheckSSLErrors.IsUnknown() &&
+		data.CheckSSLErrors.ValueBool()
+
+	sslTouched := sslRemTouched || sslDaysTouched || sslCheckErrTouched
+
+	// Only HTTP/KEYWORD may use SSL settings
+	if sslTouched && t != "HTTP" && t != "KEYWORD" {
+		if sslRemTouched {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("ssl_expiration_reminder"),
+				"SSL reminder not allowed for this monitor type",
+				"ssl_expiration_reminder is only supported for HTTP/KEYWORD monitors.",
+			)
+		}
+		if sslDaysTouched {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("ssl_expiration_period_days"),
+				"SSL reminder days not allowed for this monitor type",
+				"ssl_expiration_period_days is only supported for HTTP/KEYWORD monitors.",
+			)
+		}
+		if sslCheckErrTouched {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("check_ssl_errors"),
+				"Check SSL errors not allowed for this monitor type",
+				"check_ssl_errors is only supported for HTTP/KEYWORD monitors.",
+			)
+		}
+		return
+	}
+
+	// If type is HTTP/KEYWORD but URL is not HTTPS, block SSL settings
+	if sslTouched && (t == "HTTP" || t == "KEYWORD") &&
+		!data.URL.IsNull() && !data.URL.IsUnknown() &&
+		!strings.HasPrefix(strings.ToLower(data.URL.ValueString()), "https://") {
+
+		if sslRemTouched {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("ssl_expiration_reminder"),
+				"SSL reminders require an HTTPS URL",
+				"Set an https:// URL or remove ssl_expiration_reminder.",
+			)
+		}
+		if sslDaysTouched {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("ssl_expiration_period_days"),
+				"SSL reminders require an HTTPS URL",
+				"Set an https:// URL or remove ssl_expiration_period_days.",
+			)
+		}
+		if sslCheckErrTouched {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("check_ssl_errors"),
+				"SSL checks require an HTTPS URL",
+				"Set an https:// URL or remove check_ssl_errors.",
+			)
+		}
+		return
+	}
+
 }
 
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -570,9 +691,9 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	case "DNS":
 		createReq.GracePeriod = &zero
 		createReq.Timeout = &zero
-		createReq.Config = map[string]any{
-			"dnsRecords": map[string][]string{
-				"CNAME": {"example.com"},
+		createReq.Config = &client.MonitorConfig{
+			DNSRecords: &client.DNSRecords{
+				CNAME: []string{"example.com"},
 			},
 		}
 
@@ -738,6 +859,22 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	createReq.FollowRedirections = plan.FollowRedirections.ValueBool()
 	createReq.HTTPAuthType = plan.AuthType.ValueString()
 
+	if !plan.CheckSSLErrors.IsNull() && !plan.CheckSSLErrors.IsUnknown() {
+		v := plan.CheckSSLErrors.ValueBool()
+		createReq.CheckSSLErrors = &v
+	}
+
+	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
+		cfgOut, touched, d := expandSSLConfigToAPI(ctx, plan.Config)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if touched {
+			createReq.Config = cfgOut
+		}
+	}
+
 	// Create monitor
 	newMonitor, err := r.client.CreateMonitor(createReq)
 	if err != nil {
@@ -829,6 +966,16 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		plan.AssignedAlertContacts = types.SetNull(alertContactObjectType())
 	} else {
 		plan.AssignedAlertContacts = acSet
+	}
+
+	plan.CheckSSLErrors = types.BoolValue(newMonitor.CheckSSLErrors)
+
+	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
+		cfgState, d := flattenSSLConfigToState(ctx, true /* hadBlock */, plan.Config, newMonitor.Config)
+		resp.Diagnostics.Append(d...)
+		if !resp.Diagnostics.HasError() {
+			plan.Config = cfgState
+		}
 	}
 
 	// Set state to fully populated data
@@ -1086,6 +1233,31 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		// For non-import operations, preserve the existing state to avoid unnecessary diffs
 	}
 
+	if isImport || !state.CheckSSLErrors.IsNull() {
+		state.CheckSSLErrors = types.BoolValue(monitor.CheckSSLErrors)
+	}
+
+	if isImport {
+		// On import it should reflect API to the state so users get what is on the server
+		if monitor.Config != nil {
+			cfgObj, d := flattenSSLConfigFromAPI(monitor.Config)
+			resp.Diagnostics.Append(d...)
+			state.Config = cfgObj
+		} else {
+			state.Config = types.ObjectNull(configObjectType().AttrTypes)
+		}
+	} else if !state.Config.IsNull() && !state.Config.IsUnknown() {
+		// User manages the block
+		if monitor.Config != nil {
+			cfgState, d := flattenSSLConfigToState(ctx, true /* hadBlock */, state.Config, monitor.Config)
+			resp.Diagnostics.Append(d...)
+			if !resp.Diagnostics.HasError() {
+				state.Config = cfgState
+			}
+		}
+		// If API returned nil config, leave user's representation as-is (prevents churn)
+	}
+
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -1169,9 +1341,9 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	case "DNS":
 		updateReq.GracePeriod = &zero
 		updateReq.Timeout = &zero
-		updateReq.Config = map[string]any{
-			"dnsRecords": map[string][]string{
-				"CNAME": {"example.com"},
+		updateReq.Config = &client.MonitorConfig{
+			DNSRecords: &client.DNSRecords{
+				CNAME: []string{"example.com"},
 			},
 		}
 
@@ -1342,6 +1514,37 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updateReq.RegionalData = &value
 	}
 
+	if !plan.CheckSSLErrors.IsNull() && !plan.CheckSSLErrors.IsUnknown() {
+		v := plan.CheckSSLErrors.ValueBool()
+		updateReq.CheckSSLErrors = &v
+	}
+
+	// config segment
+
+	stateHadCfg := !state.Config.IsNull() && !state.Config.IsUnknown()
+	planHasCfg := !plan.Config.IsNull() && !plan.Config.IsUnknown()
+
+	if planHasCfg {
+		cfgOut, touched, d := expandSSLConfigToAPI(ctx, plan.Config)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if touched {
+			updateReq.Config = cfgOut
+		}
+	} else if stateHadCfg {
+		// Block removed - should clear only the managed child(ren)
+		clearOut, touched, d := buildClearSSLConfigFromState(ctx, state.Config)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if touched {
+			updateReq.Config = clearOut
+		}
+	}
+
 	updatedMonitor, err := r.client.UpdateMonitor(id, updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -1491,6 +1694,16 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			updatedState.PostValueData = jsontypes.NewNormalizedNull()
 			updatedState.PostValueKV = types.MapNull(types.StringType)
 		}
+	}
+
+	if planHasCfg {
+		cfgState, d := flattenSSLConfigToState(ctx, true /* hadBlock */, plan.Config, updatedMonitor.Config)
+		resp.Diagnostics.Append(d...)
+		if !resp.Diagnostics.HasError() {
+			updatedState.Config = cfgState
+		}
+	} else {
+		updatedState.Config = types.ObjectNull(configObjectType().AttrTypes)
 	}
 
 	diags = resp.State.Set(ctx, updatedState)
@@ -1858,4 +2071,130 @@ func missingAlertIDs(want, got []string) []string {
 		}
 	}
 	return miss
+}
+
+// configObjectType is a helper for describing the config object.
+func configObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
+		},
+	}
+}
+
+// SSL helpers.
+
+func expandSSLConfigToAPI(ctx context.Context, cfg types.Object) (*client.MonitorConfig, bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if cfg.IsNull() || cfg.IsUnknown() {
+		return nil, false, diags
+	}
+	var tf configTF
+	diags.Append(cfg.As(ctx, &tf, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return nil, false, diags
+	}
+	// Only touch if the child is present
+	if !tf.SSLExpirationPeriodDays.IsNull() && !tf.SSLExpirationPeriodDays.IsUnknown() {
+		var days []int64
+		diags.Append(tf.SSLExpirationPeriodDays.ElementsAs(ctx, &days, false)...)
+		if diags.HasError() {
+			return nil, false, diags
+		}
+		// empty slice - clear and non-empty means set
+		return &client.MonitorConfig{SSLExpirationPeriodDays: days}, true, diags
+	}
+	return nil, false, diags
+}
+
+// When user removes the whole config block, only attributes that were managed should be cleared.
+func buildClearSSLConfigFromState(ctx context.Context, prev types.Object) (*client.MonitorConfig, bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if prev.IsNull() || prev.IsUnknown() {
+		return nil, false, diags
+	}
+	var tf configTF
+	diags.Append(prev.As(ctx, &tf, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return nil, false, diags
+	}
+	// Clear only if user managed it before
+	if !tf.SSLExpirationPeriodDays.IsNull() && !tf.SSLExpirationPeriodDays.IsUnknown() {
+		return &client.MonitorConfig{SSLExpirationPeriodDays: []int64{}}, true, diags
+	}
+	return nil, false, diags
+}
+
+func flattenSSLConfigToState(ctx context.Context, hadBlock bool, plan types.Object, api map[string]json.RawMessage) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	attrTypes := configObjectType().AttrTypes
+
+	if !hadBlock {
+		// User omitted block and it set as ObjectNull because we do not manage it
+		return types.ObjectNull(attrTypes), diags
+	}
+
+	// Default for child is null
+	attrs := map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+	}
+
+	// Extract what user asked for
+	var tf configTF
+	diags.Append(plan.As(ctx, &tf, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return types.ObjectNull(attrTypes), diags
+	}
+
+	// If the child was specified in plan then we take what API echos if it contains it, else take from plan
+	if !tf.SSLExpirationPeriodDays.IsNull() && !tf.SSLExpirationPeriodDays.IsUnknown() {
+		if raw, ok := api["sslExpirationPeriodDays"]; ok && raw != nil {
+			var days []int64
+			if err := json.Unmarshal(raw, &days); err == nil {
+				values := make([]attr.Value, 0, len(days))
+				for _, d := range days {
+					values = append(values, types.Int64Value(d))
+				}
+				attrs["ssl_expiration_period_days"] = types.SetValueMust(types.Int64Type, values) // empty is ok
+			}
+		}
+		if attrs["ssl_expiration_period_days"].IsNull() {
+			// Fallback to plan for being known
+			var days []int64
+			diags.Append(tf.SSLExpirationPeriodDays.ElementsAs(ctx, &days, false)...)
+			if !diags.HasError() {
+				values := make([]attr.Value, 0, len(days))
+				for _, d := range days {
+					values = append(values, types.Int64Value(d))
+				}
+				attrs["ssl_expiration_period_days"] = types.SetValueMust(types.Int64Type, values)
+			}
+		}
+	}
+
+	obj, d := types.ObjectValue(attrTypes, attrs)
+	diags.Append(d...)
+	return obj, diags
+}
+
+// build state from API only.
+func flattenSSLConfigFromAPI(api map[string]json.RawMessage) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	attrTypes := configObjectType().AttrTypes
+	attrs := map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+	}
+	if raw, ok := api["sslExpirationPeriodDays"]; ok && raw != nil {
+		var days []int64
+		if err := json.Unmarshal(raw, &days); err == nil {
+			values := make([]attr.Value, 0, len(days))
+			for _, d := range days {
+				values = append(values, types.Int64Value(d))
+			}
+			attrs["ssl_expiration_period_days"] = types.SetValueMust(types.Int64Type, values) // empty OK
+		}
+	}
+	obj, d := types.ObjectValue(attrTypes, attrs)
+	diags.Append(d...)
+	return obj, diags
 }

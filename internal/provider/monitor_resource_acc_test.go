@@ -234,6 +234,32 @@ resource "uptimerobot_monitor" "test" {
 `, name, ac)
 }
 
+func testAccMonitorResourceConfigWithSSLPeriod(name string, days []int) string {
+	cfg := ""
+	if days != nil {
+		if len(days) == 0 {
+			cfg = `
+  config = {
+    ssl_expiration_period_days = []
+  }`
+		} else {
+			cfg = fmt.Sprintf(`
+  config = {
+    ssl_expiration_period_days = [%s]
+  }`, joinInts(days))
+		}
+	}
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30%s
+}
+`, name, cfg)
+}
+
 // Helpers ------------------------------------------------------
 
 func joinQuotedStrings(strings []string) string {
@@ -1282,6 +1308,146 @@ func TestAcc_Monitor_CreatePlanOnly_NoExistingState(t *testing.T) {
 				Config:             testAccMonitorResourceConfig("acc-planonly-from-scratch"),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_CheckSSLErrors_DefaultFalse(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccMonitorResourceConfig("acc-sslerrs-default"),
+				Check:  resource.TestCheckResourceAttr("uptimerobot_monitor.test", "check_ssl_errors", "false"),
+			},
+			// idempotency
+			{
+				Config:             testAccMonitorResourceConfig("acc-sslerrs-default"),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_CheckSSLErrors_ExplicitTrue(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name             = "acc-sslerrs-true"
+  url              = "https://example.com"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  check_ssl_errors = true
+}
+`,
+				Check: resource.TestCheckResourceAttr("uptimerobot_monitor.test", "check_ssl_errors", "true"),
+			},
+			// flip back to false
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name             = "acc-sslerrs-true"
+  url              = "https://example.com"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  check_ssl_errors = false
+}
+`,
+				Check: resource.TestCheckResourceAttr("uptimerobot_monitor.test", "check_ssl_errors", "false"),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
+	name := "acc-ssl-period"
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{ // apply [0, 7, 30]
+				Config: testAccMonitorResourceConfigWithSSLPeriod(name, []int{0, 7, 30}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.#", "3"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.*", "0"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.*", "7"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.*", "30"),
+				),
+			},
+			{ // change to [1, 14]
+				Config: testAccMonitorResourceConfigWithSSLPeriod(name, []int{1, 14}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.#", "2"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.*", "1"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.*", "14"),
+				),
+			},
+			{ // remove config → attribute omitted
+				Config: testAccMonitorResourceConfig(name),
+				Check:  resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days"),
+			},
+			{ // idempotent re-plan
+				Config:             testAccMonitorResourceConfig(name),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_SSLExpirationPeriodDays_Invalid(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{ // out of range
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name     = "acc-ssl-period-invalid"
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+  config = {
+    ssl_expiration_period_days = [-1, 366]
+  }
+}
+`,
+				ExpectError: regexp.MustCompile(
+					`(?s)` +
+						`Attribute config\.ssl_expiration_period_days\[Value\(-1\)\] value must be between[\s\S]*0 and 365, got: -1` +
+						`[\s\S]*` +
+						`Attribute config\.ssl_expiration_period_days\[Value\(366\)\] value must be between[\s\S]*0 and 365, got: 366`,
+				),
+			},
+			{ // > 10 items
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name     = "acc-ssl-period-too-many"
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+  config = {
+    ssl_expiration_period_days = [0,1,2,3,4,5,6,7,8,9,10]
+  }
+}
+`,
+				ExpectError: regexp.MustCompile(
+					`Attribute config\.ssl_expiration_period_days (?:set|value) must contain at most 10\s+elements(?:, got: \d+)?`,
+				),
 			},
 		},
 	})

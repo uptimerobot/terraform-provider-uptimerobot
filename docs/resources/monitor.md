@@ -23,6 +23,14 @@ resource "uptimerobot_monitor" "website" {
   # Optional: SSL certificate expiration monitoring
   ssl_expiration_reminder = true
 
+  # Optional: to send reminder on selected days (0...365)
+  config = {
+    ssl_expiration_period_days = [20, 30, 44, 52, 67]
+  }
+
+  # Optional: SSL check errors
+  check_ssl_errors = true
+
   # Optional: Follow HTTP redirects
   follow_redirections = true
 
@@ -207,6 +215,16 @@ Common monitoring intervals:
 
 - `assigned_alert_contacts` (Attributes Set) Alert contacts to assign. threshold/recurrence are minutes. Free plan uses 0. (see [below for nested schema](#nestedatt--assigned_alert_contacts))
 - `auth_type` (String) The authentication type (HTTP_BASIC)
+- `check_ssl_errors` (Boolean) If true, monitor checks SSL certificate errors (hostname mismatch, invalid chain, etc.).
+- `config` (Attributes) Advanced monitor configuration.
+
+**Semantics**:
+- Omit the block → **clear** config on server (reset to defaults).
+- `config = {}` → **preserve** remote values (no change).
+- `ssl_expiration_period_days = []` → **clear** days on server.
+- Non-empty list → **set** exactly those days.
+
+**Tip**: To let UI changes win, use `lifecycle { ignore_changes = [config] }`. (see [below for nested schema](#nestedatt--config))
 - `custom_http_headers` (Map of String) Custom HTTP headers
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
 - `follow_redirections` (Boolean) Whether to follow redirections
@@ -245,3 +263,14 @@ Optional:
 
 - `recurrence` (Number)
 - `threshold` (Number)
+
+
+<a id="nestedatt--config"></a>
+### Nested Schema for `config`
+
+Optional:
+
+- `ssl_expiration_period_days` (Set of Number) Reminder days before SSL expiry (0..365). Max 10 items.
+
+- Omit the attribute → **preserve** remote values.
+- Empty set `[]` → **clear** values on server.
