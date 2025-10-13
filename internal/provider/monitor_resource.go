@@ -532,28 +532,36 @@ func (r *monitorResource) ValidateConfig(
 	_ = req.Config.GetAttribute(ctx, path.Root("config"), &cfg)
 
 	// Check that user set any SSL related settings
-	sslRemKnown := !data.SSLExpirationReminder.IsNull() && !data.SSLExpirationReminder.IsUnknown()
-	sslDaysKnown := !cfg.SSLExpirationPeriodDays.IsNull() && !cfg.SSLExpirationPeriodDays.IsUnknown()
-	sslCheckErrKnown := !data.CheckSSLErrors.IsNull() && !data.CheckSSLErrors.IsUnknown()
-	sslTouched := sslRemKnown || sslDaysKnown || sslCheckErrKnown
+	sslRemTouched := !data.SSLExpirationReminder.IsNull() &&
+		!data.SSLExpirationReminder.IsUnknown() &&
+		data.SSLExpirationReminder.ValueBool()
+
+	sslDaysTouched := !cfg.SSLExpirationPeriodDays.IsNull() &&
+		!cfg.SSLExpirationPeriodDays.IsUnknown()
+
+	sslCheckErrTouched := !data.CheckSSLErrors.IsNull() &&
+		!data.CheckSSLErrors.IsUnknown() &&
+		data.CheckSSLErrors.ValueBool()
+
+	sslTouched := sslRemTouched || sslDaysTouched || sslCheckErrTouched
 
 	// Only HTTP/KEYWORD may use SSL settings
 	if sslTouched && t != "HTTP" && t != "KEYWORD" {
-		if sslRemKnown {
+		if sslRemTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("ssl_expiration_reminder"),
 				"SSL reminder not allowed for this monitor type",
 				"ssl_expiration_reminder is only supported for HTTP/KEYWORD monitors.",
 			)
 		}
-		if sslDaysKnown {
+		if sslDaysTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("config").AtName("ssl_expiration_period_days"),
 				"SSL reminder days not allowed for this monitor type",
 				"ssl_expiration_period_days is only supported for HTTP/KEYWORD monitors.",
 			)
 		}
-		if sslCheckErrKnown {
+		if sslCheckErrTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("check_ssl_errors"),
 				"Check SSL errors not allowed for this monitor type",
@@ -568,21 +576,21 @@ func (r *monitorResource) ValidateConfig(
 		!data.URL.IsNull() && !data.URL.IsUnknown() &&
 		!strings.HasPrefix(strings.ToLower(data.URL.ValueString()), "https://") {
 
-		if sslRemKnown {
+		if sslRemTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("ssl_expiration_reminder"),
 				"SSL reminders require an HTTPS URL",
 				"Set an https:// URL or remove ssl_expiration_reminder.",
 			)
 		}
-		if sslDaysKnown {
+		if sslDaysTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("config").AtName("ssl_expiration_period_days"),
 				"SSL reminders require an HTTPS URL",
 				"Set an https:// URL or remove ssl_expiration_period_days.",
 			)
 		}
-		if sslCheckErrKnown {
+		if sslCheckErrTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("check_ssl_errors"),
 				"SSL checks require an HTTPS URL",
