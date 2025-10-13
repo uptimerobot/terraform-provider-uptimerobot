@@ -1801,8 +1801,9 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		}
 	}
 
+	// Consider removing Set and Map modifying as not needed and remove helpers
+	// No value - preserver server. Clear empty value e.g. [] - delete on server. Actual value - set on server.
 	modifyPlanForSetField(ctx, &plan.Tags, &state.Tags, resp, "tags")
-	modifyPlanForSetField(ctx, &plan.AssignedAlertContacts, &state.AssignedAlertContacts, resp, "assigned_alert_contacts")
 
 	modifyPlanForMapField(ctx, &plan.CustomHTTPHeaders, &state.CustomHTTPHeaders, resp, "custom_http_headers")
 

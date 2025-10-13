@@ -376,6 +376,85 @@ func TestAccMonitorResource_AlertContacts(t *testing.T) {
 	})
 }
 
+func TestAccMonitorResource_AlertContacts_ExplicitEmpty(t *testing.T) {
+	id := mustAlertContactID(t)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			// 1) Start with one contact assigned
+			{
+				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-contacts-empty", []string{id}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.#", "1"),
+					resource.TestCheckTypeSetElemNestedAttrs(
+						"uptimerobot_monitor.test",
+						"assigned_alert_contacts.*",
+						map[string]string{
+							"alert_contact_id": id,
+							"threshold":        "0",
+							"recurrence":       "0",
+						},
+					),
+				),
+			},
+			// 2) Explicitly set to empty list. Plan should exist and clears server
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name     = "test-monitor-contacts-empty"
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+  assigned_alert_contacts = [] // explicit empty
+}
+`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+			// 3) Apply explicit empty. State should be an empty set
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name     = "test-monitor-contacts-empty"
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+  assigned_alert_contacts = []
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.#", "0"),
+				),
+			},
+			// 4) Idempotent re-plan with explicit empty
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name     = "test-monitor-contacts-empty"
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+  assigned_alert_contacts = []
+}
+`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// 5) Remove the attribute entirely. Attribute should be omitted in state
+			{
+				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-contacts-empty", nil),
+				Check:  resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts"),
+			},
+		},
+	})
+}
+
 // TestAccMonitorResource_Tags tests the specific case where tags
 // are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_Tags(t *testing.T) {
