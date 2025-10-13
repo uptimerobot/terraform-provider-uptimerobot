@@ -21,11 +21,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -314,6 +314,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"assigned_alert_contacts": schema.SetNestedAttribute{
 				Description: "Alert contacts to assign. threshold/recurrence are minutes. Free plan uses 0.",
 				Optional:    true,
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"alert_contact_id": schema.StringAttribute{
@@ -322,21 +325,30 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 							Validators: []validator.String{
 								stringvalidator.RegexMatches(regexp.MustCompile(`^\d+$`), "must be a numeric ID"),
 							},
+							PlanModifiers: []planmodifier.String{
+								stringplanmodifier.UseStateForUnknown(), // keep identity stable
+							},
 						},
 						"threshold": schema.Int64Attribute{
 							Optional: true,
 							Computed: true,
-							Default:  int64default.StaticInt64(0),
+							// Default:  int64default.StaticInt64(0),
 							Validators: []validator.Int64{
 								int64validator.AtLeast(0),
+							},
+							PlanModifiers: []planmodifier.Int64{
+								int64planmodifier.UseStateForUnknown(),
 							},
 						},
 						"recurrence": schema.Int64Attribute{
 							Optional: true,
 							Computed: true,
-							Default:  int64default.StaticInt64(0),
+							// Default:  int64default.StaticInt64(0),
 							Validators: []validator.Int64{
 								int64validator.AtLeast(0),
+							},
+							PlanModifiers: []planmodifier.Int64{
+								int64planmodifier.UseStateForUnknown(),
 							},
 						},
 					},
@@ -505,10 +517,14 @@ func (r *monitorResource) ValidateConfig(
 		}
 
 		seen := map[string]struct{}{}
-		for _, ac := range acs {
-			if ac.AlertContactID.IsNull() || ac.AlertContactID.IsUnknown() {
+		for i, ac := range acs {
+			// Do not check unknown to allow usage of variables in config, which is not known on validate step
+			if ac.AlertContactID.IsUnknown() {
+				continue
+			}
+			if ac.AlertContactID.IsNull() {
 				resp.Diagnostics.AddAttributeError(
-					path.Root("assigned_alert_contacts"),
+					path.Root("assigned_alert_contacts").AtListIndex(i).AtName("alert_contact_id"),
 					"Missing alert_contact_id",
 					"Each element must set alert_contact_id.",
 				)
@@ -517,7 +533,7 @@ func (r *monitorResource) ValidateConfig(
 			id := ac.AlertContactID.ValueString()
 			if _, dup := seen[id]; dup {
 				resp.Diagnostics.AddAttributeError(
-					path.Root("assigned_alert_contacts"),
+					path.Root("assigned_alert_contacts").AtListIndex(i).AtName("alert_contact_id"),
 					"Duplicate alert_contact_id",
 					fmt.Sprintf("Alert contact %s is specified more than once. Assign each contact at most once.", id),
 				)
@@ -1757,6 +1773,31 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 		if resp.Diagnostics.HasError() {
 			return
+		}
+	}
+
+	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
+		var acs []alertContactTF
+		resp.Diagnostics.Append(plan.AssignedAlertContacts.ElementsAs(ctx, &acs, false)...)
+		if !resp.Diagnostics.HasError() {
+			changed := false
+			for i := range acs {
+				if acs[i].Threshold.IsNull() {
+					acs[i].Threshold = types.Int64Value(0)
+					changed = true
+				}
+				if acs[i].Recurrence.IsNull() {
+					acs[i].Recurrence = types.Int64Value(0)
+					changed = true
+				}
+			}
+			if changed {
+				v, d := types.SetValueFrom(ctx, alertContactObjectType(), acs)
+				resp.Diagnostics.Append(d...)
+				if !resp.Diagnostics.HasError() {
+					resp.Plan.SetAttribute(ctx, path.Root("assigned_alert_contacts"), v)
+				}
+			}
 		}
 	}
 
