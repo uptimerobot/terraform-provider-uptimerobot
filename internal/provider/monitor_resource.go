@@ -332,7 +332,6 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 						"threshold": schema.Int64Attribute{
 							Optional: true,
 							Computed: true,
-							// Default:  int64default.StaticInt64(0),
 							Validators: []validator.Int64{
 								int64validator.AtLeast(0),
 							},
@@ -343,7 +342,6 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 						"recurrence": schema.Int64Attribute{
 							Optional: true,
 							Computed: true,
-							// Default:  int64default.StaticInt64(0),
 							Validators: []validator.Int64{
 								int64validator.AtLeast(0),
 							},
