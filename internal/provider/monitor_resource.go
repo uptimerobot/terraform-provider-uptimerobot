@@ -534,7 +534,8 @@ func (r *monitorResource) ValidateConfig(
 	// Check that user set any SSL related settings
 	sslRemKnown := !data.SSLExpirationReminder.IsNull() && !data.SSLExpirationReminder.IsUnknown()
 	sslDaysKnown := !cfg.SSLExpirationPeriodDays.IsNull() && !cfg.SSLExpirationPeriodDays.IsUnknown()
-	sslTouched := sslRemKnown || sslDaysKnown
+	sslCheckErrKnown := !data.CheckSSLErrors.IsNull() && !data.CheckSSLErrors.IsUnknown()
+	sslTouched := sslRemKnown || sslDaysKnown || sslCheckErrKnown
 
 	// Only HTTP/KEYWORD may use SSL settings
 	if sslTouched && t != "HTTP" && t != "KEYWORD" {
@@ -550,6 +551,13 @@ func (r *monitorResource) ValidateConfig(
 				path.Root("config").AtName("ssl_expiration_period_days"),
 				"SSL reminder days not allowed for this monitor type",
 				"ssl_expiration_period_days is only supported for HTTP/KEYWORD monitors.",
+			)
+		}
+		if sslCheckErrKnown {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("check_ssl_errors"),
+				"Check SSL errors not allowed for this monitor type",
+				"check_ssl_errors is only supported for HTTP/KEYWORD monitors.",
 			)
 		}
 		return
@@ -572,6 +580,13 @@ func (r *monitorResource) ValidateConfig(
 				path.Root("config").AtName("ssl_expiration_period_days"),
 				"SSL reminders require an HTTPS URL",
 				"Set an https:// URL or remove ssl_expiration_period_days.",
+			)
+		}
+		if sslCheckErrKnown {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("check_ssl_errors"),
+				"SSL checks require an HTTPS URL",
+				"Set an https:// URL or remove check_ssl_errors.",
 			)
 		}
 		return
