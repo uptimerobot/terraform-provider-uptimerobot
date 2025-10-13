@@ -2059,59 +2059,6 @@ func configObjectType() types.ObjectType {
 	}
 }
 
-// func configFromAPIResponse(_ context.Context, m map[string]json.RawMessage) (types.Object, bool, diag.Diagnostics) {
-// 	var diags diag.Diagnostics
-
-// 	attrTypes := configObjectType().AttrTypes
-// 	attrs := map[string]attr.Value{
-// 		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
-// 	}
-
-// 	hasValues := false
-
-// 	// ssl_expiration_period_days
-// 	if raw, ok := m["sslExpirationPeriodDays"]; ok && len(raw) > 0 {
-// 		var ints []int64
-// 		if err := json.Unmarshal(raw, &ints); err == nil && len(ints) > 0 {
-// 			vals := make([]attr.Value, 0, len(ints))
-// 			for _, d := range ints {
-// 				vals = append(vals, types.Int64Value(d))
-// 			}
-// 			attrs["ssl_expiration_period_days"] = types.SetValueMust(types.Int64Type, vals)
-// 			hasValues = true
-// 		} else if err != nil {
-// 			diags.AddError("decode sslExpirationPeriodDays", err.Error())
-// 		}
-// 	}
-
-// 	if !hasValues {
-// 		// return an ObjectNull and not an object with all null child obj
-// 		return types.ObjectNull(attrTypes), false, diags
-// 	}
-
-// 	obj, d := types.ObjectValue(attrTypes, attrs)
-// 	diags.Append(d...)
-// 	return obj, true, diags
-// }
-
-// func configNullSetObject() types.Object {
-// 	return types.ObjectValueMust(
-// 		configObjectType().AttrTypes,
-// 		map[string]attr.Value{
-// 			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
-// 		},
-// 	)
-// }
-
-// func configEmptySetObject() types.Object {
-// 	return types.ObjectValueMust(
-// 		configObjectType().AttrTypes,
-// 		map[string]attr.Value{
-// 			"ssl_expiration_period_days": types.SetValueMust(types.Int64Type, []attr.Value{}),
-// 		},
-// 	)
-// }
-
 // SSL helpers.
 
 func expandSSLConfigToAPI(ctx context.Context, cfg types.Object) (*client.MonitorConfig, bool, diag.Diagnostics) {
