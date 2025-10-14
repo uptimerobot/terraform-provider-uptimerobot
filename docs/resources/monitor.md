@@ -235,7 +235,7 @@ Common monitoring intervals:
 - `keyword_case_type` (String) The case sensitivity for keyword (CaseSensitive or CaseInsensitive). Default: CaseInsensitive
 - `keyword_type` (String) The type of keyword check (ALERT_EXISTS, ALERT_NOT_EXISTS)
 - `keyword_value` (String) The keyword to search for
-- `maintenance_window_ids` (List of Number) The maintenance window IDs
+- `maintenance_window_ids` (Set of Number) The maintenance window IDs
 - `port` (Number) The port to monitor
 - `post_value_data` (String) JSON body (use jsonencode). Mutually exclusive with post_value_kv.
 - `post_value_kv` (Map of String) Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.
