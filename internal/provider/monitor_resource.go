@@ -82,7 +82,7 @@ type monitorResourceModel struct {
 	KeywordValue             types.String         `tfsdk:"keyword_value"`
 	KeywordCaseType          types.String         `tfsdk:"keyword_case_type"`
 	KeywordType              types.String         `tfsdk:"keyword_type"`
-	MaintenanceWindowIDs     types.List           `tfsdk:"maintenance_window_ids"`
+	MaintenanceWindowIDs     types.Set            `tfsdk:"maintenance_window_ids"`
 	ID                       types.String         `tfsdk:"id"`
 	Name                     types.String         `tfsdk:"name"`
 	Status                   types.String         `tfsdk:"status"`
@@ -142,7 +142,7 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Version:     3,
+		Version:     4,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
@@ -275,10 +275,13 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					stringvalidator.OneOf("ALERT_EXISTS", "ALERT_NOT_EXISTS"),
 				},
 			},
-			"maintenance_window_ids": schema.ListAttribute{
+			"maintenance_window_ids": schema.SetAttribute{
 				Description: "The maintenance window IDs",
 				Optional:    true,
 				ElementType: types.Int64Type,
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"id": schema.StringAttribute{
 				Description: "Monitor ID",
@@ -1233,18 +1236,14 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		for _, mw := range monitor.MaintenanceWindows {
 			maintenanceWindowIDs = append(maintenanceWindowIDs, mw.ID)
 		}
-		maintenanceWindowIDsValue, d := types.ListValueFrom(ctx, types.Int64Type, maintenanceWindowIDs)
+		maintenanceWindowIDsValue, d := types.SetValueFrom(ctx, types.Int64Type, maintenanceWindowIDs)
 		diags.Append(d...)
 		if diags.HasError() {
 			return
 		}
 		state.MaintenanceWindowIDs = maintenanceWindowIDsValue
-	} else {
-		// No maintenance windows assigned
-		if isImport {
-			state.MaintenanceWindowIDs = types.ListNull(types.Int64Type)
-		}
-		// For non-import operations, preserve the existing state to avoid unnecessary diffs
+	} else if isImport {
+		state.MaintenanceWindowIDs = types.SetNull(types.Int64Type)
 	}
 
 	if isImport || !state.CheckSSLErrors.IsNull() {
@@ -2026,6 +2025,24 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 				}
 
 				upgraded, diags := upgradeMonitorFromV2(ctx, prior)
+				resp.Diagnostics.Append(diags...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
+			},
+		},
+		3: {
+			PriorSchema: priorSchemaV3(),
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				var prior monitorV3Model
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				upgraded, diags := upgradeMonitorFromV3(ctx, prior)
 				resp.Diagnostics.Append(diags...)
 				if resp.Diagnostics.HasError() {
 					return
