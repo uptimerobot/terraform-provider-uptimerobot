@@ -12,7 +12,7 @@ import (
 
 /*
 	If / when 2 or 3 resources will begin sharing these helpers.
-	Consider making them a separate internal/tfconv package so they will be reusable accross all resources
+	Consider making them a separate internal/tfconv package so they will be reusable across all resources
 	without becoming public package or some kinda API.
 	However if something will be moved out - it MUST NOT be related to or depends on the resources.
 	So resource related helpers	might stay here.
