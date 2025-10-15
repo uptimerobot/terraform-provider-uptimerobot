@@ -3,10 +3,7 @@ package provider
 
 import (
 	"context"
-	"strconv"
-	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -67,39 +64,6 @@ type pspV0Features struct {
 	EnableDetailsPage    types.String `tfsdk:"enable_details_page"`
 	ShowMonitorURL       types.String `tfsdk:"show_monitor_url"`
 	HidePausedMonitors   types.String `tfsdk:"hide_paused_monitors"`
-}
-
-func toBool(v types.String) types.Bool {
-	if v.IsNull() || v.IsUnknown() {
-		return types.BoolNull()
-	}
-	s := strings.TrimSpace(strings.ToLower(v.ValueString()))
-	if s == "" {
-		return types.BoolNull()
-	}
-	// strconv.ParseBool handles: 1/0, t/f, true/false, yes/no
-	b, err := strconv.ParseBool(s)
-	if err != nil {
-		return types.BoolNull()
-	}
-	return types.BoolValue(b)
-}
-
-func listInt64ToSet(ctx context.Context, l types.List) (types.Set, diag.Diagnostics) {
-	if l.IsNull() || l.IsUnknown() {
-		return types.SetNull(types.Int64Type), nil
-	}
-	var diags diag.Diagnostics
-	var ids []int64
-	diags.Append(l.ElementsAs(ctx, &ids, false)...)
-	if diags.HasError() {
-		return types.SetNull(types.Int64Type), diags
-	}
-	if len(ids) == 0 {
-		// Make an explicit empty set with a concrete element type
-		return types.SetValueMust(types.Int64Type, []attr.Value{}), nil
-	}
-	return types.SetValueFrom(ctx, types.Int64Type, ids)
 }
 
 func upgradePSPFromV0(ctx context.Context, prior pspV0Model) (pspResourceModel, diag.Diagnostics) {

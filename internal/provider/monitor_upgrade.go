@@ -703,39 +703,6 @@ func upgradeMonitorFromV2(ctx context.Context, prior monitorV2Model) (monitorRes
 	return up, diags
 }
 
-// helper: List[string] -> Set[object{alert_contact_id, threshold, recurrence}]
-func acListToObjectSet(ctx context.Context, l types.List) (types.Set, diag.Diagnostics) {
-	var diags diag.Diagnostics
-	if l.IsNull() || l.IsUnknown() {
-		return types.SetNull(alertContactObjectType()), diags
-	}
-	var ids []string
-	diags.Append(l.ElementsAs(ctx, &ids, false)...)
-	if diags.HasError() {
-		return types.SetNull(alertContactObjectType()), diags
-	}
-	seen := map[string]struct{}{}
-	elts := make([]alertContactTF, 0, len(ids))
-	for _, id := range ids {
-		if id == "" {
-			continue
-		}
-		if _, dup := seen[id]; dup {
-			continue
-		}
-		seen[id] = struct{}{}
-		elts = append(elts, alertContactTF{
-			AlertContactID: types.StringValue(id),
-			// match schema defaults to avoid diffs
-			Threshold:  types.Int64Value(0),
-			Recurrence: types.Int64Value(0),
-		})
-	}
-	v, d := types.SetValueFrom(ctx, alertContactObjectType(), elts)
-	diags.Append(d...)
-	return v, diags
-}
-
 // V3 -> V4
 
 type monitorV3Model struct {
