@@ -9,7 +9,7 @@ type MaintenanceWindow struct {
 	Time            string  `json:"time"`
 	Duration        int     `json:"duration"`
 	AutoAddMonitors bool    `json:"autoAddMonitors"`
-	Days            []int   `json:"value"`
+	Days            []int64 `json:"days"`
 	Status          string  `json:"status"`
 	Created         string  `json:"created"`
 }
@@ -21,8 +21,8 @@ type CreateMaintenanceWindowRequest struct {
 	Date            *string `json:"date,omitempty"`
 	Time            string  `json:"time"`
 	Duration        int     `json:"duration"`
-	AutoAddMonitors bool    `json:"autoAddMonitors"`
-	Days            []int   `json:"value,omitempty"`
+	AutoAddMonitors *bool   `json:"autoAddMonitors"`
+	Days            []int64 `json:"days,omitempty"`
 }
 
 // UpdateMaintenanceWindowRequest represents the request to update an existing maintenance window.
@@ -32,8 +32,8 @@ type UpdateMaintenanceWindowRequest struct {
 	Date            *string `json:"date,omitempty"`
 	Time            string  `json:"time,omitempty"`
 	Duration        int     `json:"duration,omitempty"`
-	AutoAddMonitors bool    `json:"autoAddMonitors,omitempty"`
-	Days            []int   `json:"value,omitempty"`
+	AutoAddMonitors *bool   `json:"autoAddMonitors,omitempty"`
+	Days            []int64 `json:"days,omitempty"`
 }
 
 // CreateMaintenanceWindow creates a new maintenance window.

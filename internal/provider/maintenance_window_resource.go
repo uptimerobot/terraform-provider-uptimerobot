@@ -3,13 +3,16 @@ package provider
 import (
 	"context"
 	"regexp"
+	"sort"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -17,12 +20,20 @@ import (
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
+const (
+	intervalOnce    = "once"
+	intervalDaily   = "daily"
+	intervalWeekly  = "weekly"
+	intervalMonthly = "monthly"
+)
+
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ resource.Resource                = &maintenanceWindowResource{}
-	_ resource.ResourceWithConfigure   = &maintenanceWindowResource{}
-	_ resource.ResourceWithModifyPlan  = &maintenanceWindowResource{}
-	_ resource.ResourceWithImportState = &maintenanceWindowResource{}
+	_ resource.Resource                   = &maintenanceWindowResource{}
+	_ resource.ResourceWithConfigure      = &maintenanceWindowResource{}
+	_ resource.ResourceWithImportState    = &maintenanceWindowResource{}
+	_ resource.ResourceWithValidateConfig = &maintenanceWindowResource{}
+	_ resource.ResourceWithUpgradeState   = &maintenanceWindowResource{}
 )
 
 // NewMaintenanceWindowResource is a helper function to simplify the provider implementation.
@@ -44,7 +55,7 @@ type maintenanceWindowResourceModel struct {
 	Time            types.String `tfsdk:"time"`
 	Duration        types.Int64  `tfsdk:"duration"`
 	AutoAddMonitors types.Bool   `tfsdk:"auto_add_monitors"`
-	Days            types.List   `tfsdk:"days"`
+	Days            types.Set    `tfsdk:"days"`
 	Status          types.String `tfsdk:"status"`
 }
 
@@ -74,6 +85,7 @@ func (r *maintenanceWindowResource) Metadata(_ context.Context, req resource.Met
 // Schema defines the schema for the resource.
 func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Version:     1,
 		Description: "Manages an UptimeRobot maintenance window.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -115,11 +127,19 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 			"auto_add_monitors": schema.BoolAttribute{
 				Description: "Automatically add new monitors to maintenance window",
 				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"days": schema.ListAttribute{
-				Description: "Days to run maintenance window on (1-7, 1 = Monday)",
+			"days": schema.SetAttribute{
+				Description: "Only for interval = \"weekly\" or \"monthly\". " +
+					"Weekly: 1=Mon..7=Sun. Monthly: 1..31, or -1 (last day of month).",
 				Optional:    true,
 				ElementType: types.Int64Type,
+				Validators: []validator.Set{
+					setvalidator.ValueInt64sAre(int64validator.Between(-1, 31)),
+				},
 			},
 			"status": schema.StringAttribute{
 				Description: "Status of the maintenance window",
@@ -129,6 +149,103 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 				},
 			},
 		},
+	}
+}
+
+func (r *maintenanceWindowResource) ValidateConfig(
+	ctx context.Context,
+	req resource.ValidateConfigRequest,
+	resp *resource.ValidateConfigResponse,
+) {
+	if req.Config.Raw.IsNull() {
+		return
+	}
+
+	var cfg maintenanceWindowResourceModel
+	diags := req.Config.Get(ctx, &cfg)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	validateRuleDaysRequiredForWeeklyMonthly(ctx, cfg, resp)
+	validateRuleDaysNotAllowedForOnceDaily(ctx, cfg, resp)
+
+}
+
+func validateRuleDaysRequiredForWeeklyMonthly(
+	ctx context.Context,
+	cfg maintenanceWindowResourceModel,
+	resp *resource.ValidateConfigResponse,
+) {
+	if cfg.Interval.IsNull() || cfg.Interval.IsUnknown() {
+		return
+	}
+
+	iv := cfg.Interval.ValueString()
+	if iv != intervalWeekly && iv != intervalMonthly {
+		return
+	}
+
+	// If days unknown, they should be skipped at plan time validation
+	if cfg.Days.IsUnknown() {
+		return
+	}
+
+	// For weekly and monthly - days must be explicitly set and non-empty
+	if cfg.Days.IsNull() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("days"),
+			"Missing days for the selected interval",
+			`For interval = "`+iv+`", you must set at least one value in "days".`,
+		)
+		return
+	}
+
+	var ds []int64
+	resp.Diagnostics.Append(cfg.Days.ElementsAs(ctx, &ds, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if len(ds) == 0 {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("days"),
+			"Days cannot be empty",
+			`For interval = "`+iv+`", "days" must contain at least one value.`,
+		)
+	}
+}
+
+func validateRuleDaysNotAllowedForOnceDaily(
+	ctx context.Context,
+	cfg maintenanceWindowResourceModel,
+	resp *resource.ValidateConfigResponse,
+) {
+	if cfg.Interval.IsNull() || cfg.Interval.IsUnknown() {
+		return
+	}
+
+	iv := cfg.Interval.ValueString()
+	if iv != intervalOnce && iv != intervalDaily {
+		return
+	}
+
+	// If days unknown - skip. If null - nothing to check
+	if cfg.Days.IsUnknown() || cfg.Days.IsNull() {
+		return
+	}
+
+	var ds []int64
+	resp.Diagnostics.Append(cfg.Days.ElementsAs(ctx, &ds, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if len(ds) > 0 {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("days"),
+			"Days not allowed for this interval",
+			`"days" is only valid for interval = "weekly" or "monthly".`,
+		)
 	}
 }
 
@@ -157,8 +274,9 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 	}
 
 	// Only set AutoAddMonitors if it was explicitly set
-	if !plan.AutoAddMonitors.IsNull() {
-		mw.AutoAddMonitors = plan.AutoAddMonitors.ValueBool()
+	if !plan.AutoAddMonitors.IsNull() && !plan.AutoAddMonitors.IsUnknown() {
+		v := plan.AutoAddMonitors.ValueBool()
+		mw.AutoAddMonitors = &v
 	}
 
 	// Add date if it's set
@@ -168,18 +286,19 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 	}
 
 	// Convert days from int64 to []int
-	if !plan.Days.IsNull() {
+	if !plan.Days.IsNull() && !plan.Days.IsUnknown() {
 		var daysInt64 []int64
 		diags = plan.Days.ElementsAs(ctx, &daysInt64, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		days := make([]int, len(daysInt64))
-		for i, d := range daysInt64 {
-			days[i] = int(d)
+		if len(daysInt64) > 0 {
+			sort.Slice(daysInt64, func(i, j int) bool {
+				return daysInt64[i] < daysInt64[j]
+			})
+			mw.Days = daysInt64
 		}
-		mw.Days = days
 	}
 
 	// Create maintenance window
@@ -215,6 +334,16 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 	} else {
 		plan.Date = types.StringNull()
 	}
+
+	if len(newMW.Days) > 0 {
+		s, d := types.SetValueFrom(ctx, types.Int64Type, newMW.Days)
+		resp.Diagnostics.Append(d...)
+		plan.Days = s
+	} else {
+		plan.Days = types.SetNull(types.Int64Type)
+	}
+
+	plan.AutoAddMonitors = types.BoolValue(newMW.AutoAddMonitors)
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -258,43 +387,30 @@ func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadR
 	state.Time = types.StringValue(mw.Time)
 	state.Duration = types.Int64Value(int64(mw.Duration))
 
-	// Only set auto_add_monitors if it was already set in the state
-	// This prevents Terraform from seeing differences when the field
-	// is not specified in the configuration
-	if !state.AutoAddMonitors.IsNull() {
-		state.AutoAddMonitors = types.BoolValue(mw.AutoAddMonitors)
+	state.AutoAddMonitors = types.BoolValue(mw.AutoAddMonitors)
+
+	// Set additional computed values if available
+	if mw.Status != "" {
+		state.Status = types.StringValue(mw.Status)
 	}
 
 	// Add date if it's set
 	if mw.Date != nil {
 		state.Date = types.StringValue(*mw.Date)
-	}
-
-	// Convert days from []int to []int64
-	if len(mw.Days) > 0 {
-		daysInt64 := make([]int64, len(mw.Days))
-		for i, d := range mw.Days {
-			daysInt64[i] = int64(d)
-		}
-		days, diags := types.ListValueFrom(ctx, types.Int64Type, daysInt64)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		state.Days = days
 	} else {
-		// Handle empty days - set to null if not previously set, preserve existing state otherwise
-		if state.Days.IsNull() {
-			state.Days = types.ListNull(types.Int64Type)
-		} else {
-			// If days was previously set, create an empty list
-			state.Days = types.ListValueMust(types.Int64Type, []attr.Value{})
-		}
+		state.Date = types.StringNull()
 	}
 
-	// Set additional computed values if available
-	if mw.Status != "" {
-		state.Status = types.StringValue(mw.Status)
+	if mw.Interval == intervalWeekly || mw.Interval == intervalMonthly {
+		if len(mw.Days) > 0 {
+			days, diags := types.SetValueFrom(ctx, types.Int64Type, mw.Days)
+			resp.Diagnostics.Append(diags...)
+			state.Days = days
+		} else {
+			state.Days = types.SetNull(types.Int64Type)
+		}
+	} else {
+		state.Days = types.SetNull(types.Int64Type)
 	}
 
 	// Set refreshed state
@@ -332,8 +448,9 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	}
 
 	// Only set AutoAddMonitors if it was explicitly set
-	if !plan.AutoAddMonitors.IsNull() {
-		updateReq.AutoAddMonitors = plan.AutoAddMonitors.ValueBool()
+	if !plan.AutoAddMonitors.IsNull() && !plan.AutoAddMonitors.IsUnknown() {
+		v := plan.AutoAddMonitors.ValueBool()
+		updateReq.AutoAddMonitors = &v
 	}
 
 	// Add date if it's set
@@ -343,18 +460,21 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	}
 
 	// Convert days from int64 to []int
-	if !plan.Days.IsNull() {
+	if !plan.Days.IsNull() && !plan.Days.IsUnknown() {
 		var daysInt64 []int64
 		diags = plan.Days.ElementsAs(ctx, &daysInt64, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		days := make([]int, len(daysInt64))
-		for i, d := range daysInt64 {
-			days[i] = int(d)
+		if len(daysInt64) > 0 {
+			sort.Slice(daysInt64, func(i, j int) bool {
+				return daysInt64[i] < daysInt64[j]
+			})
+			updateReq.Days = daysInt64
+		} else {
+			updateReq.Days = nil
 		}
-		updateReq.Days = days
 	}
 
 	// Update maintenance window
@@ -403,50 +523,11 @@ func (r *maintenanceWindowResource) Delete(ctx context.Context, req resource.Del
 	}
 }
 
-// ModifyPlan modifies the plan to handle list field consistency issues.
-func (r *maintenanceWindowResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// If we don't have a plan or state, there's nothing to modify
-	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
-		return
-	}
-
-	// Retrieve values from plan and state
-	var plan, state maintenanceWindowResourceModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	diags = req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// Preserve null vs empty list consistency for days field
-	maintenanceWindowModifyPlanForListField(ctx, &plan.Days, &state.Days, resp, "days")
-}
-
-// maintenanceWindowModifyPlanForListField handles the special case for list fields that might be null vs empty lists.
-func maintenanceWindowModifyPlanForListField(ctx context.Context, planField, stateField *types.List, resp *resource.ModifyPlanResponse, fieldName string) {
-	// If we don't have both plan and state, nothing to modify
-	if planField == nil || stateField == nil {
-		return
-	}
-
-	// Case 1: State is null, plan has an empty list -> convert plan to null for consistency
-	if stateField.IsNull() && !planField.IsNull() {
-		var planItems []int64
-		diags := planField.ElementsAs(ctx, &planItems, false)
-		if !diags.HasError() && len(planItems) == 0 {
-			resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.ListNull(planField.ElementType(ctx)))
-		}
-	}
-	// Case 2: State has items, plan is null -> This is a user-intended removal, don't modify
-	// Case 3: State has items, plan has different items -> This is a user-intended change, don't modify
-}
-
 // ImportState imports an existing resource into Terraform.
 func (r *maintenanceWindowResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func (r *maintenanceWindowResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
+	return maintenanceWindowUpgradeStateMap()
 }
