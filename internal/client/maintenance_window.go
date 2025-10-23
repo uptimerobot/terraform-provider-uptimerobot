@@ -21,7 +21,7 @@ type CreateMaintenanceWindowRequest struct {
 	Date            *string `json:"date,omitempty"`
 	Time            string  `json:"time"`
 	Duration        int     `json:"duration"`
-	AutoAddMonitors *bool   `json:"autoAddMonitors"`
+	AutoAddMonitors *bool   `json:"autoAddMonitors,omitempty"`
 	Days            []int64 `json:"days,omitempty"`
 }
 
