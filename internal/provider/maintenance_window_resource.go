@@ -134,7 +134,8 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 			},
 			"days": schema.SetAttribute{
 				Description: "Only for interval = \"weekly\" or \"monthly\". " +
-					"Weekly: 1=Mon..7=Sun. Monthly: 1..31, or -1 (last day of month).",
+					"Weekly: 1=Mon..7=Sun. Monthly: 1..31, or -1 (last day of month)." +
+					"Invalid values are silently ignored by the API.",
 				Optional:    true,
 				ElementType: types.Int64Type,
 				Validators: []validator.Set{

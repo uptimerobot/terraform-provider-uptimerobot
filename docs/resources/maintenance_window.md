@@ -121,7 +121,7 @@ For weekly maintenance windows, specify days as numbers:
 
 - `auto_add_monitors` (Boolean) Automatically add new monitors to maintenance window
 - `date` (String) Date of the maintenance window (format: YYYY-MM-DD)
-- `days` (Set of Number) Only for interval = "weekly" or "monthly". Weekly: 1=Mon..7=Sun. Monthly: 1..31, or -1 (last day of month).
+- `days` (Set of Number) Only for interval = "weekly" or "monthly". Weekly: 1=Mon..7=Sun. Monthly: 1..31, or -1 (last day of month).Invalid values are silently ignored by the API.
 
 ### Read-Only
 
