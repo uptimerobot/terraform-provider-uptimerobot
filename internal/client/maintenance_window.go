@@ -1,5 +1,10 @@
 package client
 
+import (
+	"context"
+	"time"
+)
+
 // MaintenanceWindow represents a maintenance window.
 type MaintenanceWindow struct {
 	ID              int64   `json:"id"`
@@ -68,6 +73,10 @@ func (c *Client) UpdateMaintenanceWindow(id int64, req *UpdateMaintenanceWindowR
 
 // DeleteMaintenanceWindow deletes a maintenance window.
 func (c *Client) DeleteMaintenanceWindow(id int64) error {
-	base := NewBaseCRUDOperations(c, "/maintenance-windows")
-	return base.doDelete(id)
+	return NewBaseCRUDOperations(c, "/maintenance-windows").doDelete(id)
+}
+
+// WaitIntegrationDeleted waits until GET /maintenance-windows/{id} returns 404 or 410.
+func (c *Client) WaitMaintenanceWindowDeleted(ctx context.Context, id int64, timeout time.Duration) error {
+	return NewBaseCRUDOperations(c, "/maintenance-windows").waitDeleted(ctx, id, timeout)
 }

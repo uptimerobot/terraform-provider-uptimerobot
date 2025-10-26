@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -368,6 +369,10 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	}
 
 	integration, err := r.client.GetIntegration(id)
+	if client.IsNotFound(err) {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading integration",
@@ -543,6 +548,12 @@ func (r *integrationResource) Delete(ctx context.Context, req resource.DeleteReq
 			"Could not delete integration, unexpected error: "+err.Error(),
 		)
 		return
+	}
+
+	err = r.client.WaitIntegrationDeleted(ctx, id, 2*time.Minute)
+	if err != nil {
+		resp.Diagnostics.AddError("Timed out waiting for deletion", err.Error())
+		return // resource will be kept in state and self healed on read or via next apply
 	}
 }
 

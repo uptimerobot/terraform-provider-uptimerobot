@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
@@ -374,6 +375,10 @@ func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadR
 	}
 
 	mw, err := r.client.GetMaintenanceWindow(id)
+	if client.IsNotFound(err) {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading maintenance window",
@@ -521,6 +526,12 @@ func (r *maintenanceWindowResource) Delete(ctx context.Context, req resource.Del
 			"Could not delete maintenance window, unexpected error: "+err.Error(),
 		)
 		return
+	}
+
+	err = r.client.WaitMaintenanceWindowDeleted(ctx, id, 2*time.Minute)
+	if err != nil {
+		resp.Diagnostics.AddError("Timed out waiting for deletion", err.Error())
+		return // if still exists keep in state and it will be auto healed on next read / apply
 	}
 }
 
