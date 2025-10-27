@@ -1,5 +1,10 @@
 package client
 
+import (
+	"context"
+	"time"
+)
+
 // Integration represents an integration configuration.
 type Integration struct {
 	ID                     int64  `json:"id"`
@@ -94,6 +99,10 @@ func (c *Client) UpdateIntegration(id int64, req *UpdateIntegrationRequest) (*In
 
 // DeleteIntegration deletes an integration.
 func (c *Client) DeleteIntegration(id int64) error {
-	base := NewBaseCRUDOperations(c, "/integrations")
-	return base.doDelete(id)
+	return NewBaseCRUDOperations(c, "/integrations").doDelete(id)
+}
+
+// WaitIntegrationDeleted waits until GET /integrations/{id} returns 404 or 410.
+func (c *Client) WaitIntegrationDeleted(ctx context.Context, id int64, timeout time.Duration) error {
+	return NewBaseCRUDOperations(c, "/integrations").waitDeleted(ctx, id, timeout)
 }

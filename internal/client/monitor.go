@@ -2,8 +2,10 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 // MonitorType represents the type of monitor.
@@ -239,8 +241,12 @@ func (c *Client) UpdateMonitor(id int64, req *UpdateMonitorRequest) (*Monitor, e
 
 // DeleteMonitor deletes a monitor.
 func (c *Client) DeleteMonitor(id int64) error {
-	base := NewBaseCRUDOperations(c, "/monitors")
-	return base.doDelete(id)
+	return NewBaseCRUDOperations(c, "/monitors").doDelete(id)
+}
+
+// WaitMonitorDeleted waits until GET /monitors/{id} returns 404 or 410.
+func (c *Client) WaitMonitorDeleted(ctx context.Context, id int64, timeout time.Duration) error {
+	return NewBaseCRUDOperations(c, "/monitors").waitDeleted(ctx, id, timeout)
 }
 
 // ResetMonitor resets monitor statistics.

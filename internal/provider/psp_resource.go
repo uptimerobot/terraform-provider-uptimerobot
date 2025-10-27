@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -541,6 +542,10 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	}
 
 	psp, err := r.client.GetPSP(id)
+	if client.IsNotFound(err) {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading PSP",
@@ -812,6 +817,12 @@ func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 			"Could not delete PSP, unexpected error: "+err.Error(),
 		)
 		return
+	}
+
+	err = r.client.WaitPSPDeleted(ctx, id, 2*time.Minute)
+	if err != nil {
+		resp.Diagnostics.AddError("Timed out waiting for deletion", err.Error())
+		return // resource will be kept in state and self healed on read or via next apply
 	}
 }
 

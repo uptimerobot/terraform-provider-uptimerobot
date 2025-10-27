@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 
@@ -1021,6 +1022,12 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 
 	monitor, err := r.client.GetMonitor(id)
+	if client.IsNotFound(err) {
+		// Remote indicates that there is no resource.
+		// Remove it from the state so Terraform can recreate it if still present in config.
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading monitor",
@@ -1750,6 +1757,14 @@ func (r *monitorResource) Delete(ctx context.Context, req resource.DeleteRequest
 			"Could not delete monitor, unexpected error: "+err.Error(),
 		)
 		return
+	}
+
+	// resource timeout may be configured on resource level as general resource timeout
+	// or may be configured from the schema.
+	err = r.client.WaitMonitorDeleted(ctx, id, 2*time.Minute)
+	if err != nil {
+		resp.Diagnostics.AddError("Timed out waiting for deletion", err.Error())
+		return // resource will be kept in state and self healed on read or via next apply
 	}
 }
 
