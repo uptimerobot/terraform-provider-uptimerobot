@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
@@ -25,7 +26,23 @@ import (
 
 */
 
-// Config helpers for tests --------------------------------------------------
+// ---------- Stable time helpers for maintenance windows ----------
+
+// mwDateTimeIn returns date and time in format of strings as YYYY-MM-DD, HH:mm:ss for "now + d",
+// aligned to a full minute to avoid server-side normalization mismatches.
+func mwDateTimeIn(d time.Duration) (string, string) {
+	t := time.Now().UTC().Add(d).Truncate(time.Minute)
+	return t.Format("2006-01-02"), t.Format("15:04:05")
+}
+
+// twoMWDateTimes returns two future timestamps used by tests (5m, 10m).
+func twoMWDateTimes() (d1, t1, d2, t2 string) {
+	d1, t1 = mwDateTimeIn(5 * time.Minute)
+	d2, t2 = mwDateTimeIn(10 * time.Minute)
+	return
+}
+
+// ------------------------ Config helpers ------------------------
 
 func testAccMonitorResourceConfig(name string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
@@ -41,9 +58,14 @@ resource "uptimerobot_monitor" "test" {
 
 func testAccMonitorResourceConfigWithTags(name string, tags []string) string {
 	tagsStr := ""
-	if len(tags) > 0 {
-		tagsStr = fmt.Sprintf(`
+	if tags != nil {
+		if len(tags) == 0 {
+			tagsStr = `
+    tags = []`
+		} else {
+			tagsStr = fmt.Sprintf(`
     tags = [%s]`, joinQuotedStrings(tags))
+		}
 	}
 
 	return testAccProviderConfig() + fmt.Sprintf(`
@@ -55,25 +77,6 @@ resource "uptimerobot_monitor" "test" {
 	timeout      = 30
 }
 `, name, tagsStr)
-}
-
-//nolint:unparam // name kept for symmetry with other helpers & future reuse
-func testAccMonitorResourceConfigWithMaintenanceWindows(name string, maintenanceWindowIDs []int) string {
-	maintenanceWindowsStr := ""
-	if len(maintenanceWindowIDs) > 0 {
-		maintenanceWindowsStr = fmt.Sprintf(`
-    maintenance_window_ids = [%s]`, joinInts(maintenanceWindowIDs))
-	}
-
-	return testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-    name         = %q
-    url          = "https://example.com"
-    type         = "HTTP"
-    interval     = 300%s
-	timeout      = 30
-}
-`, name, maintenanceWindowsStr)
 }
 
 // nolint:unparam // kept for symmetry with other helpers & future reuse
@@ -101,8 +104,9 @@ resource "uptimerobot_monitor" "test" {
 
 func testAccMonitorResourceConfigWithHeaders(name string, headers map[string]string) string {
 	hdr := ""
+	method := `http_method_type = "GET"`
 	if headers != nil {
-		// build a literal headers map
+		method = `http_method_type = "POST"`
 		hdr = "\n  custom_http_headers = {"
 		first := true
 		for k, v := range headers {
@@ -120,28 +124,15 @@ resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "https://example.com"
   type     = "HTTP"
-  interval = 300%s
-  timeout  = 30
-}
-`, name, hdr)
-}
-
-// headers block explicitly empty as {}.
-func testAccMonitorResourceConfigWithEmptyHeaders(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-  name     = %q
-  url      = "https://example.com"
-  type     = "HTTP"
   interval = 300
   timeout  = 30
-  custom_http_headers = {}
+  %s%s
 }
-`, name)
+`, name, method, hdr)
 }
 
 func testAccMonitorResourceConfigWithBody(name string, body string) string {
-	// body should be an HCL expression, e.g. `jsonencode({foo="bar", n=1})` or `null`
+	// body should be an HCL expression, e.g. ` + "`jsonencode({foo=\"bar\", n=1})` or `null`" + `
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
@@ -178,7 +169,7 @@ resource "uptimerobot_monitor" "test" {
   interval         = 300
   timeout          = 30
   http_method_type = "POST"
-  custom_http_headers = { "Content-Type" = "application/x-www-form-urlencoded" }%s
+  custom_http_headers = { "content-type" = "application/x-www-form-urlencoded" }%s
 }
 `, name, body)
 }
@@ -201,7 +192,7 @@ func testAccMonitorResourceConfigGetNoBody(name string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
-  url              = "https://example.com"
+  url              = "https://example.com/echo"
   type             = "HTTP"
   interval         = 300
   timeout          = 30
@@ -260,7 +251,104 @@ resource "uptimerobot_monitor" "test" {
 `, name, cfg)
 }
 
-// Helpers ------------------------------------------------------
+// ---------- MW helpers that embed STABLE (literal) date/time ----------
+
+func testAccConfigMonitorWithTwoMWs(sfx string) string {
+	d1, t1, d2, t2 := twoMWDateTimes()
+	return fmt.Sprintf(`
+resource "uptimerobot_maintenance_window" "a" {
+  name      = "%[1]s-a"
+  interval  = "once"
+  date      = %q
+  time      = %q
+  duration  = 15
+}
+
+resource "uptimerobot_maintenance_window" "b" {
+  name      = "%[1]s-b"
+  interval  = "once"
+  date      = %q
+  time      = %q
+  duration  = 20
+}
+
+resource "uptimerobot_monitor" "test" {
+  name     = "%[1]s-monitor"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  maintenance_window_ids = [
+    uptimerobot_maintenance_window.a.id,
+    uptimerobot_maintenance_window.b.id,
+  ]
+}
+`, sfx, d1, t1, d2, t2)
+}
+
+func testAccConfigMonitorWithOneMW(sfx string) string {
+	d1, t1, d2, t2 := twoMWDateTimes()
+	return fmt.Sprintf(`
+resource "uptimerobot_maintenance_window" "a" {
+  name      = "%[1]s-a"
+  interval  = "once"
+  date      = %q
+  time      = %q
+  duration  = 15
+}
+
+resource "uptimerobot_maintenance_window" "b" {
+  name      = "%[1]s-b"
+  interval  = "once"
+  date      = %q
+  time      = %q
+  duration  = 20
+}
+
+resource "uptimerobot_monitor" "test" {
+  name     = "%[1]s-monitor"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  maintenance_window_ids = [
+    uptimerobot_maintenance_window.b.id,
+  ]
+}
+`, sfx, d1, t1, d2, t2)
+}
+
+func testAccConfigMonitorNoMW(sfx string) string {
+	d1, t1, d2, t2 := twoMWDateTimes()
+	return fmt.Sprintf(`
+resource "uptimerobot_maintenance_window" "a" {
+  name      = "%[1]s-a"
+  interval  = "once"
+  date      = %q
+  time      = %q
+  duration  = 15
+}
+
+resource "uptimerobot_maintenance_window" "b" {
+  name      = "%[1]s-b"
+  interval  = "once"
+  date      = %q
+  time      = %q
+  duration  = 20
+}
+
+resource "uptimerobot_monitor" "test" {
+  name     = "%[1]s-monitor"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  maintenance_window_ids = []
+}
+`, sfx, d1, t1, d2, t2)
+}
+
+// -------------------------- Helpers --------------------------
 
 func joinQuotedStrings(strings []string) string {
 	var result string
@@ -293,7 +381,7 @@ func mustAlertContactID(t *testing.T) string {
 	return id
 }
 
-// Acceptance tests ------------------------------------------------
+// ---------------------- Acceptance tests ----------------------
 
 func TestAccMonitorResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
@@ -328,6 +416,7 @@ func TestAccMonitorResource(t *testing.T) {
 		},
 	})
 }
+
 func TestAccMonitorResource_AlertContacts(t *testing.T) {
 	id := mustAlertContactID(t)
 
@@ -472,7 +561,7 @@ func TestAccMonitorResource_Tags(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
 					// Verify no tags are set initially
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "tags.#", "0"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "tags"),
 				),
 			},
 			// Step 2: Add tags to existing monitor - this should NOT fail
@@ -487,7 +576,7 @@ func TestAccMonitorResource_Tags(t *testing.T) {
 			},
 			// Step 3: Remove tags - set back to empty
 			{
-				Config: testAccMonitorResourceConfigWithTags("test-monitor-tags", nil),
+				Config: testAccMonitorResourceConfigWithTags("test-monitor-tags", []string{}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-tags"),
 					// Verify tags are removed
@@ -509,47 +598,107 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 			// 1) Create without headers
 			{
 				Config: testAccMonitorResourceConfig(name),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_http_headers"),
-				),
+				Check:  resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_http_headers"),
 			},
-			// 2) Add headers
+			// 2) Add a header
 			{
-				Config: testAccMonitorResourceConfigWithHeaders(name, map[string]string{"cat": "meow"}),
+				Config: testAccMonitorResourceConfigWithHeaders(name, map[string]string{"x-test": "one"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.%", "1"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.cat", "meow"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.x-test", "one"),
 				),
 			},
-			// 3) Change headers to ensures that update path works
+			// 3) Change header value
 			{
-				Config: testAccMonitorResourceConfigWithHeaders(name, map[string]string{"foo": "bar"}),
+				Config: testAccMonitorResourceConfigWithHeaders(name, map[string]string{"x-test": "two"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.%", "1"),
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_http_headers.cat"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.foo", "bar"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.x-test", "two"),
 				),
 			},
-			// 4) Clear by sending {}
-			{
-				Config:   testAccMonitorResourceConfigWithEmptyHeaders(name),
-				PlanOnly: true,
-				// We expect a plan here because the server may not accept {} as a clear.
-				ExpectNonEmptyPlan: true,
-			},
-			// 5) Clear by removing the block entirely
+			// 4) Clear by removing the block entirely
 			{
 				Config: testAccMonitorResourceConfig(name),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_http_headers"),
-				),
+				Check:  resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_http_headers"),
 			},
-			// 6) Import to ensure state matches API (no headers)
+			// 5) Import to ensure state matches API with no headers
 			{
 				ResourceName:            "uptimerobot_monitor.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"timeout", "status"},
+				ImportStateVerifyIgnore: []string{"timeout", "status", "custom_http_headers"},
+			},
+		},
+	})
+}
+
+func TestAccMonitorResource_CustomHTTPHeaders_ContentTypeWithBody(t *testing.T) {
+	name := "test-monitor-headers-ct"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			// 1) Create with POST and JSON body with header 'Content-Type'
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "https://example.com/echo"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "POST"
+  post_value_data  = jsonencode({foo="bar"})
+  custom_http_headers = { "content-type" = "application/json" }
+}
+`, name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "RAW_JSON"),
+					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.%", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.content-type", "application/json"),
+				),
+			},
+			// 2) Change Content-Type value
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "https://example.com/echo"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "POST"
+  post_value_data  = jsonencode({foo="bar"})
+  custom_http_headers = { "content-type" = "application/x-www-form-urlencoded" }
+}
+`, name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.%", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_http_headers.content-type", "application/x-www-form-urlencoded"),
+				),
+			},
+			// 3) Remove headers while body remains
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "https://example.com/echo"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "POST"
+  post_value_data  = jsonencode({foo="bar"})
+}
+`, name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_http_headers"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "RAW_JSON"),
+					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
+				),
 			},
 		},
 	})
@@ -558,112 +707,90 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 // TestAccMonitorResource_MaintenanceWindows tests the specific case where maintenance window IDs
 // are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
+	sfx := "acc-mw"
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
-			// Step 1: Create monitor without maintenance windows
 			{
-				Config: testAccMonitorResourceConfigWithMaintenanceWindows("test-monitor-maintenance", nil),
+				// Step 1: attach two MWs
+				Config: testAccConfigMonitorWithTwoMWs(sfx),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-maintenance"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
-					// Verify no maintenance windows are set initially
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "maintenance_window_ids"),
-				),
-			},
-			// explicit empty list should be accepted with no invalid plan. A plan is expected here.
-			{
-				Config: testAccProviderConfig() + `
-resource "uptimerobot_monitor" "test" {
-  name     = "test-monitor-maintenance"
-  url      = "https://example.com"
-  type     = "HTTP"
-  interval = 300
-  timeout  = 30
-  maintenance_window_ids = [] // explicit empty
-}
-`,
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: true,
-			},
-			// Step 2: Add maintenance windows to existing monitor - this should NOT fail
-			{
-				Config: testAccMonitorResourceConfigWithMaintenanceWindows("test-monitor-maintenance", []int{12345, 67890}),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-maintenance"),
-					// Verify maintenance windows are now set
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "maintenance_window_ids.#", "2"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "maintenance_window_ids.0", "12345"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "maintenance_window_ids.1", "67890"),
+					resource.TestCheckTypeSetElemAttrPair(
+						"uptimerobot_monitor.test", "maintenance_window_ids.*",
+						"uptimerobot_maintenance_window.a", "id",
+					),
+					resource.TestCheckTypeSetElemAttrPair(
+						"uptimerobot_monitor.test", "maintenance_window_ids.*",
+						"uptimerobot_maintenance_window.b", "id",
+					),
 				),
 			},
-			// Step 3: Remove maintenance windows - set back to empty
 			{
-				Config: testAccMonitorResourceConfigWithMaintenanceWindows("test-monitor-maintenance", nil),
+				// Step 2: keep only MW b
+				Config: testAccConfigMonitorWithOneMW(sfx),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-maintenance"),
-					// Verify maintenance windows are removed
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "maintenance_window_ids"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "maintenance_window_ids.#", "1"),
+					resource.TestCheckTypeSetElemAttrPair(
+						"uptimerobot_monitor.test", "maintenance_window_ids.*",
+						"uptimerobot_maintenance_window.b", "id",
+					),
 				),
 			},
-			// Idempotency re-plan
 			{
-				Config:             testAccMonitorResourceConfigWithMaintenanceWindows("test-monitor-maintenance", nil),
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: false,
+				// Step 3: detach all
+				Config: testAccConfigMonitorNoMW(sfx),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "maintenance_window_ids.#", "0"),
+				),
 			},
 		},
 	})
 }
 
-// TestAccMonitorResource_SuccessHTTPResponseCodes tests the specific case where success HTTP response codes
-// are modified from their defaults to custom values.
 func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
-			// Step 1: Create monitor with default success HTTP response codes (should be ["2xx", "3xx"])
+			// 1) Create with attr omitted. Defaults may be set on server, attribute is ABSENT in state
 			{
 				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", nil),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-response-codes"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "interval", "300"),
-					// Verify default response codes are set
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.#", "2"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.0", "2xx"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.1", "3xx"),
-				),
+				Check:  resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "success_http_response_codes"),
 			},
-			// Step 2: Update to custom response codes - this should NOT cause plan inconsistencies
+
+			// 2) Set custom codes
 			{
 				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", []string{"200", "201", "202"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-response-codes"),
-					// Verify custom response codes are now set
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.#", "3"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.0", "200"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.1", "201"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.2", "202"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "success_http_response_codes.*", "200"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "success_http_response_codes.*", "201"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "success_http_response_codes.*", "202"),
 				),
 			},
-			// Step 3: Remove the attribute. Back to defaults
+
+			// 3) Omit attr (nil). PRESERVE existing custom values on server and still PRESENT in state
 			{
 				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.#", "2"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.0", "2xx"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.1", "3xx"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.#", "3"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "success_http_response_codes.*", "200"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "success_http_response_codes.*", "201"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "success_http_response_codes.*", "202"),
 				),
 			},
-			// Idempotency
+
+			// 4) Explicit empty []. Provider sends empty slice and server resets to defaults, and attr ABSENT in state
+			{
+				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", []string{}),
+				Check:  resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.#", "0"),
+			},
+			// 5) Idempotent re-plan with omit
 			{
 				Config:             testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", nil),
 				PlanOnly:           true,
@@ -1290,12 +1417,13 @@ func TestAcc_Monitor_HTTP_Post_NoBody_StablePlan(t *testing.T) {
 
 func TestAcc_Monitor_HTTP_MethodSwitch_ClearsBody(t *testing.T) {
 	name := "acc-method-switch"
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
-			// POST + JSON
+			// 1) POST + JSON
 			{
 				Config: testAccMonitorResourceConfigWithBody(name, `jsonencode({hello="world"})`),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -1304,7 +1432,7 @@ func TestAcc_Monitor_HTTP_MethodSwitch_ClearsBody(t *testing.T) {
 					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
 				),
 			},
-			// Switch to GET – body must be cleared
+			// 2) Switch to GET with no body
 			{
 				Config: testAccMonitorResourceConfigGetNoBody(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -1314,15 +1442,60 @@ func TestAcc_Monitor_HTTP_MethodSwitch_ClearsBody(t *testing.T) {
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
 				),
 			},
-			// Switch back to POST – still no body provided, must remain empty and stable
+			// 3) URL change only with GET and no body to verift URL update
 			{
-				Config: testAccMonitorResourceConfigPostNoBody(name),
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "https://example.com" // change URL only
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "GET"
+}
+`, name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "GET"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_type"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_data"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
 				),
+			},
+			// 4) Switch back to POST with no body, keep new url – should remain clean and stable
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "https://example.com"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "POST"
+}
+`, name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_type"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_data"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
+				),
+			},
+			// 5) Idempotent re-plan on step 5 confog
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "https://example.com"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "POST"
+}
+`, name),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})

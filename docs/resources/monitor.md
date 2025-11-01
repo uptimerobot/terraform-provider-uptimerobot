@@ -213,7 +213,20 @@ Common monitoring intervals:
 
 ### Optional
 
-- `assigned_alert_contacts` (Attributes Set) Alert contacts to assign. threshold/recurrence are minutes. Free plan uses 0. (see [below for nested schema](#nestedatt--assigned_alert_contacts))
+- `assigned_alert_contacts` (Attributes Set) Alert contacts assigned to this monitor.
+
+**Semantics**
+- Terraform sends exactly what you specify and the provider does **not** inject any hidden defaults.
+- **Free plan:** set `threshold = 0`, `recurrence = 0`.
+- **Paid plans:** set desired minutes (`threshold ≥ 0`, `recurrence ≥ 0`).
+
+**Examples**
+```hcl
+assigned_alert_contacts = [
+  { alert_contact_id = "123", threshold = 0,  recurrence = 0  },  # immediate, no repeats
+  { alert_contact_id = "456", threshold = 3,  recurrence = 15 },  # after 3m, then every 15m
+]
+``` (see [below for nested schema](#nestedatt--assigned_alert_contacts))
 - `auth_type` (String) The authentication type (HTTP_BASIC)
 - `check_ssl_errors` (Boolean) If true, monitor checks SSL certificate errors (hostname mismatch, invalid chain, etc.).
 - `config` (Attributes) Advanced monitor configuration.
@@ -225,7 +238,7 @@ Common monitoring intervals:
 - Non-empty list → **set** exactly those days.
 
 **Tip**: To let UI changes win, use `lifecycle { ignore_changes = [config] }`. (see [below for nested schema](#nestedatt--config))
-- `custom_http_headers` (Map of String) Custom HTTP headers
+- `custom_http_headers` (Map of String) Custom HTTP headers as key:value. **Keys are case-insensitive.** The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. Tip: add keys in lower-case (e.g., `"content-type" = "application/json"`).
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
 - `follow_redirections` (Boolean) Whether to follow redirections
 - `grace_period` (Number) The grace period (in seconds). Only for HEARTBEAT monitors
@@ -235,15 +248,16 @@ Common monitoring intervals:
 - `keyword_case_type` (String) The case sensitivity for keyword (CaseSensitive or CaseInsensitive). Default: CaseInsensitive
 - `keyword_type` (String) The type of keyword check (ALERT_EXISTS, ALERT_NOT_EXISTS)
 - `keyword_value` (String) The keyword to search for
-- `maintenance_window_ids` (Set of Number) The maintenance window IDs
+- `maintenance_window_ids` (Set of Number) Today API v3 behavior on update, if maintenance_window_ids is omitted or set to [] they both clear maintenance windows.
+					Recommended: To clear, set maintenance_window_ids = []. To manage them, set the exact IDs.
 - `port` (Number) The port to monitor
 - `post_value_data` (String) JSON body (use jsonencode). Mutually exclusive with post_value_kv.
 - `post_value_kv` (Map of String) Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.
 - `regional_data` (String) Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)
 - `response_time_threshold` (Number) Response time threshold in milliseconds. Response time over this threshold will trigger an incident
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
-- `success_http_response_codes` (List of String) The expected HTTP response codes
-- `tags` (Set of String) Tags for the monitor
+- `success_http_response_codes` (Set of String) The expected HTTP response codes. If not set API applies defaults.
+- `tags` (Set of String) Tags for the monitor. Must be lowercase. Duplicates are removed by set semantics.
 - `timeout` (Number) Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used.
 
 ### Read-Only
@@ -258,11 +272,16 @@ Common monitoring intervals:
 Required:
 
 - `alert_contact_id` (String)
+- `recurrence` (Number) Repeat interval (in minutes) for subsequent notifications **while the incident lasts**.
 
-Optional:
+- **Required by the API**
+- `0` = no repeat (single notification)
+- Any non-negative integer (minutes) on paid plans
+- `threshold` (Number) Delay (in minutes) **after the monitor is DOWN** before notifying this contact.
 
-- `recurrence` (Number)
-- `threshold` (Number)
+- **Required by the API**
+- `0` = notify immediately (Free plan must use `0`)
+- Any non-negative integer (minutes) on paid plans
 
 
 <a id="nestedatt--config"></a>

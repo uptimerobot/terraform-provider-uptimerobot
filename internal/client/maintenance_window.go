@@ -8,6 +8,7 @@ import (
 // MaintenanceWindow represents a maintenance window.
 type MaintenanceWindow struct {
 	ID              int64   `json:"id"`
+	UserID          int64   `json:"userId"`
 	Name            string  `json:"name"`
 	Interval        string  `json:"interval"`
 	Date            *string `json:"date"`
