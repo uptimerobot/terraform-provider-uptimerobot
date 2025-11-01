@@ -72,9 +72,9 @@ type UpdateMonitorRequest struct {
 	CheckSSLErrors           *bool                 `json:"checkSSLErrors,omitempty"`
 	SSLCheckEnabled          bool                  `json:"sslCheckEnabled,omitempty"`
 	CustomHTTPHeaders        *map[string]string    `json:"customHttpHeaders,omitempty"`
-	SuccessHTTPResponseCodes []string              `json:"successHttpResponseCodes,omitempty"`
-	MaintenanceWindowIDs     []int64               `json:"maintenanceWindowsIds,omitempty"`
-	Tags                     []string              `json:"tagNames"`
+	SuccessHTTPResponseCodes *[]string             `json:"successHttpResponseCodes,omitempty"`
+	MaintenanceWindowIDs     *[]int64              `json:"maintenanceWindowsIds,omitempty"`
+	Tags                     *[]string             `json:"tagNames,omitempty"`
 	GracePeriod              *int                  `json:"gracePeriod,omitempty"`
 	PostValueType            string                `json:"postValueType,omitempty"`
 	PostValueData            interface{}           `json:"postValueData,omitempty"`

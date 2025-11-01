@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +24,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
@@ -73,7 +73,7 @@ type monitorResourceModel struct {
 	HTTPPassword             types.String         `tfsdk:"http_password"`
 	CustomHTTPHeaders        types.Map            `tfsdk:"custom_http_headers"`
 	HTTPMethodType           types.String         `tfsdk:"http_method_type"`
-	SuccessHTTPResponseCodes types.List           `tfsdk:"success_http_response_codes"`
+	SuccessHTTPResponseCodes types.Set            `tfsdk:"success_http_response_codes"`
 	Timeout                  types.Int64          `tfsdk:"timeout"`
 	PostValueType            types.String         `tfsdk:"post_value_type"`
 	PostValueData            jsontypes.Normalized `tfsdk:"post_value_data"`
@@ -143,7 +143,7 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Version:     4,
+		Version:     5,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
@@ -154,6 +154,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Required:    true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("HTTP", "KEYWORD", "PING", "PORT", "HEARTBEAT", "DNS"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"interval": schema.Int64Attribute{
@@ -192,27 +195,40 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "The password for HTTP authentication",
 				Optional:    true,
 				Sensitive:   true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"custom_http_headers": schema.MapAttribute{
-				Description: "Custom HTTP headers",
+				Description: "Custom HTTP headers. Header names are case-insensitive and will be normalized to lowercase. Values are preserved verbatim.",
+				MarkdownDescription: "Custom HTTP headers as key:value. **Keys are case-insensitive.** " +
+					"The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. " +
+					"Tip: add keys in lower-case (e.g., `\"content-type\" = \"application/json\"`).",
 				Optional:    true,
 				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"http_method_type": schema.StringAttribute{
 				Description: "The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS)",
 				Optional:    true,
 				Computed:    true,
-				Default:     stringdefault.StaticString("GET"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("HEAD", "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"success_http_response_codes": schema.ListAttribute{
-				Description: "The expected HTTP response codes",
+			"success_http_response_codes": schema.SetAttribute{
+				Description: "The expected HTTP response codes. If not set API applies defaults.",
 				Optional:    true,
 				Computed:    true,
 				ElementType: types.StringType,
-				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2xx"), types.StringValue("3xx")})),
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"timeout": schema.Int64Attribute{
 				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used.",
@@ -278,11 +294,13 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"maintenance_window_ids": schema.SetAttribute{
 				Description: "The maintenance window IDs",
+				MarkdownDescription: `
+					Today API v3 behavior on update, if maintenance_window_ids is omitted or set to [] they both clear maintenance windows.
+					Recommended: To clear, set maintenance_window_ids = []. To manage them, set the exact IDs.
+				`,
+				//	When the API changes to preserve omits, leaving the attribute out will preserve remote values automatically and no provider change will be needed.
 				Optional:    true,
 				ElementType: types.Int64Type,
-				PlanModifiers: []planmodifier.Set{
-					setplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"id": schema.StringAttribute{
 				Description: "Monitor ID",
@@ -311,13 +329,37 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Required:    true,
 			},
 			"tags": schema.SetAttribute{
-				Description: "Tags for the monitor",
+				Description: "Tags for the monitor. Must be lowercase. Duplicates are removed by set semantics.",
 				Optional:    true,
+				Computed:    true,
 				ElementType: types.StringType,
+				Validators: []validator.Set{
+					setvalidator.ValueStringsAre(
+						stringvalidator.LengthAtLeast(1),
+						// Allow any chars except A–Z. Adjust if needed a tighter charset.
+						stringvalidator.RegexMatches(regexp.MustCompile(`^[^A-Z]+$`), "must be lowercase (ASCII)"),
+					),
+				},
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"assigned_alert_contacts": schema.SetNestedAttribute{
-				Description: "Alert contacts to assign. threshold/recurrence are minutes. Free plan uses 0.",
-				Optional:    true,
+				Description: "Alert contacts to assign. Each item must include `alert_contact_id`, `threshold`, and `recurrence`." +
+					"Free plan have to use 0 for threshold and recurrence",
+				MarkdownDescription: "Alert contacts assigned to this monitor.\n\n" +
+					"**Semantics**\n" +
+					"- Terraform sends exactly what you specify and the provider does **not** inject any hidden defaults.\n" +
+					"- **Free plan:** set `threshold = 0`, `recurrence = 0`.\n" +
+					"- **Paid plans:** set desired minutes (`threshold ≥ 0`, `recurrence ≥ 0`).\n\n" +
+					"**Examples**\n" +
+					"```hcl\n" +
+					"assigned_alert_contacts = [\n" +
+					"  { alert_contact_id = \"123\", threshold = 0,  recurrence = 0  },  # immediate, no repeats\n" +
+					"  { alert_contact_id = \"456\", threshold = 3,  recurrence = 15 },  # after 3m, then every 15m\n" +
+					"]\n" +
+					"```",
+				Optional: true,
 				PlanModifiers: []planmodifier.Set{
 					setplanmodifier.UseStateForUnknown(),
 				},
@@ -334,23 +376,25 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 							},
 						},
 						"threshold": schema.Int64Attribute{
-							Optional: true,
-							Computed: true,
+							Required:    true,
+							Description: "Delay (minutes) before notifying this contact. Use 0 for immediate notification. Required by the API.",
+							MarkdownDescription: "Delay (in minutes) **after the monitor is DOWN** before notifying this contact.\n\n" +
+								"- **Required by the API**\n" +
+								"- `0` = notify immediately (Free plan must use `0`)\n" +
+								"- Any non-negative integer (minutes) on paid plans",
 							Validators: []validator.Int64{
 								int64validator.AtLeast(0),
-							},
-							PlanModifiers: []planmodifier.Int64{
-								int64planmodifier.UseStateForUnknown(),
 							},
 						},
 						"recurrence": schema.Int64Attribute{
-							Optional: true,
-							Computed: true,
+							Required:    true,
+							Description: "Repeat interval (minutes) for subsequent notifications. Use 0 to disable repeats. Required by the API.",
+							MarkdownDescription: "Repeat interval (in minutes) for subsequent notifications **while the incident lasts**.\n\n" +
+								"- **Required by the API**\n" +
+								"- `0` = no repeat (single notification)\n" +
+								"- Any non-negative integer (minutes) on paid plans",
 							Validators: []validator.Int64{
 								int64validator.AtLeast(0),
-							},
-							PlanModifiers: []planmodifier.Int64{
-								int64planmodifier.UseStateForUnknown(),
 							},
 						},
 					},
@@ -618,6 +662,26 @@ func (r *monitorResource) ValidateConfig(
 		return
 	}
 
+	if !data.CustomHTTPHeaders.IsNull() && !data.CustomHTTPHeaders.IsUnknown() {
+		headersFromPlan, d := mapFromAttr(ctx, data.CustomHTTPHeaders)
+		resp.Diagnostics.Append(d...)
+		if !resp.Diagnostics.HasError() {
+			seen := map[string]string{}
+			for k := range headersFromPlan {
+				kl := strings.ToLower(strings.TrimSpace(k))
+				if prev, ok := seen[kl]; ok && prev != k {
+					resp.Diagnostics.AddAttributeError(
+						path.Root("custom_http_headers"),
+						"Duplicate header name (case-insensitive)",
+						fmt.Sprintf("Headers %q and %q conflict. Use a single canonical casing.", prev, k),
+					)
+					break
+				}
+				seen[kl] = k
+			}
+		}
+	}
+
 }
 
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -733,9 +797,25 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		createReq.GracePeriod = &zero
 	}
 
-	// Add optional fields if set
-	if !plan.HTTPMethodType.IsNull() {
-		createReq.HTTPMethodType = plan.HTTPMethodType.ValueString()
+	hasJSON := !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull()
+	hasKV := !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull()
+
+	var effMethod string
+	if isMethodHTTPLike(plan.Type) {
+		if !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown() {
+			m := strings.ToUpper(strings.TrimSpace(plan.HTTPMethodType.ValueString()))
+			if m != "" {
+				effMethod = m
+			}
+		}
+		if effMethod == "" {
+			if hasJSON || hasKV {
+				effMethod = "POST"
+			} else {
+				effMethod = "GET"
+			}
+		}
+		createReq.HTTPMethodType = effMethod
 	}
 	if !plan.HTTPUsername.IsNull() {
 		createReq.HTTPUsername = plan.HTTPUsername.ValueString()
@@ -745,6 +825,13 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 	if !plan.Port.IsNull() {
 		createReq.Port = int(plan.Port.ValueInt64())
+	}
+	if !plan.ResponseTimeThreshold.IsNull() && !plan.ResponseTimeThreshold.IsUnknown() {
+		v := int(plan.ResponseTimeThreshold.ValueInt64())
+		createReq.ResponseTimeThreshold = v
+	}
+	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
+		createReq.RegionalData = plan.RegionalData.ValueString()
 	}
 	if !plan.KeywordValue.IsNull() {
 		createReq.KeywordValue = plan.KeywordValue.ValueString()
@@ -777,7 +864,6 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		// no body
 	default:
 		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
-			// JSON body
 			b := []byte(plan.PostValueData.ValueString())
 			createReq.PostValueType = PostTypeRawJSON
 			createReq.PostValueData = json.RawMessage(b)
@@ -793,22 +879,14 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
-	if !plan.ResponseTimeThreshold.IsNull() {
-		createReq.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
-	}
-	if !plan.RegionalData.IsNull() {
-		createReq.RegionalData = plan.RegionalData.ValueString()
-	}
-
 	// Handle custom HTTP headers
 	if !plan.CustomHTTPHeaders.IsNull() && !plan.CustomHTTPHeaders.IsUnknown() {
-		var headers map[string]string
-		diags = plan.CustomHTTPHeaders.ElementsAs(ctx, &headers, false)
-		resp.Diagnostics.Append(diags...)
+		m, d := mapFromAttr(ctx, plan.CustomHTTPHeaders)
+		resp.Diagnostics.Append(d...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		createReq.CustomHTTPHeaders = headers
+		createReq.CustomHTTPHeaders = m
 	}
 
 	// Handle success HTTP response codes
@@ -819,7 +897,10 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		createReq.SuccessHTTPResponseCodes = codes
+		codes = normalizeStringSet(codes)
+		if len(codes) > 0 {
+			createReq.SuccessHTTPResponseCodes = codes
+		}
 	}
 
 	// Handle maintenance window IDs
@@ -842,6 +923,8 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 			return
 		}
 
+		tags = normalizeTagSet(tags)
+
 		if len(tags) > 0 {
 			createReq.Tags = tags
 		}
@@ -859,14 +942,27 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 			item := client.AlertContactRequest{
 				AlertContactID: ac.AlertContactID.ValueString(),
 			}
-			if !ac.Threshold.IsNull() && !ac.Threshold.IsUnknown() {
-				v := ac.Threshold.ValueInt64()
-				item.Threshold = &v
+			if ac.Threshold.IsNull() || ac.Threshold.IsUnknown() {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("assigned_alert_contacts"),
+					"Missing threshold",
+					"threshold is required by the API and must be set.",
+				)
+				return
 			}
-			if !ac.Recurrence.IsNull() && !ac.Recurrence.IsUnknown() {
-				v := ac.Recurrence.ValueInt64()
-				item.Recurrence = &v
+			if ac.Recurrence.IsNull() || ac.Recurrence.IsUnknown() {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("assigned_alert_contacts"),
+					"Missing recurrence",
+					"recurrence is required by the API and must be set.",
+				)
+				return
 			}
+			t := ac.Threshold.ValueInt64()
+			r := ac.Recurrence.ValueInt64()
+			item.Threshold = &t
+			item.Recurrence = &r
+
 			createReq.AssignedAlertContacts = append(createReq.AssignedAlertContacts, item)
 		}
 	}
@@ -894,7 +990,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Create monitor
-	newMonitor, err := r.client.CreateMonitor(createReq)
+	createdMonitor, err := r.client.CreateMonitor(createReq)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating monitor",
@@ -903,9 +999,29 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	// Map response body to schema and populate Computed attribute values
-	plan.ID = types.StringValue(strconv.FormatInt(newMonitor.ID, 10))
+	plan.ID = types.StringValue(strconv.FormatInt(createdMonitor.ID, 10))
+
+	want := wantFromCreateReq(createReq)
+	newMonitor, err := r.waitMonitorSettled(ctx, createdMonitor.ID, want, 60*time.Second)
+	if err != nil {
+		resp.Diagnostics.AddWarning("Create settled slowly", "Backend took longer to reflect changes; proceeding.")
+		if newMonitor == nil {
+			newMonitor = createdMonitor
+		}
+	}
+
 	plan.Status = types.StringValue(newMonitor.Status)
+
+	if plan.CustomHTTPHeaders.IsNull() || plan.CustomHTTPHeaders.IsUnknown() {
+		plan.CustomHTTPHeaders = types.MapNull(types.StringType)
+	}
+
+	switch strings.ToUpper(plan.Type.ValueString()) {
+	case "HTTP", "KEYWORD":
+		plan.HTTPMethodType = types.StringValue(effMethod)
+	default:
+		plan.HTTPMethodType = types.StringNull()
+	}
 
 	// Handle keyword case type conversion from API numeric value to string enum
 	var keywordCaseTypeValue string
@@ -939,7 +1055,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
-	method := strings.ToUpper(stringOrEmpty(plan.HTTPMethodType))
+	method := strings.ToUpper(effMethod)
 	if method == "GET" || method == "HEAD" {
 		plan.PostValueType = types.StringNull()
 		plan.PostValueData = jsontypes.NewNormalizedNull()
@@ -993,6 +1109,46 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {
 			plan.Config = cfgState
+		}
+	}
+
+	var apiIDs []int64
+	for _, mw := range newMonitor.MaintenanceWindows {
+		if !mw.AutoAddMonitors {
+			apiIDs = append(apiIDs, mw.ID)
+		}
+	}
+	v, d := mwSetFromAPIRespectingShape(ctx, apiIDs, plan.MaintenanceWindowIDs)
+	resp.Diagnostics.Append(d...)
+	plan.MaintenanceWindowIDs = v
+
+	if plan.Tags.IsNull() || plan.Tags.IsUnknown() {
+		plan.Tags = types.SetNull(types.StringType)
+	} else {
+		plan.Tags = tagsSetFromAPI(ctx, newMonitor.Tags)
+	}
+
+	// success_http_response_codes
+	switch {
+	case plan.SuccessHTTPResponseCodes.IsNull() || plan.SuccessHTTPResponseCodes.IsUnknown():
+		plan.SuccessHTTPResponseCodes = types.SetNull(types.StringType)
+
+	default:
+		var codes []string
+		resp.Diagnostics.Append(plan.SuccessHTTPResponseCodes.ElementsAs(ctx, &codes, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if len(codes) == 0 {
+			// If in plan it is explicitly empty, then keep empty in state even if API return defaults. We do not manage them.
+			empty, _ := types.SetValue(types.StringType, []attr.Value{})
+			plan.SuccessHTTPResponseCodes = empty
+		} else {
+			var vals []attr.Value
+			for _, c := range normalizeStringSet(newMonitor.SuccessHTTPResponseCodes) {
+				vals = append(vals, types.StringValue(c))
+			}
+			plan.SuccessHTTPResponseCodes = types.SetValueMust(types.StringType, vals)
 		}
 	}
 
@@ -1074,11 +1230,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	} else if !state.HTTPUsername.IsNull() {
 		state.HTTPUsername = types.StringNull()
 	}
-	if monitor.HTTPPassword != "" {
-		state.HTTPPassword = types.StringValue(monitor.HTTPPassword)
-	} else if !state.HTTPPassword.IsNull() {
-		state.HTTPPassword = types.StringNull()
-	}
+
 	// Preserve user's method unless this is an import. The API may not return it reliably.
 	if isImport {
 		if monitor.HTTPMethodType != "" {
@@ -1169,43 +1321,30 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 	// If response_time_threshold was not in the original plan and this is not an import, keep it as-is (null)
 
-	// Set regional data - only if it was specified in the plan or during import
-	if isImport {
-		// During import, keep regional data null unless it was manually set by user
-		// The API always returns regionalData, but we only want to set it if user explicitly configured it
+	if !state.RegionalData.IsNull() {
+		if monitor.RegionalData != nil {
+			if region, ok := coerceRegion(monitor.RegionalData); ok {
+				state.RegionalData = types.StringValue(region)
+			} else {
+				state.RegionalData = types.StringNull()
+			}
+		} else {
+			state.RegionalData = types.StringNull()
+		}
+	} else if isImport {
 		state.RegionalData = types.StringNull()
 	}
-	// If regional_data was not in the original plan and this is not an import, keep it as-is (null)
 
-	if len(monitor.Tags) > 0 {
-		tagNames := make([]string, 0, len(monitor.Tags))
-		for _, tag := range monitor.Tags {
-			tagNames = append(tagNames, tag.Name)
-		}
-		tagValues := make([]attr.Value, 0, len(tagNames))
-		for _, tagName := range tagNames {
-			tagValues = append(tagValues, types.StringValue(tagName))
-		}
-		state.Tags = types.SetValueMust(types.StringType, tagValues)
-	} else {
-		if isImport || state.Tags.IsNull() {
-			state.Tags = types.SetNull(types.StringType)
+	state.Tags = tagsReadSet(state.Tags, monitor.Tags, isImport)
+
+	if isImport || state.CustomHTTPHeaders.IsNull() {
+		// Reflect API on import or when user never managed this field
+		if len(monitor.CustomHTTPHeaders) > 0 {
+			v, d := attrFromMap(ctx, monitor.CustomHTTPHeaders)
+			resp.Diagnostics.Append(d...)
+			state.CustomHTTPHeaders = v
 		} else {
-			state.Tags = types.SetValueMust(types.StringType, []attr.Value{})
-		}
-	}
-
-	if len(monitor.CustomHTTPHeaders) > 0 {
-		m := make(map[string]attr.Value, len(monitor.CustomHTTPHeaders))
-		for k, v := range monitor.CustomHTTPHeaders {
-			m[k] = types.StringValue(v)
-		}
-		state.CustomHTTPHeaders = types.MapValueMust(types.StringType, m)
-	} else {
-		if isImport || state.CustomHTTPHeaders.IsNull() {
 			state.CustomHTTPHeaders = types.MapNull(types.StringType)
-		} else {
-			state.CustomHTTPHeaders = types.MapValueMust(types.StringType, map[string]attr.Value{})
 		}
 	}
 
@@ -1218,15 +1357,24 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.AssignedAlertContacts = acSet
 	}
 
-	// Set success codes during import or if already set in state
-	if isImport || !state.SuccessHTTPResponseCodes.IsNull() {
-		successCodes := make([]attr.Value, 0)
-		if monitor.SuccessHTTPResponseCodes != nil {
-			for _, code := range monitor.SuccessHTTPResponseCodes {
-				successCodes = append(successCodes, types.StringValue(code))
+	// success_http_response_codes
+	if !state.SuccessHTTPResponseCodes.IsNull() {
+		var prior []string
+		_ = state.SuccessHTTPResponseCodes.ElementsAs(ctx, &prior, false)
+		if len(prior) == 0 {
+			empty, _ := types.SetValue(types.StringType, []attr.Value{})
+			state.SuccessHTTPResponseCodes = empty
+		} else {
+			var vals []attr.Value
+			if monitor.SuccessHTTPResponseCodes != nil {
+				for _, c := range normalizeStringSet(monitor.SuccessHTTPResponseCodes) {
+					vals = append(vals, types.StringValue(c))
+				}
+			} else {
+				vals = []attr.Value{}
 			}
+			state.SuccessHTTPResponseCodes = types.SetValueMust(types.StringType, vals)
 		}
-		state.SuccessHTTPResponseCodes = types.ListValueMust(types.StringType, successCodes)
 	}
 
 	// Set boolean fields with defaults during import or if already set in state
@@ -1237,20 +1385,16 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.DomainExpirationReminder = types.BoolValue(monitor.DomainExpirationReminder)
 	}
 
-	// Handle maintenance window IDs from API response
-	if len(monitor.MaintenanceWindows) > 0 {
-		var maintenanceWindowIDs []int64
+	{
+		var apiIDs []int64
 		for _, mw := range monitor.MaintenanceWindows {
-			maintenanceWindowIDs = append(maintenanceWindowIDs, mw.ID)
+			if !mw.AutoAddMonitors {
+				apiIDs = append(apiIDs, mw.ID)
+			}
 		}
-		maintenanceWindowIDsValue, d := types.SetValueFrom(ctx, types.Int64Type, maintenanceWindowIDs)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		state.MaintenanceWindowIDs = maintenanceWindowIDsValue
-	} else if isImport {
-		state.MaintenanceWindowIDs = types.SetNull(types.Int64Type)
+		v, d := mwSetFromAPIRespectingShape(ctx, apiIDs, state.MaintenanceWindowIDs)
+		resp.Diagnostics.Append(d...)
+		state.MaintenanceWindowIDs = v
 	}
 
 	if isImport || !state.CheckSSLErrors.IsNull() {
@@ -1341,7 +1485,6 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		Type:     client.MonitorType(plan.Type.ValueString()),
 		Interval: int(plan.Interval.ValueInt64()),
 		Name:     plan.Name.ValueString(),
-		URL:      plan.URL.ValueString(),
 	}
 
 	zero := 0
@@ -1381,9 +1524,31 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updateReq.GracePeriod = &zero
 	}
 
-	if !plan.HTTPMethodType.IsNull() {
-		updateReq.HTTPMethodType = plan.HTTPMethodType.ValueString()
+	if !plan.URL.IsNull() && !plan.URL.IsUnknown() {
+		updateReq.URL = plan.URL.ValueString()
 	}
+
+	hasJSON := !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull()
+	hasKV := !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull()
+
+	var effMethod string
+	if isMethodHTTPLike(plan.Type) {
+		if !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown() {
+			m := strings.ToUpper(strings.TrimSpace(plan.HTTPMethodType.ValueString()))
+			if m != "" {
+				effMethod = m
+			}
+		}
+		if effMethod == "" {
+			if hasJSON || hasKV {
+				effMethod = "POST"
+			} else {
+				effMethod = "GET"
+			}
+		}
+		updateReq.HTTPMethodType = effMethod
+	}
+
 	if !plan.HTTPUsername.IsNull() {
 		updateReq.HTTPUsername = plan.HTTPUsername.ValueString()
 	}
@@ -1417,58 +1582,90 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		updateReq.KeywordType = plan.KeywordType.ValueString()
 	}
 
-	if !plan.SuccessHTTPResponseCodes.IsNull() {
-		var statuses []string
-		diags = plan.SuccessHTTPResponseCodes.ElementsAs(ctx, &statuses, false)
+	// http status codes
+	if plan.SuccessHTTPResponseCodes.IsNull() || plan.SuccessHTTPResponseCodes.IsUnknown() {
+		updateReq.SuccessHTTPResponseCodes = nil
+
+	} else {
+		var codes []string
+		diags = plan.SuccessHTTPResponseCodes.ElementsAs(ctx, &codes, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		updateReq.SuccessHTTPResponseCodes = statuses
+
+		codes = normalizeStringSet(codes)
+		if len(codes) == 0 {
+			empty := []string{}
+			updateReq.SuccessHTTPResponseCodes = &empty
+		} else {
+			updateReq.SuccessHTTPResponseCodes = &codes
+		}
 	}
 
 	if !plan.CustomHTTPHeaders.IsUnknown() {
 		if plan.CustomHTTPHeaders.IsNull() {
-			// block was removed from state. clear on server
 			empty := map[string]string{}
-			updateReq.CustomHTTPHeaders = &empty
+			updateReq.CustomHTTPHeaders = &empty // clear on server
 		} else {
-			var headers map[string]string
-			diags = plan.CustomHTTPHeaders.ElementsAs(ctx, &headers, false)
-			resp.Diagnostics.Append(diags...)
+			m, d := mapFromAttr(ctx, plan.CustomHTTPHeaders)
+			resp.Diagnostics.Append(d...)
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			updateReq.CustomHTTPHeaders = &headers
+			updateReq.CustomHTTPHeaders = &m
 		}
 	}
 
-	if !plan.MaintenanceWindowIDs.IsUnknown() {
-		if plan.MaintenanceWindowIDs.IsNull() {
-			updateReq.MaintenanceWindowIDs = []int64{}
-		} else {
-			var windowIDs []int64
-			diags = plan.MaintenanceWindowIDs.ElementsAs(ctx, &windowIDs, false)
-			resp.Diagnostics.Append(diags...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			updateReq.MaintenanceWindowIDs = windowIDs
-		}
-	}
+	// MaintenanceWindows alignment to current API v3  where 'omitted' and '[]' both clears
+	switch {
+	case plan.MaintenanceWindowIDs.IsUnknown():
+		// Omit the field, because current API v3 as of 29.10.2025 clears the values as well as empty slice
+		updateReq.MaintenanceWindowIDs = nil
 
-	// Always set tags - empty array if null, populated array if not null
-	if !plan.Tags.IsNull() {
-		var tags []string
-		diags = plan.Tags.ElementsAs(ctx, &tags, false)
+	case plan.MaintenanceWindowIDs.IsNull():
+		// Explicit empty leads to clear
+		empty := []int64{}
+		updateReq.MaintenanceWindowIDs = &empty
+
+	default:
+		var ids []int64
+		diags = plan.MaintenanceWindowIDs.ElementsAs(ctx, &ids, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		updateReq.Tags = tags
-	} else {
-		// clear on server
-		updateReq.Tags = []string{}
+		ids = normalizeInt64Set(ids)
+		if len(ids) == 0 {
+			empty := []int64{}
+			updateReq.MaintenanceWindowIDs = &empty
+		} else {
+			updateReq.MaintenanceWindowIDs = &ids
+		}
+	}
+
+	// Tags should only be clear if the user previously managed the block, otherwise left as is if omitted
+	if !plan.Tags.IsUnknown() {
+		if plan.Tags.IsNull() {
+			// User omitted. Preserver remote
+			updateReq.Tags = nil
+		} else {
+			var tags []string
+			diags = plan.Tags.ElementsAs(ctx, &tags, false)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+
+			tags = normalizeTagSet(tags)
+
+			if len(tags) == 0 {
+				empty := []string{}
+				updateReq.Tags = &empty
+			} else {
+				updateReq.Tags = &tags
+			}
+		}
 	}
 
 	if !plan.AssignedAlertContacts.IsUnknown() {
@@ -1503,9 +1700,10 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateReq.FollowRedirections = plan.FollowRedirections.ValueBool()
 	updateReq.HTTPAuthType = plan.AuthType.ValueString()
 
-	switch strings.ToUpper(stringOrEmpty(plan.HTTPMethodType)) {
+	switch strings.ToUpper(effMethod) {
 	case "GET", "HEAD":
-		// ignore body
+		updateReq.PostValueType = ""
+		updateReq.PostValueData = ""
 	default:
 		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
 			// JSON body
@@ -1565,13 +1763,30 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
-	updatedMonitor, err := r.client.UpdateMonitor(id, updateReq)
+	initialUpdatedMonitor, err := r.client.UpdateMonitor(id, updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating monitor",
 			"Could not update monitor, unexpected error: "+err.Error(),
 		)
 		return
+	}
+
+	want := wantFromUpdateReq(updateReq)
+	got := buildComparableFromAPI(initialUpdatedMonitor)
+
+	updatedMonitor := initialUpdatedMonitor
+	if !equalComparable(want, got) {
+		if updatedMonitor, err = r.waitMonitorSettled(ctx, id, want, 60*time.Second); err != nil {
+			if updatedMonitor != nil {
+				got = buildComparableFromAPI(updatedMonitor)
+			}
+			resp.Diagnostics.AddError(
+				"Update did not settle in time",
+				fmt.Sprintf("%v\nStill differing fields: %v", err, fieldsStillDifferent(want, got)),
+			)
+			return
+		}
 	}
 
 	var updatedState = plan
@@ -1584,66 +1799,67 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 	updatedState.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
 
+	switch strings.ToUpper(plan.Type.ValueString()) {
+	case "HTTP", "KEYWORD":
+		updatedState.HTTPMethodType = types.StringValue(effMethod)
+	default:
+		updatedState.HTTPMethodType = types.StringNull()
+	}
+
 	// Update response time threshold from the API response
-	if !plan.ResponseTimeThreshold.IsNull() {
-		// User specified response time threshold, update from API response
+	if !plan.ResponseTimeThreshold.IsNull() && !plan.ResponseTimeThreshold.IsUnknown() {
 		if updatedMonitor.ResponseTimeThreshold > 0 {
 			updatedState.ResponseTimeThreshold = types.Int64Value(int64(updatedMonitor.ResponseTimeThreshold))
 		} else {
-			updatedState.ResponseTimeThreshold = plan.ResponseTimeThreshold
+			updatedState.ResponseTimeThreshold = types.Int64Value(plan.ResponseTimeThreshold.ValueInt64())
 		}
 	} else {
-		// User didn't specify response time threshold, keep it null
 		updatedState.ResponseTimeThreshold = types.Int64Null()
 	}
 
 	// Update regional data from the API response
-	if !plan.RegionalData.IsNull() {
-		// User specified regional data, so update from API response
+	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
 		if updatedMonitor.RegionalData != nil {
-			if regionData, ok := updatedMonitor.RegionalData.(map[string]interface{}); ok {
-				if regions, ok := regionData["REGION"].([]interface{}); ok && len(regions) > 0 {
-					if region, ok := regions[0].(string); ok {
-						updatedState.RegionalData = types.StringValue(region)
-					}
-				}
+			if region, ok := coerceRegion(updatedMonitor.RegionalData); ok {
+				updatedState.RegionalData = types.StringValue(region)
+			} else {
+				// Unexpected shape → keep user's intended value to avoid churn
+				updatedState.RegionalData = plan.RegionalData
 			}
 		} else {
 			updatedState.RegionalData = types.StringNull()
 		}
 	} else {
-		// User didn't specify regional data, keep it null
+		// User doesn't manage it → keep null to avoid diffs on refresh
 		updatedState.RegionalData = types.StringNull()
 	}
 
-	if len(updatedMonitor.Tags) > 0 {
-		tagNames := make([]string, 0, len(updatedMonitor.Tags))
-		for _, tag := range updatedMonitor.Tags {
-			tagNames = append(tagNames, tag.Name)
-		}
-		tagValues := make([]attr.Value, 0, len(tagNames))
-		for _, tagName := range tagNames {
-			tagValues = append(tagValues, types.StringValue(tagName))
-		}
-		updatedState.Tags = types.SetValueMust(types.StringType, tagValues)
-	} else if plan.Tags.IsNull() {
+	if plan.Tags.IsNull() || plan.Tags.IsUnknown() {
 		updatedState.Tags = types.SetNull(types.StringType)
+	} else {
+		updatedState.Tags = tagsSetFromAPI(ctx, updatedMonitor.Tags)
 	}
 
-	if plan.CustomHTTPHeaders.IsNull() {
-		// user removed block and it became null, however api returns {} so we need to make state consistent with null
+	if plan.CustomHTTPHeaders.IsNull() || plan.CustomHTTPHeaders.IsUnknown() {
 		updatedState.CustomHTTPHeaders = types.MapNull(types.StringType)
 	} else {
-		if len(updatedMonitor.CustomHTTPHeaders) > 0 {
-			m := make(map[string]attr.Value, len(updatedMonitor.CustomHTTPHeaders))
-			for k, v := range updatedMonitor.CustomHTTPHeaders {
-				m[k] = types.StringValue(v)
+		updatedState.CustomHTTPHeaders = plan.CustomHTTPHeaders
+	}
+
+	// Maintenance windows for keeping shape after API interactions
+	{
+		var apiIDs []int64
+		for _, mw := range updatedMonitor.MaintenanceWindows {
+			if !mw.AutoAddMonitors {
+				apiIDs = append(apiIDs, mw.ID)
 			}
-			updatedState.CustomHTTPHeaders = types.MapValueMust(types.StringType, m)
-		} else {
-			// API returned empty headers and user had the block so it will be empty map
-			updatedState.CustomHTTPHeaders = types.MapValueMust(types.StringType, map[string]attr.Value{})
 		}
+		v, d := mwSetFromAPIRespectingShape(ctx, apiIDs, plan.MaintenanceWindowIDs)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		updatedState.MaintenanceWindowIDs = v
 	}
 
 	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
@@ -1690,11 +1906,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
-	method := strings.ToUpper(firstNonEmpty(
-		stringOrEmpty(plan.HTTPMethodType),
-		stringOrEmpty(state.HTTPMethodType),
-	))
-	if method == "GET" || method == "HEAD" {
+	if effMethod == "GET" || effMethod == "HEAD" {
 		updatedState.PostValueType = types.StringNull()
 		updatedState.PostValueData = jsontypes.NewNormalizedNull()
 		updatedState.PostValueKV = types.MapNull(types.StringType)
@@ -1724,6 +1936,31 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	} else {
 		updatedState.Config = types.ObjectNull(configObjectType().AttrTypes)
+	}
+
+	// success_http_response_codes
+	switch {
+	case plan.SuccessHTTPResponseCodes.IsNull() || plan.SuccessHTTPResponseCodes.IsUnknown():
+		updatedState.SuccessHTTPResponseCodes = types.SetNull(types.StringType)
+
+	default:
+		var codes []string
+		resp.Diagnostics.Append(plan.SuccessHTTPResponseCodes.ElementsAs(ctx, &codes, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if len(codes) == 0 {
+			empty, _ := types.SetValue(types.StringType, []attr.Value{})
+			updatedState.SuccessHTTPResponseCodes = empty
+		} else {
+			var vals []attr.Value
+			if updatedMonitor.SuccessHTTPResponseCodes != nil {
+				for _, c := range normalizeStringSet(updatedMonitor.SuccessHTTPResponseCodes) {
+					vals = append(vals, types.StringValue(c))
+				}
+			}
+			updatedState.SuccessHTTPResponseCodes = types.SetValueMust(types.StringType, vals)
+		}
 	}
 
 	diags = resp.State.Set(ctx, updatedState)
@@ -1813,12 +2050,6 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		}
 	}
 
-	// Consider removing Set and Map modifying as not needed and remove helpers
-	// No value - preserver server. Clear empty value e.g. [] - delete on server. Actual value - set on server.
-	modifyPlanForSetField(ctx, &plan.Tags, &state.Tags, resp, "tags")
-
-	modifyPlanForMapField(ctx, &plan.CustomHTTPHeaders, &state.CustomHTTPHeaders, resp, "custom_http_headers")
-
 	// Ensure boolean defaults are consistently applied
 	if !plan.SSLExpirationReminder.IsNull() && !state.SSLExpirationReminder.IsNull() {
 		// If both values are present and equal, preserve the state value
@@ -1858,8 +2089,17 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	method := strings.ToUpper(firstNonEmpty(
 		stringOrEmpty(plan.HTTPMethodType),
 		stringOrEmpty(state.HTTPMethodType),
-		"GET",
 	))
+	if req.State.Raw.IsNull() && method == "" && isMethodHTTPLike(plan.Type) {
+		hasJSON := !plan.PostValueData.IsNull() && !plan.PostValueData.IsUnknown()
+		hasKV := !plan.PostValueKV.IsNull() && !plan.PostValueKV.IsUnknown()
+		if hasJSON || hasKV {
+			method = "POST"
+		} else {
+			method = "GET"
+		}
+		resp.Plan.SetAttribute(ctx, path.Root("http_method_type"), types.StringValue(method))
+	}
 
 	if method == "GET" || method == "HEAD" {
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
@@ -1895,30 +2135,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func modifyPlanForSetField(ctx context.Context, planField, stateField *types.Set, resp *resource.ModifyPlanResponse, fieldName string) {
-	if stateField.IsNull() &&
-		!planField.IsNull() &&
-		!planField.IsUnknown() &&
-		len(planField.Elements()) == 0 {
-		resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.SetNull(planField.ElementType(ctx)))
-	}
-}
-
-func modifyPlanForMapField(
-	ctx context.Context,
-	planField *types.Map,
-	stateField *types.Map,
-	resp *resource.ModifyPlanResponse,
-	fieldName string,
-) {
-	if stateField.IsNull() &&
-		!planField.IsNull() &&
-		!planField.IsUnknown() &&
-		len(planField.Elements()) == 0 {
-		resp.Plan.SetAttribute(ctx, path.Root(fieldName), types.MapNull(planField.ElementType(ctx)))
-	}
 }
 
 // ImportState imports an existing resource into Terraform.
@@ -2058,6 +2274,24 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 				}
 
 				upgraded, diags := upgradeMonitorFromV3(ctx, prior)
+				resp.Diagnostics.Append(diags...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
+			},
+		},
+		4: {
+			PriorSchema: priorSchemaV4(),
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				var prior monitorV4Model
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				upgraded, diags := upgradeMonitorFromV4(ctx, prior)
 				resp.Diagnostics.Append(diags...)
 				if resp.Diagnostics.HasError() {
 					return
@@ -2269,4 +2503,920 @@ func flattenSSLConfigFromAPI(api map[string]json.RawMessage) (types.Object, diag
 	obj, d := types.ObjectValue(attrTypes, attrs)
 	diags.Append(d...)
 	return obj, diags
+}
+
+// mwSetFromAPIRespectingShape returns a Set built from apiIDs.
+func mwSetFromAPIRespectingShape(ctx context.Context, apiIDs []int64, desiredShape types.Set) (types.Set, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if len(apiIDs) == 0 {
+		if desiredShape.IsNull() || desiredShape.IsUnknown() {
+			return types.SetNull(types.Int64Type), diags
+		}
+
+		empty, d := types.SetValueFrom(ctx, types.Int64Type, []int64{})
+		diags.Append(d...)
+		return empty, diags
+	}
+
+	out, d := types.SetValueFrom(ctx, types.Int64Type, apiIDs)
+	diags.Append(d...)
+	return out, diags
+}
+
+// Comparable helpers for monitor resource
+
+type monComparable struct {
+	// Pointers here mean "assert this field" and nil means "ignore in this operation"
+	Type                     *string
+	URL                      *string
+	Name                     *string
+	Interval                 *int
+	Timeout                  *int
+	GracePeriod              *int
+	HTTPMethodType           *string
+	HTTPUsername             *string
+	HTTPAuthType             *string
+	Port                     *int
+	KeywordValue             *string
+	KeywordType              *string
+	KeywordCaseType          *string
+	FollowRedirections       *bool
+	SSLExpirationReminder    *bool
+	DomainExpirationReminder *bool
+	CheckSSLErrors           *bool
+	ResponseTimeThreshold    *int
+	RegionalData             *string
+
+	// Collections compared as sets and maps when present
+	SuccessCodes         []string
+	Tags                 []string
+	Headers              map[string]string
+	MaintenanceWindowIDs []int64
+	skipMWIDsCompare     bool
+	// Config children which we manage
+	SSLExpirationPeriodDays []int64
+}
+
+func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
+	c := monComparable{}
+
+	if req.Type != "" {
+		s := string(req.Type)
+		c.Type = &s
+	}
+	t := strings.ToUpper(string(req.Type))
+	switch t {
+	case "HEARTBEAT":
+		if req.GracePeriod != nil {
+			v := *req.GracePeriod
+			c.GracePeriod = &v
+		}
+	case "DNS", "PING":
+		// DO NOT assert timeout and grace_period for DNS and PING backend ignores them
+
+	default: // HTTP, KEYWORD, PORT
+		if req.Timeout != nil {
+			v := *req.Timeout
+			c.Timeout = &v
+		}
+		if req.GracePeriod != nil {
+			v := *req.GracePeriod
+			c.GracePeriod = &v
+		}
+	}
+	if req.URL != "" {
+		s := req.URL
+		c.URL = &s
+	}
+	if req.Name != "" {
+		s := req.Name
+		c.Name = &s
+	}
+	if req.Interval > 0 {
+		v := req.Interval
+		c.Interval = &v
+	}
+
+	if req.HTTPMethodType != "" {
+		s := req.HTTPMethodType
+		c.HTTPMethodType = &s
+	}
+	if req.HTTPUsername != "" {
+		s := req.HTTPUsername
+		c.HTTPUsername = &s
+	}
+	// DO NOT assert password it is a write only field
+
+	if req.HTTPAuthType != "" {
+		s := req.HTTPAuthType
+		c.HTTPAuthType = &s
+	}
+	if req.Port != 0 {
+		v := req.Port
+		c.Port = &v
+	}
+	if req.KeywordValue != "" {
+		s := req.KeywordValue
+		c.KeywordValue = &s
+	}
+	if req.KeywordType != "" {
+		s := req.KeywordType
+		c.KeywordType = &s
+	}
+
+	// KeywordCaseType is int with values 0 and 1. Comparation is as string labels which matches API logic
+	{
+		s := "CaseInsensitive"
+		if req.KeywordCaseType == 0 {
+			s = "CaseSensitive"
+		}
+		c.KeywordCaseType = &s
+	}
+
+	{
+		b := req.FollowRedirections
+		c.FollowRedirections = &b
+	}
+	{
+		b := req.SSLExpirationReminder
+		c.SSLExpirationReminder = &b
+	}
+	{
+		b := req.DomainExpirationReminder
+		c.DomainExpirationReminder = &b
+	}
+	if req.CheckSSLErrors != nil {
+		b := *req.CheckSSLErrors
+		c.CheckSSLErrors = &b
+	}
+
+	if req.ResponseTimeThreshold != 0 {
+		v := req.ResponseTimeThreshold
+		c.ResponseTimeThreshold = &v
+	}
+	if req.RegionalData != "" {
+		s := req.RegionalData
+		c.RegionalData = &s
+	}
+
+	// Assert collections only when they are actually sent
+	if req.CustomHTTPHeaders != nil {
+		headers := normalizeHeadersForCompareNoCT(req.CustomHTTPHeaders)
+		c.Headers = headers
+	}
+	if len(req.Tags) > 0 {
+		c.Tags = normalizeTagSet(req.Tags)
+	}
+	if req.SuccessHTTPResponseCodes != nil {
+		c.SuccessCodes = normalizeStringSet(req.SuccessHTTPResponseCodes)
+	}
+	if req.MaintenanceWindowIDs == nil {
+		c.skipMWIDsCompare = true
+		c.MaintenanceWindowIDs = nil
+	} else {
+		ids := normalizeInt64Set(req.MaintenanceWindowIDs)
+		c.MaintenanceWindowIDs = ids
+	}
+	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
+		c.SSLExpirationPeriodDays = normalizeInt64Set(req.Config.SSLExpirationPeriodDays)
+	}
+	return c
+}
+
+func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
+	c := monComparable{}
+
+	if req.Type != "" {
+		s := string(req.Type)
+		c.Type = &s
+	}
+	t := strings.ToUpper(string(req.Type))
+	switch t {
+	case "HEARTBEAT":
+		if req.GracePeriod != nil {
+			v := *req.GracePeriod
+			c.GracePeriod = &v
+		}
+	case "DNS", "PING":
+		// DO NOT assert timeout and grace_period for DNS and PING backend ignores them
+
+	default: // HTTP, KEYWORD, PORT
+		if req.Timeout != nil {
+			v := *req.Timeout
+			c.Timeout = &v
+		}
+		if req.GracePeriod != nil {
+			v := *req.GracePeriod
+			c.GracePeriod = &v
+		}
+	}
+	if req.URL != "" {
+		s := req.URL
+		c.URL = &s
+	}
+	if req.Name != "" {
+		s := req.Name
+		c.Name = &s
+	}
+	if req.Interval > 0 {
+		v := req.Interval
+		c.Interval = &v
+	}
+
+	if req.HTTPMethodType != "" {
+		s := req.HTTPMethodType
+		c.HTTPMethodType = &s
+	}
+	if req.HTTPUsername != "" {
+		s := req.HTTPUsername
+		c.HTTPUsername = &s
+	}
+	// DO NOT assert password it is a write only field
+
+	if req.HTTPAuthType != "" {
+		s := req.HTTPAuthType
+		c.HTTPAuthType = &s
+	}
+	if req.Port != 0 {
+		v := req.Port
+		c.Port = &v
+	}
+	if req.KeywordValue != "" {
+		s := req.KeywordValue
+		c.KeywordValue = &s
+	}
+	if req.KeywordType != "" {
+		s := req.KeywordType
+		c.KeywordType = &s
+	}
+
+	{
+		s := "CaseInsensitive"
+		if req.KeywordCaseType == 0 {
+			s = "CaseSensitive"
+		}
+		c.KeywordCaseType = &s
+	}
+
+	{
+		b := req.FollowRedirections
+		c.FollowRedirections = &b
+	}
+	{
+		b := req.SSLExpirationReminder
+		c.SSLExpirationReminder = &b
+	}
+	{
+		b := req.DomainExpirationReminder
+		c.DomainExpirationReminder = &b
+	}
+	if req.CheckSSLErrors != nil {
+		b := *req.CheckSSLErrors
+		c.CheckSSLErrors = &b
+	}
+
+	if req.ResponseTimeThreshold != nil {
+		v := *req.ResponseTimeThreshold
+		c.ResponseTimeThreshold = &v
+	}
+	if req.RegionalData != nil {
+		s := *req.RegionalData
+		c.RegionalData = &s
+	}
+
+	if req.SuccessHTTPResponseCodes != nil && len(*req.SuccessHTTPResponseCodes) > 0 {
+		c.SuccessCodes = normalizeStringSet(*req.SuccessHTTPResponseCodes)
+	}
+	if req.Tags != nil {
+		c.Tags = normalizeTagSet(*req.Tags)
+	}
+	if req.CustomHTTPHeaders != nil {
+		c.Headers = normalizeHeadersForCompareNoCT(*req.CustomHTTPHeaders)
+	}
+	if req.MaintenanceWindowIDs == nil {
+		c.skipMWIDsCompare = true
+		c.MaintenanceWindowIDs = nil
+	} else {
+		ids := normalizeInt64Set(*req.MaintenanceWindowIDs)
+		c.MaintenanceWindowIDs = ids
+	}
+	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
+		c.SSLExpirationPeriodDays = normalizeInt64Set(req.Config.SSLExpirationPeriodDays)
+	}
+
+	return c
+}
+
+// Convert the API payload to the normalized shape for comparison. Used by waitMonitorSettled.
+func buildComparableFromAPI(m *client.Monitor) monComparable {
+	c := monComparable{}
+
+	if m.Type != "" {
+		s := m.Type
+		c.Type = &s
+	}
+	if m.URL != "" {
+		s := m.URL
+		c.URL = &s
+	}
+	if m.Name != "" {
+		s := m.Name
+		c.Name = &s
+	}
+	if m.Interval != 0 {
+		v := m.Interval
+		c.Interval = &v
+	}
+
+	{
+		v := m.Timeout
+		c.Timeout = &v
+	}
+	{
+		v := m.GracePeriod
+		c.GracePeriod = &v
+	}
+	if m.HTTPMethodType != "" {
+		s := m.HTTPMethodType
+		c.HTTPMethodType = &s
+	}
+	if m.HTTPUsername != "" {
+		s := m.HTTPUsername
+		c.HTTPUsername = &s
+	}
+	if m.AuthType != "" {
+		s := m.AuthType
+		c.HTTPAuthType = &s
+	}
+	if m.Port != nil && *m.Port != 0 {
+		v := *m.Port
+		c.Port = &v
+	}
+	if m.KeywordValue != "" {
+		s := m.KeywordValue
+		c.KeywordValue = &s
+	}
+	if m.KeywordType != nil && *m.KeywordType != "" {
+		s := *m.KeywordType
+		c.KeywordType = &s
+	}
+	// API is numeric 0 and 1. Need to compare as string labels
+	{
+		s := "CaseInsensitive"
+		if m.KeywordCaseType == 0 {
+			s = "CaseSensitive"
+		}
+		c.KeywordCaseType = &s
+	}
+
+	{
+		b := m.FollowRedirections
+		c.FollowRedirections = &b
+	}
+	{
+		b := m.SSLExpirationReminder
+		c.SSLExpirationReminder = &b
+	}
+	{
+		b := m.DomainExpirationReminder
+		c.DomainExpirationReminder = &b
+	}
+	{
+		b := m.CheckSSLErrors
+		c.CheckSSLErrors = &b
+	}
+
+	if m.ResponseTimeThreshold > 0 {
+		v := m.ResponseTimeThreshold
+		c.ResponseTimeThreshold = &v
+	}
+
+	// API may return an object. Normalization to a string should be performed
+	if m.RegionalData != nil {
+		switch v := m.RegionalData.(type) {
+		case string:
+			s := v
+			c.RegionalData = &s
+		case map[string]interface{}:
+			if regions, ok := v["REGION"].([]interface{}); ok && len(regions) > 0 {
+				if r0, ok := regions[0].(string); ok && r0 != "" {
+					s := r0
+					c.RegionalData = &s
+				}
+			}
+		}
+	}
+
+	// Collections
+
+	if m.SuccessHTTPResponseCodes != nil {
+		c.SuccessCodes = normalizeStringSet(m.SuccessHTTPResponseCodes)
+	}
+
+	if len(m.Tags) > 0 {
+		tagNames := make([]string, 0, len(m.Tags))
+		for _, t := range m.Tags {
+			if t.Name != "" {
+				tagNames = append(tagNames, t.Name)
+			}
+		}
+		c.Tags = normalizeTagSet(tagNames)
+	} else {
+		c.Tags = []string{}
+	}
+
+	// Headers keys normalize to lowercase and trim
+	if m.CustomHTTPHeaders != nil {
+		c.Headers = normalizeHeadersForCompareNoCT(m.CustomHTTPHeaders)
+	} else {
+		c.Headers = map[string]string{}
+	}
+
+	var apiIDs []int64
+	for _, mw := range m.MaintenanceWindows {
+		if !mw.AutoAddMonitors {
+			apiIDs = append(apiIDs, mw.ID)
+		}
+	}
+	c.MaintenanceWindowIDs = normalizeInt64Set(apiIDs)
+
+	if m.Config != nil {
+		if raw, ok := m.Config["sslExpirationPeriodDays"]; ok && raw != nil {
+			var days []int64
+			if err := json.Unmarshal(raw, &days); err == nil {
+				c.SSLExpirationPeriodDays = normalizeInt64Set(days) // empty slice is ok
+			}
+		}
+	}
+
+	return c
+}
+
+func equalComparable(want, got monComparable) bool {
+	// Only compare fields that are asserted in want, meaning that we receieve from got what we want
+	if want.Type != nil && (got.Type == nil || *want.Type != *got.Type) {
+		return false
+	}
+	if want.URL != nil && (got.URL == nil || *want.URL != *got.URL) {
+		return false
+	}
+	if want.Name != nil && (got.Name == nil || *want.Name != *got.Name) {
+		return false
+	}
+	if want.Interval != nil && (got.Interval == nil || *want.Interval != *got.Interval) {
+		return false
+	}
+	if want.Timeout != nil && (got.Timeout == nil || *want.Timeout != *got.Timeout) {
+		return false
+	}
+	if want.GracePeriod != nil && (got.GracePeriod == nil || *want.GracePeriod != *got.GracePeriod) {
+		return false
+	}
+	if want.HTTPMethodType != nil && (got.HTTPMethodType == nil || *want.HTTPMethodType != *got.HTTPMethodType) {
+		return false
+	}
+	if want.HTTPUsername != nil && (got.HTTPUsername == nil || *want.HTTPUsername != *got.HTTPUsername) {
+		return false
+	}
+	if want.HTTPAuthType != nil && (got.HTTPAuthType == nil || *want.HTTPAuthType != *got.HTTPAuthType) {
+		return false
+	}
+	if want.Port != nil && (got.Port == nil || *want.Port != *got.Port) {
+		return false
+	}
+	if want.KeywordValue != nil && (got.KeywordValue == nil || *want.KeywordValue != *got.KeywordValue) {
+		return false
+	}
+	if want.KeywordType != nil && (got.KeywordType == nil || *want.KeywordType != *got.KeywordType) {
+		return false
+	}
+	if want.KeywordCaseType != nil && (got.KeywordCaseType == nil || *want.KeywordCaseType != *got.KeywordCaseType) {
+		return false
+	}
+	if want.FollowRedirections != nil && (got.FollowRedirections == nil || *want.FollowRedirections != *got.FollowRedirections) {
+		return false
+	}
+	if want.SSLExpirationReminder != nil && (got.SSLExpirationReminder == nil || *want.SSLExpirationReminder != *got.SSLExpirationReminder) {
+		return false
+	}
+	if want.DomainExpirationReminder != nil && (got.DomainExpirationReminder == nil || *want.DomainExpirationReminder != *got.DomainExpirationReminder) {
+		return false
+	}
+	if want.CheckSSLErrors != nil && (got.CheckSSLErrors == nil || *want.CheckSSLErrors != *got.CheckSSLErrors) {
+		return false
+	}
+	if want.ResponseTimeThreshold != nil && (got.ResponseTimeThreshold == nil || *want.ResponseTimeThreshold != *got.ResponseTimeThreshold) {
+		return false
+	}
+	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
+		return false
+	}
+
+	if want.SuccessCodes != nil && !equalStringSet(want.SuccessCodes, got.SuccessCodes) {
+		return false
+	}
+	if want.Tags != nil && !equalTagSet(want.Tags, got.Tags) {
+		return false
+	}
+	if want.Headers != nil && !equalStringMap(want.Headers, got.Headers) {
+		return false
+	}
+	if !want.skipMWIDsCompare {
+		if !equalInt64Sets(want.MaintenanceWindowIDs, got.MaintenanceWindowIDs) {
+			return false
+		}
+	}
+	if want.SSLExpirationPeriodDays != nil && !equalInt64Set(want.SSLExpirationPeriodDays, got.SSLExpirationPeriodDays) {
+		return false
+	}
+
+	return true
+}
+
+func normalizeStringSet(in []string) []string {
+	if len(in) == 0 {
+		return []string{}
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func normalizeInt64Set(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	m := make(map[int64]struct{}, len(ids))
+	for _, v := range ids {
+		m[v] = struct{}{}
+	}
+	out := make([]int64, 0, len(m))
+	for v := range m {
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func equalInt64Sets(a, b []int64) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalStringSet(a, b []string) bool {
+	a = normalizeStringSet(a)
+	b = normalizeStringSet(b)
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalInt64Set(a, b []int64) bool {
+	a = normalizeInt64Set(a)
+	b = normalizeInt64Set(b)
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalStringMap(a, b map[string]string) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil {
+		a = map[string]string{}
+	}
+	if b == nil {
+		b = map[string]string{}
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// waitMonitorSettled waits until GET shows what we asked for.
+// Returns the last GET payload which is usedc to write to state.
+func (r *monitorResource) waitMonitorSettled(
+	_ context.Context,
+	id int64,
+	want monComparable,
+	timeout time.Duration,
+) (*client.Monitor, error) {
+	deadline := time.Now().Add(timeout)
+	var last *client.Monitor
+	var lastErr error
+
+	backoff := 500 * time.Millisecond
+	for attempt := 0; ; attempt++ {
+		m, err := r.client.GetMonitor(id)
+		if err == nil {
+			last = m
+			got := buildComparableFromAPI(m)
+			if equalComparable(want, got) {
+				return m, nil
+			}
+			lastErr = fmt.Errorf("remote not yet equal to desired shape")
+		} else {
+			lastErr = err
+		}
+
+		if time.Now().After(deadline) {
+			// final check in which if last GET is already equal, then it is accepted, else error
+			if last != nil && equalComparable(want, buildComparableFromAPI(last)) {
+				return last, nil
+			}
+			if lastErr == nil {
+				lastErr = fmt.Errorf("timeout waiting monitor to settle")
+			}
+			return last, lastErr
+		}
+
+		if attempt < 4 {
+			time.Sleep(backoff)
+			backoff *= 2
+		} else {
+			time.Sleep(3 * time.Second)
+		}
+	}
+}
+
+// fieldsStillDifferent shows different of what we wanted and what we got from the API for debugging and logging.
+func fieldsStillDifferent(want, got monComparable) []string {
+	var f []string
+
+	if want.Name != nil && (got.Name == nil || *want.Name != *got.Name) {
+		f = append(f, "name")
+	}
+	if want.URL != nil && (got.URL == nil || *want.URL != *got.URL) {
+		f = append(f, "url")
+	}
+	if want.Interval != nil && (got.Interval == nil || *want.Interval != *got.Interval) {
+		f = append(f, "interval")
+	}
+	if want.Timeout != nil && (got.Timeout == nil || *want.Timeout != *got.Timeout) {
+		f = append(f, "timeout")
+	}
+	if want.GracePeriod != nil && (got.GracePeriod == nil || *want.GracePeriod != *got.GracePeriod) {
+		f = append(f, "grace_period")
+	}
+	if want.SuccessCodes != nil && !equalStringSet(want.SuccessCodes, got.SuccessCodes) {
+		f = append(f, "success_http_response_codes")
+	}
+	if want.Tags != nil && !equalStringSet(want.Tags, got.Tags) {
+		f = append(f, "tags")
+	}
+	if want.Headers != nil && !equalStringMap(want.Headers, got.Headers) {
+		f = append(f, "custom_http_headers")
+	}
+	if !want.skipMWIDsCompare && want.MaintenanceWindowIDs != nil && !equalInt64Set(want.MaintenanceWindowIDs, got.MaintenanceWindowIDs) {
+		f = append(f, "maintenance_window_ids")
+	}
+	if want.SSLExpirationPeriodDays != nil && !equalInt64Set(want.SSLExpirationPeriodDays, got.SSLExpirationPeriodDays) {
+		f = append(f, "config.ssl_expiration_period_days")
+	}
+	if want.FollowRedirections != nil && (got.FollowRedirections == nil || *want.FollowRedirections != *got.FollowRedirections) {
+		f = append(f, "follow_redirections")
+	}
+	if want.SSLExpirationReminder != nil && (got.SSLExpirationReminder == nil || *want.SSLExpirationReminder != *got.SSLExpirationReminder) {
+		f = append(f, "ssl_expiration_reminder")
+	}
+	if want.DomainExpirationReminder != nil && (got.DomainExpirationReminder == nil || *want.DomainExpirationReminder != *got.DomainExpirationReminder) {
+		f = append(f, "domain_expiration_reminder")
+	}
+	if want.CheckSSLErrors != nil && (got.CheckSSLErrors == nil || *want.CheckSSLErrors != *got.CheckSSLErrors) {
+		f = append(f, "check_ssl_errors")
+	}
+	if want.ResponseTimeThreshold != nil && (got.ResponseTimeThreshold == nil || *want.ResponseTimeThreshold != *got.ResponseTimeThreshold) {
+		f = append(f, "response_time_threshold")
+	}
+	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
+		f = append(f, "regional_data")
+	}
+	if want.KeywordCaseType != nil && (got.KeywordCaseType == nil || *want.KeywordCaseType != *got.KeywordCaseType) {
+		f = append(f, "keyword_case_type")
+	}
+
+	return f
+}
+
+func mapFromAttr(ctx context.Context, attr types.Map) (map[string]string, diag.Diagnostics) {
+	if attr.IsNull() || attr.IsUnknown() {
+		return nil, nil
+	}
+	var m map[string]string
+	var diags diag.Diagnostics
+	diags.Append(attr.ElementsAs(ctx, &m, false)...)
+	return m, diags
+}
+
+func attrFromMap(ctx context.Context, m map[string]string) (types.Map, diag.Diagnostics) {
+	if m == nil {
+		return types.MapNull(types.StringType), nil
+	}
+	return types.MapValueFrom(ctx, types.StringType, m)
+}
+
+func isMethodHTTPLike(t types.String) bool {
+	if t.IsNull() || t.IsUnknown() {
+		return false
+	}
+	switch strings.ToUpper(t.ValueString()) {
+	case "HTTP", "KEYWORD":
+		return true
+	default:
+		return false
+	}
+}
+
+var allowedRegion = map[string]struct{}{"na": {}, "eu": {}, "as": {}, "oc": {}}
+
+func coerceRegion(v interface{}) (string, bool) {
+	switch x := v.(type) {
+	case string:
+		s := strings.ToLower(strings.TrimSpace(x))
+		_, ok := allowedRegion[s]
+		return s, ok
+
+	case map[string]interface{}:
+		if raw, ok := x["REGION"]; ok {
+			switch a := raw.(type) {
+			case []interface{}:
+				for _, it := range a {
+					if s, ok := it.(string); ok {
+						s = strings.ToLower(strings.TrimSpace(s))
+						if _, ok := allowedRegion[s]; ok {
+							return s, true
+						}
+					}
+				}
+			case []string:
+				for _, s0 := range a {
+					s := strings.ToLower(strings.TrimSpace(s0))
+					if _, ok := allowedRegion[s]; ok {
+						return s, true
+					}
+				}
+			}
+		}
+	}
+	return "", false
+}
+
+func tagsReadSet(current types.Set, apiTags []client.Tag, isImport bool) types.Set {
+	if !isImport {
+		if current.IsNull() || current.IsUnknown() {
+			return types.SetNull(types.StringType)
+		}
+		return current
+	}
+
+	if len(apiTags) == 0 {
+		return types.SetNull(types.StringType)
+	}
+	vals := make([]attr.Value, 0, len(apiTags))
+	seen := map[string]struct{}{}
+	for _, t := range apiTags {
+		s := strings.ToLower(strings.TrimSpace(t.Name))
+		if s == "" || seen[s] != (struct{}{}) {
+			if _, ok := seen[s]; ok {
+				continue
+			}
+		}
+		seen[s] = struct{}{}
+		vals = append(vals, types.StringValue(s))
+	}
+	vals = sortAttrStringVals(vals)
+
+	return types.SetValueMust(types.StringType, vals)
+}
+
+// normalizeHeadersForCompareNoCT compare only user-meaningful headers.
+// Content-Type is ignored because API sets it on json or kv/form body, so it is better to be removed.
+func normalizeHeadersForCompareNoCT(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		k = strings.ToLower(strings.TrimSpace(k))
+		if k == "" || k == "content-type" {
+			continue
+		}
+		out[k] = strings.TrimSpace(v)
+	}
+	return out
+}
+
+func normalizeTagSet(in []string) []string {
+	if len(in) == 0 {
+		return []string{}
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func equalTagSet(a, b []string) bool {
+	a = normalizeTagSet(a)
+	b = normalizeTagSet(b)
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func tagsSetFromAPI(_ context.Context, api []client.Tag) types.Set {
+	if len(api) == 0 {
+		return types.SetValueMust(types.StringType, []attr.Value{})
+	}
+
+	vals := make([]attr.Value, 0, len(api))
+	seen := map[string]struct{}{}
+	for _, t := range api {
+		s := strings.ToLower(strings.TrimSpace(t.Name))
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		vals = append(vals, types.StringValue(s))
+	}
+	vals = sortAttrStringVals(vals)
+
+	return types.SetValueMust(types.StringType, vals)
+}
+
+// sortAttrStringVals helps to sort values for deterministic output and comparison.
+func sortAttrStringVals(vals []attr.Value) []attr.Value {
+	ss := make([]string, 0, len(vals))
+	for _, v := range vals {
+		if s, ok := v.(types.String); ok && !s.IsNull() && !s.IsUnknown() {
+			ss = append(ss, s.ValueString())
+		}
+	}
+	sort.Strings(ss)
+	out := make([]attr.Value, len(ss))
+	for i, s := range ss {
+		out[i] = types.StringValue(s)
+	}
+	return out
 }

@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
@@ -15,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -110,6 +112,12 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 			"date": schema.StringAttribute{
 				Description: "Date of the maintenance window (format: YYYY-MM-DD)",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$`),
+						"must be in YYYY-MM-DD format",
+					),
+				},
 			},
 			"time": schema.StringAttribute{
 				Description: "Time of the maintenance window (format: HH:mm:ss)",
@@ -141,6 +149,9 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 				ElementType: types.Int64Type,
 				Validators: []validator.Set{
 					setvalidator.ValueInt64sAre(int64validator.Between(-1, 31)),
+				},
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"status": schema.StringAttribute{
@@ -251,6 +262,32 @@ func validateRuleDaysNotAllowedForOnceDaily(
 	}
 }
 
+func (r *maintenanceWindowResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var plan maintenanceWindowResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Put in a separate function Interval segment to not exit earlier when modify plan increase in functionality
+	if plan.Interval.IsUnknown() || plan.Interval.IsNull() {
+		return
+	}
+
+	switch strings.ToLower(plan.Interval.ValueString()) {
+	case intervalDaily, intervalOnce:
+		resp.Plan.SetAttribute(ctx, path.Root("days"), types.SetNull(types.Int64Type))
+	}
+}
+
 func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan maintenanceWindowResourceModel
 	diags := req.Plan.Get(ctx, &plan)
@@ -287,7 +324,6 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 		mw.Date = &dateStr
 	}
 
-	// Convert days from int64 to []int
 	if !plan.Days.IsNull() && !plan.Days.IsUnknown() {
 		var daysInt64 []int64
 		diags = plan.Days.ElementsAs(ctx, &daysInt64, false)
@@ -301,6 +337,10 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 			})
 			mw.Days = daysInt64
 		}
+	}
+	iv := strings.ToLower(plan.Interval.ValueString())
+	if iv == intervalDaily || iv == intervalOnce {
+		mw.Days = nil // don't send days for daily and once
 	}
 
 	// Create maintenance window
@@ -465,7 +505,6 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		updateReq.Date = &dateStr
 	}
 
-	// Convert days from int64 to []int
 	if !plan.Days.IsNull() && !plan.Days.IsUnknown() {
 		var daysInt64 []int64
 		diags = plan.Days.ElementsAs(ctx, &daysInt64, false)
@@ -481,6 +520,10 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		} else {
 			updateReq.Days = nil
 		}
+	}
+	iv := strings.ToLower(plan.Interval.ValueString())
+	if iv == intervalDaily || iv == intervalOnce {
+		updateReq.Days = nil
 	}
 
 	// Update maintenance window
