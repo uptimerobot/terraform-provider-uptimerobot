@@ -518,13 +518,6 @@ func (r *monitorResource) ImportState(ctx context.Context, req resource.ImportSt
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-func stringValue(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
 // UpgradeState used for migration between schemas.
 func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
 

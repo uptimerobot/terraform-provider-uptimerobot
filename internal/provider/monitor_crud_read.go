@@ -31,8 +31,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	monitor, err := r.client.GetMonitor(id)
 	if client.IsNotFound(err) {
-		// Remote indicates that there is no resource.
-		// Remove it from the state so Terraform can recreate it if still present in config.
+		// Indicates that there is no resource on the server. Remove from state so TF can recreate.
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -44,55 +43,93 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	// Check if we're in an import operation by seeing if all required fields are null
-	// During import, only the ID is set
-	isImport := state.Name.IsNull() && state.URL.IsNull() && state.Type.IsNull() && state.Interval.IsNull()
+	isImport := readIsImport(state)
 
 	state.Type = types.StringValue(monitor.Type)
 	state.Interval = types.Int64Value(int64(monitor.Interval))
 
+	readApplyTypeTiming(&state, monitor)
+	readApplyOptionalDefaults(&state, monitor, isImport)
+	readApplyHTTPBody(&state)
+	readApplyKeywordAndPort(&state, monitor, isImport)
+	readApplyIdentity(&state, monitor)
+	readApplyRegionalData(&state, monitor, isImport)
+	readApplyTagsHeadersAC(ctx, resp, &state, monitor, isImport)
+	readApplySuccessCodes(ctx, resp, &state, monitor)
+	readApplyBooleans(&state, monitor, isImport)
+	readApplyMWIDs(ctx, resp, &state, monitor)
+	readApplyConfig(ctx, resp, &state, monitor, isImport)
+
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+}
+
+// Helpers
+
+func readIsImport(s monitorResourceModel) bool {
+	return s.Name.IsNull() && s.URL.IsNull() && s.Type.IsNull() && s.Interval.IsNull()
+}
+
+func readApplyTypeTiming(state *monitorResourceModel, m *client.Monitor) {
 	t := strings.ToUpper(state.Type.ValueString())
 	switch t {
 	case "HEARTBEAT":
-		// keep the API's gracePeriod, but hide timeout
 		state.Timeout = types.Int64Null()
-		// to ensure grace is present
-		state.GracePeriod = types.Int64Value(int64(monitor.GracePeriod))
+		state.GracePeriod = types.Int64Value(int64(m.GracePeriod))
 	case "DNS", "PING":
-		// If user had a value in state leave it
 		if state.Timeout.IsNull() {
 			state.Timeout = types.Int64Null()
 		}
 		state.GracePeriod = types.Int64Null()
 	default:
-		// keep the API's timeout and ensure grace_period is hidden from the API responses
 		state.GracePeriod = types.Int64Null()
-		state.Timeout = types.Int64Value(int64(monitor.Timeout))
+		state.Timeout = types.Int64Value(int64(m.Timeout))
 	}
+}
 
-	// For optional fields with defaults, set them during import or if already set in state
+func readApplyOptionalDefaults(state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	if isImport || !state.FollowRedirections.IsNull() {
-		state.FollowRedirections = types.BoolValue(monitor.FollowRedirections)
+		state.FollowRedirections = types.BoolValue(m.FollowRedirections)
 	}
 	if isImport || !state.AuthType.IsNull() {
-		state.AuthType = types.StringValue(stringValue(&monitor.AuthType))
+		if m.AuthType != "" {
+			state.AuthType = types.StringValue(m.AuthType)
+		} else {
+			state.AuthType = types.StringNull()
+		}
 	}
-	if monitor.HTTPUsername != "" {
-		state.HTTPUsername = types.StringValue(monitor.HTTPUsername)
+	if m.HTTPUsername != "" {
+		state.HTTPUsername = types.StringValue(m.HTTPUsername)
 	} else if !state.HTTPUsername.IsNull() {
 		state.HTTPUsername = types.StringNull()
 	}
 
-	// Preserve user's method unless this is an import. The API may not return it reliably.
+	// Preserve user's method unless import. API may omit and normalize it.
 	if isImport {
-		if monitor.HTTPMethodType != "" {
-			state.HTTPMethodType = types.StringValue(monitor.HTTPMethodType)
+		if m.HTTPMethodType != "" {
+			state.HTTPMethodType = types.StringValue(m.HTTPMethodType)
 		} else {
 			state.HTTPMethodType = types.StringNull()
 		}
 	}
 
-	// Normalize unknowns to nulls
+	// Response time threshold. Set only when it is managed or imported
+	if isImport {
+		if m.ResponseTimeThreshold > 0 {
+			state.ResponseTimeThreshold = types.Int64Value(int64(m.ResponseTimeThreshold))
+		} else {
+			state.ResponseTimeThreshold = types.Int64Null()
+		}
+	} else if !state.ResponseTimeThreshold.IsNull() {
+		if m.ResponseTimeThreshold > 0 {
+			state.ResponseTimeThreshold = types.Int64Value(int64(m.ResponseTimeThreshold))
+		} else {
+			state.ResponseTimeThreshold = types.Int64Null()
+		}
+	}
+}
+
+func readApplyHTTPBody(state *monitorResourceModel) {
 	if state.PostValueData.IsUnknown() {
 		state.PostValueData = jsontypes.NewNormalizedNull()
 	}
@@ -100,82 +137,64 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		state.PostValueKV = types.MapNull(types.StringType)
 	}
 
-	// Derive type from method + presence of body in *state*
 	meth := strings.ToUpper(stringOrEmpty(state.HTTPMethodType))
-
-	// For GET/HEAD body is not allowed - clear everything
 	if meth == "GET" || meth == "HEAD" {
 		state.PostValueType = types.StringNull()
 		state.PostValueData = jsontypes.NewNormalizedNull()
 		state.PostValueKV = types.MapNull(types.StringType)
-	} else {
-		// For non-GET/HEAD treat body as write-only
-		// Do NOT overwrite whatever is already in state
-		if state.PostValueType.IsNull() || state.PostValueType.IsUnknown() {
-			if !state.PostValueData.IsNull() {
-				state.PostValueType = types.StringValue(PostTypeRawJSON)
-			} else if !state.PostValueKV.IsNull() {
-				state.PostValueType = types.StringValue(PostTypeKeyValue)
-			} else {
-				state.PostValueType = types.StringNull()
-			}
+		return
+	}
+	// Non-GET/HEAD: write-only body. Set type only if empty in state
+	if state.PostValueType.IsNull() || state.PostValueType.IsUnknown() {
+		if !state.PostValueData.IsNull() {
+			state.PostValueType = types.StringValue(PostTypeRawJSON)
+		} else if !state.PostValueKV.IsNull() {
+			state.PostValueType = types.StringValue(PostTypeKeyValue)
+		} else {
+			state.PostValueType = types.StringNull()
 		}
 	}
+}
 
-	if monitor.Port != nil {
-		state.Port = types.Int64Value(int64(*monitor.Port))
+func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isImport bool) {
+	if m.Port != nil {
+		state.Port = types.Int64Value(int64(*m.Port))
 	} else {
 		state.Port = types.Int64Null()
 	}
-	if monitor.KeywordValue != "" {
-		state.KeywordValue = types.StringValue(monitor.KeywordValue)
+
+	if m.KeywordValue != "" {
+		state.KeywordValue = types.StringValue(m.KeywordValue)
 	} else if !state.KeywordValue.IsNull() {
-		// If API returns empty but state had a value, set to null
 		state.KeywordValue = types.StringNull()
 	}
-	if monitor.KeywordType != nil {
-		state.KeywordType = types.StringValue(*monitor.KeywordType)
+
+	if m.KeywordType != nil {
+		state.KeywordType = types.StringValue(*m.KeywordType)
 	} else {
 		state.KeywordType = types.StringNull()
 	}
 
-	// Set keyword case type during import or if already set in state
 	if isImport || !state.KeywordCaseType.IsNull() {
-		var keywordCaseTypeValue string
-		if monitor.KeywordCaseType == 0 {
-			keywordCaseTypeValue = "CaseSensitive"
+		if m.KeywordCaseType == 0 {
+			state.KeywordCaseType = types.StringValue("CaseSensitive")
 		} else {
-			keywordCaseTypeValue = "CaseInsensitive"
-		}
-		state.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
-	}
-
-	state.Name = types.StringValue(monitor.Name)
-	state.URL = types.StringValue(monitor.URL)
-	state.ID = types.StringValue(strconv.FormatInt(monitor.ID, 10))
-	state.Status = types.StringValue(monitor.Status)
-
-	// Set response time threshold - only if it was specified in the plan or during import
-	if isImport {
-		// During import, set response time threshold if API returns it
-		if monitor.ResponseTimeThreshold > 0 {
-			state.ResponseTimeThreshold = types.Int64Value(int64(monitor.ResponseTimeThreshold))
-		} else {
-			state.ResponseTimeThreshold = types.Int64Null()
-		}
-	} else if !state.ResponseTimeThreshold.IsNull() {
-		// During regular read, only update if it was originally set in the plan
-		if monitor.ResponseTimeThreshold > 0 {
-			state.ResponseTimeThreshold = types.Int64Value(int64(monitor.ResponseTimeThreshold))
-		} else {
-			state.ResponseTimeThreshold = types.Int64Null()
+			state.KeywordCaseType = types.StringValue("CaseInsensitive")
 		}
 	}
-	// If response_time_threshold was not in the original plan and this is not an import, keep it as-is (null)
+}
 
+func readApplyIdentity(state *monitorResourceModel, m *client.Monitor) {
+	state.Name = types.StringValue(m.Name)
+	state.URL = types.StringValue(m.URL)
+	state.ID = types.StringValue(strconv.FormatInt(m.ID, 10))
+	state.Status = types.StringValue(m.Status)
+}
+
+func readApplyRegionalData(state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	if !state.RegionalData.IsNull() {
-		if monitor.RegionalData != nil {
-			if region, ok := coerceRegion(monitor.RegionalData); ok {
+		if m.RegionalData != nil {
+			if region, ok := coerceRegion(m.RegionalData); ok {
 				state.RegionalData = types.StringValue(region)
 			} else {
 				state.RegionalData = types.StringNull()
@@ -186,13 +205,14 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	} else if isImport {
 		state.RegionalData = types.StringNull()
 	}
+}
 
-	state.Tags = tagsReadSet(state.Tags, monitor.Tags, isImport)
+func readApplyTagsHeadersAC(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
+	state.Tags = tagsReadSet(state.Tags, m.Tags, isImport)
 
 	if isImport || state.CustomHTTPHeaders.IsNull() {
-		// Reflect API on import or when user never managed this field
-		if len(monitor.CustomHTTPHeaders) > 0 {
-			v, d := attrFromMap(ctx, monitor.CustomHTTPHeaders)
+		if len(m.CustomHTTPHeaders) > 0 {
+			v, d := attrFromMap(ctx, m.CustomHTTPHeaders)
 			resp.Diagnostics.Append(d...)
 			state.CustomHTTPHeaders = v
 		} else {
@@ -200,83 +220,80 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		}
 	}
 
-	acSet, d := alertContactsFromAPI(ctx, monitor.AssignedAlertContacts)
+	acSet, d := alertContactsFromAPI(ctx, m.AssignedAlertContacts)
 	resp.Diagnostics.Append(d...)
 	if state.AssignedAlertContacts.IsNull() {
-		// user do not have it in config - keep it null and avoid diffs
 		state.AssignedAlertContacts = types.SetNull(alertContactObjectType())
 	} else {
 		state.AssignedAlertContacts = acSet
 	}
+}
 
-	// success_http_response_codes
-	if !state.SuccessHTTPResponseCodes.IsNull() {
+func readApplySuccessCodes(ctx context.Context, _ *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor) {
+	if !state.SuccessHTTPResponseCodes.IsNull() && !state.SuccessHTTPResponseCodes.IsUnknown() {
 		var prior []string
 		_ = state.SuccessHTTPResponseCodes.ElementsAs(ctx, &prior, false)
 		if len(prior) == 0 {
 			empty, _ := types.SetValue(types.StringType, []attr.Value{})
 			state.SuccessHTTPResponseCodes = empty
-		} else {
-			var vals []attr.Value
-			if monitor.SuccessHTTPResponseCodes != nil {
-				for _, c := range normalizeStringSet(monitor.SuccessHTTPResponseCodes) {
-					vals = append(vals, types.StringValue(c))
-				}
-			} else {
-				vals = []attr.Value{}
-			}
-			state.SuccessHTTPResponseCodes = types.SetValueMust(types.StringType, vals)
+			return
 		}
-	}
 
-	// Set boolean fields with defaults during import or if already set in state
+		var vals []attr.Value
+		if m.SuccessHTTPResponseCodes != nil {
+			for _, c := range normalizeStringSet(m.SuccessHTTPResponseCodes) {
+				vals = append(vals, types.StringValue(c))
+			}
+		} else {
+			vals = []attr.Value{}
+		}
+		state.SuccessHTTPResponseCodes = types.SetValueMust(types.StringType, vals)
+	}
+}
+
+func readApplyBooleans(state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	if isImport || !state.SSLExpirationReminder.IsNull() {
-		state.SSLExpirationReminder = types.BoolValue(monitor.SSLExpirationReminder)
+		state.SSLExpirationReminder = types.BoolValue(m.SSLExpirationReminder)
 	}
 	if isImport || !state.DomainExpirationReminder.IsNull() {
-		state.DomainExpirationReminder = types.BoolValue(monitor.DomainExpirationReminder)
+		state.DomainExpirationReminder = types.BoolValue(m.DomainExpirationReminder)
 	}
-
-	{
-		var apiIDs []int64
-		for _, mw := range monitor.MaintenanceWindows {
-			if !mw.AutoAddMonitors {
-				apiIDs = append(apiIDs, mw.ID)
-			}
-		}
-		v, d := mwSetFromAPIRespectingShape(ctx, apiIDs, state.MaintenanceWindowIDs)
-		resp.Diagnostics.Append(d...)
-		state.MaintenanceWindowIDs = v
-	}
-
 	if isImport || !state.CheckSSLErrors.IsNull() {
-		state.CheckSSLErrors = types.BoolValue(monitor.CheckSSLErrors)
+		state.CheckSSLErrors = types.BoolValue(m.CheckSSLErrors)
 	}
+}
 
+func readApplyMWIDs(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor) {
+	var apiIDs []int64
+	for _, mw := range m.MaintenanceWindows {
+		if !mw.AutoAddMonitors {
+			apiIDs = append(apiIDs, mw.ID)
+		}
+	}
+	v, d := mwSetFromAPIRespectingShape(ctx, apiIDs, state.MaintenanceWindowIDs)
+	resp.Diagnostics.Append(d...)
+	state.MaintenanceWindowIDs = v
+}
+
+func readApplyConfig(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	if isImport {
-		// On import it should reflect API to the state so users get what is on the server
-		if monitor.Config != nil {
-			cfgObj, d := flattenSSLConfigFromAPI(monitor.Config)
+		if m.Config != nil {
+			cfgObj, d := flattenSSLConfigFromAPI(m.Config)
 			resp.Diagnostics.Append(d...)
 			state.Config = cfgObj
 		} else {
 			state.Config = types.ObjectNull(configObjectType().AttrTypes)
 		}
-	} else if !state.Config.IsNull() && !state.Config.IsUnknown() {
-		// User manages the block
-		if monitor.Config != nil {
-			cfgState, d := flattenSSLConfigToState(ctx, true /* hadBlock */, state.Config, monitor.Config)
+		return
+	}
+
+	if !state.Config.IsNull() && !state.Config.IsUnknown() {
+		if m.Config != nil {
+			cfgState, d := flattenSSLConfigToState(ctx, true /* hadBlock */, state.Config, m.Config)
 			resp.Diagnostics.Append(d...)
 			if !resp.Diagnostics.HasError() {
 				state.Config = cfgState
 			}
 		}
-		// If API returned nil config, leave user's representation as-is (prevents churn)
-	}
-
-	diags = resp.State.Set(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
 	}
 }
