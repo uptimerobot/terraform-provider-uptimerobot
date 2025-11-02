@@ -18,125 +18,113 @@ import (
 
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan monitorResourceModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Validate required fields based on monitor type
-	monitorType := plan.Type.ValueString()
-
-	// Validate port is provided for PORT monitors
-	if monitorType == "PORT" && plan.Port.IsNull() {
-		resp.Diagnostics.AddError(
-			"Port required for PORT monitor",
-			"Port must be specified for PORT monitor type",
-		)
+	// Build API request from plan
+	createReq, effMethod := r.buildCreateRequest(ctx, plan, resp)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Validate keyword fields for KEYWORD monitors
-	if monitorType == "KEYWORD" {
-		if plan.KeywordType.IsNull() {
-			resp.Diagnostics.AddError(
-				"KeywordType required for KEYWORD monitor",
-				"KeywordType must be specified for KEYWORD monitor type (ALERT_EXISTS or ALERT_NOT_EXISTS)",
-			)
-			return
-		}
-		if plan.KeywordValue.IsNull() {
-			resp.Diagnostics.AddError(
-				"KeywordValue required for KEYWORD monitor",
-				"KeywordValue must be specified for KEYWORD monitor type",
-			)
-			return
-		}
-
-		// Validate keyword type enum
-		keywordType := plan.KeywordType.ValueString()
-		if keywordType != "ALERT_EXISTS" && keywordType != "ALERT_NOT_EXISTS" {
-			resp.Diagnostics.AddError(
-				"Invalid KeywordType",
-				"KeywordType must be either ALERT_EXISTS or ALERT_NOT_EXISTS",
-			)
-			return
-		}
-	}
-
-	// Validate monitor type
-	validTypes := []string{"HTTP", "KEYWORD", "PING", "PORT", "HEARTBEAT", "DNS"}
-	validType := false
-	for _, vt := range validTypes {
-		if monitorType == vt {
-			validType = true
-			break
-		}
-	}
-	if !validType {
-		resp.Diagnostics.AddError(
-			"Invalid monitor type",
-			"Monitor type must be one of: HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS",
-		)
+	// Create
+	created, err := r.client.CreateMonitor(createReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error creating monitor", "Could not create monitor, unexpected error: "+err.Error())
 		return
 	}
 
-	// Create new monitor
-	createReq := &client.CreateMonitorRequest{
+	// Wait to apply in the API
+	plan.ID = types.StringValue(strconv.FormatInt(created.ID, 10))
+	want := wantFromCreateReq(createReq)
+	api, err := r.waitMonitorSettled(ctx, created.ID, want, 60*time.Second)
+	if err != nil {
+		resp.Diagnostics.AddWarning("Create settled slowly", "Backend took longer to reflect changes; proceeding.")
+		if api == nil {
+			api = created
+		}
+	}
+
+	// Build final state from API response
+	final := r.buildStateAfterCreate(ctx, plan, api, effMethod, resp)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, final)...)
+}
+
+// Build request
+
+func (r *monitorResource) buildCreateRequest(
+	ctx context.Context,
+	plan monitorResourceModel,
+	resp *resource.CreateResponse,
+) (*client.CreateMonitorRequest, string) {
+	req := &client.CreateMonitorRequest{
 		Type:     client.MonitorType(plan.Type.ValueString()),
 		URL:      plan.URL.ValueString(),
 		Name:     plan.Name.ValueString(),
 		Interval: int(plan.Interval.ValueInt64()),
 	}
 
-	zero := 0
-	defaultTimeout := 30
-
-	switch strings.ToUpper(plan.Type.ValueString()) {
-	case "HEARTBEAT":
-		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
-			v := int(plan.GracePeriod.ValueInt64())
-			createReq.GracePeriod = &v
-		} else {
-			createReq.GracePeriod = nil
-		}
-		createReq.Timeout = nil
-
-	case "DNS":
-		createReq.GracePeriod = &zero
-		createReq.Timeout = &zero
-		createReq.Config = &client.MonitorConfig{
-			DNSRecords: &client.DNSRecords{
-				CNAME: []string{"example.com"},
-			},
-		}
-
-	case "PING":
-		// not applicable and omitted
-		createReq.GracePeriod = &zero
-		createReq.Timeout = &zero
-
-	default:
-		// HTTP, KEYWORD, PORT
-		// send only if user provided, otherwise omitted
-		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
-			v := int(plan.Timeout.ValueInt64())
-			createReq.Timeout = &v
-		} else {
-			// user omitted
-			createReq.Timeout = &defaultTimeout
-		}
-		createReq.GracePeriod = &zero
+	if !plan.AuthType.IsNull() && !plan.AuthType.IsUnknown() {
+		req.HTTPAuthType = plan.AuthType.ValueString()
 	}
 
+	if !plan.HTTPUsername.IsNull() && !plan.HTTPUsername.IsUnknown() {
+		req.HTTPUsername = plan.HTTPUsername.ValueString()
+	}
+	if !plan.HTTPPassword.IsNull() && !plan.HTTPPassword.IsUnknown() {
+		req.HTTPPassword = plan.HTTPPassword.ValueString()
+	}
+
+	if !plan.Port.IsNull() && !plan.Port.IsUnknown() {
+		req.Port = int(plan.Port.ValueInt64())
+	}
+	if !plan.KeywordValue.IsNull() && !plan.KeywordValue.IsUnknown() {
+		req.KeywordValue = plan.KeywordValue.ValueString()
+	}
+	if !plan.KeywordType.IsNull() && !plan.KeywordType.IsUnknown() {
+		req.KeywordType = plan.KeywordType.ValueString()
+	}
+
+	// keyword_case_type. From string to numeric
+	if !plan.KeywordCaseType.IsNull() && !plan.KeywordCaseType.IsUnknown() {
+		switch plan.KeywordCaseType.ValueString() {
+		case "CaseSensitive":
+			req.KeywordCaseType = 0
+		case "CaseInsensitive", "":
+			req.KeywordCaseType = 1
+		default:
+			resp.Diagnostics.AddError("Invalid keyword_case_type", "keyword_case_type must be one of: CaseSensitive, CaseInsensitive")
+			return nil, ""
+		}
+	} else {
+		// default for API
+		req.KeywordCaseType = 1
+	}
+
+	// Optional fields
+	if !plan.ResponseTimeThreshold.IsNull() && !plan.ResponseTimeThreshold.IsUnknown() {
+		req.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
+	}
+	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
+		req.RegionalData = plan.RegionalData.ValueString()
+	}
+
+	// Timeout and Grace period by type
+	r.applyTimeoutAndGrace(&plan, req)
+
+	// Effective method. HTTP like types
 	hasJSON := !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull()
 	hasKV := !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull()
-
-	var effMethod string
+	effMethod := ""
 	if isMethodHTTPLike(plan.Type) {
 		if !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown() {
-			m := strings.ToUpper(strings.TrimSpace(plan.HTTPMethodType.ValueString()))
-			if m != "" {
+			if m := strings.ToUpper(strings.TrimSpace(plan.HTTPMethodType.ValueString())); m != "" {
 				effMethod = m
 			}
 		}
@@ -147,207 +135,262 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 				effMethod = "GET"
 			}
 		}
-		createReq.HTTPMethodType = effMethod
+		req.HTTPMethodType = effMethod
 	}
-	if !plan.HTTPUsername.IsNull() {
-		createReq.HTTPUsername = plan.HTTPUsername.ValueString()
+
+	// Body from plan
+	r.applyBodyFromPlan(ctx, &plan, effMethod, req, resp)
+	if resp.Diagnostics.HasError() {
+		return nil, ""
 	}
-	if !plan.HTTPPassword.IsNull() {
-		createReq.HTTPPassword = plan.HTTPPassword.ValueString()
+
+	// Headers
+	r.applyHeadersFromPlan(ctx, &plan, req, resp)
+	// HTTP Success codes
+	r.applySuccessCodesFromPlan(ctx, &plan, req, resp)
+	// Maintenance windows
+	r.applyMWIDsFromPlan(ctx, &plan, req, resp)
+	// Tags
+	r.applyTagsFromPlan(ctx, &plan, req, resp)
+	// Assigned alert contacts
+	r.applyAlertContactsFromPlan(ctx, &plan, req, resp)
+	// SSL flags and config. Update to config handling later when DNS will be introduced
+	r.applySSLFlagsFromPlan(ctx, &plan, req, resp)
+
+	return req, effMethod
+}
+
+func (r *monitorResource) applyTimeoutAndGrace(plan *monitorResourceModel, req *client.CreateMonitorRequest) {
+	zero := 0
+	defaultTimeout := 30
+	switch strings.ToUpper(plan.Type.ValueString()) {
+	case "HEARTBEAT":
+		// heartbeat uses grace, never timeout
+		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
+			v := int(plan.GracePeriod.ValueInt64())
+			req.GracePeriod = &v
+		} else {
+			req.GracePeriod = nil
+		}
+		req.Timeout = nil
+	case "DNS":
+		// currently no timeout or grace, send zeros, use placeholder DNS config
+		req.GracePeriod = &zero
+		req.Timeout = &zero
+		req.Config = &client.MonitorConfig{
+			DNSRecords: &client.DNSRecords{CNAME: []string{"example.com"}},
+		}
+	case "PING":
+		req.GracePeriod = &zero
+		req.Timeout = &zero
+	default: // HTTP, KEYWORD, PORT
+		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+			v := int(plan.Timeout.ValueInt64())
+			req.Timeout = &v
+		} else {
+			req.Timeout = &defaultTimeout // provider default when omitted
+		}
+		req.GracePeriod = &zero
 	}
-	if !plan.Port.IsNull() {
-		createReq.Port = int(plan.Port.ValueInt64())
+}
+
+func (r *monitorResource) applyBodyFromPlan(
+	ctx context.Context,
+	plan *monitorResourceModel,
+	effMethod string,
+	req *client.CreateMonitorRequest,
+	resp *resource.CreateResponse,
+) {
+	// GET or HEAD leads to no body
+	switch strings.ToUpper(effMethod) {
+	case "GET", "HEAD":
+		return
 	}
-	if !plan.ResponseTimeThreshold.IsNull() && !plan.ResponseTimeThreshold.IsUnknown() {
-		v := int(plan.ResponseTimeThreshold.ValueInt64())
-		createReq.ResponseTimeThreshold = v
+
+	// Prefer RAW_JSON when post_value_data is set, else KEY_VALUE
+	if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
+		b := []byte(plan.PostValueData.ValueString())
+		req.PostValueType = PostTypeRawJSON
+		req.PostValueData = json.RawMessage(b)
+		return
 	}
-	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
-		createReq.RegionalData = plan.RegionalData.ValueString()
+	if !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull() {
+		var kv map[string]string
+		resp.Diagnostics.Append(plan.PostValueKV.ElementsAs(ctx, &kv, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		req.PostValueType = PostTypeKeyValue
+		req.PostValueData = kv
 	}
-	if !plan.KeywordValue.IsNull() {
-		createReq.KeywordValue = plan.KeywordValue.ValueString()
+}
+
+func (r *monitorResource) applyHeadersFromPlan(
+	ctx context.Context,
+	plan *monitorResourceModel,
+	req *client.CreateMonitorRequest,
+	resp *resource.CreateResponse,
+) {
+	if plan.CustomHTTPHeaders.IsNull() || plan.CustomHTTPHeaders.IsUnknown() {
+		return
 	}
-	if !plan.KeywordCaseType.IsNull() {
-		caseType := plan.KeywordCaseType.ValueString()
-		switch caseType {
-		case "CaseSensitive":
-			createReq.KeywordCaseType = 0
-		case "CaseInsensitive", "":
-			createReq.KeywordCaseType = 1
-		default:
-			resp.Diagnostics.AddError(
-				"Invalid keyword_case_type",
-				"keyword_case_type must be one of: CaseSensitive, CaseInsensitive",
+	m, d := mapFromAttr(ctx, plan.CustomHTTPHeaders)
+	resp.Diagnostics.Append(d...)
+	if !resp.Diagnostics.HasError() {
+		req.CustomHTTPHeaders = m
+	}
+}
+
+func (r *monitorResource) applySuccessCodesFromPlan(
+	ctx context.Context,
+	plan *monitorResourceModel,
+	req *client.CreateMonitorRequest,
+	resp *resource.CreateResponse,
+) {
+	if plan.SuccessHTTPResponseCodes.IsNull() || plan.SuccessHTTPResponseCodes.IsUnknown() {
+		return
+	}
+	var codes []string
+	resp.Diagnostics.Append(plan.SuccessHTTPResponseCodes.ElementsAs(ctx, &codes, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	codes = normalizeStringSet(codes)
+	if len(codes) > 0 {
+		req.SuccessHTTPResponseCodes = codes
+	}
+}
+
+func (r *monitorResource) applyMWIDsFromPlan(
+	ctx context.Context,
+	plan *monitorResourceModel,
+	req *client.CreateMonitorRequest,
+	resp *resource.CreateResponse,
+) {
+	if plan.MaintenanceWindowIDs.IsNull() || plan.MaintenanceWindowIDs.IsUnknown() {
+		return
+	}
+	var ids []int64
+	resp.Diagnostics.Append(plan.MaintenanceWindowIDs.ElementsAs(ctx, &ids, false)...)
+	if !resp.Diagnostics.HasError() {
+		req.MaintenanceWindowIDs = ids
+	}
+}
+
+func (r *monitorResource) applyTagsFromPlan(
+	ctx context.Context,
+	plan *monitorResourceModel,
+	req *client.CreateMonitorRequest,
+	resp *resource.CreateResponse,
+) {
+	if plan.Tags.IsNull() || plan.Tags.IsUnknown() {
+		return
+	}
+	var tags []string
+	resp.Diagnostics.Append(plan.Tags.ElementsAs(ctx, &tags, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	tags = normalizeTagSet(tags)
+	if len(tags) > 0 {
+		req.Tags = tags
+	}
+}
+
+func (r *monitorResource) applyAlertContactsFromPlan(
+	ctx context.Context,
+	plan *monitorResourceModel,
+	req *client.CreateMonitorRequest,
+	resp *resource.CreateResponse,
+) {
+	if plan.AssignedAlertContacts.IsNull() || plan.AssignedAlertContacts.IsUnknown() {
+		return
+	}
+	var acs []alertContactTF
+	resp.Diagnostics.Append(plan.AssignedAlertContacts.ElementsAs(ctx, &acs, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	req.AssignedAlertContacts = make([]client.AlertContactRequest, 0, len(acs))
+	for i, ac := range acs {
+		item := client.AlertContactRequest{}
+		if ac.AlertContactID.IsNull() || ac.AlertContactID.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("assigned_alert_contacts").AtListIndex(i).AtName("alert_contact_id"),
+				"Missing alert_contact_id",
+				"Each element must set alert_contact_id.",
 			)
 			return
 		}
-	} else {
-		// Default to CaseInsensitive
-		createReq.KeywordCaseType = 1
-		plan.KeywordCaseType = types.StringValue("CaseInsensitive")
-	}
-	if !plan.KeywordType.IsNull() {
-		createReq.KeywordType = plan.KeywordType.ValueString()
-	}
+		item.AlertContactID = ac.AlertContactID.ValueString()
 
-	switch strings.ToUpper(stringOrEmpty(plan.HTTPMethodType)) {
-	case "GET", "HEAD":
-		// no body
-	default:
-		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
-			b := []byte(plan.PostValueData.ValueString())
-			createReq.PostValueType = PostTypeRawJSON
-			createReq.PostValueData = json.RawMessage(b)
-		} else if !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull() {
-			// KV body
-			var kv map[string]string
-			resp.Diagnostics.Append(plan.PostValueKV.ElementsAs(ctx, &kv, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			createReq.PostValueType = PostTypeKeyValue
-			createReq.PostValueData = kv
-		}
-	}
-
-	// Handle custom HTTP headers
-	if !plan.CustomHTTPHeaders.IsNull() && !plan.CustomHTTPHeaders.IsUnknown() {
-		m, d := mapFromAttr(ctx, plan.CustomHTTPHeaders)
-		resp.Diagnostics.Append(d...)
-		if resp.Diagnostics.HasError() {
+		if ac.Threshold.IsNull() || ac.Threshold.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("assigned_alert_contacts"),
+				"Missing threshold",
+				"threshold is required by the API and must be set.",
+			)
 			return
 		}
-		createReq.CustomHTTPHeaders = m
-	}
-
-	// Handle success HTTP response codes
-	if !plan.SuccessHTTPResponseCodes.IsNull() && !plan.SuccessHTTPResponseCodes.IsUnknown() {
-		var codes []string
-		diags = plan.SuccessHTTPResponseCodes.ElementsAs(ctx, &codes, false)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
+		if ac.Recurrence.IsNull() || ac.Recurrence.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("assigned_alert_contacts"),
+				"Missing recurrence",
+				"recurrence is required by the API and must be set.",
+			)
 			return
 		}
-		codes = normalizeStringSet(codes)
-		if len(codes) > 0 {
-			createReq.SuccessHTTPResponseCodes = codes
-		}
+		t := ac.Threshold.ValueInt64()
+		r := ac.Recurrence.ValueInt64()
+		item.Threshold = &t
+		item.Recurrence = &r
+
+		req.AssignedAlertContacts = append(req.AssignedAlertContacts, item)
 	}
+}
 
-	// Handle maintenance window IDs
-	if !plan.MaintenanceWindowIDs.IsNull() && !plan.MaintenanceWindowIDs.IsUnknown() {
-		var windowIDs []int64
-		diags = plan.MaintenanceWindowIDs.ElementsAs(ctx, &windowIDs, false)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		createReq.MaintenanceWindowIDs = windowIDs
-	}
-
-	// Handle tags
-	if !plan.Tags.IsNull() && !plan.Tags.IsUnknown() {
-		var tags []string
-		diags := plan.Tags.ElementsAs(ctx, &tags, false)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		tags = normalizeTagSet(tags)
-
-		if len(tags) > 0 {
-			createReq.Tags = tags
-		}
-	}
-
-	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
-		var acs []alertContactTF
-		resp.Diagnostics.Append(plan.AssignedAlertContacts.ElementsAs(ctx, &acs, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		createReq.AssignedAlertContacts = make([]client.AlertContactRequest, 0, len(acs))
-		for _, ac := range acs {
-			item := client.AlertContactRequest{
-				AlertContactID: ac.AlertContactID.ValueString(),
-			}
-			if ac.Threshold.IsNull() || ac.Threshold.IsUnknown() {
-				resp.Diagnostics.AddAttributeError(
-					path.Root("assigned_alert_contacts"),
-					"Missing threshold",
-					"threshold is required by the API and must be set.",
-				)
-				return
-			}
-			if ac.Recurrence.IsNull() || ac.Recurrence.IsUnknown() {
-				resp.Diagnostics.AddAttributeError(
-					path.Root("assigned_alert_contacts"),
-					"Missing recurrence",
-					"recurrence is required by the API and must be set.",
-				)
-				return
-			}
-			t := ac.Threshold.ValueInt64()
-			r := ac.Recurrence.ValueInt64()
-			item.Threshold = &t
-			item.Recurrence = &r
-
-			createReq.AssignedAlertContacts = append(createReq.AssignedAlertContacts, item)
-		}
-	}
-
-	// Set boolean fields
-	createReq.SSLExpirationReminder = plan.SSLExpirationReminder.ValueBool()
-	createReq.DomainExpirationReminder = plan.DomainExpirationReminder.ValueBool()
-	createReq.FollowRedirections = plan.FollowRedirections.ValueBool()
-	createReq.HTTPAuthType = plan.AuthType.ValueString()
+func (r *monitorResource) applySSLFlagsFromPlan(
+	ctx context.Context,
+	plan *monitorResourceModel,
+	req *client.CreateMonitorRequest,
+	resp *resource.CreateResponse,
+) {
+	req.SSLExpirationReminder = plan.SSLExpirationReminder.ValueBool()
+	req.DomainExpirationReminder = plan.DomainExpirationReminder.ValueBool()
+	req.FollowRedirections = plan.FollowRedirections.ValueBool()
 
 	if !plan.CheckSSLErrors.IsNull() && !plan.CheckSSLErrors.IsUnknown() {
 		v := plan.CheckSSLErrors.ValueBool()
-		createReq.CheckSSLErrors = &v
+		req.CheckSSLErrors = &v
 	}
 
 	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
 		cfgOut, touched, d := expandSSLConfigToAPI(ctx, plan.Config)
 		resp.Diagnostics.Append(d...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		if touched {
-			createReq.Config = cfgOut
+		if !resp.Diagnostics.HasError() && touched {
+			req.Config = cfgOut
 		}
 	}
+}
 
-	// Create monitor
-	createdMonitor, err := r.client.CreateMonitor(createReq)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error creating monitor",
-			"Could not create monitor, unexpected error: "+err.Error(),
-		)
-		return
-	}
+// Build state
 
-	plan.ID = types.StringValue(strconv.FormatInt(createdMonitor.ID, 10))
+func (r *monitorResource) buildStateAfterCreate(
+	ctx context.Context,
+	plan monitorResourceModel,
+	api *client.Monitor,
+	effMethod string,
+	resp *resource.CreateResponse,
+) monitorResourceModel {
+	plan.Status = types.StringValue(api.Status)
 
-	want := wantFromCreateReq(createReq)
-	newMonitor, err := r.waitMonitorSettled(ctx, createdMonitor.ID, want, 60*time.Second)
-	if err != nil {
-		resp.Diagnostics.AddWarning("Create settled slowly", "Backend took longer to reflect changes; proceeding.")
-		if newMonitor == nil {
-			newMonitor = createdMonitor
-		}
-	}
-
-	plan.Status = types.StringValue(newMonitor.Status)
-
+	// Headers. Keep null if omitted in plan
 	if plan.CustomHTTPHeaders.IsNull() || plan.CustomHTTPHeaders.IsUnknown() {
 		plan.CustomHTTPHeaders = types.MapNull(types.StringType)
 	}
 
+	// Method presence in state only for HTTP or KEYWORD
 	switch strings.ToUpper(plan.Type.ValueString()) {
 	case "HTTP", "KEYWORD":
 		plan.HTTPMethodType = types.StringValue(effMethod)
@@ -355,31 +398,25 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		plan.HTTPMethodType = types.StringNull()
 	}
 
-	// Handle keyword case type conversion from API numeric value to string enum
-	var keywordCaseTypeValue string
-	if newMonitor.KeywordCaseType == 0 {
-		keywordCaseTypeValue = "CaseSensitive"
+	// keyword_case_type number transform to string
+	if api.KeywordCaseType == 0 {
+		plan.KeywordCaseType = types.StringValue("CaseSensitive")
 	} else {
-		keywordCaseTypeValue = "CaseInsensitive"
+		plan.KeywordCaseType = types.StringValue("CaseInsensitive")
 	}
-	plan.KeywordCaseType = types.StringValue(keywordCaseTypeValue)
 
+	// timeout and grace reflection
 	switch strings.ToUpper(plan.Type.ValueString()) {
 	case "HEARTBEAT":
-		// show grace, hide timeout
 		plan.Timeout = types.Int64Null()
-		plan.GracePeriod = types.Int64Value(int64(newMonitor.GracePeriod))
-
+		plan.GracePeriod = types.Int64Value(int64(api.GracePeriod))
 	case "DNS", "PING":
-		// both are not applicable
 		plan.Timeout = types.Int64Null()
 		plan.GracePeriod = types.Int64Null()
-
 	default: // HTTP, KEYWORD, PORT
-		// hide grace, show timeout - prefer API’s value, else what was sent
 		plan.GracePeriod = types.Int64Null()
-		if newMonitor.Timeout > 0 {
-			plan.Timeout = types.Int64Value(int64(newMonitor.Timeout))
+		if api.Timeout > 0 {
+			plan.Timeout = types.Int64Value(int64(api.Timeout))
 		} else if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			plan.Timeout = types.Int64Value(plan.Timeout.ValueInt64())
 		} else {
@@ -387,12 +424,13 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
-	method := strings.ToUpper(effMethod)
-	if method == "GET" || method == "HEAD" {
+	// Body related state normalization
+	switch strings.ToUpper(effMethod) {
+	case "GET", "HEAD":
 		plan.PostValueType = types.StringNull()
 		plan.PostValueData = jsontypes.NewNormalizedNull()
 		plan.PostValueKV = types.MapNull(types.StringType)
-	} else {
+	default:
 		if !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull() {
 			plan.PostValueType = types.StringValue(PostTypeRawJSON)
 			plan.PostValueKV = types.MapNull(types.StringType)
@@ -400,94 +438,86 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 			plan.PostValueType = types.StringValue(PostTypeKeyValue)
 			plan.PostValueData = jsontypes.NewNormalizedNull()
 		} else {
-			// user didn’t set any body so we leave all three as null so we don't invent values
 			plan.PostValueType = types.StringNull()
 			plan.PostValueData = jsontypes.NewNormalizedNull()
 			plan.PostValueKV = types.MapNull(types.StringType)
 		}
 	}
 
-	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
+	// Assigned alert contacts
+	if plan.AssignedAlertContacts.IsNull() || plan.AssignedAlertContacts.IsUnknown() {
+		plan.AssignedAlertContacts = types.SetNull(alertContactObjectType())
+	} else {
+		// Verify missing IDs to avoid inconsistent result after apply
 		want, d := planAlertIDs(ctx, plan.AssignedAlertContacts)
 		resp.Diagnostics.Append(d...)
-		got := alertIDsFromAPI(newMonitor.AssignedAlertContacts)
+		got := alertIDsFromAPI(api.AssignedAlertContacts)
 		if m := missingAlertIDs(want, got); len(m) > 0 {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("assigned_alert_contacts"),
 				"Some alert contacts were not applied",
-				fmt.Sprintf(
-					"Requested IDs: %v\nApplied IDs:   %v\nMissing IDs:   %v\n"+
-						"Hint: a missing contact is often not in your team or you lack access.",
-					want, got, m,
-				),
+				fmt.Sprintf("Requested IDs: %v\nApplied IDs:   %v\nMissing IDs:   %v\nHint: a missing contact is often not in your team or you lack access.", want, got, m),
 			)
-			return // abort to avoid 'inconsistent result after apply' due to silently omitted ids from the API
+			return plan
+		}
+		set, d2 := alertContactsFromAPI(ctx, api.AssignedAlertContacts)
+		resp.Diagnostics.Append(d2...)
+		if !resp.Diagnostics.HasError() {
+			plan.AssignedAlertContacts = set
 		}
 	}
 
-	acSet, d := alertContactsFromAPI(ctx, newMonitor.AssignedAlertContacts)
-	resp.Diagnostics.Append(d...)
-	if plan.AssignedAlertContacts.IsNull() || plan.AssignedAlertContacts.IsUnknown() {
-		// user omitted, means keep null in state to match plan
-		plan.AssignedAlertContacts = types.SetNull(alertContactObjectType())
-	} else {
-		plan.AssignedAlertContacts = acSet
-	}
+	// SSL flags
+	plan.CheckSSLErrors = types.BoolValue(api.CheckSSLErrors)
 
-	plan.CheckSSLErrors = types.BoolValue(newMonitor.CheckSSLErrors)
-
+	// Config
 	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
-		cfgState, d := flattenSSLConfigToState(ctx, true /* hadBlock */, plan.Config, newMonitor.Config)
+		cfgState, d := flattenSSLConfigToState(ctx, true, plan.Config, api.Config)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {
 			plan.Config = cfgState
 		}
 	}
 
+	// Maintenance windows
 	var apiIDs []int64
-	for _, mw := range newMonitor.MaintenanceWindows {
+	for _, mw := range api.MaintenanceWindows {
 		if !mw.AutoAddMonitors {
 			apiIDs = append(apiIDs, mw.ID)
 		}
 	}
-	v, d := mwSetFromAPIRespectingShape(ctx, apiIDs, plan.MaintenanceWindowIDs)
+	mv, d := mwSetFromAPIRespectingShape(ctx, apiIDs, plan.MaintenanceWindowIDs)
 	resp.Diagnostics.Append(d...)
-	plan.MaintenanceWindowIDs = v
+	plan.MaintenanceWindowIDs = mv
 
+	// Tags
 	if plan.Tags.IsNull() || plan.Tags.IsUnknown() {
 		plan.Tags = types.SetNull(types.StringType)
 	} else {
-		plan.Tags = tagsSetFromAPI(ctx, newMonitor.Tags)
+		plan.Tags = tagsSetFromAPI(ctx, api.Tags)
 	}
 
 	// success_http_response_codes
 	switch {
 	case plan.SuccessHTTPResponseCodes.IsNull() || plan.SuccessHTTPResponseCodes.IsUnknown():
 		plan.SuccessHTTPResponseCodes = types.SetNull(types.StringType)
-
 	default:
 		var codes []string
 		resp.Diagnostics.Append(plan.SuccessHTTPResponseCodes.ElementsAs(ctx, &codes, false)...)
 		if resp.Diagnostics.HasError() {
-			return
+			return plan
 		}
 		if len(codes) == 0 {
-			// If in plan it is explicitly empty, then keep empty in state even if API return defaults. We do not manage them.
 			empty, _ := types.SetValue(types.StringType, []attr.Value{})
 			plan.SuccessHTTPResponseCodes = empty
 		} else {
 			var vals []attr.Value
-			for _, c := range normalizeStringSet(newMonitor.SuccessHTTPResponseCodes) {
+			for _, c := range normalizeStringSet(api.SuccessHTTPResponseCodes) {
 				vals = append(vals, types.StringValue(c))
 			}
 			plan.SuccessHTTPResponseCodes = types.SetValueMust(types.StringType, vals)
 		}
 	}
 
-	// Set state to fully populated data
-	diags = resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+	return plan
 }
