@@ -24,15 +24,17 @@ var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 // Client represents an Uptimerobot API client.
 type Client struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
+	baseURL      string
+	apiKey       string
+	userAgent    string
+	httpClient   *http.Client
+	extraHeaders map[string]string
 	// debug      bool
 }
 
 // NewClient creates a new Uptimerobot API client.
 func NewClient(apiKey string) *Client {
-	return &Client{
+	client := &Client{
 		baseURL: defaultBaseURL,
 		apiKey:  apiKey,
 		httpClient: &http.Client{
@@ -40,6 +42,30 @@ func NewClient(apiKey string) *Client {
 		},
 		// debug: os.Getenv("UPTIMEROBOT_DEBUG") == "1" || strings.ToLower(os.Getenv("UPTIMEROBOT_DEBUG")) == "true",
 	}
+
+	client.httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) == 0 {
+			return nil
+		}
+		if req.URL.Host != via[0].URL.Host {
+			return nil
+		}
+
+		if client.userAgent != "" && req.Header.Get("User-Agent") == "" {
+			req.Header.Set("User-Agent", client.userAgent)
+		}
+		if auth := via[0].Header.Get("Authorization"); auth != "" && req.Header.Get("Authorization") == "" {
+			req.Header.Set("Authorization", auth)
+		}
+		for k, v := range client.extraHeaders {
+			if req.Header.Get(k) == "" {
+				req.Header.Set(k, v)
+			}
+		}
+		return nil
+	}
+
+	return client
 }
 
 func (c *Client) ApiKey() string {
@@ -53,6 +79,17 @@ func (c *Client) BaseURL() string {
 // SetBaseURL sets the base URL for the client.
 func (c *Client) SetBaseURL(url string) {
 	c.baseURL = url
+}
+
+func (c *Client) SetUserAgent(ua string) {
+	c.userAgent = ua
+}
+
+func (c *Client) AddHeader(k, v string) {
+	if c.extraHeaders == nil {
+		c.extraHeaders = map[string]string{}
+	}
+	c.extraHeaders[k] = v
 }
 
 // doRequest performs an HTTP request and returns the response.
@@ -120,6 +157,14 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 		}
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+		if c.userAgent != "" {
+			req.Header.Set("User-Agent", c.userAgent)
+		}
+		for k, v := range c.extraHeaders {
+			if req.Header.Get(k) == "" {
+				req.Header.Set(k, v)
+			}
+		}
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -172,7 +217,7 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 
 func isIdempotent(method string) bool {
 	switch method {
-	case http.MethodGet, http.MethodDelete, http.MethodHead, http.MethodOptions:
+	case http.MethodGet, http.MethodDelete, http.MethodHead, http.MethodPut, http.MethodOptions:
 		return true
 	default:
 		return false
