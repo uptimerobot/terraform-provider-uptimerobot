@@ -249,7 +249,11 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"name": schema.StringAttribute{
 				Description: "Name of the monitor",
-				Required:    true,
+				MarkdownDescription: `
+				Tip: Write names as plain text. If you used HTML entities in HCL (e.g., &amp;, &#39;),
+				     change them to plain text to avoid plan diffs. Import will normalize remote HTML entities to plain text.
+				`,
+				Required: true,
 			},
 			// Status may change its values quickly due to changes on the API side.
 			// On create after operation it should be a known value.

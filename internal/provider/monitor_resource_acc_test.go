@@ -1704,3 +1704,66 @@ resource "uptimerobot_monitor" "test" {
 		},
 	})
 }
+
+func TestAcc_Monitor_Name_HTMLNormalization(t *testing.T) {
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("TF_ACC not set")
+	}
+
+	resourceName := "uptimerobot_monitor.test"
+
+	cfgEncoded := `
+resource "uptimerobot_monitor" "test" {
+  name     = "A &amp; B <C>"
+  type     = "HTTP"
+  url      = "https://example.com/health"
+  interval = 300
+}
+`
+	cfgPlain := `
+resource "uptimerobot_monitor" "test" {
+  name     = "A & B <C>"
+  type     = "HTTP"
+  url      = "https://example.com/health"
+  interval = 300
+}
+`
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// 1) Create with encoded HCL, so state is encoded and we don't unescape on normal Read
+			{
+				Config: cfgEncoded,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "name", "A &amp; B <C>"),
+				),
+			},
+			// 2) Import will import unescaped to plain in state
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: false, // don't compare against encoded config
+			},
+			// 3) Switch config to plain - refresh reads encoded state, so plan should show a diff
+			{
+				Config:             cfgPlain,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+			// 4) Apply plain - state plain
+			{
+				Config: cfgPlain,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "name", "A & B <C>"),
+				),
+			},
+			// 5) Re-plan plain - clean
+			{
+				Config:             cfgPlain,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
