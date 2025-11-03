@@ -29,7 +29,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	monitor, err := r.client.GetMonitor(id)
+	monitor, err := r.client.GetMonitor(ctx, id)
 	if client.IsNotFound(err) {
 		// Indicates that there is no resource on the server. Remove from state so TF can recreate.
 		resp.State.RemoveResource(ctx)

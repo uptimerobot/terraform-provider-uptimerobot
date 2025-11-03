@@ -344,7 +344,7 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 	}
 
 	// Create maintenance window
-	newMW, err := r.client.CreateMaintenanceWindow(mw)
+	newMW, err := r.client.CreateMaintenanceWindow(ctx, mw)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating maintenance window",
@@ -414,7 +414,7 @@ func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 
-	mw, err := r.client.GetMaintenanceWindow(id)
+	mw, err := r.client.GetMaintenanceWindow(ctx, id)
 	if client.IsNotFound(err) {
 		resp.State.RemoveResource(ctx)
 		return
@@ -527,7 +527,7 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	}
 
 	// Update maintenance window
-	_, err = r.client.UpdateMaintenanceWindow(id, updateReq)
+	_, err = r.client.UpdateMaintenanceWindow(ctx, id, updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating maintenance window",
@@ -562,7 +562,7 @@ func (r *maintenanceWindowResource) Delete(ctx context.Context, req resource.Del
 		return
 	}
 
-	err = r.client.DeleteMaintenanceWindow(id)
+	err = r.client.DeleteMaintenanceWindow(ctx, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting maintenance window",

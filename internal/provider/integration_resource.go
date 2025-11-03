@@ -328,7 +328,7 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 		Data: integrationData,
 	}
 
-	newIntegration, err := r.client.CreateIntegration(integration)
+	newIntegration, err := r.client.CreateIntegration(ctx, integration)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating integration",
@@ -368,7 +368,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	integration, err := r.client.GetIntegration(id)
+	integration, err := r.client.GetIntegration(ctx, id)
 	if client.IsNotFound(err) {
 		resp.State.RemoveResource(ctx)
 		return
@@ -505,7 +505,7 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		Data: integrationData,
 	}
 
-	_, err = r.client.UpdateIntegration(id, integration)
+	_, err = r.client.UpdateIntegration(ctx, id, integration)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating integration",
@@ -541,7 +541,7 @@ func (r *integrationResource) Delete(ctx context.Context, req resource.DeleteReq
 		return
 	}
 
-	err = r.client.DeleteIntegration(id)
+	err = r.client.DeleteIntegration(ctx, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting integration",

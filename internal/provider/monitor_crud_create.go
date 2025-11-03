@@ -30,7 +30,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Create
-	created, err := r.client.CreateMonitor(createReq)
+	created, err := r.client.CreateMonitor(ctx, createReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating monitor", "Could not create monitor, unexpected error: "+err.Error())
 		return

@@ -193,28 +193,28 @@ type UptimeRecord struct {
 }
 
 // CreateMonitor creates a new monitor.
-func (c *Client) CreateMonitor(req *CreateMonitorRequest) (*Monitor, error) {
+func (c *Client) CreateMonitor(ctx context.Context, req *CreateMonitorRequest) (*Monitor, error) {
 	base := NewBaseCRUDOperations(c, "/monitors")
 	var monitor Monitor
-	if err := base.doCreate(req, &monitor); err != nil {
+	if err := base.doCreate(ctx, req, &monitor); err != nil {
 		return nil, fmt.Errorf("failed to create monitor: %v", err)
 	}
 	return &monitor, nil
 }
 
 // GetMonitor retrieves a monitor by ID.
-func (c *Client) GetMonitor(id int64) (*Monitor, error) {
+func (c *Client) GetMonitor(ctx context.Context, id int64) (*Monitor, error) {
 	base := NewBaseCRUDOperations(c, "/monitors")
 	var monitor Monitor
-	if err := base.doGet(id, &monitor); err != nil {
+	if err := base.doGet(ctx, id, &monitor); err != nil {
 		return nil, fmt.Errorf("failed to get monitor: %v", err)
 	}
 	return &monitor, nil
 }
 
 // GetMonitors retrieves all monitors.
-func (c *Client) GetMonitors() ([]Monitor, error) {
-	resp, err := c.doRequest("GET", "/monitors", nil)
+func (c *Client) GetMonitors(ctx context.Context) ([]Monitor, error) {
+	resp, err := c.doRequest(ctx, "GET", "/monitors", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -230,18 +230,18 @@ func (c *Client) GetMonitors() ([]Monitor, error) {
 }
 
 // UpdateMonitor updates an existing monitor.
-func (c *Client) UpdateMonitor(id int64, req *UpdateMonitorRequest) (*Monitor, error) {
+func (c *Client) UpdateMonitor(ctx context.Context, id int64, req *UpdateMonitorRequest) (*Monitor, error) {
 	base := NewBaseCRUDOperations(c, "/monitors")
 	var monitor Monitor
-	if err := base.doUpdate(id, req, &monitor); err != nil {
+	if err := base.doUpdate(ctx, id, req, &monitor); err != nil {
 		return nil, fmt.Errorf("failed to update monitor: %v", err)
 	}
 	return &monitor, nil
 }
 
 // DeleteMonitor deletes a monitor.
-func (c *Client) DeleteMonitor(id int64) error {
-	return NewBaseCRUDOperations(c, "/monitors").doDelete(id)
+func (c *Client) DeleteMonitor(ctx context.Context, id int64) error {
+	return NewBaseCRUDOperations(c, "/monitors").doDelete(ctx, id)
 }
 
 // WaitMonitorDeleted waits until GET /monitors/{id} returns 404 or 410.
@@ -250,14 +250,14 @@ func (c *Client) WaitMonitorDeleted(ctx context.Context, id int64, timeout time.
 }
 
 // ResetMonitor resets monitor statistics.
-func (c *Client) ResetMonitor(id int64) error {
-	_, err := c.doRequest("POST", fmt.Sprintf("/monitors/%d/reset", id), nil)
+func (c *Client) ResetMonitor(ctx context.Context, id int64) error {
+	_, err := c.doRequest(ctx, "POST", fmt.Sprintf("/monitors/%d/reset", id), nil)
 	return err
 }
 
 // FindExistingMonitorByNameAndURL searches for a monitor with matching name and URL.
-func (c *Client) FindExistingMonitorByNameAndURL(name, url string) (*Monitor, error) {
-	monitors, err := c.GetMonitors()
+func (c *Client) FindExistingMonitorByNameAndURL(ctx context.Context, name, url string) (*Monitor, error) {
+	monitors, err := c.GetMonitors(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get monitors: %v", err)
 	}

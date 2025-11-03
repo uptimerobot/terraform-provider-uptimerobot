@@ -68,38 +68,38 @@ type UpdateIntegrationRequest struct {
 }
 
 // CreateIntegration creates a new integration.
-func (c *Client) CreateIntegration(req *CreateIntegrationRequest) (*Integration, error) {
+func (c *Client) CreateIntegration(ctx context.Context, req *CreateIntegrationRequest) (*Integration, error) {
 	base := NewBaseCRUDOperations(c, "/integrations")
 	var integration Integration
-	if err := base.doCreate(req, &integration); err != nil {
+	if err := base.doCreate(ctx, req, &integration); err != nil {
 		return nil, err
 	}
 	return &integration, nil
 }
 
 // GetIntegration retrieves an integration by ID.
-func (c *Client) GetIntegration(id int64) (*Integration, error) {
+func (c *Client) GetIntegration(ctx context.Context, id int64) (*Integration, error) {
 	base := NewBaseCRUDOperations(c, "/integrations")
 	var integration Integration
-	if err := base.doGet(id, &integration); err != nil {
+	if err := base.doGet(ctx, id, &integration); err != nil {
 		return nil, err
 	}
 	return &integration, nil
 }
 
 // UpdateIntegration updates an existing integration.
-func (c *Client) UpdateIntegration(id int64, req *UpdateIntegrationRequest) (*Integration, error) {
+func (c *Client) UpdateIntegration(ctx context.Context, id int64, req *UpdateIntegrationRequest) (*Integration, error) {
 	base := NewBaseCRUDOperations(c, "/integrations")
 	var integration Integration
-	if err := base.doUpdate(id, req, &integration); err != nil {
+	if err := base.doUpdate(ctx, id, req, &integration); err != nil {
 		return nil, err
 	}
 	return &integration, nil
 }
 
 // DeleteIntegration deletes an integration.
-func (c *Client) DeleteIntegration(id int64) error {
-	return NewBaseCRUDOperations(c, "/integrations").doDelete(id)
+func (c *Client) DeleteIntegration(ctx context.Context, id int64) error {
+	return NewBaseCRUDOperations(c, "/integrations").doDelete(ctx, id)
 }
 
 // WaitIntegrationDeleted waits until GET /integrations/{id} returns 404 or 410.

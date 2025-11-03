@@ -38,7 +38,7 @@ func (r *monitorResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 func (r *monitorResource) deleteMonitorAndWait(ctx context.Context, id int64, timeout time.Duration) error {
 	// Try to delete. If it is already gone, then treat as a success to avoid noisy diffs
-	if err := r.client.DeleteMonitor(id); err != nil {
+	if err := r.client.DeleteMonitor(ctx, id); err != nil {
 		if client.IsNotFound(err) {
 			return nil
 		}

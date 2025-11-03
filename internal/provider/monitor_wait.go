@@ -35,7 +35,7 @@ func (r *monitorResource) waitMonitorSettled(
 	const maxBackoff = 3 * time.Second
 
 	for attempt := 0; ; attempt++ {
-		m, err := r.client.GetMonitor(id)
+		m, err := r.client.GetMonitor(ctx, id)
 		if err == nil {
 			last = m
 			got := buildComparableFromAPI(m)

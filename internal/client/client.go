@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 const (
@@ -93,7 +96,7 @@ func (c *Client) AddHeader(k, v string) {
 }
 
 // doRequest performs an HTTP request and returns the response.
-func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error) {
+func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
 	var jsonBody []byte
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -141,6 +144,7 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 	var lastErr error
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		start := time.Now()
 
 		var reqBody io.Reader
 		if jsonBody != nil {
@@ -166,9 +170,29 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 			}
 		}
 
+		// DEBUG request
+		// Only shows if TF_LOG_PROVIDER=DEBUG or TF_LOG=DEBUG
+		tflog.Debug(ctx, "uptimerobot http request", map[string]any{
+			"attempt": attempt + 1,
+			"method":  method,
+			"url":     c.baseURL + path,
+			"headers": redactHeaders(req.Header),
+			"body":    sanitizeJSON(jsonBody, 2048),
+		})
+
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			lastErr = fmt.Errorf("request failed: %w", err)
+
+			tflog.Warn(ctx, "uptimerobot http error (transport)", map[string]any{
+				"attempt":     attempt + 1,
+				"method":      method,
+				"url":         c.baseURL + path,
+				"duration_ms": time.Since(start).Milliseconds(),
+				"error":       err.Error(),
+				"idempotent":  idemp,
+			})
+
 			if idemp && isTransientNetErr(err) && attempt < maxAttempts-1 {
 				time.Sleep(backoffDelay(base, attempt))
 				continue
@@ -180,12 +204,35 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 		_ = resp.Body.Close()
 		if readErr != nil {
 			lastErr = fmt.Errorf("read body failed: %w", readErr)
+
+			tflog.Warn(ctx, "uptimerobot http error (read)", map[string]any{
+				"attempt":     attempt + 1,
+				"method":      method,
+				"url":         c.baseURL + path,
+				"status":      resp.StatusCode,
+				"duration_ms": time.Since(start).Milliseconds(),
+				"error":       readErr.Error(),
+			})
+
 			if idemp && attempt < maxAttempts-1 {
 				time.Sleep(backoffDelay(base, attempt))
 				continue
 			}
 			return nil, lastErr
 		}
+
+		// DEBUG response
+		tflog.Debug(ctx, "uptimerobot http response", map[string]any{
+			"attempt":        attempt + 1,
+			"method":         method,
+			"url":            c.baseURL + path,
+			"status":         resp.StatusCode,
+			"duration_ms":    time.Since(start).Milliseconds(),
+			"request_id":     resp.Header.Get("X-Request-Id"),
+			"rate_remaining": resp.Header.Get("X-RateLimit-Remaining"),
+			"headers":        resp.Header, // response headers are safe and should not contain sensitive data
+			"body":           sanitizeJSON(respBody, 4096),
+		})
 
 		// Delete 404 and 410 means that it was successful
 		if method == http.MethodDelete &&
@@ -196,9 +243,18 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 		// if idempotend and retryable then we retry
 		if idemp && retryableStatus(resp.StatusCode) && attempt < maxAttempts-1 {
 			if d, ok := parseRetryAfter(resp.Header); ok {
+				tflog.Debug(ctx, "uptimerobot retrying after server signal", map[string]any{
+					"retry_after": d.String(),
+					"status":      resp.StatusCode,
+				})
 				time.Sleep(d)
 			} else {
-				time.Sleep(backoffDelay(base, attempt))
+				delay := backoffDelay(base, attempt)
+				tflog.Debug(ctx, "uptimerobot retrying with backoff", map[string]any{
+					"backoff": delay.String(),
+					"status":  resp.StatusCode,
+				})
+				time.Sleep(delay)
 			}
 			continue
 		}
@@ -288,4 +344,68 @@ func backoffDelay(base time.Duration, attempt int) time.Duration {
 	// +/- 25% jitter
 	j := time.Duration(rng.Int63n(int64(d/2))) - d/4
 	return d + j
+}
+
+// redactHeaders removes sensitive headers from a cloned header map.
+func redactHeaders(h http.Header) map[string][]string {
+	c := h.Clone()
+	c.Del("Authorization")
+	c.Del("Proxy-Authorization")
+	return c
+}
+
+var sensitiveKeySubstrings = []string{
+	"password", "token", "secret", "authorization", "api_key", "apikey", "client_secret", "http_password",
+}
+
+func isSensitiveKey(k string) bool {
+	ks := strings.ToLower(k)
+	for _, s := range sensitiveKeySubstrings {
+		if strings.Contains(ks, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// sanitizeJSON tries to redact sensitive fields in JSON. If parsing fails, returns a size-only marker.
+func sanitizeJSON(b []byte, maxBytes int) string {
+	if len(b) == 0 {
+		return ""
+	}
+	var v any
+	if err := json.Unmarshal(b, &v); err != nil {
+		// Not JSON or invalid. Will not use raw. Size info will be returned.
+		return fmt.Sprintf("<non-json body: %d bytes>", len(b))
+	}
+	sanitizeValue(&v)
+	out, _ := json.Marshal(v)
+	return clip(string(out), maxBytes)
+}
+
+func sanitizeValue(v *any) {
+	switch m := (*v).(type) {
+	case map[string]any:
+		for k, vv := range m {
+			if isSensitiveKey(k) {
+				m[k] = "***REDACTED***"
+				continue
+			}
+			sanitizeValue(&vv)
+			m[k] = vv
+		}
+	case []any:
+		for i := range m {
+			sanitizeValue(&m[i])
+		}
+	default:
+		// primitives – nothing to do
+	}
+}
+
+func clip(s string, limit int) string {
+	if limit <= 0 || len(s) <= limit {
+		return s
+	}
+	return s[:limit] + fmt.Sprintf("… [%d bytes clipped]", len(s)-limit)
 }

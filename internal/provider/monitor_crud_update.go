@@ -43,7 +43,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	initialUpdated, err := r.client.UpdateMonitor(id, updateReq)
+	initialUpdated, err := r.client.UpdateMonitor(ctx, id, updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating monitor", "Could not update monitor: "+err.Error())
 		return
