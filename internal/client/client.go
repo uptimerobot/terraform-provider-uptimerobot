@@ -151,7 +151,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 			reqBody = bytes.NewReader(jsonBody) // new reader each attempt
 		}
 
-		req, err := http.NewRequest(method, c.baseURL+path, reqBody)
+		req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reqBody)
 		if err != nil {
 			return nil, err
 		}
