@@ -83,7 +83,7 @@ resource "uptimerobot_psp" "test" {
 
 func TestAccPSPResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckPSPDestroy,
 		Steps: []resource.TestStep{

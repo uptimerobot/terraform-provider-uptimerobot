@@ -385,7 +385,7 @@ func mustAlertContactID(t *testing.T) string {
 
 func TestAccMonitorResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -421,7 +421,7 @@ func TestAccMonitorResource_AlertContacts(t *testing.T) {
 	id := mustAlertContactID(t)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -469,7 +469,7 @@ func TestAccMonitorResource_AlertContacts_ExplicitEmpty(t *testing.T) {
 	id := mustAlertContactID(t)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -548,7 +548,7 @@ resource "uptimerobot_monitor" "test" {
 // are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_Tags(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -591,7 +591,7 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 	name := "test-monitor-headers"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -636,7 +636,7 @@ func TestAccMonitorResource_CustomHTTPHeaders_ContentTypeWithBody(t *testing.T) 
 	name := "test-monitor-headers-ct"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -710,7 +710,7 @@ func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 	sfx := "acc-mw"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -753,7 +753,7 @@ func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 
 func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -803,7 +803,7 @@ func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 // TestAccMonitorResource_PortMonitorValidation tests that PORT monitors require a port number.
 func TestAccMonitorResource_PortMonitorValidation(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Test that PORT monitor without port fails
@@ -844,7 +844,7 @@ resource "uptimerobot_monitor" "test" {
 // TestAccMonitorResource_KeywordMonitorValidation tests that KEYWORD monitors require keyword fields.
 func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Test that KEYWORD monitor without keywordType fails
@@ -937,7 +937,7 @@ resource "uptimerobot_monitor" "test" {
 // TestAccMonitorResource_NewMonitorTypes tests the new monitor types.
 func TestAccMonitorResource_NewMonitorTypes(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Test HEARTBEAT monitor
@@ -981,7 +981,7 @@ resource "uptimerobot_monitor" "test" {
 func TestAccMonitorResource_NewFields(t *testing.T) {
 	const name = "test-newfields"
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// 1) threshold only
@@ -1056,7 +1056,7 @@ resource "uptimerobot_monitor" "test" {
 // TestAccMonitorResource_InvalidMonitorType tests that invalid monitor types are rejected.
 func TestAccMonitorResource_InvalidMonitorType(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Test invalid monitor type
@@ -1078,7 +1078,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_HTTP_UsesTimeout(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -1103,7 +1103,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_HTTP_DefaultTimeout_WhenOmitted(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -1129,7 +1129,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_DNS_And_PING_IgnoreTimeoutAndGrace(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -1170,7 +1170,7 @@ resource "uptimerobot_monitor" "ping" {
 
 func TestAcc_Monitor_Heartbeat_UsesGrace(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -1195,7 +1195,7 @@ resource "uptimerobot_monitor" "hb" {
 
 func TestAcc_Monitor_Heartbeat_Grace_Bounds_OK(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{ // min=0
@@ -1232,7 +1232,7 @@ resource "uptimerobot_monitor" "hb" {
 
 func TestAcc_Monitor_Heartbeat_Grace_Invalid(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -1265,7 +1265,7 @@ resource "uptimerobot_monitor" "hb" {
 
 func TestAcc_Monitor_HTTP_PostBody_RoundTrip(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// create with body
@@ -1294,7 +1294,7 @@ func TestAcc_Monitor_HTTP_PostBody_RoundTrip(t *testing.T) {
 func TestAcc_Monitor_HTTP_PostBody_ClearByRemoving(t *testing.T) {
 	name := "acc-body-clear"
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// set a body first
@@ -1328,7 +1328,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_HTTP_GetHead_NoBodyAllowed(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -1351,7 +1351,7 @@ resource "uptimerobot_monitor" "test" {
 func TestAcc_Monitor_HTTP_PostKV_RoundTrip(t *testing.T) {
 	name := "acc-kv"
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -1391,7 +1391,7 @@ func TestAcc_Monitor_HTTP_PostKV_RoundTrip(t *testing.T) {
 func TestAcc_Monitor_HTTP_Post_NoBody_StablePlan(t *testing.T) {
 	name := "acc-post-nobody"
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -1419,7 +1419,7 @@ func TestAcc_Monitor_HTTP_MethodSwitch_ClearsBody(t *testing.T) {
 	name := "acc-method-switch"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -1503,7 +1503,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_HTTP_DefaultMethod_GET(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -1517,7 +1517,7 @@ func TestAcc_Monitor_HTTP_DefaultMethod_GET(t *testing.T) {
 func TestAcc_Monitor_HTTP_Body_Switch_JSON_KV(t *testing.T) {
 	name := "acc-switch-json-kv"
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -1553,7 +1553,7 @@ func TestAcc_Monitor_CreatePlanOnly_NoExistingState(t *testing.T) {
 	// This specifically exercises ModifyPlan with a null state on first create.
 	// It should produce a non-empty plan and not panic / error.
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -1567,7 +1567,7 @@ func TestAcc_Monitor_CreatePlanOnly_NoExistingState(t *testing.T) {
 
 func TestAcc_Monitor_CheckSSLErrors_DefaultFalse(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -1587,7 +1587,7 @@ func TestAcc_Monitor_CheckSSLErrors_DefaultFalse(t *testing.T) {
 
 func TestAcc_Monitor_CheckSSLErrors_ExplicitTrue(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -1625,7 +1625,7 @@ resource "uptimerobot_monitor" "test" {
 func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
 	name := "acc-ssl-period"
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
@@ -1661,7 +1661,7 @@ func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
 
 func TestAcc_Monitor_Config_SSLExpirationPeriodDays_Invalid(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{ // out of range

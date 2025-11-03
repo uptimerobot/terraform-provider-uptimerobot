@@ -33,9 +33,15 @@ func TestProvider(t *testing.T) {
 	}
 }
 
-func testAccPreCheck() {
+func testAccPreCheck(t *testing.T) {
+	t.Helper()
+
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("acceptance tests are skipped unless TF_ACC=1")
+	}
+
 	if os.Getenv("UPTIMEROBOT_API_KEY") == "" {
-		panic("UPTIMEROBOT_API_KEY must be set for acceptance tests")
+		t.Fatal("UPTIMEROBOT_API_KEY must be set for acceptance tests when TF_ACC=1")
 	}
 }
 

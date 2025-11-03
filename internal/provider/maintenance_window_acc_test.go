@@ -46,7 +46,7 @@ resource "uptimerobot_maintenance_window" "test" {
 
 func TestAccMaintenanceWindow_WeeklyDays(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
@@ -80,7 +80,7 @@ func TestAccMaintenanceWindow_WeeklyDays(t *testing.T) {
 
 func TestAccMaintenanceWindow_MonthlyWithLastDay(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
@@ -103,7 +103,7 @@ func TestAccMaintenanceWindow_MonthlyWithLastDay(t *testing.T) {
 
 func TestAccMaintenanceWindow_DailyWithDays_ShouldError(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -135,7 +135,7 @@ resource "uptimerobot_maintenance_window" "mw" {
 }
 `
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
@@ -161,7 +161,7 @@ resource "uptimerobot_maintenance_window" "mw" {
 }
 `
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
@@ -190,7 +190,7 @@ resource "uptimerobot_maintenance_window" "mw" {
 }
 `
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -213,7 +213,7 @@ resource "uptimerobot_maintenance_window" "mw" {
 }
 `
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -257,7 +257,7 @@ resource "uptimerobot_maintenance_window" "mw" {
 }
 `
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{

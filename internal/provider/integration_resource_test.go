@@ -19,7 +19,7 @@ func TestAccIntegrationResource(t *testing.T) {
 	cfgUpdate := testAccWebhookIntegrationConfig(name2, value)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckIntegrationDestroy,
 		Steps: []resource.TestStep{
