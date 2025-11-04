@@ -207,7 +207,8 @@ Common monitoring intervals:
 ### Required
 
 - `interval` (Number) Interval for the monitoring check (in seconds)
-- `name` (String) Name of the monitor
+- `name` (String) Tip: Write names as plain text. If you used HTML entities in HCL (e.g., &amp;, &#39;),
+				     change them to plain text to avoid plan diffs. Import will normalize remote HTML entities to plain text.
 - `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)
 - `url` (String) URL to monitor
 
@@ -245,7 +246,7 @@ assigned_alert_contacts = [
 - `http_method_type` (String) The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS)
 - `http_password` (String, Sensitive) The password for HTTP authentication
 - `http_username` (String) The username for HTTP authentication
-- `keyword_case_type` (String) The case sensitivity for keyword (CaseSensitive or CaseInsensitive). Default: CaseInsensitive
+- `keyword_case_type` (String) Case sensitivity for keyword. One of: CaseSensitive, CaseInsensitive. Omit to leave server as-is.
 - `keyword_type` (String) The type of keyword check (ALERT_EXISTS, ALERT_NOT_EXISTS)
 - `keyword_value` (String) The keyword to search for
 - `maintenance_window_ids` (Set of Number) Today API v3 behavior on update, if maintenance_window_ids is omitted or set to [] they both clear maintenance windows.

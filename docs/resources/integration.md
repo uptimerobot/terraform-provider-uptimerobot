@@ -143,6 +143,7 @@ variable "telegram_chat_id" {
 resource "uptimerobot_integration" "pushover_alerts" {
   name                     = "Pushover Alerts"
   type                     = "pushover"
+  priority                 = "Normal"
   value                    = "uQiRzpo4DXghDmr9QzzfQu27cmVRsG" # User key
   custom_value             = "azGDORePK8gMaC0QOYAMyEEuzJnyUi" # Device name (optional)
   enable_notifications_for = 1
@@ -152,6 +153,7 @@ resource "uptimerobot_integration" "pushover_alerts" {
 resource "uptimerobot_integration" "pushover_emergency" {
   name                     = "Emergency Pushover"
   type                     = "pushover"
+  priority                 = "Emergency"
   value                    = var.pushover_user_key
   custom_value             = var.pushover_device
   enable_notifications_for = 2 # Down events only
@@ -264,8 +266,11 @@ resource "uptimerobot_integration" "webhook" {
 
 ### Optional
 
+- `auto_resolve` (Boolean) PagerDuty: auto-resolve incidents after up event.
 - `custom_value` (String) The custom value for the integration. Only valid for slack (#channel), telegram (chat_id), and pushover (device name). Not used for webhook integrations (webhook settings are stored in dedicated fields).
+- `location` (String) PagerDuty service region. One of: `us`, `eu`.
 - `post_value` (String) The POST value to send with the webhook. Only valid for webhook integrations.
+- `priority` (String) Pushover priority (Lowest, Low, Normal, High, Emergency).
 - `send_as_json` (Boolean) Whether to send the webhook payload as JSON. Only valid for webhook integrations.
 - `send_as_post_parameters` (Boolean) Whether to send the webhook payload as POST parameters. Only valid for webhook integrations.
 - `send_as_query_string` (Boolean) Whether to send the webhook payload as query string. Only valid for webhook integrations.
