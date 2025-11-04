@@ -70,7 +70,7 @@ jobs:
       (github.event_name == 'pull_request' &&
        github.actor != 'dependabot[bot]' &&
        github.event.pull_request.head.repo.full_name == github.repository)
-    timeout-minutes: 30
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -120,7 +120,7 @@ jobs:
 
 
       - name: Test Provider
-        run: go test -v -cover ./internal/provider
+        run: go test -v -cover ./internal/provider -parallel=1 -timeout 45m
         env:
           TF_ACC: '1'
           UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}

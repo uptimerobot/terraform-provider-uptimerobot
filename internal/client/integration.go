@@ -21,6 +21,12 @@ type Integration struct {
 	SendAsJSON        bool   `json:"sendAsJSON,omitempty"`
 	SendAsQueryString bool   `json:"sendAsQueryString,omitempty"`
 	PostValue         string `json:"postValue,omitempty"`
+
+	// Pushover specific field
+	Priority string `json:"priority,omitempty"`
+
+	Location    string `json:"location,omitempty"`    // PagerDuty
+	AutoResolve bool   `json:"autoResolve,omitempty"` // PagerDuty
 }
 
 // CreateIntegrationRequest represents the request to create a new integration.
@@ -34,6 +40,23 @@ type SlackIntegrationData struct {
 	FriendlyName           string `json:"friendlyName,omitempty"`
 	WebhookURL             string `json:"webhookURL,omitempty"`
 	CustomValue            string `json:"customValue,omitempty"`
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
+// MSTeamsIntegrationData represents the data structure for MS Teams integrations.
+type MSTeamsIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	WebhookURL             string `json:"webhookURL"`
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
+// GoogleChatIntegrationData represents the data structure for Google Chat integrations.
+type GoogleChatIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	RoomURL                string `json:"roomURL"`
+	CustomMessage          string `json:"customMessage"` // optional (send "" to clear)
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
 }
@@ -58,6 +81,67 @@ type WebhookIntegrationData struct {
 	SendAsQueryString      bool   `json:"sendAsQueryString,omitempty"`
 	SendAsJSON             bool   `json:"sendAsJSON,omitempty"`
 	SendAsPostParameters   bool   `json:"sendAsPostParameters,omitempty"`
+}
+
+// ZapierIntegrationData represents the data structure for Zapier integrations.
+type ZapierIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	HookURL                string `json:"hookURL"`
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
+// PushbulletIntegrationData represents the data structure for Pushbullet integrations.
+type PushbulletIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	AccessToken            string `json:"accessToken"`
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
+// MattermostIntegrationData represents the data structure for Mattermost integrations.
+type MattermostIntegrationData struct {
+	FriendlyName           string  `json:"friendlyName,omitempty"`
+	WebhookURL             string  `json:"webhookURL"`
+	CustomValue            *string `json:"customValue,omitempty"`
+	EnableNotificationsFor string  `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool    `json:"sslExpirationReminder,omitempty"`
+}
+
+// SplunkIntegrationData represents the data structure for Splunk integrations.
+type SplunkIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	URLToNotify            string `json:"urlToNotify"`
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
+// TelegramIntegrationData represents the data structure for Telegram integrations.
+// CustomValue is used to carry the chat ID.
+type TelegramIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	CustomValue            string `json:"customValue,omitempty"` // chat ID
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
+// PushoverIntegrationData represents the data structure for Pushover integrations.
+type PushoverIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	UserKey                string `json:"userKey"`
+	Priority               string `json:"priority,omitempty"` //  (Lowest|Low|Normal|High|Emergency)
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
+// PagerDuty represents the data structure for PagerDuty integrations.
+type PagerDutyIntegrationData struct {
+	FriendlyName           string  `json:"friendlyName,omitempty"`
+	IntegrationKey         string  `json:"integrationKey"`
+	Location               *string `json:"location,omitempty"`    // "us" | "eu"
+	AutoResolve            *bool   `json:"autoResolve,omitempty"` // omit unless set
+	EnableNotificationsFor string  `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool    `json:"sslExpirationReminder,omitempty"`
 }
 
 // UpdateIntegrationRequest represents the request to update an existing integration.
