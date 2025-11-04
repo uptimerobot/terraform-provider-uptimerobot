@@ -72,6 +72,12 @@ resource "uptimerobot_monitor" "api_health" {
 
   tags = ["api", "critical"]
 }
+
+variable "api_token" {
+  description = "API token for some system"
+  type        = string
+  sensitive   = true
+}
 ```
 
 ### HTTP Monitor with Authentication
@@ -181,6 +187,122 @@ resource "uptimerobot_monitor" "gateway_ping" {
   interval = 60
 
   tags = ["gateway", "critical", "network"]
+}
+```
+
+### Alert Contacts Example
+
+```terraform
+# Alert Contacts
+resource "uptimerobot_monitor" "website_with_contacts" {
+  name     = "My Website"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  timeout  = 30
+
+  # Set exact contacts and their semantics
+  assigned_alert_contacts = [
+    {
+      alert_contact_id = "123",
+      threshold        = 0,
+      recurrence       = 0
+    }, # immediate, no repeats
+    {
+      alert_contact_id = "456",
+      threshold        = 3,
+      recurrence       = 15
+    }, # after 3m, repeat every 15m
+  ]
+}
+
+
+# You can also remove alert contacts by omitting the field
+# or setting it to null
+resource "uptimerobot_monitor" "website_no_contacts" {
+  name     = "My Website"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  timeout  = 30
+
+  # No assigned_alert_contacts field = remove all alert contacts
+}
+```
+
+### Heartbeat Example
+
+```terraform
+resource "uptimerobot_monitor" "website" {
+  name         = "My Website"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = 300
+
+  # Optional: Tags for organization
+  tags = ["production", "web"]
+}
+```
+
+### Config Example
+
+```terraform
+# Set specific days
+resource "uptimerobot_monitor" "set_days" {
+  name     = "HTTP set days"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+
+  config = {
+    ssl_expiration_period_days = [3, 5, 30, 69]
+  }
+}
+
+# Preserve remote values (no change)
+resource "uptimerobot_monitor" "preserve" {
+  name     = "HTTP preserve"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+
+  config = {}
+}
+
+# Clear days on server
+resource "uptimerobot_monitor" "clear" {
+  name     = "HTTP clear"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+
+  config = {
+    ssl_expiration_period_days = []
+  }
+}
+
+resource "uptimerobot_monitor" "ui_driven_ssl" {
+  name     = "UI-driven SSL days"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+
+  # If it is managed via UI, then adding ignore_changes in lifecycle tells Terraform to not reconcile and take in account changes here.
+  lifecycle {
+    ignore_changes = [config]
+  }
+
+  # Optional. The block may be kept to preserve remote values explicitly
+  config = {}
 }
 ```
 
