@@ -34,7 +34,7 @@ type CreateMonitorRequest struct {
 	Port                     int                   `json:"port,omitempty"`
 	KeywordType              string                `json:"keywordType,omitempty"`
 	KeywordValue             string                `json:"keywordValue,omitempty"`
-	KeywordCaseType          int                   `json:"keywordCaseType,omitempty"`
+	KeywordCaseType          *int                  `json:"keywordCaseType,omitempty"`
 	AssignedAlertContacts    []AlertContactRequest `json:"assignedAlertContacts"`
 	CheckSSLErrors           *bool                 `json:"checkSSLErrors,omitempty"`
 	SSLCheckEnabled          bool                  `json:"sslCheckEnabled,omitempty"`
@@ -67,7 +67,7 @@ type UpdateMonitorRequest struct {
 	Port                     int                   `json:"port,omitempty"`
 	KeywordType              string                `json:"keywordType,omitempty"`
 	KeywordValue             string                `json:"keywordValue,omitempty"`
-	KeywordCaseType          int                   `json:"keywordCaseType,omitempty"`
+	KeywordCaseType          *int                  `json:"keywordCaseType,omitempty"`
 	AssignedAlertContacts    []AlertContactRequest `json:"assignedAlertContacts"`
 	CheckSSLErrors           *bool                 `json:"checkSSLErrors,omitempty"`
 	SSLCheckEnabled          bool                  `json:"sslCheckEnabled,omitempty"`

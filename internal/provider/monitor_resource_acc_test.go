@@ -1767,3 +1767,99 @@ resource "uptimerobot_monitor" "test" {
 		},
 	})
 }
+
+func TestAccMonitorResource_KeywordCaseType_Semantics(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			// 1) KEYWORD with keyword_case_type omitted. Provider sends default (1 - CaseInsensitive), state keeps attr absent
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name          = "kct-semantics"
+  url           = "https://example.com"
+  type          = "KEYWORD"
+  interval      = 300
+  timeout       = 30
+  keyword_type  = "ALERT_EXISTS"
+  keyword_value = "ok"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "keyword_case_type"),
+				),
+			},
+			// 2) Set CaseSensitive
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name             = "kct-semantics"
+  url              = "https://example.com"
+  type             = "KEYWORD"
+  interval         = 300
+  timeout          = 30
+  keyword_type     = "ALERT_EXISTS"
+  keyword_value    = "ok"
+  keyword_case_type = "CaseSensitive"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_case_type", "CaseSensitive"),
+				),
+			},
+			// 3) Flip to CaseInsensitive
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name             = "kct-semantics"
+  url              = "https://example.com"
+  type             = "KEYWORD"
+  interval         = 300
+  timeout          = 30
+  keyword_type     = "ALERT_EXISTS"
+  keyword_value    = "ok"
+  keyword_case_type = "CaseInsensitive"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_case_type", "CaseInsensitive"),
+				),
+			},
+			// 4) Omit again. Will no be send on update and attr will be kept absent in state
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name          = "kct-semantics"
+  url           = "https://example.com"
+  type          = "KEYWORD"
+  interval      = 300
+  timeout       = 30
+  keyword_type  = "ALERT_EXISTS"
+  keyword_value = "ok"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "keyword_case_type"),
+				),
+			},
+			// 5) Plan-only should be clean
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+  name          = "kct-semantics"
+  url           = "https://example.com"
+  type          = "KEYWORD"
+  interval      = 300
+  timeout       = 30
+  keyword_type  = "ALERT_EXISTS"
+  keyword_value = "ok"
+}
+`,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}

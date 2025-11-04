@@ -109,12 +109,14 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 
 	// KeywordCaseType is int with values 0 and 1. Comparation is as string labels which matches API logic
 	// API uses ints as 0=CaseSensitive, 1=CaseInsensitive). Compare as labels for stability.
-	{
+	if req.KeywordCaseType != nil {
 		s := "CaseInsensitive"
-		if req.KeywordCaseType == 0 {
+		if *req.KeywordCaseType == 0 {
 			s = "CaseSensitive"
 		}
 		c.KeywordCaseType = &s
+	} else {
+		c.KeywordCaseType = nil // if omitted in request => don not compare this field
 	}
 
 	{
@@ -235,12 +237,14 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		c.KeywordType = &s
 	}
 
-	{
+	if req.KeywordCaseType != nil {
 		s := "CaseInsensitive"
-		if req.KeywordCaseType == 0 {
+		if *req.KeywordCaseType == 0 {
 			s = "CaseSensitive"
 		}
 		c.KeywordCaseType = &s
+	} else {
+		c.KeywordCaseType = nil // if omitted in request => don not compare this field
 	}
 
 	{

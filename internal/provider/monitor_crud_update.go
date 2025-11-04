@@ -150,10 +150,19 @@ func buildUpdateRequest(
 	if !plan.KeywordValue.IsNull() {
 		req.KeywordValue = plan.KeywordValue.ValueString()
 	}
-	req.KeywordCaseType = keywordCaseTypeToAPI(plan.KeywordCaseType, resp)
-	if resp.Diagnostics.HasError() {
-		return nil, ""
+
+	if strings.ToUpper(plan.Type.ValueString()) == "KEYWORD" {
+		// try plan
+		kct := keywordCaseTypeToPtrFromString(plan.KeywordCaseType)
+		// fall back to state to keep it sticky on the API
+		if kct == nil {
+			kct = keywordCaseTypeToPtrFromString(state.KeywordCaseType)
+		}
+		if kct != nil {
+			req.KeywordCaseType = kct
+		}
 	}
+
 	if !plan.KeywordType.IsNull() {
 		req.KeywordType = plan.KeywordType.ValueString()
 	}
@@ -283,18 +292,19 @@ func setBodyOnUpdate(
 	}
 }
 
-func keywordCaseTypeToAPI(v types.String, resp *resource.UpdateResponse) int {
-	if v.IsNull() || v.IsUnknown() {
-		return 1 // CaseInsensitive default
+func keywordCaseTypeToPtrFromString(s types.String) *int {
+	if s.IsNull() || s.IsUnknown() {
+		return nil
 	}
-	switch v.ValueString() {
+	switch s.ValueString() {
 	case "CaseSensitive":
-		return 0
-	case "CaseInsensitive", "":
-		return 1
+		v := 0
+		return &v
+	case "CaseInsensitive":
+		v := 1
+		return &v
 	default:
-		resp.Diagnostics.AddError("Invalid keyword_case_type", "keyword_case_type must be one of: CaseSensitive, CaseInsensitive")
-		return 1
+		return nil
 	}
 }
 
@@ -419,10 +429,16 @@ func applyUpdatedMonitorToState(
 	out.Status = prev.Status
 
 	// keyword case type from API
-	if m.KeywordCaseType == 0 {
-		out.KeywordCaseType = types.StringValue("CaseSensitive")
+	if strings.ToUpper(plan.Type.ValueString()) != "KEYWORD" {
+		out.KeywordCaseType = types.StringNull()
+	} else if plan.KeywordCaseType.IsNull() || plan.KeywordCaseType.IsUnknown() {
+		out.KeywordCaseType = types.StringNull()
 	} else {
-		out.KeywordCaseType = types.StringValue("CaseInsensitive")
+		if m.KeywordCaseType == 0 {
+			out.KeywordCaseType = types.StringValue("CaseSensitive")
+		} else {
+			out.KeywordCaseType = types.StringValue("CaseInsensitive")
+		}
 	}
 
 	// method and body are reflected to the state

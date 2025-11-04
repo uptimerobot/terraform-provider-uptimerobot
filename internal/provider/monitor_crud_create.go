@@ -92,19 +92,22 @@ func (r *monitorResource) buildCreateRequest(
 	}
 
 	// keyword_case_type. From string to numeric
-	if !plan.KeywordCaseType.IsNull() && !plan.KeywordCaseType.IsUnknown() {
-		switch plan.KeywordCaseType.ValueString() {
-		case "CaseSensitive":
-			req.KeywordCaseType = 0
-		case "CaseInsensitive", "":
-			req.KeywordCaseType = 1
-		default:
-			resp.Diagnostics.AddError("Invalid keyword_case_type", "keyword_case_type must be one of: CaseSensitive, CaseInsensitive")
-			return nil, ""
+	if strings.ToUpper(plan.Type.ValueString()) == "KEYWORD" {
+		if !plan.KeywordCaseType.IsNull() && !plan.KeywordCaseType.IsUnknown() {
+			switch plan.KeywordCaseType.ValueString() {
+			case "CaseSensitive":
+				v := 0
+				req.KeywordCaseType = &v
+			case "CaseInsensitive":
+				v := 1
+				req.KeywordCaseType = &v
+			}
 		}
-	} else {
-		// default for API
-		req.KeywordCaseType = 1
+		// default to CaseInsensitive (1)
+		if req.KeywordCaseType == nil {
+			v := 1
+			req.KeywordCaseType = &v
+		}
 	}
 
 	// Optional fields
@@ -399,10 +402,16 @@ func (r *monitorResource) buildStateAfterCreate(
 	}
 
 	// keyword_case_type number transform to string
-	if api.KeywordCaseType == 0 {
-		plan.KeywordCaseType = types.StringValue("CaseSensitive")
+	if strings.ToUpper(plan.Type.ValueString()) != "KEYWORD" {
+		plan.KeywordCaseType = types.StringNull()
+	} else if plan.KeywordCaseType.IsNull() || plan.KeywordCaseType.IsUnknown() {
+		plan.KeywordCaseType = types.StringNull()
 	} else {
-		plan.KeywordCaseType = types.StringValue("CaseInsensitive")
+		if api.KeywordCaseType == 0 {
+			plan.KeywordCaseType = types.StringValue("CaseSensitive")
+		} else {
+			plan.KeywordCaseType = types.StringValue("CaseInsensitive")
+		}
 	}
 
 	// timeout and grace reflection

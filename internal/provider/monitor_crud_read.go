@@ -158,30 +158,43 @@ func readApplyHTTPBody(state *monitorResourceModel) {
 }
 
 func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isImport bool) {
+	// port
 	if m.Port != nil {
 		state.Port = types.Int64Value(int64(*m.Port))
 	} else {
 		state.Port = types.Int64Null()
 	}
 
+	// keyword value/type
 	if m.KeywordValue != "" {
 		state.KeywordValue = types.StringValue(m.KeywordValue)
 	} else if !state.KeywordValue.IsNull() {
 		state.KeywordValue = types.StringNull()
 	}
-
 	if m.KeywordType != nil {
 		state.KeywordType = types.StringValue(*m.KeywordType)
 	} else {
 		state.KeywordType = types.StringNull()
 	}
 
-	if isImport || !state.KeywordCaseType.IsNull() {
-		if m.KeywordCaseType == 0 {
-			state.KeywordCaseType = types.StringValue("CaseSensitive")
+	// keyword_case_type — reflect only when importing or when user manages it
+	managed := isImport || (!state.KeywordCaseType.IsNull() && !state.KeywordCaseType.IsUnknown())
+
+	if strings.ToUpper(state.Type.ValueString()) == "KEYWORD" {
+		if managed {
+			switch m.KeywordCaseType {
+			case 0:
+				state.KeywordCaseType = types.StringValue("CaseSensitive")
+			case 1:
+				state.KeywordCaseType = types.StringValue("CaseInsensitive")
+			default:
+				state.KeywordCaseType = types.StringNull()
+			}
 		} else {
-			state.KeywordCaseType = types.StringValue("CaseInsensitive")
+			state.KeywordCaseType = types.StringNull()
 		}
+	} else {
+		state.KeywordCaseType = types.StringNull()
 	}
 }
 

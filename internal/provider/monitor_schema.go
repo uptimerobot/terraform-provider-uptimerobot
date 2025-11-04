@@ -212,12 +212,10 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:    true,
 			},
 			"keyword_case_type": schema.StringAttribute{
-				Description: "The case sensitivity for keyword (CaseSensitive or CaseInsensitive). Default: CaseInsensitive",
+				Description: "Case sensitivity for keyword. One of: CaseSensitive, CaseInsensitive. Omit to leave server as-is.",
 				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString("CaseInsensitive"),
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+				Validators: []validator.String{
+					stringvalidator.OneOf("CaseSensitive", "CaseInsensitive"),
 				},
 			},
 			"keyword_type": schema.StringAttribute{
