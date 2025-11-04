@@ -85,6 +85,14 @@ type ZapierIntegrationData struct {
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
 }
 
+// PushbulletIntegrationData represents the data structure for Pushbullet integrations.
+type PushbulletIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	AccessToken            string `json:"accessToken"`
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
 // UpdateIntegrationRequest represents the request to update an existing integration.
 // Uses the same structure as CreateIntegrationRequest.
 type UpdateIntegrationRequest struct {

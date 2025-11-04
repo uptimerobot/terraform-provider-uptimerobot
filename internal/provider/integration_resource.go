@@ -334,6 +334,13 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
+	case "pushbullet":
+		integrationData = &client.PushbulletIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			AccessToken:            plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
 	default:
 		// For other integration types, use a generic structure
 		integrationData = map[string]interface{}{
@@ -531,6 +538,13 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		integrationData = &client.ZapierIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
 			HookURL:                plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "pushbullet":
+		integrationData = &client.PushbulletIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			AccessToken:            plan.Value.ValueString(),
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
