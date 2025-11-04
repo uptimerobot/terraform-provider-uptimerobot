@@ -293,6 +293,14 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
+	case "googlechat":
+		integrationData = &client.GoogleChatIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			RoomURL:                plan.Value.ValueString(),
+			CustomMessage:          plan.CustomValue.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
 	case "discord":
 		integrationData = &client.DiscordIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
@@ -467,6 +475,14 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 			FriendlyName:           plan.Name.ValueString(),
 			WebhookURL:             plan.Value.ValueString(),
 			CustomValue:            plan.CustomValue.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "googlechat":
+		integrationData = &client.GoogleChatIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			RoomURL:                plan.Value.ValueString(),
+			CustomMessage:          plan.CustomValue.ValueString(),
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
