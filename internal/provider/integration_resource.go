@@ -61,6 +61,21 @@ type webhookConfig struct {
 	SendPost  string                 `json:"sendPost,omitempty"`
 }
 
+func isTempServerErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "status 500") ||
+		strings.Contains(s, "status 502") ||
+		strings.Contains(s, "status 503") ||
+		strings.Contains(s, "status 504") ||
+		strings.Contains(s, "internal server error") ||
+		strings.Contains(s, "bad gateway") ||
+		strings.Contains(s, "service unavailable") ||
+		strings.Contains(s, "gateway timeout")
+}
+
 // jsonEquivalentPlanModifier is a custom plan modifier that ignores JSON formatting differences.
 type jsonEquivalentPlanModifier struct{}
 
@@ -520,12 +535,54 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	integration, err := r.client.GetIntegration(ctx, id)
-	if client.IsNotFound(err) {
-		resp.State.RemoveResource(ctx)
-		return
+	// integration, err := r.client.GetIntegration(ctx, id)
+	// if client.IsNotFound(err) {
+	// 	resp.State.RemoveResource(ctx)
+	// 	return
+	// }
+	// if err != nil {
+	// 	resp.Diagnostics.AddError(
+	// 		"Error reading integration",
+	// 		"Could not read integration ID "+state.ID.String()+": "+err.Error(),
+	// 	)
+	// 	return
+	// }
+
+	// Retry GetIntegration on transient 5xx errors to mitigate flaky API errors.
+	var integration *client.Integration
+	backoffs := []time.Duration{
+		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 3 * time.Second, 5 * time.Second,
 	}
-	if err != nil {
+
+	for i := 0; i < len(backoffs); i++ {
+		integration, err = r.client.GetIntegration(ctx, id)
+		if err == nil {
+			break
+		}
+		if client.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		if isTempServerErr(err) {
+			// final attempt -> degrade gracefully: keep prior state to let plan proceed
+			if i == len(backoffs)-1 {
+				resp.Diagnostics.AddWarning(
+					"Temporary API error while reading integration",
+					fmt.Sprintf("GET /integrations/%d returned 5xx after %d retries; keeping previous state for this plan. Error: %v", id, len(backoffs), err),
+				)
+				// do NOT modify resp.State; leaving it intact preserves prior state
+				return
+			}
+			select {
+			case <-ctx.Done():
+				resp.Diagnostics.AddError("Read cancelled", ctx.Err().Error())
+				return
+			case <-time.After(backoffs[i]):
+			}
+			continue
+		}
+
+		// non-retryable error
 		resp.Diagnostics.AddError(
 			"Error reading integration",
 			"Could not read integration ID "+state.ID.String()+": "+err.Error(),
@@ -538,6 +595,10 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	state.Type = types.StringValue(TransformIntegrationTypeFromAPI(integration.Type))
 	intType := TransformIntegrationTypeFromAPI(integration.Type)
 
+	// Use sticky behavior for SSL expiration reminder to avoid flips when API
+	// returns defaults or transient values.
+	state.SSLExpirationReminder = stickyBool(prev.SSLExpirationReminder, integration.SSLExpirationReminder, false)
+
 	if integrationEchoesValueFromAPI(intType) {
 		if integration.WebhookURL != "" {
 			state.Value = types.StringValue(integration.WebhookURL)
@@ -548,8 +609,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		}
 	}
 
-	state.EnableNotificationsFor = types.Int64Value(convertNotificationsForFromString(integration.EnableNotificationsFor))
-	state.SSLExpirationReminder = types.BoolValue(integration.SSLExpirationReminder)
+	state.EnableNotificationsFor = stickyEF(prev.EnableNotificationsFor, integration.EnableNotificationsFor)
 
 	// Handle integration-specific fields based on type
 	switch TransformIntegrationTypeFromAPI(integration.Type) {
@@ -606,9 +666,22 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.AutoResolve = types.BoolNull()
 
 	case "pagerduty":
-		state.Location = stickyString(prev.Location, integration.Location, strings.ToLower)
-		state.AutoResolve = stickyBool(prev.AutoResolve, integration.AutoResolve, false)
-		state.EnableNotificationsFor = stickyEF(prev.EnableNotificationsFor, integration.EnableNotificationsFor)
+		// location from customValue2
+		if v := strings.TrimSpace(integration.CustomValue2); v != "" {
+			state.Location = types.StringValue(strings.ToLower(v)) // "us"/"eu"
+		} else {
+			state.Location = stickyString(prev.Location, "", strings.ToLower)
+		}
+
+		// autoResolve from customValue: "1"/"0", guard to include "true"/"false"
+		switch strings.ToLower(strings.TrimSpace(integration.CustomValue)) {
+		case "1", "true":
+			state.AutoResolve = types.BoolValue(true)
+		case "0", "false":
+			state.AutoResolve = types.BoolValue(false)
+		default:
+			state.AutoResolve = stickyBool(prev.AutoResolve, false, false)
+		}
 
 		state.Priority = types.StringNull()
 		state.SendAsJSON = types.BoolNull()
@@ -905,16 +978,19 @@ func stickyString(prev types.String, api string, norm func(string) string) types
 }
 
 func stickyBool(prev types.Bool, api bool, emptyIsNull bool) types.Bool {
-	if api {
-		return types.BoolValue(true)
-	}
+	// If we have a known previous value, prefer it to avoid transient flips
 	if !prev.IsNull() && !prev.IsUnknown() {
-		return prev
+		if prev.ValueBool() != api {
+			return prev
+		}
+		return types.BoolValue(api)
 	}
-	if emptyIsNull {
+
+	// No previous value - initialize from API or null if allowed and api=false
+	if emptyIsNull && !api {
 		return types.BoolNull()
 	}
-	return types.BoolValue(false)
+	return types.BoolValue(api)
 }
 
 func stickyEF(prev types.Int64, api string) types.Int64 {

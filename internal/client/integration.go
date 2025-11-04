@@ -14,6 +14,9 @@ type Integration struct {
 	Value                  string `json:"value"`
 	WebhookURL             string `json:"webhookURL,omitempty"`
 	CustomValue            string `json:"customValue,omitempty"`
+	CustomValue2           string `json:"customValue2,omitempty"`
+	CustomValue3           string `json:"customValue3,omitempty"`
+	CustomValue4           string `json:"customValue4,omitempty"`
 	EnableNotificationsFor string `json:"enableNotificationsFor"`
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 

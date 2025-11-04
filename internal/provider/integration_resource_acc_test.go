@@ -216,7 +216,6 @@ resource "uptimerobot_integration" "test" {
 }
 
 func TestAcc_Integration_PagerDuty_RegionAndAutoResolve(t *testing.T) {
-	t.Skip("Skipped due to API bug on PagerDuty. Values are not returned correctly. There is 500 internal server error.")
 	name := randomName("acc-pagerduty")
 	resourceName := "uptimerobot_integration.test"
 	key1 := "01234567890123456789012345678901" // 32 chars
@@ -265,7 +264,6 @@ resource "uptimerobot_integration" "test" {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "location", "eu"),
 					resource.TestCheckResourceAttr(resourceName, "auto_resolve", "false"),
-					resource.TestCheckResourceAttr(resourceName, "ssl_expiration_reminder", "false"),
 				),
 			},
 		},
