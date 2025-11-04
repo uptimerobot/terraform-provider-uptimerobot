@@ -362,6 +362,13 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
+	case "telegram":
+		integrationData = &client.TelegramIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			CustomValue:            plan.CustomValue.ValueString(), // chat ID
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
 	default:
 		// For other integration types, use a generic structure
 		integrationData = map[string]interface{}{
@@ -434,13 +441,16 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	// Map response body to schema and populate Computed attribute values
 	state.Name = types.StringValue(integration.Name)
 	state.Type = types.StringValue(TransformIntegrationTypeFromAPI(integration.Type))
+	intType := TransformIntegrationTypeFromAPI(integration.Type)
 
-	if integration.WebhookURL != "" {
-		state.Value = types.StringValue(integration.WebhookURL)
-	} else if strings.TrimSpace(integration.Value) != "" {
-		state.Value = types.StringValue(integration.Value)
-	} else {
-		state.Value = types.StringNull() // normalize empty. null on read
+	if integrationEchoesValueFromAPI(intType) {
+		if integration.WebhookURL != "" {
+			state.Value = types.StringValue(integration.WebhookURL)
+		} else if strings.TrimSpace(integration.Value) != "" {
+			state.Value = types.StringValue(integration.Value)
+		} else {
+			state.Value = types.StringNull() // normalize empty. null on read
+		}
 	}
 
 	state.EnableNotificationsFor = types.Int64Value(convertNotificationsForFromString(integration.EnableNotificationsFor))
@@ -597,6 +607,13 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		integrationData = &client.SplunkIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
 			URLToNotify:            plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "telegram":
+		integrationData = &client.TelegramIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			CustomValue:            plan.CustomValue.ValueString(), // chat ID
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}

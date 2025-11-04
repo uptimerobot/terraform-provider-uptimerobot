@@ -110,6 +110,15 @@ type SplunkIntegrationData struct {
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
 }
 
+// TelegramIntegrationData represents the data structure for Telegram integrations.
+// CustomValue is used to carry the chat ID.
+type TelegramIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	CustomValue            string `json:"customValue,omitempty"` // chat ID
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
 // UpdateIntegrationRequest represents the request to update an existing integration.
 // Uses the same structure as CreateIntegrationRequest.
 type UpdateIntegrationRequest struct {

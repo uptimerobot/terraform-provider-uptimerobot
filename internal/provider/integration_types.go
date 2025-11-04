@@ -152,3 +152,15 @@ func TransformIntegrationTypeToAPINumeric(terraformType string) int {
 		return 2 // Default to webhook value
 	}
 }
+
+// integrationEchoesValueFromAPI returns true if the API echoes back a URL/value
+// that should overwrite state.Value on Read.
+func integrationEchoesValueFromAPI(t string) bool {
+	switch t {
+	case "webhook", "slack", "discord", "msteams", "googlechat", "splunk", "zapier", "mattermost":
+		return true
+	default:
+		// types like telegram, pushbullet, pagerduty, pushover typically do NOT echo value from the API
+		return false
+	}
+}
