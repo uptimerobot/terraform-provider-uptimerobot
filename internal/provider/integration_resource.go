@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -282,10 +283,16 @@ func (r *integrationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Validators: []validator.String{
 					stringvalidator.OneOf("us", "eu"),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"auto_resolve": schema.BoolAttribute{
 				Optional:            true,
 				MarkdownDescription: "PagerDuty: auto-resolve incidents after up event.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -501,6 +508,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	prev := state
 
 	// Get integration from API
 	id, err := strconv.ParseInt(state.ID.ValueString(), 10, 64)
@@ -598,22 +606,9 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.AutoResolve = types.BoolNull()
 
 	case "pagerduty":
-
-		if !state.Location.IsNull() && !state.Location.IsUnknown() {
-			if strings.TrimSpace(integration.Location) == "" {
-				state.Location = types.StringNull()
-			} else {
-				state.Location = types.StringValue(strings.ToLower(integration.Location))
-			}
-		} else {
-			state.Location = types.StringNull()
-		}
-
-		if !state.AutoResolve.IsNull() && !state.AutoResolve.IsUnknown() {
-			state.AutoResolve = types.BoolValue(integration.AutoResolve)
-		} else {
-			state.AutoResolve = types.BoolNull()
-		}
+		state.Location = stickyString(prev.Location, integration.Location, strings.ToLower)
+		state.AutoResolve = stickyBool(prev.AutoResolve, integration.AutoResolve, false)
+		state.EnableNotificationsFor = stickyEF(prev.EnableNotificationsFor, integration.EnableNotificationsFor)
 
 		state.Priority = types.StringNull()
 		state.SendAsJSON = types.BoolNull()
@@ -893,4 +888,47 @@ func (r *integrationResource) Delete(ctx context.Context, req resource.DeleteReq
 // ImportState imports an existing resource into Terraform.
 func (r *integrationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func stickyString(prev types.String, api string, norm func(string) string) types.String {
+	api = strings.TrimSpace(api)
+	if api != "" {
+		if norm != nil {
+			api = norm(api)
+		}
+		return types.StringValue(api)
+	}
+	if !prev.IsNull() && !prev.IsUnknown() {
+		return prev
+	}
+	return types.StringNull()
+}
+
+func stickyBool(prev types.Bool, api bool, emptyIsNull bool) types.Bool {
+	if api {
+		return types.BoolValue(true)
+	}
+	if !prev.IsNull() && !prev.IsUnknown() {
+		return prev
+	}
+	if emptyIsNull {
+		return types.BoolNull()
+	}
+	return types.BoolValue(false)
+}
+
+func stickyEF(prev types.Int64, api string) types.Int64 {
+	a := strings.TrimSpace(api)
+	if a == "" {
+		if !prev.IsNull() && !prev.IsUnknown() {
+			return prev
+		}
+		return types.Int64Value(1) // UpAndDown
+	}
+	v := convertNotificationsForFromString(a)
+	if v == 1 && !prev.IsNull() && !prev.IsUnknown() && prev.ValueInt64() != 1 {
+		// API defaulted to UpAndDown. Keep previously configured non-default
+		return prev
+	}
+	return types.Int64Value(v)
 }

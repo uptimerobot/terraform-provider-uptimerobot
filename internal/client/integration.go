@@ -134,7 +134,7 @@ type PushoverIntegrationData struct {
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
 }
 
-// PagerDuty payload (note pointers for omit-on-null)
+// PagerDuty represents the data structure for PagerDuty integrations.
 type PagerDutyIntegrationData struct {
 	FriendlyName           string  `json:"friendlyName,omitempty"`
 	IntegrationKey         string  `json:"integrationKey"`
