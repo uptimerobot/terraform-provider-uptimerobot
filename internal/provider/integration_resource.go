@@ -293,6 +293,13 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
+	case "msteams":
+		integrationData = &client.MSTeamsIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
 	case "googlechat":
 		integrationData = &client.GoogleChatIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
@@ -478,6 +485,14 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
+	case "msteams":
+		integrationData = &client.MSTeamsIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+
 	case "googlechat":
 		integrationData = &client.GoogleChatIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),

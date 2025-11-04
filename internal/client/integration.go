@@ -38,6 +38,14 @@ type SlackIntegrationData struct {
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
 }
 
+// MSTeamsIntegrationData represents the data structure for MS Teams integrations.
+type MSTeamsIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	WebhookURL             string `json:"webhookURL"`
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
 // GoogleChatIntegrationData represents the data structure for Google Chat integrations.
 type GoogleChatIntegrationData struct {
 	FriendlyName           string `json:"friendlyName,omitempty"`
