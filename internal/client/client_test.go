@@ -10,6 +10,24 @@ import (
 	"testing"
 )
 
+func mustMap(t *testing.T, v any) map[string]any {
+	t.Helper()
+	m, ok := v.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any, got %T", v)
+	}
+	return m
+}
+
+func mustSlice(t *testing.T, v any) []any {
+	t.Helper()
+	s, ok := v.([]any)
+	if !ok {
+		t.Fatalf("expected []any, got %T", v)
+	}
+	return s
+}
+
 func TestClient_Headers_SameHostRedirect(t *testing.T) {
 	mux := http.NewServeMux()
 	var step int
@@ -89,7 +107,7 @@ func TestSanitizeValue_RedactsSensitiveKeysNested(t *testing.T) {
 	})
 
 	sanitizeValue(&v)
-	m := v.(map[string]any)
+	m := mustMap(t, v)
 
 	if m["password"] != "***REDACTED***" {
 		t.Fatalf("password not redacted: %#v", m["password"])
@@ -101,7 +119,7 @@ func TestSanitizeValue_RedactsSensitiveKeysNested(t *testing.T) {
 		t.Fatalf("non-sensitive changed: %#v", m["note"])
 	}
 
-	nested := m["nested"].(map[string]any)
+	nested := mustMap(t, m["nested"])
 	if nested["client_secret"] != "***REDACTED***" {
 		t.Fatalf("client_secret not redacted: %#v", nested["client_secret"])
 	}
@@ -109,8 +127,8 @@ func TestSanitizeValue_RedactsSensitiveKeysNested(t *testing.T) {
 		t.Fatalf("ok changed: %#v", nested["ok"])
 	}
 
-	arr := nested["arr"].([]any)
-	mp := arr[0].(map[string]any)
+	arr := mustSlice(t, nested["arr"])
+	mp := mustMap(t, arr[0])
 	if mp["Api_Key"] != "***REDACTED***" {
 		t.Fatalf("Api_Key not redacted: %#v", mp["Api_Key"])
 	}
@@ -124,8 +142,8 @@ func TestSanitizeValue_RedactsSensitiveKeysNested(t *testing.T) {
 		t.Fatalf("int in slice changed: %#v", arr[2])
 	}
 
-	list := m["list"].([]any)
-	mp2 := list[0].(map[string]any)
+	list := mustSlice(t, m["list"])
+	mp2 := mustMap(t, list[0])
 	if mp2["Authorization"] != "***REDACTED***" {
 		t.Fatalf("Authorization not redacted: %#v", mp2["Authorization"])
 	}
@@ -140,7 +158,7 @@ func TestSanitizeValue_RedactsSensitiveKeysNested(t *testing.T) {
 func TestSanitizeValue_PrimitivesNoop(t *testing.T) {
 	cases := []any{"string", 123, 12.34, true, nil}
 	for _, in := range cases {
-		v := any(in)
+		v := in
 		sanitizeValue(&v)
 		if !reflect.DeepEqual(v, in) {
 			t.Fatalf("primitive changed: in=%#v out=%#v", in, v)
