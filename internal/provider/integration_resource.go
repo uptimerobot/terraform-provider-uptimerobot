@@ -327,6 +327,13 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			SendAsJSON:             plan.SendAsJSON.ValueBool(),
 			SendAsPostParameters:   plan.SendAsPostParameters.ValueBool(),
 		}
+	case "zapier":
+		integrationData = &client.ZapierIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			HookURL:                plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
 	default:
 		// For other integration types, use a generic structure
 		integrationData = map[string]interface{}{
@@ -519,6 +526,13 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 			SendAsQueryString:      plan.SendAsQueryString.ValueBool(),
 			SendAsJSON:             plan.SendAsJSON.ValueBool(),
 			SendAsPostParameters:   plan.SendAsPostParameters.ValueBool(),
+		}
+	case "zapier":
+		integrationData = &client.ZapierIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			HookURL:                plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
 	default:
 		// For other integration types, use a generic structure

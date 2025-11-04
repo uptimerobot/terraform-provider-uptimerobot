@@ -77,6 +77,14 @@ type WebhookIntegrationData struct {
 	SendAsPostParameters   bool   `json:"sendAsPostParameters,omitempty"`
 }
 
+// ZapierIntegrationData represents the data structure for Zapier integrations.
+type ZapierIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	HookURL                string `json:"hookURL"`
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
 // UpdateIntegrationRequest represents the request to update an existing integration.
 // Uses the same structure as CreateIntegrationRequest.
 type UpdateIntegrationRequest struct {
