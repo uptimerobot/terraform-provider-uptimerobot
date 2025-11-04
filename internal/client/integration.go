@@ -24,6 +24,9 @@ type Integration struct {
 
 	// Pushover specific field
 	Priority string `json:"priority,omitempty"`
+
+	Location    string `json:"location,omitempty"`    // PagerDuty
+	AutoResolve bool   `json:"autoResolve,omitempty"` // PagerDuty
 }
 
 // CreateIntegrationRequest represents the request to create a new integration.
@@ -129,6 +132,16 @@ type PushoverIntegrationData struct {
 	Priority               string `json:"priority,omitempty"` //  (Lowest|Low|Normal|High|Emergency)
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
+// PagerDuty payload (note pointers for omit-on-null)
+type PagerDutyIntegrationData struct {
+	FriendlyName           string  `json:"friendlyName,omitempty"`
+	IntegrationKey         string  `json:"integrationKey"`
+	Location               *string `json:"location,omitempty"`    // "us" | "eu"
+	AutoResolve            *bool   `json:"autoResolve,omitempty"` // omit unless set
+	EnableNotificationsFor string  `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool    `json:"sslExpirationReminder,omitempty"`
 }
 
 // UpdateIntegrationRequest represents the request to update an existing integration.

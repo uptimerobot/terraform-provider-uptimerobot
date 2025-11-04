@@ -183,6 +183,8 @@ type integrationResourceModel struct {
 	SendAsPostParameters   types.Bool   `tfsdk:"send_as_post_parameters"`
 	PostValue              types.String `tfsdk:"post_value"`
 	Priority               types.String `tfsdk:"priority"`
+	Location               types.String `tfsdk:"location"`
+	AutoResolve            types.Bool   `tfsdk:"auto_resolve"`
 }
 
 // Configure adds the provider configured client to the resource.
@@ -274,6 +276,17 @@ func (r *integrationResource) Schema(_ context.Context, _ resource.SchemaRequest
 					stringvalidator.OneOf("Lowest", "Low", "Normal", "High", "Emergency"),
 				},
 			},
+			"location": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "PagerDuty service region. One of: `us`, `eu`.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("us", "eu"),
+				},
+			},
+			"auto_resolve": schema.BoolAttribute{
+				Optional:            true,
+				MarkdownDescription: "PagerDuty: auto-resolve incidents after up event.",
+			},
 		},
 	}
 }
@@ -299,6 +312,21 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			"Ignoring priority for non-pushover integration",
 			"The 'priority' attribute only applies when type = 'pushover'. The provided value will be ignored.",
 		)
+	}
+
+	if t != "pagerduty" {
+		if !plan.Location.IsNull() && !plan.Location.IsUnknown() && plan.Location.ValueString() != "" {
+			resp.Diagnostics.AddWarning(
+				"Ignoring `location` for non-PagerDuty integration",
+				"The 'location' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
+			)
+		}
+		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+			resp.Diagnostics.AddWarning(
+				"Ignoring `auto_resolve` for non-PagerDuty integration",
+				"The 'auto_resolve' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
+			)
+		}
 	}
 
 	switch t {
@@ -395,6 +423,36 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			FriendlyName:           plan.Name.ValueString(),
 			UserKey:                plan.Value.ValueString(),
 			Priority:               prio,
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "pagerduty":
+		// guard for key length
+		if len(plan.Value.ValueString()) < 32 {
+			resp.Diagnostics.AddError(
+				"Invalid PagerDuty integration key",
+				"The `value` for PagerDuty must be at least 32 characters.",
+			)
+			return
+		}
+
+		var loc *string
+		if !plan.Location.IsNull() && !plan.Location.IsUnknown() {
+			v := strings.ToLower(plan.Location.ValueString())
+			loc = &v
+		}
+
+		var ar *bool
+		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+			b := plan.AutoResolve.ValueBool()
+			ar = &b
+		}
+
+		integrationData = &client.PagerDutyIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			IntegrationKey:         plan.Value.ValueString(),
+			Location:               loc,
+			AutoResolve:            ar,
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
@@ -506,6 +564,8 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.CustomValue = webhookFields.CustomValue
 
 		state.Priority = types.StringNull()
+		state.Location = types.StringNull()
+		state.AutoResolve = types.BoolNull()
 
 	case "mattermost":
 		// For Mattermost, keep "" as "" (do NOT normalize to null) to avoid perpetual diffs after clear.
@@ -516,6 +576,8 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.SendAsPostParameters = types.BoolNull()
 		state.PostValue = types.StringNull()
 		state.Priority = types.StringNull()
+		state.Location = types.StringNull()
+		state.AutoResolve = types.BoolNull()
 
 	case "pushover":
 		if !state.Priority.IsNull() && !state.Priority.IsUnknown() {
@@ -528,6 +590,32 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 			state.Priority = types.StringNull()
 		}
 
+		state.SendAsJSON = types.BoolNull()
+		state.SendAsQueryString = types.BoolNull()
+		state.SendAsPostParameters = types.BoolNull()
+		state.PostValue = types.StringNull()
+		state.Location = types.StringNull()
+		state.AutoResolve = types.BoolNull()
+
+	case "pagerduty":
+
+		if !state.Location.IsNull() && !state.Location.IsUnknown() {
+			if strings.TrimSpace(integration.Location) == "" {
+				state.Location = types.StringNull()
+			} else {
+				state.Location = types.StringValue(strings.ToLower(integration.Location))
+			}
+		} else {
+			state.Location = types.StringNull()
+		}
+
+		if !state.AutoResolve.IsNull() && !state.AutoResolve.IsUnknown() {
+			state.AutoResolve = types.BoolValue(integration.AutoResolve)
+		} else {
+			state.AutoResolve = types.BoolNull()
+		}
+
+		state.Priority = types.StringNull()
 		state.SendAsJSON = types.BoolNull()
 		state.SendAsQueryString = types.BoolNull()
 		state.SendAsPostParameters = types.BoolNull()
@@ -547,6 +635,8 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.SendAsPostParameters = types.BoolNull()
 		state.PostValue = types.StringNull()
 		state.Priority = types.StringNull()
+		state.Location = types.StringNull()
+		state.AutoResolve = types.BoolNull()
 	}
 
 	// Set refreshed state
@@ -587,6 +677,21 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 			"Ignoring priority for non-pushover integration",
 			"The 'priority' attribute only applies when type = 'pushover'. The provided value will be ignored.",
 		)
+	}
+
+	if t != "pagerduty" {
+		if !plan.Location.IsNull() && !plan.Location.IsUnknown() && plan.Location.ValueString() != "" {
+			resp.Diagnostics.AddWarning(
+				"Ignoring `location` for non-PagerDuty integration",
+				"The 'location' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
+			)
+		}
+		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+			resp.Diagnostics.AddWarning(
+				"Ignoring `auto_resolve` for non-PagerDuty integration",
+				"The 'auto_resolve' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
+			)
+		}
 	}
 
 	switch t {
@@ -684,6 +789,36 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 			FriendlyName:           plan.Name.ValueString(),
 			UserKey:                plan.Value.ValueString(),
 			Priority:               prio,
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "pagerduty":
+		// guard for key length
+		if len(plan.Value.ValueString()) < 32 {
+			resp.Diagnostics.AddError(
+				"Invalid PagerDuty integration key",
+				"The `value` for PagerDuty must be at least 32 characters.",
+			)
+			return
+		}
+
+		var loc *string
+		if !plan.Location.IsNull() && !plan.Location.IsUnknown() {
+			v := strings.ToLower(plan.Location.ValueString())
+			loc = &v
+		}
+
+		var ar *bool
+		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+			b := plan.AutoResolve.ValueBool()
+			ar = &b
+		}
+
+		integrationData = &client.PagerDutyIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			IntegrationKey:         plan.Value.ValueString(),
+			Location:               loc,
+			AutoResolve:            ar,
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
