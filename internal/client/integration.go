@@ -102,6 +102,14 @@ type MattermostIntegrationData struct {
 	SSLExpirationReminder  bool    `json:"sslExpirationReminder,omitempty"`
 }
 
+// SplunkIntegrationData represents the data structure for Splunk integrations.
+type SplunkIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	URLToNotify            string `json:"urlToNotify"`
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
 // UpdateIntegrationRequest represents the request to update an existing integration.
 // Uses the same structure as CreateIntegrationRequest.
 type UpdateIntegrationRequest struct {

@@ -355,7 +355,13 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
-
+	case "splunk":
+		integrationData = &client.SplunkIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			URLToNotify:            plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
 	default:
 		// For other integration types, use a generic structure
 		integrationData = map[string]interface{}{
@@ -579,6 +585,13 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 			FriendlyName:           plan.Name.ValueString(),
 			WebhookURL:             plan.Value.ValueString(),
 			CustomValue:            cv, // nil omit, "" clear, "text" set
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "splunk":
+		integrationData = &client.SplunkIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			URLToNotify:            plan.Value.ValueString(),
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
