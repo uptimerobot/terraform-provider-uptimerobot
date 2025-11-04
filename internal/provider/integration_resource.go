@@ -470,6 +470,11 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		// For Mattermost, keep "" as "" (do NOT normalize to null) to avoid perpetual diffs after clear.
 		state.CustomValue = types.StringValue(integration.CustomValue) // may be ""
 
+		state.SendAsJSON = types.BoolNull()
+		state.SendAsQueryString = types.BoolNull()
+		state.SendAsPostParameters = types.BoolNull()
+		state.PostValue = types.StringNull()
+
 	default:
 		// For non-webhook integrations, normalize empty to null to avoid perpetual diffs
 		if strings.TrimSpace(integration.CustomValue) == "" {
