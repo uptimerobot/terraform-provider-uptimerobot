@@ -93,6 +93,15 @@ type PushbulletIntegrationData struct {
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
 }
 
+// MattermostIntegrationData represents the data structure for Mattermost integrations.
+type MattermostIntegrationData struct {
+	FriendlyName           string  `json:"friendlyName,omitempty"`
+	WebhookURL             string  `json:"webhookURL"`
+	CustomValue            *string `json:"customValue,omitempty"`
+	EnableNotificationsFor string  `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool    `json:"sslExpirationReminder,omitempty"`
+}
+
 // UpdateIntegrationRequest represents the request to update an existing integration.
 // Uses the same structure as CreateIntegrationRequest.
 type UpdateIntegrationRequest struct {

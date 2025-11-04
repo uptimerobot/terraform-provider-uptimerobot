@@ -341,6 +341,21 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
+	case "mattermost":
+		var cv *string
+		if !plan.CustomValue.IsNull() && !plan.CustomValue.IsUnknown() {
+			v := plan.CustomValue.ValueString() // may be "" to clear
+			cv = &v
+		}
+
+		integrationData = &client.MattermostIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
+			CustomValue:            cv, // nil omit, "" clear, "text" set
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+
 	default:
 		// For other integration types, use a generic structure
 		integrationData = map[string]interface{}{
@@ -426,8 +441,8 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	state.SSLExpirationReminder = types.BoolValue(integration.SSLExpirationReminder)
 
 	// Handle integration-specific fields based on type
-	integrationType := TransformIntegrationTypeFromAPI(integration.Type)
-	if integrationType == "webhook" {
+	switch TransformIntegrationTypeFromAPI(integration.Type) {
+	case "webhook":
 		// Parse webhook configuration using helper function
 		webhookFields, err := parseWebhookStateFields(integration.CustomValue)
 		if err != nil {
@@ -444,7 +459,12 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.SendAsPostParameters = webhookFields.SendAsPostParameters
 		state.PostValue = webhookFields.PostValue
 		state.CustomValue = webhookFields.CustomValue
-	} else {
+
+	case "mattermost":
+		// For Mattermost, keep "" as "" (do NOT normalize to null) to avoid perpetual diffs after clear.
+		state.CustomValue = types.StringValue(integration.CustomValue) // may be ""
+
+	default:
 		// For non-webhook integrations, normalize empty to null to avoid perpetual diffs
 		if strings.TrimSpace(integration.CustomValue) == "" {
 			state.CustomValue = types.StringNull()
@@ -545,6 +565,20 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		integrationData = &client.PushbulletIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
 			AccessToken:            plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "mattermost":
+		var cv *string
+		if !plan.CustomValue.IsNull() && !plan.CustomValue.IsUnknown() {
+			v := plan.CustomValue.ValueString() // may be "" to clear
+			cv = &v
+		}
+
+		integrationData = &client.MattermostIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
+			CustomValue:            cv, // nil omit, "" clear, "text" set
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
