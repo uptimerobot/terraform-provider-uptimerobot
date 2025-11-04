@@ -120,6 +120,7 @@ func upgradeMonitorFromV0(ctx context.Context, prior monitorV0Model) (monitorRes
 		AssignedAlertContacts:    acSet,
 		ResponseTimeThreshold:    prior.ResponseTimeThreshold,
 		RegionalData:             prior.RegionalData,
+		Config:                   types.ObjectNull(configObjectType().AttrTypes),
 	}
 
 	up.PostValueKV = types.MapNull(types.StringType)
@@ -409,6 +410,7 @@ func upgradeMonitorFromV1(ctx context.Context, prior monitorV1Model) (monitorRes
 		AssignedAlertContacts:    acSet,
 		ResponseTimeThreshold:    prior.ResponseTimeThreshold,
 		RegionalData:             prior.RegionalData,
+		Config:                   types.ObjectNull(configObjectType().AttrTypes),
 	}
 
 	up.PostValueKV = types.MapNull(types.StringType)
@@ -693,6 +695,7 @@ func upgradeMonitorFromV2(ctx context.Context, prior monitorV2Model) (monitorRes
 		AssignedAlertContacts:    acSet, // converted
 		ResponseTimeThreshold:    prior.ResponseTimeThreshold,
 		RegionalData:             prior.RegionalData,
+		Config:                   types.ObjectNull(configObjectType().AttrTypes),
 	}
 
 	up.PostValueKV = types.MapNull(types.StringType)
@@ -985,6 +988,8 @@ func upgradeMonitorFromV3(ctx context.Context, prior monitorV3Model) (monitorRes
 	codesSet, d := ensureCodesSetFromList(ctx, prior.SuccessHTTPResponseCodes)
 	diags.Append(d...)
 
+	config := retypeConfigToCurrent(ctx, prior.Config)
+
 	up := monitorResourceModel{
 		Type:                     prior.Type,
 		Interval:                 prior.Interval,
@@ -1019,7 +1024,7 @@ func upgradeMonitorFromV3(ctx context.Context, prior monitorV3Model) (monitorRes
 		ResponseTimeThreshold: prior.ResponseTimeThreshold,
 		RegionalData:          prior.RegionalData,
 		CheckSSLErrors:        prior.CheckSSLErrors,
-		Config:                prior.Config,
+		Config:                config,
 	}
 
 	return up, diags
@@ -1316,6 +1321,8 @@ func upgradeMonitorFromV4(ctx context.Context, prior monitorV4Model) (monitorRes
 	acSet, d := ensureAlertContactDefaults(ctx, prior.AssignedAlertContacts)
 	diags.Append(d...)
 
+	config := retypeConfigToCurrent(ctx, prior.Config)
+
 	up := monitorResourceModel{
 		Type:                     prior.Type,
 		Interval:                 prior.Interval,
@@ -1353,7 +1360,7 @@ func upgradeMonitorFromV4(ctx context.Context, prior monitorV4Model) (monitorRes
 		ResponseTimeThreshold: prior.ResponseTimeThreshold,
 		RegionalData:          prior.RegionalData,
 		CheckSSLErrors:        prior.CheckSSLErrors,
-		Config:                prior.Config,
+		Config:                config,
 	}
 
 	return up, diags
