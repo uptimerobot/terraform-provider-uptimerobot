@@ -182,6 +182,7 @@ type integrationResourceModel struct {
 	SendAsQueryString      types.Bool   `tfsdk:"send_as_query_string"`
 	SendAsPostParameters   types.Bool   `tfsdk:"send_as_post_parameters"`
 	PostValue              types.String `tfsdk:"post_value"`
+	Priority               types.String `tfsdk:"priority"`
 }
 
 // Configure adds the provider configured client to the resource.
@@ -266,6 +267,13 @@ func (r *integrationResource) Schema(_ context.Context, _ resource.SchemaRequest
 					jsonEquivalentPlanModifier{},
 				},
 			},
+			"priority": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "Pushover priority (Lowest, Low, Normal, High, Emergency).",
+				Validators: []validator.String{
+					stringvalidator.OneOf("Lowest", "Low", "Normal", "High", "Emergency"),
+				},
+			},
 		},
 	}
 }
@@ -284,7 +292,16 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 	integrationTypeAPI := TransformIntegrationTypeToAPI(plan.Type.ValueString())
 
 	var integrationData interface{}
-	switch strings.ToLower(plan.Type.ValueString()) {
+
+	t := strings.ToLower(plan.Type.ValueString())
+	if t != "pushover" && !plan.Priority.IsNull() && !plan.Priority.IsUnknown() && plan.Priority.ValueString() != "" {
+		resp.Diagnostics.AddWarning(
+			"Ignoring priority for non-pushover integration",
+			"The 'priority' attribute only applies when type = 'pushover'. The provided value will be ignored.",
+		)
+	}
+
+	switch t {
 	case "slack":
 		integrationData = &client.SlackIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
@@ -366,6 +383,18 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 		integrationData = &client.TelegramIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
 			CustomValue:            plan.CustomValue.ValueString(), // chat ID
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "pushover":
+		var prio string
+		if !plan.Priority.IsNull() && !plan.Priority.IsUnknown() {
+			prio = plan.Priority.ValueString()
+		}
+		integrationData = &client.PushoverIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			UserKey:                plan.Value.ValueString(),
+			Priority:               prio,
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
@@ -476,9 +505,28 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.PostValue = webhookFields.PostValue
 		state.CustomValue = webhookFields.CustomValue
 
+		state.Priority = types.StringNull()
+
 	case "mattermost":
 		// For Mattermost, keep "" as "" (do NOT normalize to null) to avoid perpetual diffs after clear.
 		state.CustomValue = types.StringValue(integration.CustomValue) // may be ""
+
+		state.SendAsJSON = types.BoolNull()
+		state.SendAsQueryString = types.BoolNull()
+		state.SendAsPostParameters = types.BoolNull()
+		state.PostValue = types.StringNull()
+		state.Priority = types.StringNull()
+
+	case "pushover":
+		if !state.Priority.IsNull() && !state.Priority.IsUnknown() {
+			if strings.TrimSpace(integration.Priority) == "" {
+				state.Priority = types.StringNull()
+			} else {
+				state.Priority = types.StringValue(integration.Priority)
+			}
+		} else {
+			state.Priority = types.StringNull()
+		}
 
 		state.SendAsJSON = types.BoolNull()
 		state.SendAsQueryString = types.BoolNull()
@@ -498,6 +546,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.SendAsQueryString = types.BoolNull()
 		state.SendAsPostParameters = types.BoolNull()
 		state.PostValue = types.StringNull()
+		state.Priority = types.StringNull()
 	}
 
 	// Set refreshed state
@@ -531,7 +580,16 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 	integrationTypeAPI := TransformIntegrationTypeToAPI(plan.Type.ValueString())
 
 	var integrationData interface{}
-	switch strings.ToLower(plan.Type.ValueString()) {
+
+	t := strings.ToLower(plan.Type.ValueString())
+	if t != "pushover" && !plan.Priority.IsNull() && !plan.Priority.IsUnknown() && plan.Priority.ValueString() != "" {
+		resp.Diagnostics.AddWarning(
+			"Ignoring priority for non-pushover integration",
+			"The 'priority' attribute only applies when type = 'pushover'. The provided value will be ignored.",
+		)
+	}
+
+	switch t {
 	case "slack":
 		integrationData = &client.SlackIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
@@ -614,6 +672,18 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		integrationData = &client.TelegramIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
 			CustomValue:            plan.CustomValue.ValueString(), // chat ID
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "pushover":
+		var prio string
+		if !plan.Priority.IsNull() && !plan.Priority.IsUnknown() {
+			prio = plan.Priority.ValueString()
+		}
+		integrationData = &client.PushoverIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			UserKey:                plan.Value.ValueString(),
+			Priority:               prio,
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}

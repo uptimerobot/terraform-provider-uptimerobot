@@ -21,6 +21,9 @@ type Integration struct {
 	SendAsJSON        bool   `json:"sendAsJSON,omitempty"`
 	SendAsQueryString bool   `json:"sendAsQueryString,omitempty"`
 	PostValue         string `json:"postValue,omitempty"`
+
+	// Pushover specific field
+	Priority string `json:"priority,omitempty"`
 }
 
 // CreateIntegrationRequest represents the request to create a new integration.
@@ -115,6 +118,15 @@ type SplunkIntegrationData struct {
 type TelegramIntegrationData struct {
 	FriendlyName           string `json:"friendlyName,omitempty"`
 	CustomValue            string `json:"customValue,omitempty"` // chat ID
+	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+}
+
+// PushoverIntegrationData represents the data structure for Pushover integrations.
+type PushoverIntegrationData struct {
+	FriendlyName           string `json:"friendlyName,omitempty"`
+	UserKey                string `json:"userKey"`
+	Priority               string `json:"priority,omitempty"` //  (Lowest|Low|Normal|High|Emergency)
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
 }
