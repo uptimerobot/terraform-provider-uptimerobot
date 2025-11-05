@@ -60,7 +60,7 @@ func validateGracePeriodAndTimeout(
 ) {
 
 	switch monitorType {
-	case "HEARTBEAT":
+	case MonitorTypeHEARTBEAT:
 		// heartbeat MUST use grace_period and MUST NOT use timeout
 		if data.GracePeriod.IsNull() || data.GracePeriod.IsUnknown() {
 			resp.Diagnostics.AddAttributeError(
@@ -77,7 +77,7 @@ func validateGracePeriodAndTimeout(
 			)
 		}
 
-	case "DNS", "PING":
+	case MonitorTypeDNS, MonitorTypePING:
 
 		// do not require a timeout
 		if !data.Timeout.IsNull() && !data.Timeout.IsUnknown() {
@@ -189,7 +189,7 @@ func validateConfig(
 	sslTouched := sslRemTouched || sslDaysTouched || sslCheckErrTouched
 
 	// Only HTTP/KEYWORD may use SSL settings
-	if sslTouched && monitorType != "HTTP" && monitorType != "KEYWORD" {
+	if sslTouched && monitorType != MonitorTypeHTTP && monitorType != MonitorTypeKEYWORD {
 		if sslRemTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("ssl_expiration_reminder"),
@@ -215,7 +215,7 @@ func validateConfig(
 	}
 
 	// If type is HTTP/KEYWORD but URL is not HTTPS, block SSL settings
-	if sslTouched && (monitorType == "HTTP" || monitorType == "KEYWORD") &&
+	if sslTouched && (monitorType == MonitorTypeHTTP || monitorType == MonitorTypeKEYWORD) &&
 		!data.URL.IsNull() && !data.URL.IsUnknown() &&
 		!strings.HasPrefix(strings.ToLower(data.URL.ValueString()), "https://") {
 
@@ -245,7 +245,7 @@ func validateConfig(
 
 	// dns validation
 
-	if !cfg.DNSRecords.IsNull() && !cfg.DNSRecords.IsUnknown() && monitorType != "DNS" {
+	if !cfg.DNSRecords.IsNull() && !cfg.DNSRecords.IsUnknown() && monitorType != MonitorTypeDNS {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("config").AtName("dns_records"),
 			"dns_records only allowed for DNS monitors",
@@ -255,7 +255,7 @@ func validateConfig(
 
 	// Omitting the whole config block preserves/clears remote, but if you include it for DNS,
 	// you typically want to manage dns_records explicitly.
-	if monitorType == "DNS" &&
+	if monitorType == MonitorTypeDNS &&
 		!data.Config.IsNull() && !data.Config.IsUnknown() &&
 		(cfg.DNSRecords.IsNull() || cfg.DNSRecords.IsUnknown()) {
 		resp.Diagnostics.AddAttributeWarning(
@@ -300,7 +300,7 @@ func validatePortMonitor(
 	data *monitorResourceModel,
 	resp *resource.ValidateConfigResponse,
 ) {
-	if !data.Port.IsNull() && !data.Port.IsUnknown() && monitorType != "PORT" {
+	if !data.Port.IsNull() && !data.Port.IsUnknown() && monitorType != MonitorTypePORT {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("port"),
 			"port not allowed for non-PORT monitor",
@@ -309,7 +309,7 @@ func validatePortMonitor(
 		return
 	}
 
-	if monitorType == "PORT" && (data.Port.IsNull() || data.Port.IsUnknown()) {
+	if monitorType == MonitorTypePORT && (data.Port.IsNull() || data.Port.IsUnknown()) {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("port"),
 			"Port required for PORT monitor",
@@ -324,7 +324,7 @@ func validateKeywordMonitor(
 	data *monitorResourceModel,
 	resp *resource.ValidateConfigResponse,
 ) {
-	if monitorType != "KEYWORD" {
+	if monitorType != MonitorTypeKEYWORD {
 		return
 	}
 

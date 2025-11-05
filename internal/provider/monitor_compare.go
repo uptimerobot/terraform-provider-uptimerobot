@@ -48,12 +48,12 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	}
 	t := strings.ToUpper(string(req.Type))
 	switch t {
-	case "HEARTBEAT":
+	case MonitorTypeHEARTBEAT:
 		if req.GracePeriod != nil {
 			v := *req.GracePeriod
 			c.GracePeriod = &v
 		}
-	case "DNS", "PING":
+	case MonitorTypeDNS, MonitorTypePING:
 		// DO NOT assert timeout and grace_period for DNS and PING backend ignores them
 
 	default: // HTTP, KEYWORD, PORT
@@ -178,12 +178,12 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 	}
 	t := strings.ToUpper(string(req.Type))
 	switch t {
-	case "HEARTBEAT":
+	case MonitorTypeHEARTBEAT:
 		if req.GracePeriod != nil {
 			v := *req.GracePeriod
 			c.GracePeriod = &v
 		}
-	case "DNS", "PING":
+	case MonitorTypeDNS, MonitorTypePING:
 		// DO NOT assert timeout and grace_period for DNS and PING backend ignores them
 
 	default: // HTTP, KEYWORD, PORT

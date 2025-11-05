@@ -83,13 +83,13 @@ func validateUpdateHighLevel(plan monitorResourceModel, resp *resource.UpdateRes
 	t := plan.Type.ValueString()
 
 	// PORT requires port to be set
-	if t == "PORT" && plan.Port.IsNull() {
+	if t == MonitorTypePORT && plan.Port.IsNull() {
 		resp.Diagnostics.AddError("Port required for PORT monitor", "Port must be specified for PORT monitor type")
 		return false
 	}
 
 	// KEYWORD requires keyword_type & keyword_value to be set
-	if t == "KEYWORD" {
+	if t == MonitorTypeKEYWORD {
 		if plan.KeywordType.IsNull() {
 			resp.Diagnostics.AddError("KeywordType required for KEYWORD monitor",
 				"KeywordType must be ALERT_EXISTS or ALERT_NOT_EXISTS")
@@ -151,7 +151,7 @@ func buildUpdateRequest(
 		req.KeywordValue = plan.KeywordValue.ValueString()
 	}
 
-	if strings.ToUpper(plan.Type.ValueString()) == "KEYWORD" {
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD {
 		// try plan
 		kct := keywordCaseTypeToPtrFromString(plan.KeywordCaseType)
 		// fall back to state to keep it sticky on the API
@@ -218,7 +218,7 @@ func setTimeoutAndGraceOnUpdate(_ context.Context, plan monitorResourceModel, re
 	zero := 0
 
 	switch strings.ToUpper(plan.Type.ValueString()) {
-	case "HEARTBEAT":
+	case MonitorTypeHEARTBEAT:
 		// heartbeat: send grace and omit timeout
 		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
 			v := int(plan.GracePeriod.ValueInt64())
@@ -228,11 +228,11 @@ func setTimeoutAndGraceOnUpdate(_ context.Context, plan monitorResourceModel, re
 		}
 		req.Timeout = nil
 
-	case "DNS":
+	case MonitorTypeDNS:
 		req.GracePeriod = &zero
 		req.Timeout = &zero
 
-	case "PING":
+	case MonitorTypePING:
 		req.GracePeriod = &zero
 		req.Timeout = &zero
 
@@ -399,7 +399,7 @@ func applyUpdatedMonitorToState(
 	out.Status = prev.Status
 
 	// keyword case type from API
-	if strings.ToUpper(plan.Type.ValueString()) != "KEYWORD" {
+	if strings.ToUpper(plan.Type.ValueString()) != MonitorTypeKEYWORD {
 		out.KeywordCaseType = types.StringNull()
 	} else if plan.KeywordCaseType.IsNull() || plan.KeywordCaseType.IsUnknown() {
 		out.KeywordCaseType = types.StringNull()
@@ -496,10 +496,10 @@ func applyUpdatedMonitorToState(
 
 	// timeout and grace per monitor type
 	switch strings.ToUpper(plan.Type.ValueString()) {
-	case "HEARTBEAT":
+	case MonitorTypeHEARTBEAT:
 		out.Timeout = types.Int64Null()
 		out.GracePeriod = types.Int64Value(int64(m.GracePeriod))
-	case "DNS", "PING":
+	case MonitorTypeDNS, MonitorTypePING:
 		out.Timeout = types.Int64Null()
 		out.GracePeriod = types.Int64Null()
 	default:

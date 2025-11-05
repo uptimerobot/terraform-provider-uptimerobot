@@ -92,7 +92,7 @@ func (r *monitorResource) buildCreateRequest(
 	}
 
 	// keyword_case_type. From string to numeric
-	if strings.ToUpper(plan.Type.ValueString()) == "KEYWORD" {
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD {
 		if !plan.KeywordCaseType.IsNull() && !plan.KeywordCaseType.IsUnknown() {
 			switch plan.KeywordCaseType.ValueString() {
 			case "CaseSensitive":
@@ -169,7 +169,7 @@ func (r *monitorResource) applyTimeoutAndGrace(plan *monitorResourceModel, req *
 	zero := 0
 	defaultTimeout := 30
 	switch strings.ToUpper(plan.Type.ValueString()) {
-	case "HEARTBEAT":
+	case MonitorTypeHEARTBEAT:
 		// heartbeat uses grace, never timeout
 		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
 			v := int(plan.GracePeriod.ValueInt64())
@@ -178,12 +178,12 @@ func (r *monitorResource) applyTimeoutAndGrace(plan *monitorResourceModel, req *
 			req.GracePeriod = nil
 		}
 		req.Timeout = nil
-	case "DNS":
+	case MonitorTypeDNS:
 		// currently no timeout or grace, send zeros
 		req.GracePeriod = &zero
 		req.Timeout = &zero
 
-	case "PING":
+	case MonitorTypePING:
 		req.GracePeriod = &zero
 		req.Timeout = &zero
 	default: // HTTP, KEYWORD, PORT
@@ -401,14 +401,14 @@ func (r *monitorResource) buildStateAfterCreate(
 
 	// Method presence in state only for HTTP or KEYWORD
 	switch strings.ToUpper(plan.Type.ValueString()) {
-	case "HTTP", "KEYWORD":
+	case MonitorTypeHTTP, MonitorTypeKEYWORD:
 		plan.HTTPMethodType = types.StringValue(effMethod)
 	default:
 		plan.HTTPMethodType = types.StringNull()
 	}
 
 	// keyword_case_type number transform to string
-	if strings.ToUpper(plan.Type.ValueString()) != "KEYWORD" {
+	if strings.ToUpper(plan.Type.ValueString()) != MonitorTypeKEYWORD {
 		plan.KeywordCaseType = types.StringNull()
 	} else if plan.KeywordCaseType.IsNull() || plan.KeywordCaseType.IsUnknown() {
 		plan.KeywordCaseType = types.StringNull()
@@ -422,10 +422,10 @@ func (r *monitorResource) buildStateAfterCreate(
 
 	// timeout and grace reflection
 	switch strings.ToUpper(plan.Type.ValueString()) {
-	case "HEARTBEAT":
+	case MonitorTypeHEARTBEAT:
 		plan.Timeout = types.Int64Null()
 		plan.GracePeriod = types.Int64Value(int64(api.GracePeriod))
-	case "DNS", "PING":
+	case MonitorTypeDNS, MonitorTypePING:
 		plan.Timeout = types.Int64Null()
 		plan.GracePeriod = types.Int64Null()
 	default: // HTTP, KEYWORD, PORT

@@ -30,6 +30,13 @@ import (
 const (
 	PostTypeRawJSON  = "RAW_JSON"
 	PostTypeKeyValue = "KEY_VALUE"
+
+	MonitorTypeHTTP      = "HTTP"
+	MonitorTypeKEYWORD   = "KEYWORD"
+	MonitorTypePING      = "PING"
+	MonitorTypePORT      = "PORT"
+	MonitorTypeHEARTBEAT = "HEARTBEAT"
+	MonitorTypeDNS       = "DNS"
 )
 
 // NewMonitorResource is a helper function to simplify the provider implementation.
@@ -86,7 +93,14 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)",
 				Required:    true,
 				Validators: []validator.String{
-					stringvalidator.OneOf("HTTP", "KEYWORD", "PING", "PORT", "HEARTBEAT", "DNS"),
+					stringvalidator.OneOf(
+						MonitorTypeHTTP,
+						MonitorTypeKEYWORD,
+						MonitorTypePING,
+						MonitorTypePORT,
+						MonitorTypeHEARTBEAT,
+						MonitorTypeDNS,
+					),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -753,7 +767,7 @@ func isMethodHTTPLike(t types.String) bool {
 		return false
 	}
 	switch strings.ToUpper(t.ValueString()) {
-	case "HTTP", "KEYWORD":
+	case MonitorTypeHTTP, MonitorTypeKEYWORD:
 		return true
 	default:
 		return false

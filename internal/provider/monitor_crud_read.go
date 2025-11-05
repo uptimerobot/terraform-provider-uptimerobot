@@ -74,10 +74,10 @@ func readIsImport(s monitorResourceModel) bool {
 func readApplyTypeTiming(state *monitorResourceModel, m *client.Monitor) {
 	t := strings.ToUpper(state.Type.ValueString())
 	switch t {
-	case "HEARTBEAT":
+	case MonitorTypeHEARTBEAT:
 		state.Timeout = types.Int64Null()
 		state.GracePeriod = types.Int64Value(int64(m.GracePeriod))
-	case "DNS", "PING":
+	case MonitorTypeDNS, MonitorTypePING:
 		if state.Timeout.IsNull() {
 			state.Timeout = types.Int64Null()
 		}
@@ -180,7 +180,7 @@ func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isI
 	// keyword_case_type — reflect only when importing or when user manages it
 	managed := isImport || (!state.KeywordCaseType.IsNull() && !state.KeywordCaseType.IsUnknown())
 
-	if strings.ToUpper(state.Type.ValueString()) == "KEYWORD" {
+	if strings.ToUpper(state.Type.ValueString()) == MonitorTypeKEYWORD {
 		if managed {
 			switch m.KeywordCaseType {
 			case 0:
