@@ -23,8 +23,6 @@ const (
 	defaultTimeout = 30 * time.Second
 )
 
-var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-
 // Client represents an Uptimerobot API client.
 type Client struct {
 	baseURL      string
@@ -342,7 +340,7 @@ func backoffDelay(base time.Duration, attempt int) time.Duration {
 	}
 	d := base << attempt
 	// +/- 25% jitter
-	j := time.Duration(rng.Int63n(int64(d/2))) - d/4
+	j := time.Duration(rand.Int63n(int64(d/2))) - d/4
 	return d + j
 }
 
