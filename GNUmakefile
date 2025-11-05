@@ -1,3 +1,16 @@
+# Minimal dev build
+BIN        := terraform-provider-uptimerobot
+OUT_DIR    := ./bin
+DEV_VER    := 0.0.0-dev
+LDFLAGS    := -X 'main.version=$(DEV_VER)'
+
+.PHONY: build-dev clean
+build-dev:
+	@mkdir -p $(OUT_DIR)
+	go build -trimpath -ldflags "$(LDFLAGS)" \
+		-o $(OUT_DIR)/$(BIN)_v$(DEV_VER) .
+
+
 default: testacc
 
 # Run acceptance tests
@@ -48,4 +61,4 @@ pre-commit: tidy fmt generate lint test
 .PHONY: clean
 clean:
 	go clean -testcache
-	rm -rf ./bin/
+	rm -rf $(OUT_DIR)
