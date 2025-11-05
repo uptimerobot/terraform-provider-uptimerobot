@@ -366,8 +366,8 @@ Advanced monitor configuration.
 
 **DNS-only rules**
 - For ` + "`type = \"DNS\"`" + `:
-  - **Create**: ` + "`config`" + ` **must** include ` + "`dns_records`" + ` (it may be empty: ` + "`dns_records = {}`" + `).
-  - **Update**: if you include ` + "`config`" + `, you **must** include ` + "`dns_records`" + `. To preserve server values, omit ` + "`config`" + `.
+  - **Create:** ` + "`config`" + ` **must** include ` + "`dns_records`" + ` (it may be empty: ` + "`dns_records = {}`" + `).
+  - **Update:** if you include ` + "`config`" + `, you **must** include ` + "`dns_records`" + `. To preserve server values, omit ` + "`config`" + `.
 
 **Validation**
 - ` + "`dns_records`" + ` is only valid for DNS monitors.
