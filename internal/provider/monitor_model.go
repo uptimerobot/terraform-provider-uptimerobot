@@ -65,8 +65,8 @@ type dnsRecordsModel struct {
 }
 
 type configTF struct {
-	SSLExpirationPeriodDays types.Set        `tfsdk:"ssl_expiration_period_days"`
-	DNSRecords              *dnsRecordsModel `tfsdk:"dns_records"`
+	SSLExpirationPeriodDays types.Set    `tfsdk:"ssl_expiration_period_days"`
+	DNSRecords              types.Object `tfsdk:"dns_records"`
 }
 
 func alertContactObjectType() types.ObjectType {

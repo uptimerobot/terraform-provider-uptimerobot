@@ -245,7 +245,7 @@ func validateConfig(
 
 	// dns validation
 
-	if cfg.DNSRecords != nil && strings.ToUpper(monitorType) != "DNS" {
+	if !cfg.DNSRecords.IsNull() && !cfg.DNSRecords.IsUnknown() && monitorType != "DNS" {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("config").AtName("dns_records"),
 			"dns_records only allowed for DNS monitors",
@@ -253,14 +253,16 @@ func validateConfig(
 		)
 	}
 
-	if strings.ToUpper(monitorType) == "DNS" &&
+	// Omitting the whole config block preserves/clears remote, but if you include it for DNS,
+	// you typically want to manage dns_records explicitly.
+	if monitorType == "DNS" &&
 		!data.Config.IsNull() && !data.Config.IsUnknown() &&
-		cfg.DNSRecords == nil {
+		(cfg.DNSRecords.IsNull() || cfg.DNSRecords.IsUnknown()) {
 		resp.Diagnostics.AddAttributeWarning(
 			path.Root("config"),
 			"DNS config provided without dns_records",
 			"You added a config block for a DNS monitor but omitted dns_records. "+
-				"Omit the config block to clear/preserve remote values, or set config.dns_records to manage records explicitly.",
+				"Omit the config block to preserve/clear remote values, or set config.dns_records to manage records explicitly.",
 		)
 	}
 

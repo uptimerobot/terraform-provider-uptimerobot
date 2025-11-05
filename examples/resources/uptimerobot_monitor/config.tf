@@ -72,7 +72,19 @@ resource "uptimerobot_monitor" "dns_records" {
       # Provide only the record lists you want to manage.
       # Omit an attribute to preserve it on server and set [] to clear them.
       a     = ["93.184.216.34"]
-      cname = []
+      cname = [] # clear on server
     }
+  }
+}
+
+# DNS monitor on create require config
+resource "uptimerobot_monitor" "dns" {
+  name     = "example.org DNS"
+  type     = "DNS"
+  url      = "example.org"
+  interval = 300
+
+  config = {
+    dns_records = {} # required for DNS when config is present (API needs config on create)
   }
 }

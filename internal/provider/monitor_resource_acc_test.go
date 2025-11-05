@@ -967,6 +967,9 @@ resource "uptimerobot_monitor" "test" {
     url          = "example.com"
     type         = "DNS"
     interval     = 300
+	config      = {
+		dns_records = {}
+	}
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -1142,6 +1145,9 @@ resource "uptimerobot_monitor" "dns" {
   type     = "DNS"
   url      = "example.com"
   interval = 300
+  config  = {
+	dns_records = {}
+  }
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -2027,8 +2033,8 @@ resource "uptimerobot_monitor" "test" {
 			{
 				Config: cfgAandCNAME,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(res, "config.a.#", "1"),
-					resource.TestCheckResourceAttr(res, "config.cname.#", "0"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.a.#", "1"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "0"),
 				),
 			},
 			// Empty block preserve (mirror) should yield empty plan
@@ -2040,9 +2046,9 @@ resource "uptimerobot_monitor" "test" {
 			{
 				Config: cfgChange,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(res, "config.a.#", "1"),
-					resource.TestCheckResourceAttr(res, "config.cname.#", "0"),
-					resource.TestCheckResourceAttr(res, "config.txt.#", "1"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.a.#", "1"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "0"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.txt.#", "1"),
 				),
 			},
 		},
@@ -2073,7 +2079,7 @@ resource "uptimerobot_monitor" "test" {
 		Steps: []resource.TestStep{
 			{
 				Config:      cfg,
-				ExpectError: regexp.MustCompile(`(?i)dns_records.*(dns).*only.*(dns monitor|meaningful)`),
+				ExpectError: regexp.MustCompile(`(?i)dns_records[\s\S]*only[\s\S]*dns monitors?`),
 			},
 		},
 	})
@@ -2122,7 +2128,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			{
 				Config:      outOfRange,
-				ExpectError: regexp.MustCompile(`(?i)between 0 and 365`),
+				ExpectError: regexp.MustCompile(`(?i)[\s\S]*between\s*0\s*and\s*365`),
 			},
 		},
 	})

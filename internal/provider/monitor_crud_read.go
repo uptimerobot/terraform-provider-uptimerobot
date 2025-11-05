@@ -308,8 +308,9 @@ func readApplyConfig(ctx context.Context, resp *resource.ReadResponse, state *mo
 		return
 	}
 
-	if !state.Config.IsNull() && !state.Config.IsUnknown() && m.Config != nil {
-		cfgState, d := flattenConfigToState(ctx, true /* hadBlock */, state.Config, m.Config)
+	haveBlockConfig := !state.Config.IsNull() && !state.Config.IsUnknown()
+	if haveBlockConfig {
+		cfgState, d := flattenConfigToState(ctx, haveBlockConfig, state.Config, m.Config)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {
 			state.Config = cfgState

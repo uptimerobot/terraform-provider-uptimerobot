@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -284,18 +285,14 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"assigned_alert_contacts": schema.SetNestedAttribute{
 				Description: "Alert contacts to assign. Each item must include `alert_contact_id`, `threshold`, and `recurrence`." +
 					"Free plan have to use 0 for threshold and recurrence",
-				MarkdownDescription: "Alert contacts assigned to this monitor.\n\n" +
-					"**Semantics**\n" +
-					"- Terraform sends exactly what you specify and the provider does **not** inject any hidden defaults.\n" +
-					"- **Free plan:** set `threshold = 0`, `recurrence = 0`.\n" +
-					"- **Paid plans:** set desired minutes (`threshold ≥ 0`, `recurrence ≥ 0`).\n\n" +
-					"**Examples**\n" +
-					"```hcl\n" +
-					"assigned_alert_contacts = [\n" +
-					"  { alert_contact_id = \"123\", threshold = 0,  recurrence = 0  },  # immediate, no repeats\n" +
-					"  { alert_contact_id = \"456\", threshold = 3,  recurrence = 15 },  # after 3m, then every 15m\n" +
-					"]\n" +
-					"```",
+				MarkdownDescription: `
+Alert contacts assigned to this monitor.
+
+**Semantics**
+- Terraform sends exactly what you specify; the provider does not inject hidden defaults.
+- **Free plan**: set ` + "`threshold = 0`" + `, ` + "`recurrence = 0`" + `.
+- **Paid plans**: any non-negative minutes for both fields.
+`,
 				Optional: true,
 				PlanModifiers: []planmodifier.Set{
 					setplanmodifier.UseStateForUnknown(),
@@ -359,14 +356,28 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"config": schema.SingleNestedAttribute{
 				Description: "Advanced monitor configuration. Mirrors the API 'config' object.",
-				MarkdownDescription: "Advanced monitor configuration.\n\n" +
-					"**Semantics**\n" +
-					"- **Omit** the block → **preserve** remote values (no change).\n" +
-					"- `config = {}` (empty block) → treat as **managed but keep** current remote values.\n" +
-					"- `ssl_expiration_period_days = []` → **clear** days on the server; non-empty list sets exactly those days (max 10).\n" +
-					"- `dns_records` is **only meaningful for DNS monitors**; if you provide it on another type, the provider returns a validation error.\n\n" +
-					"**Tip**: To prefer UI edits, use `lifecycle { ignore_changes = [config] }`.",
+				MarkdownDescription: `
+Advanced monitor configuration.
+
+**Semantics**
+- **Omit** the block → **preserve** remote values (no change). *(Exception: DNS on create — see DNS rules.)*
+- ` + "`config = {}`" + ` (empty block) → treat as **managed but keep** current remote values. *(Not allowed for DNS; include ` + "`dns_records`" + ` instead.)*
+- ` + "`ssl_expiration_period_days = []`" + ` → **clear** days on the server; non-empty list sets exactly those days (max 10).
+
+**DNS-only rules**
+- For ` + "`type = \"DNS\"`" + `:
+  - **Create**: ` + "`config`" + ` **must** include ` + "`dns_records`" + ` (it may be empty: ` + "`dns_records = {}`" + `).
+  - **Update**: if you include ` + "`config`" + `, you **must** include ` + "`dns_records`" + `. To preserve server values, omit ` + "`config`" + `.
+
+**Validation**
+- ` + "`dns_records`" + ` is only valid for DNS monitors.
+- SSL settings are valid only for HTTPS URLs on HTTP/KEYWORD monitors.
+`,
+
 				Optional: true,
+				PlanModifiers: []planmodifier.Object{
+					configNullIfOmitted{},
+				},
 				Attributes: map[string]schema.Attribute{
 					"ssl_expiration_period_days": schema.SetAttribute{
 						Description: "Custom reminder days before SSL expiry (0..365). Max 10 items. Only relevant for HTTPS.",
@@ -530,6 +541,50 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringNull())
+	}
+
+	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
+		var cfg configTF
+		resp.Diagnostics.Append(plan.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if !resp.Diagnostics.HasError() {
+			if cfg.SSLExpirationPeriodDays.IsUnknown() {
+				_ = resp.Plan.SetAttribute(ctx, path.Root("config").AtName("ssl_expiration_period_days"), types.SetNull(types.Int64Type))
+			}
+			if cfg.DNSRecords.IsUnknown() {
+				_ = resp.Plan.SetAttribute(ctx, path.Root("config").AtName("dns_records"), types.ObjectNull(dnsRecordsObjectType().AttrTypes))
+			}
+		}
+	}
+
+	// Enforce DNS requirements:
+	// - On CREATE: config and dns_records required.
+	// - On UPDATE: if config present, dns_records must be present. If config is omitted, it's fine, server will preserve,
+	isCreate := req.State.Raw.IsNull()
+	if !plan.Type.IsNull() && !plan.Type.IsUnknown() &&
+		strings.ToUpper(plan.Type.ValueString()) == "DNS" {
+
+		if plan.Config.IsNull() || plan.Config.IsUnknown() {
+			if isCreate {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("config"),
+					"`config` is required for DNS monitors",
+					"Provide `config { dns_records = {} }` or include specific record lists.",
+				)
+			}
+		} else {
+			var cfg configTF
+			diags := plan.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})
+			resp.Diagnostics.Append(diags...)
+			if !resp.Diagnostics.HasError() &&
+				(cfg.DNSRecords.IsNull() || cfg.DNSRecords.IsUnknown()) {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("config").AtName("dns_records"),
+					"`config.dns_records` is required for DNS monitors when `config` is present",
+					"Either omit the whole `config` block to preserve remote values, "+
+						"or provide `config { dns_records = {} }` (and add lists like `a = [\"1.2.3.4\"]` as needed).",
+				)
+			}
+		}
 	}
 
 }
