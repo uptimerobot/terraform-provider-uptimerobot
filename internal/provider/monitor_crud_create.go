@@ -157,8 +157,10 @@ func (r *monitorResource) buildCreateRequest(
 	r.applyTagsFromPlan(ctx, &plan, req, resp)
 	// Assigned alert contacts
 	r.applyAlertContactsFromPlan(ctx, &plan, req, resp)
-	// SSL flags and config. Update to config handling later when DNS will be introduced
-	r.applySSLFlagsFromPlan(ctx, &plan, req, resp)
+	// Flags ssl/domain/follow/check
+	r.applyFlagsFromPlan(&plan, req)
+	// Config
+	r.applyConfigFromPlan(ctx, plan.Config, req, resp)
 
 	return req, effMethod
 }
@@ -177,12 +179,10 @@ func (r *monitorResource) applyTimeoutAndGrace(plan *monitorResourceModel, req *
 		}
 		req.Timeout = nil
 	case "DNS":
-		// currently no timeout or grace, send zeros, use placeholder DNS config
+		// currently no timeout or grace, send zeros
 		req.GracePeriod = &zero
 		req.Timeout = &zero
-		req.Config = &client.MonitorConfig{
-			DNSRecords: &client.DNSRecords{CNAME: []string{"example.com"}},
-		}
+
 	case "PING":
 		req.GracePeriod = &zero
 		req.Timeout = &zero
@@ -345,35 +345,41 @@ func (r *monitorResource) applyAlertContactsFromPlan(
 			return
 		}
 		t := ac.Threshold.ValueInt64()
-		r := ac.Recurrence.ValueInt64()
+		rec := ac.Recurrence.ValueInt64()
 		item.Threshold = &t
-		item.Recurrence = &r
+		item.Recurrence = &rec
 
 		req.AssignedAlertContacts = append(req.AssignedAlertContacts, item)
 	}
 }
 
-func (r *monitorResource) applySSLFlagsFromPlan(
-	ctx context.Context,
-	plan *monitorResourceModel,
-	req *client.CreateMonitorRequest,
-	resp *resource.CreateResponse,
-) {
+func (r *monitorResource) applyFlagsFromPlan(plan *monitorResourceModel, req *client.CreateMonitorRequest) {
 	req.SSLExpirationReminder = plan.SSLExpirationReminder.ValueBool()
 	req.DomainExpirationReminder = plan.DomainExpirationReminder.ValueBool()
 	req.FollowRedirections = plan.FollowRedirections.ValueBool()
-
 	if !plan.CheckSSLErrors.IsNull() && !plan.CheckSSLErrors.IsUnknown() {
 		v := plan.CheckSSLErrors.ValueBool()
 		req.CheckSSLErrors = &v
 	}
+}
 
-	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
-		cfgOut, touched, d := expandSSLConfigToAPI(ctx, plan.Config)
-		resp.Diagnostics.Append(d...)
-		if !resp.Diagnostics.HasError() && touched {
-			req.Config = cfgOut
-		}
+func (r *monitorResource) applyConfigFromPlan(
+	ctx context.Context,
+	cfg types.Object,
+	req *client.CreateMonitorRequest,
+	resp *resource.CreateResponse,
+) {
+	if cfg.IsNull() || cfg.IsUnknown() {
+		// Null on Create = do not send any config - let server apply defaults if there are any
+		return
+	}
+	out, touched, diags := expandConfigToAPI(ctx, cfg)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if touched {
+		req.Config = out
 	}
 }
 
@@ -480,8 +486,9 @@ func (r *monitorResource) buildStateAfterCreate(
 	plan.CheckSSLErrors = types.BoolValue(api.CheckSSLErrors)
 
 	// Config
-	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
-		cfgState, d := flattenSSLConfigToState(ctx, true, plan.Config, api.Config)
+	haveBlockConfig := !plan.Config.IsNull() && !plan.Config.IsUnknown()
+	if haveBlockConfig {
+		cfgState, d := flattenConfigToState(ctx, haveBlockConfig, plan.Config, api.Config)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {
 			plan.Config = cfgState

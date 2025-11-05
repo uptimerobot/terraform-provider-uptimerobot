@@ -82,9 +82,6 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
-
-				// NOTE: DNS monitors currently include a minimal placeholder `config` and do not yet expose DNS record options in the schema.",
-
 				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)",
 				Required:    true,
 				Validators: []validator.String{
@@ -363,19 +360,20 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"config": schema.SingleNestedAttribute{
 				Description: "Advanced monitor configuration. Mirrors the API 'config' object.",
 				MarkdownDescription: "Advanced monitor configuration.\n\n" +
-					"**Semantics**:\n" +
-					"- Omit the block → **clear** config on server (reset to defaults).\n" +
-					"- `config = {}` → **preserve** remote values (no change).\n" +
-					"- `ssl_expiration_period_days = []` → **clear** days on server.\n" +
-					"- Non-empty list → **set** exactly those days.\n\n" +
-					"**Tip**: To let UI changes win, use `lifecycle { ignore_changes = [config] }`.",
+					"**Semantics**\n" +
+					"- **Omit** the block → **preserve** remote values (no change).\n" +
+					"- `config = {}` (empty block) → treat as **managed but keep** current remote values.\n" +
+					"- `ssl_expiration_period_days = []` → **clear** days on the server; non-empty list sets exactly those days (max 10).\n" +
+					"- `dns_records` is **only meaningful for DNS monitors**; if you provide it on another type, the provider returns a validation error.\n\n" +
+					"**Tip**: To prefer UI edits, use `lifecycle { ignore_changes = [config] }`.",
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
 					"ssl_expiration_period_days": schema.SetAttribute{
 						Description: "Custom reminder days before SSL expiry (0..365). Max 10 items. Only relevant for HTTPS.",
 						MarkdownDescription: "Reminder days before SSL expiry (0..365). Max 10 items.\n\n" +
 							"- Omit the attribute → **preserve** remote values.\n" +
-							"- Empty set `[]` → **clear** values on server.",
+							"- Empty set `[]` → **clear** values on server.\n" +
+							"Effective for HTTPS URLs when `ssl_expiration_reminder = true`.",
 						Optional:    true,
 						Computed:    true,
 						ElementType: types.Int64Type,
@@ -384,6 +382,27 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 							setvalidator.ValueInt64sAre(
 								int64validator.Between(0, 365),
 							),
+						},
+					},
+					"dns_records": schema.SingleNestedAttribute{
+						Description: "DNS record lists for DNS monitors. If present on non-DNS types, validation fails.",
+						Optional:    true,
+						Computed:    true,
+						Attributes: map[string]schema.Attribute{
+							"a":      schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"aaaa":   schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"cname":  schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"mx":     schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"ns":     schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"txt":    schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"srv":    schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"ptr":    schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"soa":    schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"spf":    schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"dnskey": schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"ds":     schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"nsec":   schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+							"nsec3":  schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
 						},
 					},
 				},

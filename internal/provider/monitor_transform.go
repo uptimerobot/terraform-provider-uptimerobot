@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,123 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
-
-// SSL transformation helpers
-
-func expandSSLConfigToAPI(ctx context.Context, cfg types.Object) (*client.MonitorConfig, bool, diag.Diagnostics) {
-	var diags diag.Diagnostics
-	if cfg.IsNull() || cfg.IsUnknown() {
-		return nil, false, diags
-	}
-	var tf configTF
-	diags.Append(cfg.As(ctx, &tf, basetypes.ObjectAsOptions{})...)
-	if diags.HasError() {
-		return nil, false, diags
-	}
-	// Only touch if the child is present
-	if !tf.SSLExpirationPeriodDays.IsNull() && !tf.SSLExpirationPeriodDays.IsUnknown() {
-		var days []int64
-		diags.Append(tf.SSLExpirationPeriodDays.ElementsAs(ctx, &days, false)...)
-		if diags.HasError() {
-			return nil, false, diags
-		}
-		// empty slice - clear and non-empty means set
-		return &client.MonitorConfig{SSLExpirationPeriodDays: days}, true, diags
-	}
-	return nil, false, diags
-}
-
-// When user removes the whole config block, only attributes that were managed should be cleared.
-func buildClearSSLConfigFromState(ctx context.Context, prev types.Object) (*client.MonitorConfig, bool, diag.Diagnostics) {
-	var diags diag.Diagnostics
-	if prev.IsNull() || prev.IsUnknown() {
-		return nil, false, diags
-	}
-	var tf configTF
-	diags.Append(prev.As(ctx, &tf, basetypes.ObjectAsOptions{})...)
-	if diags.HasError() {
-		return nil, false, diags
-	}
-	// Clear only if user managed it before
-	if !tf.SSLExpirationPeriodDays.IsNull() && !tf.SSLExpirationPeriodDays.IsUnknown() {
-		return &client.MonitorConfig{SSLExpirationPeriodDays: []int64{}}, true, diags
-	}
-	return nil, false, diags
-}
-
-func flattenSSLConfigToState(ctx context.Context, hadBlock bool, plan types.Object, api map[string]json.RawMessage) (types.Object, diag.Diagnostics) {
-	var diags diag.Diagnostics
-	attrTypes := configObjectType().AttrTypes
-
-	if !hadBlock {
-		// User omitted block and it set as ObjectNull because we do not manage it
-		return types.ObjectNull(attrTypes), diags
-	}
-
-	// Default for child is null
-	attrs := map[string]attr.Value{
-		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
-	}
-
-	// Extract what user asked for
-	var tf configTF
-	diags.Append(plan.As(ctx, &tf, basetypes.ObjectAsOptions{})...)
-	if diags.HasError() {
-		return types.ObjectNull(attrTypes), diags
-	}
-
-	// If the child was specified in plan then we take what API echos if it contains it, else take from plan
-	if !tf.SSLExpirationPeriodDays.IsNull() && !tf.SSLExpirationPeriodDays.IsUnknown() {
-		if raw, ok := api["sslExpirationPeriodDays"]; ok && raw != nil {
-			var days []int64
-			if err := json.Unmarshal(raw, &days); err == nil {
-				values := make([]attr.Value, 0, len(days))
-				for _, d := range days {
-					values = append(values, types.Int64Value(d))
-				}
-				attrs["ssl_expiration_period_days"] = types.SetValueMust(types.Int64Type, values) // empty is ok
-			}
-		}
-		if attrs["ssl_expiration_period_days"].IsNull() {
-			// Fallback to plan for being known
-			var days []int64
-			diags.Append(tf.SSLExpirationPeriodDays.ElementsAs(ctx, &days, false)...)
-			if !diags.HasError() {
-				values := make([]attr.Value, 0, len(days))
-				for _, d := range days {
-					values = append(values, types.Int64Value(d))
-				}
-				attrs["ssl_expiration_period_days"] = types.SetValueMust(types.Int64Type, values)
-			}
-		}
-	}
-
-	obj, d := types.ObjectValue(attrTypes, attrs)
-	diags.Append(d...)
-	return obj, diags
-}
-
-// build state from API only.
-func flattenSSLConfigFromAPI(api map[string]json.RawMessage) (types.Object, diag.Diagnostics) {
-	var diags diag.Diagnostics
-	attrTypes := configObjectType().AttrTypes
-	attrs := map[string]attr.Value{
-		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
-	}
-	if raw, ok := api["sslExpirationPeriodDays"]; ok && raw != nil {
-		var days []int64
-		if err := json.Unmarshal(raw, &days); err == nil {
-			values := make([]attr.Value, 0, len(days))
-			for _, d := range days {
-				values = append(values, types.Int64Value(d))
-			}
-			attrs["ssl_expiration_period_days"] = types.SetValueMust(types.Int64Type, values) // empty OK
-		}
-	}
-	obj, d := types.ObjectValue(attrTypes, attrs)
-	diags.Append(d...)
-	return obj, diags
-}
 
 // Alert Contacts transformation helpers
 
@@ -235,41 +117,6 @@ func tagsReadSet(current types.Set, apiTags []client.Tag, isImport bool) types.S
 	return types.SetValueMust(types.StringType, vals)
 }
 
-func normalizeTagSet(in []string) []string {
-	if len(in) == 0 {
-		return []string{}
-	}
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(in))
-	for _, s := range in {
-		s = strings.ToLower(strings.TrimSpace(s))
-		if s == "" {
-			continue
-		}
-		if _, ok := seen[s]; ok {
-			continue
-		}
-		seen[s] = struct{}{}
-		out = append(out, s)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func equalTagSet(a, b []string) bool {
-	a = normalizeTagSet(a)
-	b = normalizeTagSet(b)
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func tagsSetFromAPI(_ context.Context, api []client.Tag) types.Set {
 	if len(api) == 0 {
 		return types.SetValueMust(types.StringType, []attr.Value{})
@@ -309,25 +156,6 @@ func sortAttrStringVals(vals []attr.Value) []attr.Value {
 	return out
 }
 
-// Headers transformation helpers
-
-// normalizeHeadersForCompareNoCT compare only user-meaningful headers.
-// Content-Type is ignored because API sets it on json or kv/form body, so it is better to be removed.
-func normalizeHeadersForCompareNoCT(in map[string]string) map[string]string {
-	if in == nil {
-		return nil
-	}
-	out := make(map[string]string, len(in))
-	for k, v := range in {
-		k = strings.ToLower(strings.TrimSpace(k))
-		if k == "" || k == "content-type" {
-			continue
-		}
-		out[k] = strings.TrimSpace(v)
-	}
-	return out
-}
-
 // Maintenance windows transformation helpers
 
 // mwSetFromAPIRespectingShape returns a Set built from apiIDs.
@@ -346,6 +174,209 @@ func mwSetFromAPIRespectingShape(ctx context.Context, apiIDs []int64, desiredSha
 	out, d := types.SetValueFrom(ctx, types.Int64Type, apiIDs)
 	diags.Append(d...)
 	return out, diags
+}
+
+// Config helpers
+
+func expandConfigToAPI(
+	ctx context.Context,
+	obj types.Object,
+) (*client.MonitorConfig, bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if obj.IsNull() || obj.IsUnknown() {
+		return nil, false, diags
+	}
+
+	var c configTF
+	diags.Append(obj.As(ctx, &c, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+	if diags.HasError() {
+		return nil, false, diags
+	}
+
+	out := &client.MonitorConfig{}
+	touched := false
+
+	// ssl_expiration_period_days
+	if !c.SSLExpirationPeriodDays.IsUnknown() {
+		if c.SSLExpirationPeriodDays.IsNull() {
+			out.SSLExpirationPeriodDays = []int64{}
+			touched = true
+		} else {
+			var days []int64
+			diags.Append(c.SSLExpirationPeriodDays.ElementsAs(ctx, &days, false)...)
+			if diags.HasError() {
+				return nil, false, diags
+			}
+			if len(days) == 0 {
+				out.SSLExpirationPeriodDays = []int64{}
+				touched = true
+			} else {
+				out.SSLExpirationPeriodDays = make([]int64, 0, len(days))
+
+				out.SSLExpirationPeriodDays = append(out.SSLExpirationPeriodDays, days...)
+
+				touched = true
+			}
+		}
+	}
+
+	// dns_records
+	if c.DNSRecords != nil {
+		dr, drTouched, di := expandDNSRecords(ctx, c.DNSRecords)
+		diags.Append(di...)
+		if diags.HasError() {
+			return nil, false, diags
+		}
+		if drTouched {
+			out.DNSRecords = dr
+			touched = true
+		}
+	}
+
+	return out, touched, diags
+}
+
+func expandDNSRecords(
+	ctx context.Context,
+	in *dnsRecordsModel,
+) (*client.DNSRecords, bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	out := &client.DNSRecords{}
+	touched := false
+
+	set := func(s types.Set, dst *[]string) {
+		if s.IsUnknown() {
+			return
+		}
+		if s.IsNull() {
+			*dst = []string{}
+			touched = true
+			return
+		}
+		var vals []string
+		diags.Append(s.ElementsAs(ctx, &vals, false)...)
+		if len(vals) == 0 {
+			*dst = []string{}
+			touched = true
+			return
+		}
+		// trim whitespaces only
+		clean := make([]string, 0, len(vals))
+		for _, v := range vals {
+			clean = append(clean, strings.TrimSpace(v))
+		}
+		*dst = clean
+		touched = true
+	}
+
+	set(in.CNAME, &out.CNAME)
+	set(in.MX, &out.MX)
+	set(in.NS, &out.NS)
+	set(in.A, &out.A)
+	set(in.AAAA, &out.AAAA)
+	set(in.TXT, &out.TXT)
+	set(in.SRV, &out.SRV)
+	set(in.PTR, &out.PTR)
+	set(in.SOA, &out.SOA)
+	set(in.SPF, &out.SPF)
+	set(in.DNSKEY, &out.DNSKEY)
+	set(in.DS, &out.DS)
+	set(in.NSEC, &out.NSEC)
+	set(in.NSEC3, &out.NSEC3)
+
+	return out, touched, diags
+}
+
+func flattenConfigToState(
+	ctx context.Context,
+	hadBlock bool,
+	prev types.Object,
+	api *client.MonitorConfig,
+) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if !hadBlock {
+		// Keep null if user didn’t manage the block
+		return types.ObjectNull(configObjectType().AttrTypes), diags
+	}
+	// Start from previous to preserve unknowns, then overwrite with API
+	var c configTF
+	_ = prev.As(ctx, &c, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})
+
+	// ssl days
+	if api != nil {
+		if api.SSLExpirationPeriodDays == nil {
+			c.SSLExpirationPeriodDays = types.SetNull(types.Int64Type)
+		} else {
+			vals := make([]attr.Value, 0, len(api.SSLExpirationPeriodDays))
+			for _, d := range api.SSLExpirationPeriodDays {
+				vals = append(vals, types.Int64Value(d))
+			}
+			c.SSLExpirationPeriodDays = types.SetValueMust(types.Int64Type, vals)
+		}
+	}
+
+	// dns records
+	if api != nil {
+		// capture previous to preserve shape decisions
+		prevDNS := c.DNSRecords
+
+		// helpers to safely read previous sets even if prevDNS == nil
+		prevOrNull := func(get func(*dnsRecordsModel) types.Set) types.Set {
+			if prevDNS == nil {
+				return types.SetNull(types.StringType)
+			}
+			return get(prevDNS)
+		}
+
+		c.DNSRecords = &dnsRecordsModel{
+			CNAME:  setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.CNAME }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.CNAME }),
+			MX:     setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.MX }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.MX }),
+			NS:     setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.NS }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.NS }),
+			A:      setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.A }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.A }),
+			AAAA:   setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.AAAA }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.AAAA }),
+			TXT:    setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.TXT }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.TXT }),
+			SRV:    setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.SRV }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.SRV }),
+			PTR:    setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.PTR }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.PTR }),
+			SOA:    setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.SOA }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.SOA }),
+			SPF:    setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.SPF }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.SPF }),
+			DNSKEY: setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.DNSKEY }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.DNSKEY }),
+			DS:     setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.DS }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.DS }),
+			NSEC:   setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.NSEC }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.NSEC }),
+			NSEC3:  setStringsRespectingShape(prevOrNull(func(m *dnsRecordsModel) types.Set { return m.NSEC3 }), api.DNSRecords, func(dr *client.DNSRecords) []string { return dr.NSEC3 }),
+		}
+	}
+
+	return types.ObjectValueFrom(ctx, configObjectType().AttrTypes, c)
+}
+
+// setStringsRespectingShape keeps empty-set vs null consistent with user's intent.
+// If prev is managed (non-null), nil from API becomes empty set.
+func setStringsRespectingShape(
+	prev types.Set,
+	dr *client.DNSRecords,
+	get func(*client.DNSRecords) []string,
+) types.Set {
+	if dr == nil {
+		if prev.IsNull() || prev.IsUnknown() {
+			return types.SetNull(types.StringType)
+		}
+		// managed but API omitted => keep empty
+		return types.SetValueMust(types.StringType, []attr.Value{})
+	}
+
+	v := get(dr)
+	if v == nil {
+		if prev.IsNull() || prev.IsUnknown() {
+			return types.SetNull(types.StringType)
+		}
+		return types.SetValueMust(types.StringType, []attr.Value{})
+	}
+
+	elems := make([]attr.Value, 0, len(v))
+	for _, s := range v {
+		elems = append(elems, types.StringValue(s))
+	}
+	return types.SetValueMust(types.StringType, elems)
 }
 
 // Comparable helpers for monitor resource
@@ -411,23 +442,28 @@ func coerceRegion(v interface{}) (string, bool) {
 		return s, ok
 
 	case map[string]interface{}:
-		if raw, ok := x["REGION"]; ok {
-			switch a := raw.(type) {
-			case []interface{}:
-				for _, it := range a {
-					if s, ok := it.(string); ok {
-						s = strings.ToLower(strings.TrimSpace(s))
-						if _, ok := allowedRegion[s]; ok {
-							return s, true
-						}
-					}
-				}
-			case []string:
-				for _, s0 := range a {
-					s := strings.ToLower(strings.TrimSpace(s0))
+		raw, ok := x["REGION"]
+		if !ok {
+			raw, ok = x["region"]
+			if !ok {
+				return "", false
+			}
+		}
+		switch a := raw.(type) {
+		case []interface{}:
+			for _, it := range a {
+				if s, ok := it.(string); ok {
+					s = strings.ToLower(strings.TrimSpace(s))
 					if _, ok := allowedRegion[s]; ok {
 						return s, true
 					}
+				}
+			}
+		case []string:
+			for _, s0 := range a {
+				s := strings.ToLower(strings.TrimSpace(s0))
+				if _, ok := allowedRegion[s]; ok {
+					return s, true
 				}
 			}
 		}

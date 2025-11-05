@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"encoding/json"
 	"sort"
 	"strings"
 
@@ -430,15 +429,27 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 	c.MaintenanceWindowIDs = normalizeInt64Set(apiIDs)
 
 	if m.Config != nil {
-		if raw, ok := m.Config["sslExpirationPeriodDays"]; ok && raw != nil {
-			var days []int64
-			if err := json.Unmarshal(raw, &days); err == nil {
-				c.SSLExpirationPeriodDays = normalizeInt64Set(days) // empty slice is ok
-			}
-		}
+		c.SSLExpirationPeriodDays = normalizeInt64Set(m.Config.SSLExpirationPeriodDays) // empty slice is ok
 	}
 
 	return c
+}
+
+// normalizeHeadersForCompareNoCT compare only user-meaningful headers.
+// Content-Type is ignored because API sets it on json or kv/form body, so it is better to be removed.
+func normalizeHeadersForCompareNoCT(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		k = strings.ToLower(strings.TrimSpace(k))
+		if k == "" || k == "content-type" {
+			continue
+		}
+		out[k] = strings.TrimSpace(v)
+	}
+	return out
 }
 
 func equalComparable(want, got monComparable) bool {
@@ -640,6 +651,41 @@ func equalStringMap(a, b map[string]string) bool {
 func equalInt64Set(a, b []int64) bool {
 	a = normalizeInt64Set(a)
 	b = normalizeInt64Set(b)
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeTagSet(in []string) []string {
+	if len(in) == 0 {
+		return []string{}
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func equalTagSet(a, b []string) bool {
+	a = normalizeTagSet(a)
+	b = normalizeTagSet(b)
 	if len(a) != len(b) {
 		return false
 	}
