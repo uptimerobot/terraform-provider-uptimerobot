@@ -296,22 +296,24 @@ func readApplyMWIDs(ctx context.Context, resp *resource.ReadResponse, state *mon
 func readApplyConfig(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	if isImport {
 		if m.Config != nil {
-			cfgObj, d := flattenSSLConfigFromAPI(m.Config)
+			// Import is base entirely on API, with an empty prior object
+			cfgState, d := flattenConfigToState(ctx, true /* hadBlock */, types.ObjectNull(configObjectType().AttrTypes), m.Config)
 			resp.Diagnostics.Append(d...)
-			state.Config = cfgObj
+			if !resp.Diagnostics.HasError() {
+				state.Config = cfgState
+			}
 		} else {
 			state.Config = types.ObjectNull(configObjectType().AttrTypes)
 		}
 		return
 	}
 
-	if !state.Config.IsNull() && !state.Config.IsUnknown() {
-		if m.Config != nil {
-			cfgState, d := flattenSSLConfigToState(ctx, true /* hadBlock */, state.Config, m.Config)
-			resp.Diagnostics.Append(d...)
-			if !resp.Diagnostics.HasError() {
-				state.Config = cfgState
-			}
+	haveBlockConfig := !state.Config.IsNull() && !state.Config.IsUnknown()
+	if haveBlockConfig {
+		cfgState, d := flattenConfigToState(ctx, haveBlockConfig, state.Config, m.Config)
+		resp.Diagnostics.Append(d...)
+		if !resp.Diagnostics.HasError() {
+			state.Config = cfgState
 		}
 	}
 }

@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
@@ -965,6 +967,9 @@ resource "uptimerobot_monitor" "test" {
     url          = "example.com"
     type         = "DNS"
     interval     = 300
+	config      = {
+		dns_records = {}
+	}
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -1140,6 +1145,9 @@ resource "uptimerobot_monitor" "dns" {
   type     = "DNS"
   url      = "example.com"
   interval = 300
+  config  = {
+	dns_records = {}
+  }
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -1859,6 +1867,318 @@ resource "uptimerobot_monitor" "test" {
 `,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// Config
+
+func TestAcc_Monitor_Config_SSLDays_Semantics(t *testing.T) {
+	t.Parallel()
+
+	name := acctest.RandomWithPrefix("acc-ssl-config")
+	res := "uptimerobot_monitor.test"
+
+	cfgSet := `
+resource "uptimerobot_monitor" "test" {
+  name     = "` + name + `"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+
+  config = {
+    ssl_expiration_period_days = [3, 5, 30, 69]
+  }
+}
+`
+	// Empty block present -> mirror remote into state, send nothing
+	cfgPreserve := `
+resource "uptimerobot_monitor" "test" {
+  name     = "` + name + `"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+
+  config = {}
+}
+`
+	// Explicit clear on server
+	cfgClear := `
+resource "uptimerobot_monitor" "test" {
+  name     = "` + name + `"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+
+  config = {
+    ssl_expiration_period_days = []
+  }
+}
+`
+	// Omit block entirely -> preserve remote and keep state null
+	cfgOmit := `
+resource "uptimerobot_monitor" "test" {
+  name     = "` + name + `"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+}
+`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Set concrete days
+			{
+				Config: cfgSet,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ssl_expiration_period_days.#", "4"),
+					resource.TestCheckTypeSetElemAttr(res, "config.ssl_expiration_period_days.*", "3"),
+					resource.TestCheckTypeSetElemAttr(res, "config.ssl_expiration_period_days.*", "5"),
+					resource.TestCheckTypeSetElemAttr(res, "config.ssl_expiration_period_days.*", "30"),
+					resource.TestCheckTypeSetElemAttr(res, "config.ssl_expiration_period_days.*", "69"),
+				),
+			},
+			// Preserve with empty block: plan should be empty, state mirrors remote
+			{
+				Config:             cfgPreserve,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: cfgPreserve,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ssl_expiration_period_days.#", "4"),
+				),
+			},
+			// Clear on server
+			{
+				Config: cfgClear,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ssl_expiration_period_days.#", "0"),
+				),
+			},
+			// Omit block: state should NOT have nested attrs at all
+			{
+				Config: cfgOmit,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr(res, "config.ssl_expiration_period_days.#"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_DNSRecords_Manage(t *testing.T) {
+	t.Parallel()
+
+	name := acctest.RandomWithPrefix("acc-dns-config")
+	res := "uptimerobot_monitor.test"
+
+	cfgAandCNAME := `
+resource "uptimerobot_monitor" "test" {
+  name     = "` + name + `"
+  type     = "DNS"
+  url      = "example.org"
+  interval = 300
+
+  config = {
+    dns_records = {
+    	a     = ["93.184.216.34"]
+    	cname = []
+    }
+  }
+}
+`
+	cfgPreserve := `
+resource "uptimerobot_monitor" "test" {
+  name     = "` + name + `"
+  type     = "DNS"
+  url      = "example.org"
+  interval = 300
+
+  config = {}
+}
+`
+	cfgChange := `
+resource "uptimerobot_monitor" "test" {
+  name     = "` + name + `"
+  type     = "DNS"
+  url      = "example.org"
+  interval = 300
+
+  config = {
+    dns_records = {
+    	a   = ["93.184.216.34"]
+    	txt = ["v=spf1 include:example.org ~all"]
+    }
+  }
+}
+`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgAandCNAME,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.dns_records.a.#", "1"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "0"),
+				),
+			},
+			// Empty block preserve (mirror) should yield empty plan
+			{
+				Config:             cfgPreserve,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: cfgChange,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.dns_records.a.#", "1"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "0"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.txt.#", "1"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_DNSRecords_ForbiddenOnHTTP(t *testing.T) {
+	t.Parallel()
+
+	name := acctest.RandomWithPrefix("acc-http-dns")
+	cfg := `
+resource "uptimerobot_monitor" "test" {
+  name     = "` + name + `"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  config = {
+    dns_records = {
+		a = ["1.2.3.4"]
+    }
+  }
+}
+`
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      cfg,
+				ExpectError: regexp.MustCompile(`(?i)dns_records[\s\S]*only[\s\S]*dns monitors?`),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_SSLDays_Validators(t *testing.T) {
+	t.Parallel()
+
+	name := acctest.RandomWithPrefix("acc-ssl-validate")
+
+	tooMany := `
+resource "uptimerobot_monitor" "test" {
+  name     = "` + name + `"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  ssl_expiration_reminder = true
+
+  config = {
+    # 11 items (max 10)
+    ssl_expiration_period_days = [0,1,2,3,4,5,6,7,8,9,10]
+  }
+}
+`
+	outOfRange := `
+resource "uptimerobot_monitor" "test" {
+  name     = "` + name + `"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  ssl_expiration_reminder = true
+
+  config = {
+    ssl_expiration_period_days = [400]
+  }
+}
+`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      tooMany,
+				ExpectError: regexp.MustCompile(`(?i)at most 10`),
+			},
+			{
+				Config:      outOfRange,
+				ExpectError: regexp.MustCompile(`(?i)[\s\S]*between\s*0\s*and\s*365`),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_DNSRecords_EmptyList_StaysEmpty(t *testing.T) {
+	t.Parallel()
+
+	name := acctest.RandomWithPrefix("acc-dns-empty")
+	res := "uptimerobot_monitor.test"
+
+	cfgEmpty := `
+resource "uptimerobot_monitor" "test" {
+  name     = "` + name + `"
+  type     = "DNS"
+  url      = "example.org"
+  interval = 300
+
+  config = {
+    dns_records = {
+      cname = []   # explicitly managed empty list
+    }
+  }
+}
+`
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Create with empty list -> should be an empty set in state, not null
+			{
+				Config: cfgEmpty,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "0"),
+				),
+			},
+			// Re-apply same config -> empty plan and still empty set
+			{
+				Config:             cfgEmpty,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// Flip to non-empty and back to [] to ensure it remains empty set (not null)
+			{
+				Config: strings.ReplaceAll(cfgEmpty, `cname = []`, `cname = ["foo.example.org."]`),
+				Check:  resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "1"),
+			},
+			{
+				Config: cfgEmpty,
+				Check:  resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "0"),
 			},
 		},
 	})

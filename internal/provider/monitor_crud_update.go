@@ -122,7 +122,7 @@ func buildUpdateRequest(
 	}
 
 	// timeout, grace, config for monitor type
-	setTimeoutGraceAndConfigForTypeOnUpdate(ctx, plan, req)
+	setTimeoutAndGraceOnUpdate(ctx, plan, req)
 
 	// method and body
 	hasJSON := !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull()
@@ -208,13 +208,13 @@ func buildUpdateRequest(
 		req.CheckSSLErrors = &v
 	}
 
-	// SSL config
-	expandOrClearSSLConfigOnUpdate(ctx, plan, state, req, resp)
+	// Config
+	expandOrClearConfigOnUpdate(ctx, plan, state, req, resp)
 
 	return req, effMethod
 }
 
-func setTimeoutGraceAndConfigForTypeOnUpdate(_ context.Context, plan monitorResourceModel, req *client.UpdateMonitorRequest) {
+func setTimeoutAndGraceOnUpdate(_ context.Context, plan monitorResourceModel, req *client.UpdateMonitorRequest) {
 	zero := 0
 
 	switch strings.ToUpper(plan.Type.ValueString()) {
@@ -231,9 +231,6 @@ func setTimeoutGraceAndConfigForTypeOnUpdate(_ context.Context, plan monitorReso
 	case "DNS":
 		req.GracePeriod = &zero
 		req.Timeout = &zero
-		req.Config = &client.MonitorConfig{
-			DNSRecords: &client.DNSRecords{CNAME: []string{"example.com"}},
-		}
 
 	case "PING":
 		req.GracePeriod = &zero
@@ -390,33 +387,6 @@ func setTagsOnUpdate(ctx context.Context, plan monitorResourceModel, req *client
 	}
 }
 
-func expandOrClearSSLConfigOnUpdate(ctx context.Context, plan, state monitorResourceModel, req *client.UpdateMonitorRequest, resp *resource.UpdateResponse) {
-	stateHadCfg := !state.Config.IsNull() && !state.Config.IsUnknown()
-	planHasCfg := !plan.Config.IsNull() && !plan.Config.IsUnknown()
-
-	if planHasCfg {
-		cfgOut, touched, d := expandSSLConfigToAPI(ctx, plan.Config)
-		resp.Diagnostics.Append(d...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		if touched {
-			req.Config = cfgOut
-		}
-		return
-	}
-	if stateHadCfg {
-		clearOut, touched, d := buildClearSSLConfigFromState(ctx, state.Config)
-		resp.Diagnostics.Append(d...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		if touched {
-			req.Config = clearOut
-		}
-	}
-}
-
 func applyUpdatedMonitorToState(
 	ctx context.Context,
 	plan monitorResourceModel,
@@ -566,9 +536,10 @@ func applyUpdatedMonitorToState(
 		}
 	}
 
-	// SSL config in state
-	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
-		cfgState, d := flattenSSLConfigToState(ctx, true, plan.Config, m.Config)
+	// Config in state
+	haveBlockConfig := !plan.Config.IsNull() && !plan.Config.IsUnknown()
+	if haveBlockConfig {
+		cfgState, d := flattenConfigToState(ctx, haveBlockConfig, plan.Config, m.Config)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {
 			out.Config = cfgState
@@ -602,4 +573,30 @@ func applyUpdatedMonitorToState(
 	}
 
 	return out
+}
+
+func expandOrClearConfigOnUpdate(
+	ctx context.Context,
+	plan, _ monitorResourceModel,
+	req *client.UpdateMonitorRequest,
+	resp *resource.UpdateResponse,
+) {
+	switch {
+	case plan.Config.IsUnknown():
+		// Omit - preserve remote
+		return
+	case plan.Config.IsNull():
+		// User removed the block - preserve remote
+		return
+	default:
+		out, touched, diags := expandConfigToAPI(ctx, plan.Config)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		// Send only if user actually set something or explicitly set empty sets to clear
+		if touched {
+			req.Config = out
+		} // else {} - preserve and do nothing
+	}
 }

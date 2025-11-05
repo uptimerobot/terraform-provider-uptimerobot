@@ -47,9 +47,26 @@ type alertContactTF struct {
 	Recurrence     types.Int64  `tfsdk:"recurrence"`
 }
 
+type dnsRecordsModel struct {
+	A      types.Set `tfsdk:"a"`
+	AAAA   types.Set `tfsdk:"aaaa"`
+	CNAME  types.Set `tfsdk:"cname"`
+	MX     types.Set `tfsdk:"mx"`
+	NS     types.Set `tfsdk:"ns"`
+	TXT    types.Set `tfsdk:"txt"`
+	SRV    types.Set `tfsdk:"srv"`
+	PTR    types.Set `tfsdk:"ptr"`
+	SOA    types.Set `tfsdk:"soa"`
+	SPF    types.Set `tfsdk:"spf"`
+	DNSKEY types.Set `tfsdk:"dnskey"`
+	DS     types.Set `tfsdk:"ds"`
+	NSEC   types.Set `tfsdk:"nsec"`
+	NSEC3  types.Set `tfsdk:"nsec3"`
+}
+
 type configTF struct {
-	SSLExpirationPeriodDays types.Set `tfsdk:"ssl_expiration_period_days"`
-	// DNSRecords types.Object `tfsdk:"dns_records"`
+	SSLExpirationPeriodDays types.Set    `tfsdk:"ssl_expiration_period_days"`
+	DNSRecords              types.Object `tfsdk:"dns_records"`
 }
 
 func alertContactObjectType() types.ObjectType {
@@ -62,11 +79,33 @@ func alertContactObjectType() types.ObjectType {
 	}
 }
 
+func dnsRecordsObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"a":      types.SetType{ElemType: types.StringType},
+			"aaaa":   types.SetType{ElemType: types.StringType},
+			"cname":  types.SetType{ElemType: types.StringType},
+			"mx":     types.SetType{ElemType: types.StringType},
+			"ns":     types.SetType{ElemType: types.StringType},
+			"txt":    types.SetType{ElemType: types.StringType},
+			"srv":    types.SetType{ElemType: types.StringType},
+			"ptr":    types.SetType{ElemType: types.StringType},
+			"soa":    types.SetType{ElemType: types.StringType},
+			"spf":    types.SetType{ElemType: types.StringType},
+			"dnskey": types.SetType{ElemType: types.StringType},
+			"ds":     types.SetType{ElemType: types.StringType},
+			"nsec":   types.SetType{ElemType: types.StringType},
+			"nsec3":  types.SetType{ElemType: types.StringType},
+		},
+	}
+}
+
 // configObjectType is a helper for describing the config object.
 func configObjectType() types.ObjectType {
 	return types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
+			"dns_records":                dnsRecordsObjectType(),
 		},
 	}
 }
