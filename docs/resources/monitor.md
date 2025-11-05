@@ -72,6 +72,12 @@ resource "uptimerobot_monitor" "api_health" {
 
   tags = ["api", "critical"]
 }
+
+variable "api_token" {
+  description = "API token for some system"
+  type        = string
+  sensitive   = true
+}
 ```
 
 ### HTTP Monitor with Authentication
@@ -184,12 +190,172 @@ resource "uptimerobot_monitor" "gateway_ping" {
 }
 ```
 
+### Alert Contacts Example
+
+```terraform
+# Alert Contacts
+resource "uptimerobot_monitor" "website_with_contacts" {
+  name     = "My Website"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  timeout  = 30
+
+  # Set exact contacts and their semantics
+  assigned_alert_contacts = [
+    {
+      alert_contact_id = "123",
+      threshold        = 0,
+      recurrence       = 0
+    }, # immediate, no repeats
+    {
+      alert_contact_id = "456",
+      threshold        = 3,
+      recurrence       = 15
+    }, # after 3m, repeat every 15m
+  ]
+}
+
+
+# You can also remove alert contacts by omitting the field
+# or setting it to null
+resource "uptimerobot_monitor" "website_no_contacts" {
+  name     = "My Website"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  timeout  = 30
+
+  # No assigned_alert_contacts field = remove all alert contacts
+}
+```
+
+### Heartbeat Example
+
+```terraform
+resource "uptimerobot_monitor" "website" {
+  name         = "My Website"
+  type         = "HEARTBEAT"
+  url          = "https://example.com"
+  interval     = 300
+  grace_period = 300
+
+  # Optional: Tags for organization
+  tags = ["production", "web"]
+}
+```
+
+### Config Example
+
+```terraform
+# Set specific days for SSL expiration period days
+resource "uptimerobot_monitor" "set_days" {
+  name     = "HTTP set days"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+
+  config = {
+    ssl_expiration_period_days = [3, 5, 30, 69] # max 10 items in range 0..365
+  }
+}
+
+# Preserve remote values but manage the block. Nothing will be sent
+resource "uptimerobot_monitor" "preserve" {
+  name     = "HTTP preserve"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+
+  # Empty block present - provider will read current remote values into state
+  # but does NOT update the server
+  config = {}
+}
+
+# Clear days on server - send an explicit empty list
+resource "uptimerobot_monitor" "clear" {
+  name     = "HTTP clear"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+
+  config = {
+    ssl_expiration_period_days = [] # empty list means clear on server
+  }
+}
+
+# UI-managed SSL days. Ignore drift if management is preferred via dashboard
+resource "uptimerobot_monitor" "ui_driven_ssl" {
+  name     = "UI-driven SSL days"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+
+  ssl_expiration_reminder = true
+
+  lifecycle {
+    ignore_changes = [config]
+  }
+
+  # Optional to keep an empty block so Terraform will mirror current remote values
+  # into state without changing them
+  config = {}
+}
+
+# DNS monitor - manage DNS record lists. Only for type=DNS.
+resource "uptimerobot_monitor" "dns_records" {
+  name     = "example.org DNS"
+  type     = "DNS"
+  url      = "example.org"
+  interval = 300
+
+  config = {
+    dns_records = {
+      # Provide only record lists you want to manage.
+      # Omit an attribute to preserve it on the server; set [] to clear it.
+      a     = ["93.184.216.34"]
+      cname = [] # clear on server
+    }
+  }
+}
+
+# DNS on CREATE — API requires config.dns_records, which may be empty
+resource "uptimerobot_monitor" "dns" {
+  name     = "example.org DNS (create)"
+  type     = "DNS"
+  url      = "example.org"
+  interval = 300
+
+  config = {
+    dns_records = {} # required for DNS on create
+  }
+}
+
+# DNS on UPDATE - to preserve server values, omit the config block entirely
+resource "uptimerobot_monitor" "dns_preserve" {
+  name     = "example.org DNS (preserve)"
+  type     = "DNS"
+  url      = "example.org"
+  interval = 300
+
+  # No config block - provider will preserves server-side DNS records
+}
+```
+
 ## Monitor Types
 
-- `HTTP` - HTTP(s) monitoring
-- `KEYWORD` - Keyword monitoring (searches for specific text)
-- `PING` - Ping monitoring
-- `PORT` - Port monitoring
+- `HTTP` — HTTP(s) monitoring
+- `KEYWORD` — Keyword monitoring (searches for specific text)
+- `PING` — Ping monitoring
+- `PORT` — Port monitoring
+- `HEARTBEAT` — Heartbeat monitoring
+- `DNS` — DNS record monitoring
 
 ## Intervals
 
@@ -207,43 +373,56 @@ Common monitoring intervals:
 ### Required
 
 - `interval` (Number) Interval for the monitoring check (in seconds)
-- `name` (String) Name of the monitor
+- `name` (String) Tip: Write names as plain text. If you used HTML entities in HCL (e.g., &amp;, &#39;),
+				     change them to plain text to avoid plan diffs. Import will normalize remote HTML entities to plain text.
 - `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)
 - `url` (String) URL to monitor
 
 ### Optional
 
-- `assigned_alert_contacts` (Attributes Set) Alert contacts to assign. threshold/recurrence are minutes. Free plan uses 0. (see [below for nested schema](#nestedatt--assigned_alert_contacts))
+- `assigned_alert_contacts` (Attributes Set) Alert contacts assigned to this monitor.
+
+**Semantics**
+- Terraform sends exactly what you specify; the provider does not inject hidden defaults.
+- **Free plan**: set `threshold = 0`, `recurrence = 0`.
+- **Paid plans**: any non-negative minutes for both fields. (see [below for nested schema](#nestedatt--assigned_alert_contacts))
 - `auth_type` (String) The authentication type (HTTP_BASIC)
 - `check_ssl_errors` (Boolean) If true, monitor checks SSL certificate errors (hostname mismatch, invalid chain, etc.).
 - `config` (Attributes) Advanced monitor configuration.
 
-**Semantics**:
-- Omit the block → **clear** config on server (reset to defaults).
-- `config = {}` → **preserve** remote values (no change).
-- `ssl_expiration_period_days = []` → **clear** days on server.
-- Non-empty list → **set** exactly those days.
+**Semantics**
+- **Omit** the block → **preserve** remote values (no change). *(Exception: DNS on create — see DNS rules.)*
+- `config = {}` (empty block) → treat as **managed but keep** current remote values. *(Not allowed for DNS; include `dns_records` instead.)*
+- `ssl_expiration_period_days = []` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 
-**Tip**: To let UI changes win, use `lifecycle { ignore_changes = [config] }`. (see [below for nested schema](#nestedatt--config))
-- `custom_http_headers` (Map of String) Custom HTTP headers
+**DNS-only rules**
+- For `type = "DNS"`:
+  - **Create:** `config` **must** include `dns_records` (it may be empty: `dns_records = {}`).
+  - **Update:** if you include `config`, you **must** include `dns_records`. To preserve server values, omit `config`.
+
+**Validation**
+- `dns_records` is only valid for DNS monitors.
+- SSL settings are valid only for HTTPS URLs on HTTP/KEYWORD monitors. (see [below for nested schema](#nestedatt--config))
+- `custom_http_headers` (Map of String) Custom HTTP headers as key:value. **Keys are case-insensitive.** The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. Tip: add keys in lower-case (e.g., `"content-type" = "application/json"`).
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
 - `follow_redirections` (Boolean) Whether to follow redirections
 - `grace_period` (Number) The grace period (in seconds). Only for HEARTBEAT monitors
 - `http_method_type` (String) The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS)
 - `http_password` (String, Sensitive) The password for HTTP authentication
 - `http_username` (String) The username for HTTP authentication
-- `keyword_case_type` (String) The case sensitivity for keyword (CaseSensitive or CaseInsensitive). Default: CaseInsensitive
+- `keyword_case_type` (String) Case sensitivity for keyword. One of: CaseSensitive, CaseInsensitive. Omit to leave server as-is.
 - `keyword_type` (String) The type of keyword check (ALERT_EXISTS, ALERT_NOT_EXISTS)
 - `keyword_value` (String) The keyword to search for
-- `maintenance_window_ids` (Set of Number) The maintenance window IDs
+- `maintenance_window_ids` (Set of Number) Today API v3 behavior on update, if maintenance_window_ids is omitted or set to [] they both clear maintenance windows.
+					Recommended: To clear, set maintenance_window_ids = []. To manage them, set the exact IDs.
 - `port` (Number) The port to monitor
 - `post_value_data` (String) JSON body (use jsonencode). Mutually exclusive with post_value_kv.
 - `post_value_kv` (Map of String) Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.
 - `regional_data` (String) Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)
 - `response_time_threshold` (Number) Response time threshold in milliseconds. Response time over this threshold will trigger an incident
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
-- `success_http_response_codes` (List of String) The expected HTTP response codes
-- `tags` (Set of String) Tags for the monitor
+- `success_http_response_codes` (Set of String) The expected HTTP response codes. If not set API applies defaults.
+- `tags` (Set of String) Tags for the monitor. Must be lowercase. Duplicates are removed by set semantics.
 - `timeout` (Number) Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used.
 
 ### Read-Only
@@ -258,11 +437,16 @@ Common monitoring intervals:
 Required:
 
 - `alert_contact_id` (String)
+- `recurrence` (Number) Repeat interval (in minutes) for subsequent notifications **while the incident lasts**.
 
-Optional:
+- **Required by the API**
+- `0` = no repeat (single notification)
+- Any non-negative integer (minutes) on paid plans
+- `threshold` (Number) Delay (in minutes) **after the monitor is DOWN** before notifying this contact.
 
-- `recurrence` (Number)
-- `threshold` (Number)
+- **Required by the API**
+- `0` = notify immediately (Free plan must use `0`)
+- Any non-negative integer (minutes) on paid plans
 
 
 <a id="nestedatt--config"></a>
@@ -270,7 +454,29 @@ Optional:
 
 Optional:
 
+- `dns_records` (Attributes) DNS record lists for DNS monitors. If present on non-DNS types, validation fails. (see [below for nested schema](#nestedatt--config--dns_records))
 - `ssl_expiration_period_days` (Set of Number) Reminder days before SSL expiry (0..365). Max 10 items.
 
 - Omit the attribute → **preserve** remote values.
 - Empty set `[]` → **clear** values on server.
+Effective for HTTPS URLs when `ssl_expiration_reminder = true`.
+
+<a id="nestedatt--config--dns_records"></a>
+### Nested Schema for `config.dns_records`
+
+Optional:
+
+- `a` (Set of String)
+- `aaaa` (Set of String)
+- `cname` (Set of String)
+- `dnskey` (Set of String)
+- `ds` (Set of String)
+- `mx` (Set of String)
+- `ns` (Set of String)
+- `nsec` (Set of String)
+- `nsec3` (Set of String)
+- `ptr` (Set of String)
+- `soa` (Set of String)
+- `spf` (Set of String)
+- `srv` (Set of String)
+- `txt` (Set of String)

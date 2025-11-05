@@ -1,10 +1,12 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // PSP represents a Public Status Page.
@@ -215,37 +217,41 @@ type CustomSettingsResp struct {
 }
 
 // CreatePSP creates a new PSP.
-func (c *Client) CreatePSP(req *CreatePSPRequest) (*PSP, error) {
+func (c *Client) CreatePSP(ctx context.Context, req *CreatePSPRequest) (*PSP, error) {
 	base := NewBaseCRUDOperations(c, "/psps")
 	var psp PSP
-	if err := base.doCreate(req, &psp); err != nil {
+	if err := base.doCreate(ctx, req, &psp); err != nil {
 		return nil, err
 	}
 	return &psp, nil
 }
 
 // GetPSP retrieves a PSP by ID.
-func (c *Client) GetPSP(id int64) (*PSP, error) {
+func (c *Client) GetPSP(ctx context.Context, id int64) (*PSP, error) {
 	base := NewBaseCRUDOperations(c, "/psps")
 	var psp PSP
-	if err := base.doGet(id, &psp); err != nil {
+	if err := base.doGet(ctx, id, &psp); err != nil {
 		return nil, err
 	}
 	return &psp, nil
 }
 
 // UpdatePSP updates an existing PSP.
-func (c *Client) UpdatePSP(id int64, req *UpdatePSPRequest) (*PSP, error) {
+func (c *Client) UpdatePSP(ctx context.Context, id int64, req *UpdatePSPRequest) (*PSP, error) {
 	base := NewBaseCRUDOperations(c, "/psps")
 	var psp PSP
-	if err := base.doUpdate(id, req, &psp); err != nil {
+	if err := base.doUpdate(ctx, id, req, &psp); err != nil {
 		return nil, err
 	}
 	return &psp, nil
 }
 
 // DeletePSP deletes a PSP.
-func (c *Client) DeletePSP(id int64) error {
-	base := NewBaseCRUDOperations(c, "/psps")
-	return base.doDelete(id)
+func (c *Client) DeletePSP(ctx context.Context, id int64) error {
+	return NewBaseCRUDOperations(c, "/psps").doDelete(ctx, id)
+}
+
+// WaitPSPDeleted waits until GET /psps/{id} returns 404 or 410.
+func (c *Client) WaitPSPDeleted(ctx context.Context, id int64, timeout time.Duration) error {
+	return NewBaseCRUDOperations(c, "/psps").waitDeleted(ctx, id, timeout)
 }

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -492,7 +493,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	}
 
 	// Create PSP
-	newPSP, err := r.client.CreatePSP(psp)
+	newPSP, err := r.client.CreatePSP(ctx, psp)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating PSP",
@@ -540,7 +541,11 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	psp, err := r.client.GetPSP(id)
+	psp, err := r.client.GetPSP(ctx, id)
+	if client.IsNotFound(err) {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading PSP",
@@ -749,7 +754,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	// Update PSP
-	updatedPSP, err := r.client.UpdatePSP(id, psp)
+	updatedPSP, err := r.client.UpdatePSP(ctx, id, psp)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating PSP",
@@ -805,13 +810,19 @@ func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	err = r.client.DeletePSP(id)
+	err = r.client.DeletePSP(ctx, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting PSP",
 			"Could not delete PSP, unexpected error: "+err.Error(),
 		)
 		return
+	}
+
+	err = r.client.WaitPSPDeleted(ctx, id, 2*time.Minute)
+	if err != nil {
+		resp.Diagnostics.AddError("Timed out waiting for deletion", err.Error())
+		return // resource will be kept in state and self healed on read or via next apply
 	}
 }
 

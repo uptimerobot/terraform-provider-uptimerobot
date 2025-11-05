@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
@@ -14,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -109,6 +112,12 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 			"date": schema.StringAttribute{
 				Description: "Date of the maintenance window (format: YYYY-MM-DD)",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$`),
+						"must be in YYYY-MM-DD format",
+					),
+				},
 			},
 			"time": schema.StringAttribute{
 				Description: "Time of the maintenance window (format: HH:mm:ss)",
@@ -140,6 +149,9 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 				ElementType: types.Int64Type,
 				Validators: []validator.Set{
 					setvalidator.ValueInt64sAre(int64validator.Between(-1, 31)),
+				},
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"status": schema.StringAttribute{
@@ -250,6 +262,32 @@ func validateRuleDaysNotAllowedForOnceDaily(
 	}
 }
 
+func (r *maintenanceWindowResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var plan maintenanceWindowResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Put in a separate function Interval segment to not exit earlier when modify plan increase in functionality
+	if plan.Interval.IsUnknown() || plan.Interval.IsNull() {
+		return
+	}
+
+	switch strings.ToLower(plan.Interval.ValueString()) {
+	case intervalDaily, intervalOnce:
+		resp.Plan.SetAttribute(ctx, path.Root("days"), types.SetNull(types.Int64Type))
+	}
+}
+
 func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan maintenanceWindowResourceModel
 	diags := req.Plan.Get(ctx, &plan)
@@ -286,7 +324,6 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 		mw.Date = &dateStr
 	}
 
-	// Convert days from int64 to []int
 	if !plan.Days.IsNull() && !plan.Days.IsUnknown() {
 		var daysInt64 []int64
 		diags = plan.Days.ElementsAs(ctx, &daysInt64, false)
@@ -301,9 +338,13 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 			mw.Days = daysInt64
 		}
 	}
+	iv := strings.ToLower(plan.Interval.ValueString())
+	if iv == intervalDaily || iv == intervalOnce {
+		mw.Days = nil // don't send days for daily and once
+	}
 
 	// Create maintenance window
-	newMW, err := r.client.CreateMaintenanceWindow(mw)
+	newMW, err := r.client.CreateMaintenanceWindow(ctx, mw)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating maintenance window",
@@ -373,7 +414,11 @@ func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 
-	mw, err := r.client.GetMaintenanceWindow(id)
+	mw, err := r.client.GetMaintenanceWindow(ctx, id)
+	if client.IsNotFound(err) {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading maintenance window",
@@ -460,7 +505,6 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		updateReq.Date = &dateStr
 	}
 
-	// Convert days from int64 to []int
 	if !plan.Days.IsNull() && !plan.Days.IsUnknown() {
 		var daysInt64 []int64
 		diags = plan.Days.ElementsAs(ctx, &daysInt64, false)
@@ -477,9 +521,13 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 			updateReq.Days = nil
 		}
 	}
+	iv := strings.ToLower(plan.Interval.ValueString())
+	if iv == intervalDaily || iv == intervalOnce {
+		updateReq.Days = nil
+	}
 
 	// Update maintenance window
-	_, err = r.client.UpdateMaintenanceWindow(id, updateReq)
+	_, err = r.client.UpdateMaintenanceWindow(ctx, id, updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating maintenance window",
@@ -514,13 +562,19 @@ func (r *maintenanceWindowResource) Delete(ctx context.Context, req resource.Del
 		return
 	}
 
-	err = r.client.DeleteMaintenanceWindow(id)
+	err = r.client.DeleteMaintenanceWindow(ctx, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting maintenance window",
 			"Could not delete maintenance window, unexpected error: "+err.Error(),
 		)
 		return
+	}
+
+	err = r.client.WaitMaintenanceWindowDeleted(ctx, id, 2*time.Minute)
+	if err != nil {
+		resp.Diagnostics.AddError("Timed out waiting for deletion", err.Error())
+		return // if still exists keep in state and it will be auto healed on next read / apply
 	}
 }
 

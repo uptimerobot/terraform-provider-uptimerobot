@@ -25,3 +25,9 @@ resource "uptimerobot_monitor" "api_health" {
 
   tags = ["api", "critical"]
 }
+
+variable "api_token" {
+  description = "API token for some system"
+  type        = string
+  sensitive   = true
+}

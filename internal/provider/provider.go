@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
@@ -79,7 +81,12 @@ func (p *UptimeRobotProvider) Configure(ctx context.Context, req provider.Config
 		return
 	}
 
+	ua := fmt.Sprintf("terraform-provider-uptimerobot/%s Terraform/%s",
+		p.version, strings.TrimSpace(req.TerraformVersion))
+
 	client := client.NewClient(apiKey)
+	client.SetUserAgent(ua)
+	client.AddHeader("X-Terraform-Provider", "uptimerobot/"+p.version)
 
 	// Override the default endpoint if specified in config or environment
 	if apiURL == "" {

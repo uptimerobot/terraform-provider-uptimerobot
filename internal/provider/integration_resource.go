@@ -7,11 +7,13 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -57,6 +59,21 @@ type webhookConfig struct {
 	SendJSON  string                 `json:"sendJSON,omitempty"`
 	SendQuery string                 `json:"sendQuery,omitempty"`
 	SendPost  string                 `json:"sendPost,omitempty"`
+}
+
+func isTempServerErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "status 500") ||
+		strings.Contains(s, "status 502") ||
+		strings.Contains(s, "status 503") ||
+		strings.Contains(s, "status 504") ||
+		strings.Contains(s, "internal server error") ||
+		strings.Contains(s, "bad gateway") ||
+		strings.Contains(s, "service unavailable") ||
+		strings.Contains(s, "gateway timeout")
 }
 
 // jsonEquivalentPlanModifier is a custom plan modifier that ignores JSON formatting differences.
@@ -181,6 +198,9 @@ type integrationResourceModel struct {
 	SendAsQueryString      types.Bool   `tfsdk:"send_as_query_string"`
 	SendAsPostParameters   types.Bool   `tfsdk:"send_as_post_parameters"`
 	PostValue              types.String `tfsdk:"post_value"`
+	Priority               types.String `tfsdk:"priority"`
+	Location               types.String `tfsdk:"location"`
+	AutoResolve            types.Bool   `tfsdk:"auto_resolve"`
 }
 
 // Configure adds the provider configured client to the resource.
@@ -265,6 +285,30 @@ func (r *integrationResource) Schema(_ context.Context, _ resource.SchemaRequest
 					jsonEquivalentPlanModifier{},
 				},
 			},
+			"priority": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "Pushover priority (Lowest, Low, Normal, High, Emergency).",
+				Validators: []validator.String{
+					stringvalidator.OneOf("Lowest", "Low", "Normal", "High", "Emergency"),
+				},
+			},
+			"location": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "PagerDuty service region. One of: `us`, `eu`.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("us", "eu"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"auto_resolve": schema.BoolAttribute{
+				Optional:            true,
+				MarkdownDescription: "PagerDuty: auto-resolve incidents after up event.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
 		},
 	}
 }
@@ -283,12 +327,51 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 	integrationTypeAPI := TransformIntegrationTypeToAPI(plan.Type.ValueString())
 
 	var integrationData interface{}
-	switch strings.ToLower(plan.Type.ValueString()) {
+
+	t := strings.ToLower(plan.Type.ValueString())
+	if t != "pushover" && !plan.Priority.IsNull() && !plan.Priority.IsUnknown() && plan.Priority.ValueString() != "" {
+		resp.Diagnostics.AddWarning(
+			"Ignoring priority for non-pushover integration",
+			"The 'priority' attribute only applies when type = 'pushover'. The provided value will be ignored.",
+		)
+	}
+
+	if t != "pagerduty" {
+		if !plan.Location.IsNull() && !plan.Location.IsUnknown() && plan.Location.ValueString() != "" {
+			resp.Diagnostics.AddWarning(
+				"Ignoring `location` for non-PagerDuty integration",
+				"The 'location' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
+			)
+		}
+		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+			resp.Diagnostics.AddWarning(
+				"Ignoring `auto_resolve` for non-PagerDuty integration",
+				"The 'auto_resolve' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
+			)
+		}
+	}
+
+	switch t {
 	case "slack":
 		integrationData = &client.SlackIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
 			WebhookURL:             plan.Value.ValueString(),
 			CustomValue:            plan.CustomValue.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "msteams":
+		integrationData = &client.MSTeamsIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "googlechat":
+		integrationData = &client.GoogleChatIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			RoomURL:                plan.Value.ValueString(),
+			CustomMessage:          plan.CustomValue.ValueString(),
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
@@ -311,6 +394,90 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			SendAsJSON:             plan.SendAsJSON.ValueBool(),
 			SendAsPostParameters:   plan.SendAsPostParameters.ValueBool(),
 		}
+	case "zapier":
+		integrationData = &client.ZapierIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			HookURL:                plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "pushbullet":
+		integrationData = &client.PushbulletIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			AccessToken:            plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "mattermost":
+		var cv *string
+		if !plan.CustomValue.IsNull() && !plan.CustomValue.IsUnknown() {
+			v := plan.CustomValue.ValueString() // may be "" to clear
+			cv = &v
+		}
+
+		integrationData = &client.MattermostIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
+			CustomValue:            cv, // nil omit, "" clear, "text" set
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "splunk":
+		integrationData = &client.SplunkIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			URLToNotify:            plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "telegram":
+		integrationData = &client.TelegramIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			CustomValue:            plan.CustomValue.ValueString(), // chat ID
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "pushover":
+		var prio string
+		if !plan.Priority.IsNull() && !plan.Priority.IsUnknown() {
+			prio = plan.Priority.ValueString()
+		}
+		integrationData = &client.PushoverIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			UserKey:                plan.Value.ValueString(),
+			Priority:               prio,
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "pagerduty":
+		// guard for key length
+		if len(plan.Value.ValueString()) < 32 {
+			resp.Diagnostics.AddError(
+				"Invalid PagerDuty integration key",
+				"The `value` for PagerDuty must be at least 32 characters.",
+			)
+			return
+		}
+
+		var loc *string
+		if !plan.Location.IsNull() && !plan.Location.IsUnknown() {
+			v := strings.ToLower(plan.Location.ValueString())
+			loc = &v
+		}
+
+		var ar *bool
+		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+			b := plan.AutoResolve.ValueBool()
+			ar = &b
+		}
+
+		integrationData = &client.PagerDutyIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			IntegrationKey:         plan.Value.ValueString(),
+			Location:               loc,
+			AutoResolve:            ar,
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
 	default:
 		// For other integration types, use a generic structure
 		integrationData = map[string]interface{}{
@@ -327,7 +494,7 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 		Data: integrationData,
 	}
 
-	newIntegration, err := r.client.CreateIntegration(integration)
+	newIntegration, err := r.client.CreateIntegration(ctx, integration)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating integration",
@@ -356,6 +523,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	prev := state
 
 	// Get integration from API
 	id, err := strconv.ParseInt(state.ID.ValueString(), 10, 64)
@@ -367,8 +535,54 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	integration, err := r.client.GetIntegration(id)
-	if err != nil {
+	// integration, err := r.client.GetIntegration(ctx, id)
+	// if client.IsNotFound(err) {
+	// 	resp.State.RemoveResource(ctx)
+	// 	return
+	// }
+	// if err != nil {
+	// 	resp.Diagnostics.AddError(
+	// 		"Error reading integration",
+	// 		"Could not read integration ID "+state.ID.String()+": "+err.Error(),
+	// 	)
+	// 	return
+	// }
+
+	// Retry GetIntegration on transient 5xx errors to mitigate flaky API errors.
+	var integration *client.Integration
+	backoffs := []time.Duration{
+		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 3 * time.Second, 5 * time.Second,
+	}
+
+	for i := 0; i < len(backoffs); i++ {
+		integration, err = r.client.GetIntegration(ctx, id)
+		if err == nil {
+			break
+		}
+		if client.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		if isTempServerErr(err) {
+			// final attempt -> degrade gracefully: keep prior state to let plan proceed
+			if i == len(backoffs)-1 {
+				resp.Diagnostics.AddWarning(
+					"Temporary API error while reading integration",
+					fmt.Sprintf("GET /integrations/%d returned 5xx after %d retries; keeping previous state for this plan. Error: %v", id, len(backoffs), err),
+				)
+				// do NOT modify resp.State; leaving it intact preserves prior state
+				return
+			}
+			select {
+			case <-ctx.Done():
+				resp.Diagnostics.AddError("Read cancelled", ctx.Err().Error())
+				return
+			case <-time.After(backoffs[i]):
+			}
+			continue
+		}
+
+		// non-retryable error
 		resp.Diagnostics.AddError(
 			"Error reading integration",
 			"Could not read integration ID "+state.ID.String()+": "+err.Error(),
@@ -379,21 +593,27 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	// Map response body to schema and populate Computed attribute values
 	state.Name = types.StringValue(integration.Name)
 	state.Type = types.StringValue(TransformIntegrationTypeFromAPI(integration.Type))
+	intType := TransformIntegrationTypeFromAPI(integration.Type)
 
-	if integration.WebhookURL != "" {
-		state.Value = types.StringValue(integration.WebhookURL)
-	} else if strings.TrimSpace(integration.Value) != "" {
-		state.Value = types.StringValue(integration.Value)
-	} else {
-		state.Value = types.StringNull() // normalize empty. null on read
+	// Use sticky behavior for SSL expiration reminder to avoid flips when API
+	// returns defaults or transient values.
+	state.SSLExpirationReminder = stickyBool(prev.SSLExpirationReminder, integration.SSLExpirationReminder, false)
+
+	if integrationEchoesValueFromAPI(intType) {
+		if integration.WebhookURL != "" {
+			state.Value = types.StringValue(integration.WebhookURL)
+		} else if strings.TrimSpace(integration.Value) != "" {
+			state.Value = types.StringValue(integration.Value)
+		} else {
+			state.Value = types.StringNull() // normalize empty. null on read
+		}
 	}
 
-	state.EnableNotificationsFor = types.Int64Value(convertNotificationsForFromString(integration.EnableNotificationsFor))
-	state.SSLExpirationReminder = types.BoolValue(integration.SSLExpirationReminder)
+	state.EnableNotificationsFor = stickyEF(prev.EnableNotificationsFor, integration.EnableNotificationsFor)
 
 	// Handle integration-specific fields based on type
-	integrationType := TransformIntegrationTypeFromAPI(integration.Type)
-	if integrationType == "webhook" {
+	switch TransformIntegrationTypeFromAPI(integration.Type) {
+	case "webhook":
 		// Parse webhook configuration using helper function
 		webhookFields, err := parseWebhookStateFields(integration.CustomValue)
 		if err != nil {
@@ -410,7 +630,66 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.SendAsPostParameters = webhookFields.SendAsPostParameters
 		state.PostValue = webhookFields.PostValue
 		state.CustomValue = webhookFields.CustomValue
-	} else {
+
+		state.Priority = types.StringNull()
+		state.Location = types.StringNull()
+		state.AutoResolve = types.BoolNull()
+
+	case "mattermost":
+		// For Mattermost, keep "" as "" (do NOT normalize to null) to avoid perpetual diffs after clear.
+		state.CustomValue = types.StringValue(integration.CustomValue) // may be ""
+
+		state.SendAsJSON = types.BoolNull()
+		state.SendAsQueryString = types.BoolNull()
+		state.SendAsPostParameters = types.BoolNull()
+		state.PostValue = types.StringNull()
+		state.Priority = types.StringNull()
+		state.Location = types.StringNull()
+		state.AutoResolve = types.BoolNull()
+
+	case "pushover":
+		if !state.Priority.IsNull() && !state.Priority.IsUnknown() {
+			if strings.TrimSpace(integration.Priority) == "" {
+				state.Priority = types.StringNull()
+			} else {
+				state.Priority = types.StringValue(integration.Priority)
+			}
+		} else {
+			state.Priority = types.StringNull()
+		}
+
+		state.SendAsJSON = types.BoolNull()
+		state.SendAsQueryString = types.BoolNull()
+		state.SendAsPostParameters = types.BoolNull()
+		state.PostValue = types.StringNull()
+		state.Location = types.StringNull()
+		state.AutoResolve = types.BoolNull()
+
+	case "pagerduty":
+		// location from customValue2
+		if v := strings.TrimSpace(integration.CustomValue2); v != "" {
+			state.Location = types.StringValue(strings.ToLower(v)) // "us"/"eu"
+		} else {
+			state.Location = stickyString(prev.Location, "", strings.ToLower)
+		}
+
+		// autoResolve from customValue: "1"/"0", guard to include "true"/"false"
+		switch strings.ToLower(strings.TrimSpace(integration.CustomValue)) {
+		case "1", "true":
+			state.AutoResolve = types.BoolValue(true)
+		case "0", "false":
+			state.AutoResolve = types.BoolValue(false)
+		default:
+			state.AutoResolve = stickyBool(prev.AutoResolve, false, false)
+		}
+
+		state.Priority = types.StringNull()
+		state.SendAsJSON = types.BoolNull()
+		state.SendAsQueryString = types.BoolNull()
+		state.SendAsPostParameters = types.BoolNull()
+		state.PostValue = types.StringNull()
+
+	default:
 		// For non-webhook integrations, normalize empty to null to avoid perpetual diffs
 		if strings.TrimSpace(integration.CustomValue) == "" {
 			state.CustomValue = types.StringNull()
@@ -423,6 +702,9 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.SendAsQueryString = types.BoolNull()
 		state.SendAsPostParameters = types.BoolNull()
 		state.PostValue = types.StringNull()
+		state.Priority = types.StringNull()
+		state.Location = types.StringNull()
+		state.AutoResolve = types.BoolNull()
 	}
 
 	// Set refreshed state
@@ -456,12 +738,52 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 	integrationTypeAPI := TransformIntegrationTypeToAPI(plan.Type.ValueString())
 
 	var integrationData interface{}
-	switch strings.ToLower(plan.Type.ValueString()) {
+
+	t := strings.ToLower(plan.Type.ValueString())
+	if t != "pushover" && !plan.Priority.IsNull() && !plan.Priority.IsUnknown() && plan.Priority.ValueString() != "" {
+		resp.Diagnostics.AddWarning(
+			"Ignoring priority for non-pushover integration",
+			"The 'priority' attribute only applies when type = 'pushover'. The provided value will be ignored.",
+		)
+	}
+
+	if t != "pagerduty" {
+		if !plan.Location.IsNull() && !plan.Location.IsUnknown() && plan.Location.ValueString() != "" {
+			resp.Diagnostics.AddWarning(
+				"Ignoring `location` for non-PagerDuty integration",
+				"The 'location' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
+			)
+		}
+		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+			resp.Diagnostics.AddWarning(
+				"Ignoring `auto_resolve` for non-PagerDuty integration",
+				"The 'auto_resolve' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
+			)
+		}
+	}
+
+	switch t {
 	case "slack":
 		integrationData = &client.SlackIntegrationData{
 			FriendlyName:           plan.Name.ValueString(),
 			WebhookURL:             plan.Value.ValueString(),
 			CustomValue:            plan.CustomValue.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "msteams":
+		integrationData = &client.MSTeamsIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+
+	case "googlechat":
+		integrationData = &client.GoogleChatIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			RoomURL:                plan.Value.ValueString(),
+			CustomMessage:          plan.CustomValue.ValueString(),
 			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
 			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
 		}
@@ -484,6 +806,90 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 			SendAsJSON:             plan.SendAsJSON.ValueBool(),
 			SendAsPostParameters:   plan.SendAsPostParameters.ValueBool(),
 		}
+	case "zapier":
+		integrationData = &client.ZapierIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			HookURL:                plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "pushbullet":
+		integrationData = &client.PushbulletIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			AccessToken:            plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "mattermost":
+		var cv *string
+		if !plan.CustomValue.IsNull() && !plan.CustomValue.IsUnknown() {
+			v := plan.CustomValue.ValueString() // may be "" to clear
+			cv = &v
+		}
+
+		integrationData = &client.MattermostIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			WebhookURL:             plan.Value.ValueString(),
+			CustomValue:            cv, // nil omit, "" clear, "text" set
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "splunk":
+		integrationData = &client.SplunkIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			URLToNotify:            plan.Value.ValueString(),
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "telegram":
+		integrationData = &client.TelegramIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			CustomValue:            plan.CustomValue.ValueString(), // chat ID
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "pushover":
+		var prio string
+		if !plan.Priority.IsNull() && !plan.Priority.IsUnknown() {
+			prio = plan.Priority.ValueString()
+		}
+		integrationData = &client.PushoverIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			UserKey:                plan.Value.ValueString(),
+			Priority:               prio,
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
+	case "pagerduty":
+		// guard for key length
+		if len(plan.Value.ValueString()) < 32 {
+			resp.Diagnostics.AddError(
+				"Invalid PagerDuty integration key",
+				"The `value` for PagerDuty must be at least 32 characters.",
+			)
+			return
+		}
+
+		var loc *string
+		if !plan.Location.IsNull() && !plan.Location.IsUnknown() {
+			v := strings.ToLower(plan.Location.ValueString())
+			loc = &v
+		}
+
+		var ar *bool
+		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+			b := plan.AutoResolve.ValueBool()
+			ar = &b
+		}
+
+		integrationData = &client.PagerDutyIntegrationData{
+			FriendlyName:           plan.Name.ValueString(),
+			IntegrationKey:         plan.Value.ValueString(),
+			Location:               loc,
+			AutoResolve:            ar,
+			EnableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+			SSLExpirationReminder:  plan.SSLExpirationReminder.ValueBool(),
+		}
 	default:
 		// For other integration types, use a generic structure
 		integrationData = map[string]interface{}{
@@ -500,7 +906,7 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		Data: integrationData,
 	}
 
-	_, err = r.client.UpdateIntegration(id, integration)
+	_, err = r.client.UpdateIntegration(ctx, id, integration)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating integration",
@@ -536,7 +942,7 @@ func (r *integrationResource) Delete(ctx context.Context, req resource.DeleteReq
 		return
 	}
 
-	err = r.client.DeleteIntegration(id)
+	err = r.client.DeleteIntegration(ctx, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting integration",
@@ -544,9 +950,61 @@ func (r *integrationResource) Delete(ctx context.Context, req resource.DeleteReq
 		)
 		return
 	}
+
+	err = r.client.WaitIntegrationDeleted(ctx, id, 2*time.Minute)
+	if err != nil {
+		resp.Diagnostics.AddError("Timed out waiting for deletion", err.Error())
+		return // resource will be kept in state and self healed on read or via next apply
+	}
 }
 
 // ImportState imports an existing resource into Terraform.
 func (r *integrationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func stickyString(prev types.String, api string, norm func(string) string) types.String {
+	api = strings.TrimSpace(api)
+	if api != "" {
+		if norm != nil {
+			api = norm(api)
+		}
+		return types.StringValue(api)
+	}
+	if !prev.IsNull() && !prev.IsUnknown() {
+		return prev
+	}
+	return types.StringNull()
+}
+
+func stickyBool(prev types.Bool, api bool, emptyIsNull bool) types.Bool {
+	// If we have a known previous value, prefer it to avoid transient flips
+	if !prev.IsNull() && !prev.IsUnknown() {
+		if prev.ValueBool() != api {
+			return prev
+		}
+		return types.BoolValue(api)
+	}
+
+	// No previous value - initialize from API or null if allowed and api=false
+	if emptyIsNull && !api {
+		return types.BoolNull()
+	}
+	return types.BoolValue(api)
+}
+
+func stickyEF(prev types.Int64, api string) types.Int64 {
+	a := strings.TrimSpace(api)
+	if a == "" {
+		if !prev.IsNull() && !prev.IsUnknown() {
+			return prev
+		}
+		return types.Int64Value(1) // UpAndDown
+	}
+	v := convertNotificationsForFromString(a)
+	if v == 1 && !prev.IsNull() && !prev.IsUnknown() && prev.ValueInt64() != 1 {
+		// API defaulted to UpAndDown. Keep previously configured non-default
+		return prev
+	}
+	return types.Int64Value(v)
 }

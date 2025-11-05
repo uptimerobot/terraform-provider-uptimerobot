@@ -1,8 +1,14 @@
 package client
 
+import (
+	"context"
+	"time"
+)
+
 // MaintenanceWindow represents a maintenance window.
 type MaintenanceWindow struct {
 	ID              int64   `json:"id"`
+	UserID          int64   `json:"userId"`
 	Name            string  `json:"name"`
 	Interval        string  `json:"interval"`
 	Date            *string `json:"date"`
@@ -37,37 +43,41 @@ type UpdateMaintenanceWindowRequest struct {
 }
 
 // CreateMaintenanceWindow creates a new maintenance window.
-func (c *Client) CreateMaintenanceWindow(req *CreateMaintenanceWindowRequest) (*MaintenanceWindow, error) {
+func (c *Client) CreateMaintenanceWindow(ctx context.Context, req *CreateMaintenanceWindowRequest) (*MaintenanceWindow, error) {
 	base := NewBaseCRUDOperations(c, "/maintenance-windows")
 	var maintenanceWindow MaintenanceWindow
-	if err := base.doCreate(req, &maintenanceWindow); err != nil {
+	if err := base.doCreate(ctx, req, &maintenanceWindow); err != nil {
 		return nil, err
 	}
 	return &maintenanceWindow, nil
 }
 
 // GetMaintenanceWindow retrieves a maintenance window by ID.
-func (c *Client) GetMaintenanceWindow(id int64) (*MaintenanceWindow, error) {
+func (c *Client) GetMaintenanceWindow(ctx context.Context, id int64) (*MaintenanceWindow, error) {
 	base := NewBaseCRUDOperations(c, "/maintenance-windows")
 	var maintenanceWindow MaintenanceWindow
-	if err := base.doGet(id, &maintenanceWindow); err != nil {
+	if err := base.doGet(ctx, id, &maintenanceWindow); err != nil {
 		return nil, err
 	}
 	return &maintenanceWindow, nil
 }
 
 // UpdateMaintenanceWindow updates an existing maintenance window.
-func (c *Client) UpdateMaintenanceWindow(id int64, req *UpdateMaintenanceWindowRequest) (*MaintenanceWindow, error) {
+func (c *Client) UpdateMaintenanceWindow(ctx context.Context, id int64, req *UpdateMaintenanceWindowRequest) (*MaintenanceWindow, error) {
 	base := NewBaseCRUDOperations(c, "/maintenance-windows")
 	var maintenanceWindow MaintenanceWindow
-	if err := base.doUpdate(id, req, &maintenanceWindow); err != nil {
+	if err := base.doUpdate(ctx, id, req, &maintenanceWindow); err != nil {
 		return nil, err
 	}
 	return &maintenanceWindow, nil
 }
 
 // DeleteMaintenanceWindow deletes a maintenance window.
-func (c *Client) DeleteMaintenanceWindow(id int64) error {
-	base := NewBaseCRUDOperations(c, "/maintenance-windows")
-	return base.doDelete(id)
+func (c *Client) DeleteMaintenanceWindow(ctx context.Context, id int64) error {
+	return NewBaseCRUDOperations(c, "/maintenance-windows").doDelete(ctx, id)
+}
+
+// WaitIntegrationDeleted waits until GET /maintenance-windows/{id} returns 404 or 410.
+func (c *Client) WaitMaintenanceWindowDeleted(ctx context.Context, id int64, timeout time.Duration) error {
+	return NewBaseCRUDOperations(c, "/maintenance-windows").waitDeleted(ctx, id, timeout)
 }

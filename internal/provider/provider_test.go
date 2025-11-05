@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -32,9 +33,15 @@ func TestProvider(t *testing.T) {
 	}
 }
 
-func testAccPreCheck() {
+func testAccPreCheck(t *testing.T) {
+	t.Helper()
+
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("acceptance tests are skipped unless TF_ACC=1")
+	}
+
 	if os.Getenv("UPTIMEROBOT_API_KEY") == "" {
-		panic("UPTIMEROBOT_API_KEY must be set for acceptance tests")
+		t.Fatal("UPTIMEROBOT_API_KEY must be set for acceptance tests when TF_ACC=1")
 	}
 }
 
@@ -116,6 +123,8 @@ provider "uptimerobot" {
 func testAccCheckMonitorDestroy(s *terraform.State) error {
 	// Create a client to check if the monitor was properly deleted
 	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "uptimerobot_monitor" {
@@ -129,9 +138,9 @@ func testAccCheckMonitorDestroy(s *terraform.State) error {
 		}
 
 		// Try to get the monitor - it should not exist
-		_, err = apiClient.GetMonitor(id)
-		if err == nil {
-			return fmt.Errorf("Monitor %s still exists", rs.Primary.ID)
+		err = apiClient.WaitMonitorDeleted(ctx, id, 90*time.Second)
+		if err != nil {
+			return fmt.Errorf("Monitor %s still exists: %w", rs.Primary.ID, err)
 		}
 	}
 
@@ -141,6 +150,8 @@ func testAccCheckMonitorDestroy(s *terraform.State) error {
 func testAccCheckIntegrationDestroy(s *terraform.State) error {
 	// Create a client to check if the integration was properly deleted
 	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "uptimerobot_integration" {
@@ -154,9 +165,9 @@ func testAccCheckIntegrationDestroy(s *terraform.State) error {
 		}
 
 		// Try to get the integration - it should not exist
-		_, err = apiClient.GetIntegration(id)
-		if err == nil {
-			return fmt.Errorf("Integration %s still exists", rs.Primary.ID)
+		err = apiClient.WaitIntegrationDeleted(ctx, id, 90*time.Second)
+		if err != nil {
+			return fmt.Errorf("Integration %s still exists: %w", rs.Primary.ID, err)
 		}
 	}
 
@@ -166,6 +177,8 @@ func testAccCheckIntegrationDestroy(s *terraform.State) error {
 func testAccCheckMaintenanceWindowDestroy(s *terraform.State) error {
 	// Create a client to check if the maintenance window was properly deleted
 	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "uptimerobot_maintenance_window" {
@@ -179,9 +192,9 @@ func testAccCheckMaintenanceWindowDestroy(s *terraform.State) error {
 		}
 
 		// Try to get the maintenance window - it should not exist
-		_, err = apiClient.GetMaintenanceWindow(id)
-		if err == nil {
-			return fmt.Errorf("Maintenance window %s still exists", rs.Primary.ID)
+		err = apiClient.WaitMaintenanceWindowDeleted(ctx, id, 90*time.Second)
+		if err != nil {
+			return fmt.Errorf("Maintenance window %s still exists: %w", rs.Primary.ID, err)
 		}
 	}
 
@@ -191,6 +204,8 @@ func testAccCheckMaintenanceWindowDestroy(s *terraform.State) error {
 func testAccCheckPSPDestroy(s *terraform.State) error {
 	// Create a client to check if the PSP was properly deleted
 	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "uptimerobot_psp" {
@@ -204,9 +219,9 @@ func testAccCheckPSPDestroy(s *terraform.State) error {
 		}
 
 		// Try to get the PSP - it should not exist
-		_, err = apiClient.GetPSP(id)
-		if err == nil {
-			return fmt.Errorf("PSP %s still exists", rs.Primary.ID)
+		err = apiClient.WaitPSPDeleted(ctx, id, 90*time.Second)
+		if err != nil {
+			return fmt.Errorf("PSP %s still exists: %w", rs.Primary.ID, err)
 		}
 	}
 

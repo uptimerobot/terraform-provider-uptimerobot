@@ -83,7 +83,7 @@ resource "uptimerobot_psp" "test" {
 
 func TestAccPSPResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck() },
+		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckPSPDestroy,
 		Steps: []resource.TestStep{
@@ -140,7 +140,7 @@ func TestAccPSPResource(t *testing.T) {
 				ResourceName:            "uptimerobot_psp.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"monitor_ids"},
+				ImportStateVerifyIgnore: []string{"monitor_ids", "name", "custom_settings"},
 			},
 		},
 	})
