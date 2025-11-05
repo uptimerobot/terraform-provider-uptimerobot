@@ -248,7 +248,7 @@ resource "uptimerobot_monitor" "website" {
 ### Config Example
 
 ```terraform
-# Set specific days
+# Set specific days for SSL expiration period days
 resource "uptimerobot_monitor" "set_days" {
   name     = "HTTP set days"
   type     = "HTTP"
@@ -258,11 +258,11 @@ resource "uptimerobot_monitor" "set_days" {
   ssl_expiration_reminder = true
 
   config = {
-    ssl_expiration_period_days = [3, 5, 30, 69]
+    ssl_expiration_period_days = [3, 5, 30, 69] # (max 10, 0..365)
   }
 }
 
-# Preserve remote values (no change)
+# Preserve remote values but manage the block. Nothing will be send
 resource "uptimerobot_monitor" "preserve" {
   name     = "HTTP preserve"
   type     = "HTTP"
@@ -271,10 +271,12 @@ resource "uptimerobot_monitor" "preserve" {
 
   ssl_expiration_reminder = true
 
+  # Empty block present, provider reads current remote values into state,
+  # but does NOT update the server
   config = {}
 }
 
-# Clear days on server
+# Clear days on server - send an explicit empty list
 resource "uptimerobot_monitor" "clear" {
   name     = "HTTP clear"
   type     = "HTTP"
@@ -284,10 +286,12 @@ resource "uptimerobot_monitor" "clear" {
   ssl_expiration_reminder = true
 
   config = {
+    # Empty list means clear on server
     ssl_expiration_period_days = []
   }
 }
 
+# UI managed SSL days. It will ignore drift if management is preferred via dashboard
 resource "uptimerobot_monitor" "ui_driven_ssl" {
   name     = "UI-driven SSL days"
   type     = "HTTP"
@@ -296,13 +300,43 @@ resource "uptimerobot_monitor" "ui_driven_ssl" {
 
   ssl_expiration_reminder = true
 
-  # If it is managed via UI, then adding ignore_changes in lifecycle tells Terraform to not reconcile and take in account changes here.
   lifecycle {
+    # Ignore any config changes (made in UI or elsewhere)
     ignore_changes = [config]
   }
 
-  # Optional. The block may be kept to preserve remote values explicitly
+  # Optionally an empty block may be left so Terraform mirrors
+  # current remote values into state without changing them
   config = {}
+}
+
+# DNS monitor. Manage DNS record lists. Only for type=DNS
+resource "uptimerobot_monitor" "dns_records" {
+  name     = "example.org DNS"
+  type     = "DNS"
+  url      = "example.org"
+  interval = 300
+
+  config = {
+    dns_records = {
+      # Provide only the record lists you want to manage.
+      # Omit an attribute to preserve it on server and set [] to clear them.
+      a     = ["93.184.216.34"]
+      cname = [] # clear on server
+    }
+  }
+}
+
+# DNS monitor on create require config
+resource "uptimerobot_monitor" "dns" {
+  name     = "example.org DNS"
+  type     = "DNS"
+  url      = "example.org"
+  interval = 300
+
+  config = {
+    dns_records = {} # required for DNS when config is present (API needs config on create)
+  }
 }
 ```
 
@@ -339,28 +373,26 @@ Common monitoring intervals:
 - `assigned_alert_contacts` (Attributes Set) Alert contacts assigned to this monitor.
 
 **Semantics**
-- Terraform sends exactly what you specify and the provider does **not** inject any hidden defaults.
-- **Free plan:** set `threshold = 0`, `recurrence = 0`.
-- **Paid plans:** set desired minutes (`threshold ≥ 0`, `recurrence ≥ 0`).
-
-**Examples**
-```hcl
-assigned_alert_contacts = [
-  { alert_contact_id = "123", threshold = 0,  recurrence = 0  },  # immediate, no repeats
-  { alert_contact_id = "456", threshold = 3,  recurrence = 15 },  # after 3m, then every 15m
-]
-``` (see [below for nested schema](#nestedatt--assigned_alert_contacts))
+- Terraform sends exactly what you specify; the provider does not inject hidden defaults.
+- **Free plan**: set `threshold = 0`, `recurrence = 0`.
+- **Paid plans**: any non-negative minutes for both fields. (see [below for nested schema](#nestedatt--assigned_alert_contacts))
 - `auth_type` (String) The authentication type (HTTP_BASIC)
 - `check_ssl_errors` (Boolean) If true, monitor checks SSL certificate errors (hostname mismatch, invalid chain, etc.).
 - `config` (Attributes) Advanced monitor configuration.
 
-**Semantics**:
-- Omit the block → **clear** config on server (reset to defaults).
-- `config = {}` → **preserve** remote values (no change).
-- `ssl_expiration_period_days = []` → **clear** days on server.
-- Non-empty list → **set** exactly those days.
+**Semantics**
+- **Omit** the block → **preserve** remote values (no change). *(Exception: DNS on create — see DNS rules.)*
+- `config = {}` (empty block) → treat as **managed but keep** current remote values. *(Not allowed for DNS; include `dns_records` instead.)*
+- `ssl_expiration_period_days = []` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 
-**Tip**: To let UI changes win, use `lifecycle { ignore_changes = [config] }`. (see [below for nested schema](#nestedatt--config))
+**DNS-only rules**
+- For `type = "DNS"`:
+  - **Create**: `config` **must** include `dns_records` (it may be empty: `dns_records = {}`).
+  - **Update**: if you include `config`, you **must** include `dns_records`. To preserve server values, omit `config`.
+
+**Validation**
+- `dns_records` is only valid for DNS monitors.
+- SSL settings are valid only for HTTPS URLs on HTTP/KEYWORD monitors. (see [below for nested schema](#nestedatt--config))
 - `custom_http_headers` (Map of String) Custom HTTP headers as key:value. **Keys are case-insensitive.** The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. Tip: add keys in lower-case (e.g., `"content-type" = "application/json"`).
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
 - `follow_redirections` (Boolean) Whether to follow redirections
@@ -412,7 +444,29 @@ Required:
 
 Optional:
 
+- `dns_records` (Attributes) DNS record lists for DNS monitors. If present on non-DNS types, validation fails. (see [below for nested schema](#nestedatt--config--dns_records))
 - `ssl_expiration_period_days` (Set of Number) Reminder days before SSL expiry (0..365). Max 10 items.
 
 - Omit the attribute → **preserve** remote values.
 - Empty set `[]` → **clear** values on server.
+Effective for HTTPS URLs when `ssl_expiration_reminder = true`.
+
+<a id="nestedatt--config--dns_records"></a>
+### Nested Schema for `config.dns_records`
+
+Optional:
+
+- `a` (Set of String)
+- `aaaa` (Set of String)
+- `cname` (Set of String)
+- `dnskey` (Set of String)
+- `ds` (Set of String)
+- `mx` (Set of String)
+- `ns` (Set of String)
+- `nsec` (Set of String)
+- `nsec3` (Set of String)
+- `ptr` (Set of String)
+- `soa` (Set of String)
+- `spf` (Set of String)
+- `srv` (Set of String)
+- `txt` (Set of String)

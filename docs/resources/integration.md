@@ -9,10 +9,10 @@ description: |-
 
 Manages an integration in UptimeRobot.
 
+
 ## Example Usage
 
 ### Slack Integration
-
 ```terraform
 resource "uptimerobot_integration" "team_slack" {
   name                     = "Team Slack"
@@ -40,7 +40,6 @@ variable "critical_slack_webhook" {
 ```
 
 ### Webhook Integration
-
 ```terraform
 resource "uptimerobot_integration" "api_webhook" {
   name                     = "API Webhook"
@@ -78,7 +77,6 @@ resource "uptimerobot_integration" "simple_webhook" {
 ```
 
 ### Discord Integration
-
 ```terraform
 resource "uptimerobot_integration" "team_discord" {
   name                     = "Team Discord"
@@ -104,7 +102,6 @@ variable "discord_webhook_url" {
 ```
 
 ### Telegram Integration
-
 ```terraform
 resource "uptimerobot_integration" "telegram_bot" {
   name                     = "Telegram Alerts"
@@ -138,7 +135,6 @@ variable "telegram_chat_id" {
 ```
 
 ### Pushover Integration
-
 ```terraform
 resource "uptimerobot_integration" "pushover_alerts" {
   name                     = "Pushover Alerts"
@@ -174,7 +170,6 @@ variable "pushover_device" {
 ```
 
 ### Pushbullet Integration
-
 ```terraform
 resource "uptimerobot_integration" "pushbullet_alerts" {
   name                     = "Pushbullet Alerts"
@@ -200,7 +195,6 @@ variable "pushbullet_access_token" {
 ```
 
 ### Multiple Integrations
-
 ```terraform
 resource "uptimerobot_monitor" "website" {
   name     = "My Website"
@@ -235,6 +229,78 @@ resource "uptimerobot_integration" "webhook" {
     timestamp  = "$alertDateTime"
     monitor_id = "$monitorID"
   })
+}
+```
+
+### Google Chat Integration
+```terraform
+resource "uptimerobot_integration" "gchat" {
+  name                     = "GChat Prod Alerts"
+  type                     = "googlechat"
+  value                    = "https://chat.googleapis.com/v1/spaces/AAA/messages?key=...&token=..."
+  custom_value             = "Prod alert"
+  enable_notifications_for = 1 # 1=UpAndDown, 2=Down, 3=Up, 4=None
+  ssl_expiration_reminder  = true
+}
+```
+
+### Mattermost Integration
+```terraform
+resource "uptimerobot_integration" "mattermost" {
+  name                     = "Mattermost Alert"
+  type                     = "mattermost"
+  value                    = "https://mattermost.example/hooks/xxx"
+  custom_value             = "Important alert"
+  enable_notifications_for = 2
+  ssl_expiration_reminder  = true
+}
+```
+
+### Microsoft Teams Integration
+```terraform
+resource "uptimerobot_integration" "msteams" {
+  name                     = "Teams On-call"
+  type                     = "msteams"
+  value                    = "https://contoso.webhook.office.com/webhookb2/..."
+  enable_notifications_for = 2
+  ssl_expiration_reminder  = true
+}
+```
+
+### PagerDuty Integration
+```terraform
+resource "uptimerobot_integration" "pagerduty" {
+  name  = "PD Incidents"
+  type  = "pagerduty"
+  value = var.pagerduty_integration_key # must be >= 32 chars
+
+  location     = "eu" # or "us"
+  auto_resolve = true
+
+  enable_notifications_for = 2
+  ssl_expiration_reminder  = true
+}
+```
+
+### Splunk Integration
+```terraform
+resource "uptimerobot_integration" "splunk" {
+  name                     = "Splunk Alerts"
+  type                     = "splunk"
+  value                    = "https://splunk.collector.example/services/collector/raw"
+  enable_notifications_for = 1
+  ssl_expiration_reminder  = true
+}
+```
+
+### Zapier Integration
+```terraform
+resource "uptimerobot_integration" "zapier" {
+  name                     = "Zapier Alerts"
+  type                     = "zapier"
+  value                    = "https://hooks.zapier.com/hooks/catch/123/abc"
+  enable_notifications_for = 1
+  ssl_expiration_reminder  = false
 }
 ```
 
