@@ -212,7 +212,7 @@ func testAccMonitorResourceConfigWithAlertContactObjects(name string, ids []stri
 			if i > 0 {
 				ac += ","
 			}
-			ac += fmt.Sprintf(`{ alert_contact_id = %q }`, id)
+			ac += fmt.Sprintf(`{ alert_contact_id = %q, threshold = 0, recurrence = 0 }`, id)
 		}
 		ac += "]"
 	}
@@ -541,6 +541,72 @@ resource "uptimerobot_monitor" "test" {
 			{
 				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-contacts-empty", nil),
 				Check:  resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts"),
+			},
+		},
+	})
+}
+
+func TestAccMonitorResource_AlertContacts_MissingThreshold(t *testing.T) {
+	id := mustAlertContactID(t)
+
+	cfg := testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "test-missing-threshold"
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  assigned_alert_contacts = [
+    {
+      alert_contact_id = %q
+      recurrence       = 0
+      # threshold omitted on purpose
+    }
+  ]
+}
+`, id)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      cfg,
+				ExpectError: regexp.MustCompile(`attribute "threshold" is required`),
+			},
+		},
+	})
+}
+
+func TestAccMonitorResource_AlertContacts_MissingRecurrence(t *testing.T) {
+	id := mustAlertContactID(t)
+
+	cfg := testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "test-missing-recurrence"
+  url      = "https://example.com"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  assigned_alert_contacts = [
+    {
+      alert_contact_id = %q
+      threshold        = 0
+      # recurrence omitted on purpose
+    }
+  ]
+}
+`, id)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      cfg,
+				ExpectError: regexp.MustCompile(`attribute "recurrence" is required`),
 			},
 		},
 	})

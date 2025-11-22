@@ -61,10 +61,6 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 			v := *req.Timeout
 			c.Timeout = &v
 		}
-		if req.GracePeriod != nil {
-			v := *req.GracePeriod
-			c.GracePeriod = &v
-		}
 	}
 	if req.URL != "" {
 		s := req.URL
@@ -190,10 +186,6 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		if req.Timeout != nil {
 			v := *req.Timeout
 			c.Timeout = &v
-		}
-		if req.GracePeriod != nil {
-			v := *req.GracePeriod
-			c.GracePeriod = &v
 		}
 	}
 	if req.URL != "" {

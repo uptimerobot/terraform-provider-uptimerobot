@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -187,6 +188,12 @@ func buildUpdateRequest(
 
 	// tags
 	setTagsOnUpdate(ctx, plan, req, resp)
+	if resp.Diagnostics.HasError() {
+		return nil, ""
+	}
+
+	// alert contacts
+	setAlertContactsOnUpdate(ctx, plan, req, resp)
 	if resp.Diagnostics.HasError() {
 		return nil, ""
 	}
@@ -387,6 +394,74 @@ func setTagsOnUpdate(ctx context.Context, plan monitorResourceModel, req *client
 	}
 }
 
+func setAlertContactsOnUpdate(
+	ctx context.Context,
+	plan monitorResourceModel,
+	req *client.UpdateMonitorRequest,
+	resp *resource.UpdateResponse,
+) {
+	switch {
+	case plan.AssignedAlertContacts.IsUnknown():
+		// Unknown will preserve remote
+		return
+
+	case plan.AssignedAlertContacts.IsNull():
+		// Null will be omitted and preserver remote
+		return
+
+	default:
+		var acs []alertContactTF
+		resp.Diagnostics.Append(plan.AssignedAlertContacts.ElementsAs(ctx, &acs, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		if len(acs) == 0 {
+			empty := make([]client.AlertContactRequest, 0)
+			req.AssignedAlertContacts = &empty
+			return
+		}
+
+		out := make([]client.AlertContactRequest, 0, len(acs))
+		for i, ac := range acs {
+			if ac.AlertContactID.IsNull() || ac.AlertContactID.IsUnknown() || ac.AlertContactID.ValueString() == "" {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("assigned_alert_contacts").AtListIndex(i).AtName("alert_contact_id"),
+					"Missing alert_contact_id",
+					"Each element must set alert_contact_id.",
+				)
+				return
+			}
+			if ac.Threshold.IsNull() || ac.Threshold.IsUnknown() {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("assigned_alert_contacts").AtListIndex(i).AtName("threshold"),
+					"Missing threshold",
+					"threshold is required by the API and must be set.",
+				)
+				return
+			}
+			if ac.Recurrence.IsNull() || ac.Recurrence.IsUnknown() {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("assigned_alert_contacts").AtListIndex(i).AtName("recurrence"),
+					"Missing recurrence",
+					"recurrence is required by the API and must be set.",
+				)
+				return
+			}
+
+			t := ac.Threshold.ValueInt64()
+			r := ac.Recurrence.ValueInt64()
+			out = append(out, client.AlertContactRequest{
+				AlertContactID: ac.AlertContactID.ValueString(),
+				Threshold:      &t,
+				Recurrence:     &r,
+			})
+		}
+
+		req.AssignedAlertContacts = &out
+	}
+}
+
 func applyUpdatedMonitorToState(
 	ctx context.Context,
 	plan monitorResourceModel,
@@ -471,27 +546,47 @@ func applyUpdatedMonitorToState(
 		out.MaintenanceWindowIDs = v
 	}
 
-	// Alert Contacts and validation of missing cases
+	// Alert Contacts and validation of missing or uncleared cases
+	var wantIDs, gotIDs []string
 	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
-		want, d := planAlertIDs(ctx, plan.AssignedAlertContacts)
+		var d diag.Diagnostics
+		wantIDs, d = planAlertIDs(ctx, plan.AssignedAlertContacts)
 		resp.Diagnostics.Append(d...)
-		got := alertIDsFromAPI(m.AssignedAlertContacts)
-		if miss := missingAlertIDs(want, got); len(miss) > 0 {
+		gotIDs = alertIDsFromAPI(m.AssignedAlertContacts)
+
+		// If user requested clear and API still has contacts
+		if len(wantIDs) == 0 && len(gotIDs) > 0 {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("assigned_alert_contacts"),
+				"Alert contacts were not cleared",
+				fmt.Sprintf("Requested to clear all alert contacts, but the API returned: %v", gotIDs),
+			)
+			return out
+		}
+
+		// If user requested specific IDs and some are missing
+		if miss := missingAlertIDs(wantIDs, gotIDs); len(miss) > 0 {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("assigned_alert_contacts"),
 				"Some alert contacts were not applied",
 				fmt.Sprintf("Requested IDs: %v\nApplied IDs: %v\nMissing IDs: %v\nHint: a missing contact is often not in your team or you lack access.",
-					want, got, miss),
+					wantIDs, gotIDs, miss),
 			)
 			return out
 		}
 	}
+
 	acSet, d := alertContactsFromAPI(ctx, m.AssignedAlertContacts)
 	resp.Diagnostics.Append(d...)
 	if plan.AssignedAlertContacts.IsNull() || plan.AssignedAlertContacts.IsUnknown() {
 		out.AssignedAlertContacts = types.SetNull(alertContactObjectType())
 	} else {
-		out.AssignedAlertContacts = acSet
+		if len(wantIDs) == 0 {
+			empty := types.SetValueMust(alertContactObjectType(), []attr.Value{})
+			out.AssignedAlertContacts = empty
+		} else {
+			out.AssignedAlertContacts = acSet
+		}
 	}
 
 	// timeout and grace per monitor type
