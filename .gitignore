@@ -8,6 +8,7 @@ dist/
 *.tfstate
 *.tfstate.backup
 terraform.tfplan
+.terraformrc
 
 *.log
 go.work*
