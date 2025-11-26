@@ -80,7 +80,7 @@ jobs:
           - app: terraform
             version: 'latest'
           - app: terraform
-            version: '1.12.x'
+            version: '1.13.x'
           - app: opentofu
             version: 'latest'
           - app: opentofu
