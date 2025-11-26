@@ -1306,23 +1306,28 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_DNS_And_PING_IgnoreTimeoutAndGrace(t *testing.T) {
+	dnsName := "acc-dns"
+	dnsDomain := testAccUniqueDomain(dnsName)
+	pingName := "acc-ping"
+	pingURL := testAccUniqueURL(pingName)
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				// DNS with neither timeout nor grace_period
-				Config: testAccProviderConfig() + `
+				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "dns" {
-  name     = "acc-dns"
+  name     = %q
   type     = "DNS"
-  url      = "example.com"
+  url      = %q
   interval = 300
   config  = {
 	dns_records = {}
   }
 }
-`,
+`, dnsName, dnsDomain),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.dns", "type", "DNS"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.dns", "timeout"),
@@ -1331,14 +1336,14 @@ resource "uptimerobot_monitor" "dns" {
 			},
 			{
 				// PING with neither timeout nor grace_period
-				Config: testAccProviderConfig() + `
+				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "ping" {
-  name     = "acc-ping"
+  name     = %q
   type     = "PING"
-  url      = "1.1.1.1"
+  url      = %q
   interval = 300
 }
-`,
+`, pingName, pingURL),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.ping", "type", "PING"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.ping", "timeout"),
@@ -1350,20 +1355,22 @@ resource "uptimerobot_monitor" "ping" {
 }
 
 func TestAcc_Monitor_Heartbeat_UsesGrace(t *testing.T) {
+	name := "acc-heartbeat"
+	url := testAccUniqueURL(name)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb" {
-  name         = "acc-heartbeat"
+  name         = %q
   type         = "HEARTBEAT"
-  url          = "https://example.com"
+  url          = "%s"
   interval     = 300
   grace_period = 120
 }
-`,
+`, name, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "type", "HEARTBEAT"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "120"),
@@ -1375,34 +1382,35 @@ resource "uptimerobot_monitor" "hb" {
 }
 
 func TestAcc_Monitor_Heartbeat_Grace_Bounds_OK(t *testing.T) {
+	baseURL := testAccUniqueURL("hb-bounds")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{ // min=0
-				Config: testAccProviderConfig() + `
+				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb" {
   name         = "hb-min"
   type         = "HEARTBEAT"
-  url          = "https://example.com"
+  url          = "%s"
   interval     = 300
   grace_period = 0
 }
-`,
+`, baseURL),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "0"),
 				),
 			},
 			{ // max=86400
-				Config: testAccProviderConfig() + `
+				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb" {
   name         = "hb-max"
   type         = "HEARTBEAT"
-  url          = "https://example.com"
+  url          = "%s"
   interval     = 300
   grace_period = 86400
 }
-`,
+`, baseURL),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "86400"),
 				),
@@ -1412,32 +1420,33 @@ resource "uptimerobot_monitor" "hb" {
 }
 
 func TestAcc_Monitor_Heartbeat_Grace_Invalid(t *testing.T) {
+	baseURL := testAccUniqueURL("hb-bad")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProviderConfig() + `
+				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb" {
   name         = "hb-bad-low"
   type         = "HEARTBEAT"
-  url          = "https://example.com"
+  url          = "%s"
   interval     = 300
   grace_period = -1
 }
-`,
+`, baseURL),
 				ExpectError: regexp.MustCompile(`must be between 0 and 86400`),
 			},
 			{
-				Config: testAccProviderConfig() + `
+				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb" {
   name         = "hb-bad-high"
   type         = "HEARTBEAT"
-  url          = "https://example.com"
+  url          = "%s"
   interval     = 300
   grace_period = 86401
 }
-`,
+`, baseURL),
 				ExpectError: regexp.MustCompile(`must be between 0 and 86400`),
 			},
 		},
@@ -1600,6 +1609,7 @@ func TestAcc_Monitor_HTTP_Post_NoBody_StablePlan(t *testing.T) {
 
 func TestAcc_Monitor_HTTP_MethodSwitch_ClearsBody(t *testing.T) {
 	name := "acc-method-switch"
+	url := testAccUniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1630,16 +1640,16 @@ func TestAcc_Monitor_HTTP_MethodSwitch_ClearsBody(t *testing.T) {
 				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
-  url              = "https://example.com" // change URL only
+  url              = "%s" // change URL only
   type             = "HTTP"
   interval         = 300
   timeout          = 30
   http_method_type = "GET"
 }
-`, name),
+`, name, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "GET"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_type"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_data"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
@@ -1650,16 +1660,16 @@ resource "uptimerobot_monitor" "test" {
 				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
-  url              = "https://example.com"
+  url              = "%s"
   type             = "HTTP"
   interval         = 300
   timeout          = 30
   http_method_type = "POST"
 }
-`, name),
+`, name, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", "https://example.com"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_type"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_data"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
@@ -1670,13 +1680,13 @@ resource "uptimerobot_monitor" "test" {
 				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
-  url              = "https://example.com"
+  url              = "%s"
   type             = "HTTP"
   interval         = 300
   timeout          = 30
   http_method_type = "POST"
 }
-`, name),
+`, name, url),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -1845,15 +1855,16 @@ func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
 }
 
 func TestAcc_Monitor_Config_SSLExpirationPeriodDays_Invalid(t *testing.T) {
+	baseURL := testAccUniqueURL("acc-ssl-period")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{ // out of range
-				Config: testAccProviderConfig() + `
+				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "acc-ssl-period-invalid"
-  url      = "https://example.com"
+  url      = "%s"
   type     = "HTTP"
   interval = 300
   timeout  = 30
@@ -1861,7 +1872,7 @@ resource "uptimerobot_monitor" "test" {
     ssl_expiration_period_days = [-1, 366]
   }
 }
-`,
+`, baseURL),
 				ExpectError: regexp.MustCompile(
 					`(?s)` +
 						`Attribute config\.ssl_expiration_period_days\[Value\(-1\)\] value must be between[\s\S]*0 and 365, got: -1` +
@@ -1870,10 +1881,10 @@ resource "uptimerobot_monitor" "test" {
 				),
 			},
 			{ // > 10 items
-				Config: testAccProviderConfig() + `
+				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "acc-ssl-period-too-many"
-  url      = "https://example.com"
+  url      = "%s"
   type     = "HTTP"
   interval = 300
   timeout  = 30
@@ -1881,7 +1892,7 @@ resource "uptimerobot_monitor" "test" {
     ssl_expiration_period_days = [0,1,2,3,4,5,6,7,8,9,10]
   }
 }
-`,
+`, baseURL),
 				ExpectError: regexp.MustCompile(
 					`Attribute config\.ssl_expiration_period_days (?:set|value) must contain at most 10\s+elements(?:, got: \d+)?`,
 				),
@@ -1896,23 +1907,24 @@ func TestAcc_Monitor_Name_HTMLNormalization(t *testing.T) {
 	}
 
 	resourceName := "uptimerobot_monitor.test"
+	url := fmt.Sprintf("%s/health", testAccUniqueURL("acc-html-normalization"))
 
-	cfgEncoded := `
+	cfgEncoded := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "A &amp; B <C>"
   type     = "HTTP"
-  url      = "https://example.com/health"
+  url      = "%s"
   interval = 300
 }
-`
-	cfgPlain := `
+`, url)
+	cfgPlain := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "A & B <C>"
   type     = "HTTP"
-  url      = "https://example.com/health"
+  url      = "%s"
   interval = 300
 }
-`
+`, url)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -2235,11 +2247,12 @@ func TestAcc_Monitor_Config_DNSRecords_ForbiddenOnHTTP(t *testing.T) {
 	t.Parallel()
 
 	name := acctest.RandomWithPrefix("acc-http-dns")
-	cfg := `
+	url := testAccUniqueURL(name)
+	cfg := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "` + name + `"
+  name     = "`+name+`"
   type     = "HTTP"
-  url      = "https://example.com"
+  url      = "%s"
   interval = 300
 
   config = {
@@ -2248,7 +2261,7 @@ resource "uptimerobot_monitor" "test" {
     }
   }
 }
-`
+`, url)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -2265,12 +2278,13 @@ func TestAcc_Monitor_Config_SSLDays_Validators(t *testing.T) {
 	t.Parallel()
 
 	name := acctest.RandomWithPrefix("acc-ssl-validate")
+	url := testAccUniqueURL(name)
 
-	tooMany := `
+	tooMany := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "` + name + `"
+  name     = "`+name+`"
   type     = "HTTP"
-  url      = "https://example.com"
+  url      = "%s"
   interval = 300
   ssl_expiration_reminder = true
 
@@ -2279,12 +2293,12 @@ resource "uptimerobot_monitor" "test" {
     ssl_expiration_period_days = [0,1,2,3,4,5,6,7,8,9,10]
   }
 }
-`
-	outOfRange := `
+`, url)
+	outOfRange := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "` + name + `"
+  name     = "`+name+`"
   type     = "HTTP"
-  url      = "https://example.com"
+  url      = "%s"
   interval = 300
   ssl_expiration_reminder = true
 
@@ -2292,7 +2306,7 @@ resource "uptimerobot_monitor" "test" {
     ssl_expiration_period_days = [400]
   }
 }
-`
+`, url)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
