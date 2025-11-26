@@ -473,6 +473,17 @@ func applyUpdatedMonitorToState(
 	out := plan
 	out.Status = prev.Status
 
+	methodManaged := !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown()
+
+	actualMethod := strings.ToUpper(effMethod)
+	if m.HTTPMethodType != "" {
+		actualMethod = strings.ToUpper(m.HTTPMethodType)
+	}
+	methodForState := actualMethod
+	if methodManaged && effMethod != "" {
+		methodForState = strings.ToUpper(effMethod)
+	}
+
 	// keyword case type from API
 	if strings.ToUpper(plan.Type.ValueString()) != MonitorTypeKEYWORD {
 		out.KeywordCaseType = types.StringNull()
@@ -488,7 +499,11 @@ func applyUpdatedMonitorToState(
 
 	// method and body are reflected to the state
 	if isMethodHTTPLike(plan.Type) {
-		out.HTTPMethodType = types.StringValue(effMethod)
+		if methodForState != "" {
+			out.HTTPMethodType = types.StringValue(methodForState)
+		} else {
+			out.HTTPMethodType = types.StringNull()
+		}
 	} else {
 		out.HTTPMethodType = types.StringNull()
 	}
@@ -609,7 +624,7 @@ func applyUpdatedMonitorToState(
 	}
 
 	// body in state
-	switch strings.ToUpper(effMethod) {
+	switch strings.ToUpper(methodForState) {
 	case "GET", "HEAD":
 		out.PostValueType = types.StringNull()
 		out.PostValueData = jsontypes.NewNormalizedNull()
