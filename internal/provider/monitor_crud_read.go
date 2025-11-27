@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"html"
 	"strconv"
 	"strings"
 
@@ -53,7 +52,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	readApplyOptionalDefaults(&state, monitor, isImport)
 	readApplyHTTPBody(&state)
 	readApplyKeywordAndPort(&state, monitor, isImport)
-	readApplyIdentity(&state, monitor, isImport)
+	readApplyIdentity(&state, monitor)
 	readApplyRegionalData(&state, monitor)
 	readApplyTagsHeadersAC(ctx, resp, &state, monitor, isImport)
 	readApplySuccessCodes(ctx, resp, &state, monitor)
@@ -201,7 +200,7 @@ func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isI
 	}
 }
 
-func readApplyIdentity(state *monitorResourceModel, m *client.Monitor, isImport bool) {
+func readApplyIdentity(state *monitorResourceModel, m *client.Monitor) {
 	state.Name = types.StringValue(m.Name)
 	state.URL = types.StringValue(m.URL)
 	state.ID = types.StringValue(strconv.FormatInt(m.ID, 10))
@@ -318,11 +317,4 @@ func readApplyConfig(ctx context.Context, resp *resource.ReadResponse, state *mo
 			state.Config = cfgState
 		}
 	}
-}
-
-func unescapeAPIText(s string) string {
-	if s == "" {
-		return s
-	}
-	return html.UnescapeString(s)
 }
