@@ -202,11 +202,7 @@ func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isI
 }
 
 func readApplyIdentity(state *monitorResourceModel, m *client.Monitor, isImport bool) {
-	if isImport {
-		state.Name = types.StringValue(unescapeAPIText(m.Name))
-	} else {
-		state.Name = types.StringValue(m.Name)
-	}
+	state.Name = types.StringValue(m.Name)
 	state.URL = types.StringValue(m.URL)
 	state.ID = types.StringValue(strconv.FormatInt(m.ID, 10))
 	state.Status = types.StringValue(m.Status)
@@ -311,7 +307,11 @@ func readApplyConfig(ctx context.Context, resp *resource.ReadResponse, state *mo
 	}
 
 	haveBlockConfig := !state.Config.IsNull() && !state.Config.IsUnknown()
-	if haveBlockConfig {
+	switch {
+	case haveBlockConfig && m.Config == nil:
+		// User removed the block or API returns nil config. Clear it to avoid the drift.
+		state.Config = types.ObjectNull(configObjectType().AttrTypes)
+	case haveBlockConfig:
 		cfgState, d := flattenConfigToState(ctx, haveBlockConfig, state.Config, m.Config)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {

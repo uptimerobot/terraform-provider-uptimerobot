@@ -914,6 +914,7 @@ func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 }
 
 func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
+	name := acctest.RandomWithPrefix("test-monitor-response-codes")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -921,13 +922,13 @@ func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 		Steps: []resource.TestStep{
 			// 1) Create with attr omitted. Defaults may be set on server, attribute is ABSENT in state
 			{
-				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", nil),
+				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name, nil),
 				Check:  resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "success_http_response_codes"),
 			},
 
 			// 2) Set custom codes
 			{
-				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", []string{"200", "201", "202"}),
+				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name, []string{"200", "201", "202"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.#", "3"),
 					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "success_http_response_codes.*", "200"),
@@ -938,7 +939,7 @@ func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 
 			// 3) Omit attr (nil). PRESERVE existing custom values on server and still PRESENT in state
 			{
-				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", nil),
+				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.#", "3"),
 					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "success_http_response_codes.*", "200"),
@@ -949,12 +950,12 @@ func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 
 			// 4) Explicit empty []. Provider sends empty slice and server resets to defaults, and attr ABSENT in state
 			{
-				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", []string{}),
+				Config: testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name, []string{}),
 				Check:  resource.TestCheckResourceAttr("uptimerobot_monitor.test", "success_http_response_codes.#", "0"),
 			},
 			// 5) Idempotent re-plan with omit
 			{
-				Config:             testAccMonitorResourceConfigWithSuccessHTTPResponseCodes("test-monitor-response-codes", nil),
+				Config:             testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name, nil),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -1917,50 +1918,22 @@ resource "uptimerobot_monitor" "test" {
   interval = 300
 }
 `, url)
-	cfgPlain := fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-  name     = "A & B <C>"
-  type     = "HTTP"
-  url      = "%s"
-  interval = 300
-}
-`, url)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
-			// 1) Create with encoded HCL, so state is encoded and we don't unescape on normal Read
 			{
 				Config: cfgEncoded,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "name", "A &amp; B <C>"),
 				),
 			},
-			// 2) Import will import unescaped to plain in state
 			{
 				ResourceName:      resourceName,
 				ImportState:       true,
-				ImportStateVerify: false, // don't compare against encoded config
+				ImportStateVerify: true,
 			},
-			// 3) Switch config to plain - refresh reads encoded state, so plan should show a diff
-			{
-				Config:             cfgPlain,
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: true,
-			},
-			// 4) Apply plain - state plain
-			{
-				Config: cfgPlain,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(resourceName, "name", "A & B <C>"),
-				),
-			},
-			// 5) Re-plan plain - clean
-			{
-				Config:             cfgPlain,
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: false,
-			},
+			{Config: cfgEncoded, PlanOnly: true, ExpectNonEmptyPlan: false},
 		},
 	})
 }
@@ -2171,13 +2144,14 @@ func TestAcc_Monitor_Config_DNSRecords_Manage(t *testing.T) {
 	t.Parallel()
 
 	name := acctest.RandomWithPrefix("acc-dns-config")
+	domain := testAccUniqueDomain(name)
 	res := "uptimerobot_monitor.test"
 
-	cfgAandCNAME := `
+	cfgAandCNAME := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "` + name + `"
+  name     = "%s"
   type     = "DNS"
-  url      = "example.org"
+  url      = "%s"
   interval = 300
 
   config = {
@@ -2187,32 +2161,32 @@ resource "uptimerobot_monitor" "test" {
     }
   }
 }
-`
-	cfgPreserve := `
+`, name, domain)
+	cfgPreserve := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "` + name + `"
+  name     = "%s"
   type     = "DNS"
-  url      = "example.org"
+  url      = "%s"
   interval = 300
 
   config = {}
 }
-`
-	cfgChange := `
+`, name, domain)
+	cfgChange := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "` + name + `"
+  name     = "%s"
   type     = "DNS"
-  url      = "example.org"
+  url      = "%s"
   interval = 300
 
   config = {
     dns_records = {
     	a   = ["93.184.216.34"]
-    	txt = ["v=spf1 include:example.org ~all"]
+    	txt = ["v=spf1 include:%s ~all"]
     }
   }
 }
-`
+`, name, domain, domain)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -2328,13 +2302,14 @@ func TestAcc_Monitor_Config_DNSRecords_EmptyList_StaysEmpty(t *testing.T) {
 	t.Parallel()
 
 	name := acctest.RandomWithPrefix("acc-dns-empty")
+	domain := testAccUniqueDomain(name)
 	res := "uptimerobot_monitor.test"
 
-	cfgEmpty := `
+	cfgEmpty := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "` + name + `"
+  name     = "%s"
   type     = "DNS"
-  url      = "example.org"
+  url      = "%s"
   interval = 300
 
   config = {
@@ -2343,7 +2318,21 @@ resource "uptimerobot_monitor" "test" {
     }
   }
 }
-`
+`, name, domain)
+	cfgNonEmpty := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "DNS"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    dns_records = {
+      cname = ["foo.%s."]
+    }
+  }
+}
+`, name, domain, domain)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -2363,7 +2352,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// Flip to non-empty and back to [] to ensure it remains empty set (not null)
 			{
-				Config: strings.ReplaceAll(cfgEmpty, `cname = []`, `cname = ["foo.example.org."]`),
+				Config: cfgNonEmpty,
 				Check:  resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "1"),
 			},
 			{
