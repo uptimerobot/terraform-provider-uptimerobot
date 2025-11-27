@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
@@ -116,31 +117,38 @@ func TestAccMaintenanceWindow_DailyWithDays_ShouldError(t *testing.T) {
 }
 
 func TestAccMaintenanceWindow_DriftSuppression_DailyOmitDays(t *testing.T) {
-	cfgWeekly := testAccProviderConfig() + `
+	name := acctest.RandomWithPrefix("mw-drift")
+	cfgWeekly := testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
-  name     = "mw-drift"
+  name     = "%s"
   interval = "weekly"
   time     = "02:00:00"
   duration = 60
   days     = [2,4,5]
 }
-`
-	cfgDaily := testAccProviderConfig() + `
+`, name)
+	cfgDaily := testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
-  name     = "mw-drift"
+  name     = "%s"
   interval = "daily"
   time     = "02:00:00"
   duration = 60
   // days intentionally omitted
 }
-`
+`, name)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
 			{Config: cfgWeekly},
-			{Config: cfgDaily},
+			{
+				Config: cfgDaily,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.mw", "interval", "daily"),
+					resource.TestCheckNoResourceAttr("uptimerobot_maintenance_window.mw", "days"),
+				),
+			},
 			{
 				Config:             cfgDaily,
 				PlanOnly:           true,

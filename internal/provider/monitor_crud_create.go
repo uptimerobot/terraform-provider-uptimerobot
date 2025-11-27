@@ -394,6 +394,16 @@ func (r *monitorResource) buildStateAfterCreate(
 ) monitorResourceModel {
 	plan.Status = types.StringValue(api.Status)
 
+	methodManaged := !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown()
+	actualMethod := strings.ToUpper(effMethod)
+	if api.HTTPMethodType != "" {
+		actualMethod = strings.ToUpper(api.HTTPMethodType)
+	}
+	methodForState := actualMethod
+	if methodManaged && effMethod != "" {
+		methodForState = strings.ToUpper(effMethod)
+	}
+
 	// Headers. Keep null if omitted in plan
 	if plan.CustomHTTPHeaders.IsNull() || plan.CustomHTTPHeaders.IsUnknown() {
 		plan.CustomHTTPHeaders = types.MapNull(types.StringType)
@@ -402,7 +412,11 @@ func (r *monitorResource) buildStateAfterCreate(
 	// Method presence in state only for HTTP or KEYWORD
 	switch strings.ToUpper(plan.Type.ValueString()) {
 	case MonitorTypeHTTP, MonitorTypeKEYWORD:
-		plan.HTTPMethodType = types.StringValue(effMethod)
+		if methodForState != "" {
+			plan.HTTPMethodType = types.StringValue(methodForState)
+		} else {
+			plan.HTTPMethodType = types.StringNull()
+		}
 	default:
 		plan.HTTPMethodType = types.StringNull()
 	}
@@ -440,7 +454,7 @@ func (r *monitorResource) buildStateAfterCreate(
 	}
 
 	// Body related state normalization
-	switch strings.ToUpper(effMethod) {
+	switch strings.ToUpper(methodForState) {
 	case "GET", "HEAD":
 		plan.PostValueType = types.StringNull()
 		plan.PostValueData = jsontypes.NewNormalizedNull()

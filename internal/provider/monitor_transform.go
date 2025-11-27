@@ -442,6 +442,16 @@ func attrFromMap(ctx context.Context, m map[string]string) (types.Map, diag.Diag
 	return types.MapValueFrom(ctx, types.StringType, m)
 }
 
+// headersFromAPIForState drops added by server Content-Type headers so state stays clean
+// when the API injects a default for POST/JSON bodies.
+func headersFromAPIForState(in map[string]string) map[string]string {
+	m := normalizeHeadersForCompareNoCT(in)
+	if len(m) == 0 {
+		return nil
+	}
+	return m
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if v != "" {
