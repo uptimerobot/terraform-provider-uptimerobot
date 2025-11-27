@@ -1105,8 +1105,10 @@ resource "uptimerobot_monitor" "test" {
 
 // TestAccMonitorResource_NewMonitorTypes tests the new monitor types.
 func TestAccMonitorResource_NewMonitorTypes(t *testing.T) {
-	hbURL := testAccUniqueURL("test-heartbeat-monitor")
-	dnsDomain := testAccUniqueDomain("test-dns-monitor")
+	hbName := acctest.RandomWithPrefix("acc-hb-newtypes")
+	dnsName := acctest.RandomWithPrefix("acc-dns-newtypes")
+	hbURL := testAccUniqueURL(hbName)
+	dnsDomain := testAccUniqueDomain(dnsName)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1116,7 +1118,7 @@ func TestAccMonitorResource_NewMonitorTypes(t *testing.T) {
 			{
 				Config: testAccProviderConfig() + `
 resource "uptimerobot_monitor" "test" {
-    name         = "test-heartbeat-monitor"
+    name         = "` + hbName + `"
     url          = "` + hbURL + `"
     type         = "HEARTBEAT"
     interval     = 300
@@ -1124,7 +1126,7 @@ resource "uptimerobot_monitor" "test" {
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-heartbeat-monitor"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", hbName),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HEARTBEAT"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "grace_period", "60"),
 				),
@@ -1133,7 +1135,7 @@ resource "uptimerobot_monitor" "test" {
 			{
 				Config: testAccProviderConfig() + `
 resource "uptimerobot_monitor" "test" {
-    name         = "test-dns-monitor"
+    name         = "` + dnsName + `"
     url          = "` + dnsDomain + `"
     type         = "DNS"
     interval     = 300
@@ -1143,7 +1145,7 @@ resource "uptimerobot_monitor" "test" {
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-dns-monitor"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", dnsName),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "DNS"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", dnsDomain),
 				),
@@ -1154,7 +1156,7 @@ resource "uptimerobot_monitor" "test" {
 
 // TestAccMonitorResource_NewFields tests the new fields added to the monitor resource.
 func TestAccMonitorResource_NewFields(t *testing.T) {
-	const name = "test-newfields"
+	name := acctest.RandomWithPrefix("test-newfields")
 	url := testAccUniqueURL(name)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1356,7 +1358,7 @@ resource "uptimerobot_monitor" "ping" {
 }
 
 func TestAcc_Monitor_Heartbeat_UsesGrace(t *testing.T) {
-	name := "acc-heartbeat"
+	name := acctest.RandomWithPrefix("acc-heartbeat")
 	url := testAccUniqueURL(name)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1383,7 +1385,8 @@ resource "uptimerobot_monitor" "hb" {
 }
 
 func TestAcc_Monitor_Heartbeat_Grace_Bounds_OK(t *testing.T) {
-	baseURL := testAccUniqueURL("hb-bounds")
+	baseName := acctest.RandomWithPrefix("hb-bounds")
+	baseURL := testAccUniqueURL(baseName)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1391,13 +1394,13 @@ func TestAcc_Monitor_Heartbeat_Grace_Bounds_OK(t *testing.T) {
 			{ // min=0
 				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb" {
-  name         = "hb-min"
+  name         = "%s-min"
   type         = "HEARTBEAT"
   url          = "%s"
   interval     = 300
   grace_period = 0
 }
-`, baseURL),
+`, baseName, baseURL),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "0"),
 				),
@@ -1405,13 +1408,13 @@ resource "uptimerobot_monitor" "hb" {
 			{ // max=86400
 				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb" {
-  name         = "hb-max"
+  name         = "%s-max"
   type         = "HEARTBEAT"
   url          = "%s"
   interval     = 300
   grace_period = 86400
 }
-`, baseURL),
+`, baseName, baseURL),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "86400"),
 				),
@@ -1421,7 +1424,8 @@ resource "uptimerobot_monitor" "hb" {
 }
 
 func TestAcc_Monitor_Heartbeat_Grace_Invalid(t *testing.T) {
-	baseURL := testAccUniqueURL("hb-bad")
+	baseName := acctest.RandomWithPrefix("hb-bad")
+	baseURL := testAccUniqueURL(baseName)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1429,25 +1433,25 @@ func TestAcc_Monitor_Heartbeat_Grace_Invalid(t *testing.T) {
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb" {
-  name         = "hb-bad-low"
+  name         = "%s-low"
   type         = "HEARTBEAT"
   url          = "%s"
   interval     = 300
   grace_period = -1
 }
-`, baseURL),
+`, baseName, baseURL),
 				ExpectError: regexp.MustCompile(`must be between 0 and 86400`),
 			},
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb" {
-  name         = "hb-bad-high"
+  name         = "%s-high"
   type         = "HEARTBEAT"
   url          = "%s"
   interval     = 300
   grace_period = 86401
 }
-`, baseURL),
+`, baseName, baseURL),
 				ExpectError: regexp.MustCompile(`must be between 0 and 86400`),
 			},
 		},
