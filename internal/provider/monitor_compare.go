@@ -37,6 +37,7 @@ type monComparable struct {
 	skipMWIDsCompare     bool
 	// Config children which we manage
 	SSLExpirationPeriodDays []int64
+	DNSRecords              map[string][]string
 }
 
 func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
@@ -283,6 +284,11 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
 		c.SSLExpirationPeriodDays = normalizeInt64Set(req.Config.SSLExpirationPeriodDays)
 	}
+	if req.Config != nil && req.Config.DNSRecords != nil {
+		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
+			c.DNSRecords = dr
+		}
+	}
 
 	return c
 }
@@ -422,6 +428,9 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 
 	if m.Config != nil {
 		c.SSLExpirationPeriodDays = normalizeInt64Set(m.Config.SSLExpirationPeriodDays) // empty slice is ok
+		if dr := normalizeDNSRecords(m.Config.DNSRecords); dr != nil {
+			c.DNSRecords = dr
+		}
 	}
 
 	return c
@@ -442,6 +451,55 @@ func normalizeHeadersForCompareNoCT(in map[string]string) map[string]string {
 		out[k] = strings.TrimSpace(v)
 	}
 	return out
+}
+
+func normalizeDNSRecords(dr *client.DNSRecords) map[string][]string {
+	if dr == nil {
+		return nil
+	}
+	out := make(map[string][]string)
+	add := func(key string, vals []string) {
+		if vals == nil {
+			return
+		}
+		out[key] = normalizeStringSet(vals)
+	}
+	add("a", dr.A)
+	add("aaaa", dr.AAAA)
+	add("cname", dr.CNAME)
+	add("txt", dr.TXT)
+	add("mx", dr.MX)
+	add("ns", dr.NS)
+	add("srv", dr.SRV)
+	add("ptr", dr.PTR)
+	add("soa", dr.SOA)
+	add("spf", dr.SPF)
+	add("dnskey", dr.DNSKEY)
+	add("ds", dr.DS)
+	add("nsec", dr.NSEC)
+	add("nsec3", dr.NSEC3)
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func equalDNSRecords(want, got map[string][]string) bool {
+	if want == nil {
+		return true
+	}
+	if got == nil {
+		got = map[string][]string{}
+	}
+	for k, v := range want {
+		if len(v) == 0 && got[k] == nil {
+			continue
+		}
+		if !equalStringSet(v, got[k]) {
+			return false
+		}
+	}
+	return true
 }
 
 func equalComparable(want, got monComparable) bool {
@@ -501,6 +559,9 @@ func equalComparable(want, got monComparable) bool {
 		return false
 	}
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
+		return false
+	}
+	if want.DNSRecords != nil && !equalDNSRecords(want.DNSRecords, got.DNSRecords) {
 		return false
 	}
 
@@ -576,6 +637,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	}
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		f = append(f, "regional_data")
+	}
+	if want.DNSRecords != nil && !equalDNSRecords(want.DNSRecords, got.DNSRecords) {
+		f = append(f, "config.dns_records")
 	}
 	if want.KeywordCaseType != nil && (got.KeywordCaseType == nil || *want.KeywordCaseType != *got.KeywordCaseType) {
 		f = append(f, "keyword_case_type")
