@@ -167,6 +167,11 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
 		c.SSLExpirationPeriodDays = normalizeInt64Set(req.Config.SSLExpirationPeriodDays)
 	}
+	if req.Config != nil && req.Config.DNSRecords != nil {
+		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
+			c.DNSRecords = dr
+		}
+	}
 	return c
 }
 

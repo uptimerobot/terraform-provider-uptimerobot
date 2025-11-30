@@ -39,7 +39,11 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	// Wait to apply in the API
 	plan.ID = types.StringValue(strconv.FormatInt(created.ID, 10))
 	want := wantFromCreateReq(createReq)
-	api, err := r.waitMonitorSettled(ctx, created.ID, want, 60*time.Second)
+	settleTimeout := 60 * time.Second
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil {
+		settleTimeout = 120 * time.Second
+	}
+	api, err := r.waitMonitorSettled(ctx, created.ID, want, settleTimeout)
 	if err != nil {
 		resp.Diagnostics.AddWarning("Create settled slowly", "Backend took longer to reflect changes; proceeding.")
 		if api == nil {
