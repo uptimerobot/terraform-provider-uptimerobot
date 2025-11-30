@@ -104,8 +104,7 @@ func readApplyOptionalDefaults(state *monitorResourceModel, m *client.Monitor, i
 		state.HTTPUsername = types.StringNull()
 	}
 
-	if isImport || state.HTTPMethodType.IsNull() || state.HTTPMethodType.IsUnknown() ||
-		(state.PostValueData.IsNull() && state.PostValueKV.IsNull() && state.CustomHTTPHeaders.IsNull()) {
+	if isImport || state.HTTPMethodType.IsNull() || state.HTTPMethodType.IsUnknown() {
 		if m.HTTPMethodType != "" {
 			state.HTTPMethodType = types.StringValue(strings.ToUpper(m.HTTPMethodType))
 		} else {
@@ -227,11 +226,8 @@ func readApplyRegionalData(state *monitorResourceModel, m *client.Monitor, isImp
 	if m.RegionalData != nil {
 		if region, ok := coerceRegion(m.RegionalData); ok && !isDefaultRegion(region) {
 			state.RegionalData = types.StringValue(region)
-		} else {
-			state.RegionalData = types.StringNull()
 		}
-	} else {
-		state.RegionalData = types.StringNull()
+		// if API returns default or empty values user intent will be kept
 	}
 }
 
@@ -272,12 +268,16 @@ func readApplySuccessCodes(ctx context.Context, _ *resource.ReadResponse, state 
 		}
 
 		var vals []attr.Value
-		if m.SuccessHTTPResponseCodes != nil {
-			for _, c := range normalizeStringSet(m.SuccessHTTPResponseCodes) {
+		apiCodes := normalizeStringSet(m.SuccessHTTPResponseCodes)
+		if len(apiCodes) == len(prior) {
+			for _, c := range apiCodes {
 				vals = append(vals, types.StringValue(c))
 			}
 		} else {
-			vals = []attr.Value{}
+			// Preserve prior managed values if API normalized to a different or default set
+			for _, c := range normalizeStringSet(prior) {
+				vals = append(vals, types.StringValue(c))
+			}
 		}
 		state.SuccessHTTPResponseCodes = types.SetValueMust(types.StringType, vals)
 	}
