@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -492,6 +493,7 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		Time:     plan.Time.ValueString(),
 		Duration: int(plan.Duration.ValueInt64()),
 	}
+	var expectedDays []int64
 
 	// Only set AutoAddMonitors if it was explicitly set
 	if !plan.AutoAddMonitors.IsNull() && !plan.AutoAddMonitors.IsUnknown() {
@@ -517,6 +519,7 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 				return daysInt64[i] < daysInt64[j]
 			})
 			updateReq.Days = daysInt64
+			expectedDays = append(expectedDays, daysInt64...)
 		} else {
 			updateReq.Days = nil
 		}
@@ -536,12 +539,61 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
+	if len(expectedDays) > 0 {
+		if err := waitMaintenanceWindowDays(ctx, r.client, id, expectedDays); err != nil {
+			resp.Diagnostics.AddError("Maintenance window did not settle", err.Error())
+			return
+		}
+	}
+
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+}
+
+func waitMaintenanceWindowDays(ctx context.Context, c *client.Client, id int64, expected []int64) error {
+	want := normalizeDays(expected)
+	var lastGot []int64
+	for attempts := 0; attempts < 10; attempts++ {
+		mw, err := c.GetMaintenanceWindow(ctx, id)
+		if err != nil {
+			return err
+		}
+		lastGot = normalizeDays(mw.Days)
+		if equalInt64Sets(want, lastGot) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
+	}
+	return fmt.Errorf("days did not settle: want=%v got=%v", want, lastGot)
+}
+
+func normalizeDays(days []int64) []int64 {
+	if len(days) == 0 {
+		return nil
+	}
+	cp := append([]int64(nil), days...)
+	sort.Slice(cp, func(i, j int) bool { return cp[i] < cp[j] })
+	return cp
+}
+
+func equalInt64Sets(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *maintenanceWindowResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
