@@ -494,6 +494,7 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		Duration: int(plan.Duration.ValueInt64()),
 	}
 	var expectedDays []int64
+	shouldWait := false
 
 	// Only set AutoAddMonitors if it was explicitly set
 	if !plan.AutoAddMonitors.IsNull() && !plan.AutoAddMonitors.IsUnknown() {
@@ -520,6 +521,7 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 			})
 			updateReq.Days = daysInt64
 			expectedDays = append(expectedDays, daysInt64...)
+			shouldWait = true
 		} else {
 			updateReq.Days = nil
 		}
@@ -527,6 +529,8 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	iv := strings.ToLower(plan.Interval.ValueString())
 	if iv == intervalDaily || iv == intervalOnce {
 		updateReq.Days = nil
+		// expect days to be cleared when switching to daily and once
+		shouldWait = true
 	}
 
 	// Update maintenance window
@@ -539,8 +543,8 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
-	if len(expectedDays) > 0 {
-		if err := waitMaintenanceWindowDays(ctx, r.client, id, expectedDays); err != nil {
+	if shouldWait {
+		if err := waitMaintenanceWindowSettled(ctx, r.client, id, iv, expectedDays); err != nil {
 			resp.Diagnostics.AddError("Maintenance window did not settle", err.Error())
 			return
 		}
@@ -554,16 +558,21 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	}
 }
 
-func waitMaintenanceWindowDays(ctx context.Context, c *client.Client, id int64, expected []int64) error {
-	want := normalizeDays(expected)
+func waitMaintenanceWindowSettled(ctx context.Context, c *client.Client, id int64, expectedInterval string, expectedDays []int64) error {
+	want := normalizeDays(expectedDays)
+	wantInterval := strings.ToLower(expectedInterval)
 	var lastGot []int64
+	var lastInterval string
+
 	for attempts := 0; attempts < 10; attempts++ {
 		mw, err := c.GetMaintenanceWindow(ctx, id)
 		if err != nil {
 			return err
 		}
+		lastInterval = strings.ToLower(mw.Interval)
 		lastGot = normalizeDays(mw.Days)
-		if equalInt64Sets(want, lastGot) {
+
+		if lastInterval == wantInterval && equalInt64Sets(want, lastGot) {
 			return nil
 		}
 		select {
@@ -572,7 +581,7 @@ func waitMaintenanceWindowDays(ctx context.Context, c *client.Client, id int64, 
 		case <-time.After(3 * time.Second):
 		}
 	}
-	return fmt.Errorf("days did not settle: want=%v got=%v", want, lastGot)
+	return fmt.Errorf("maintenance window did not settle: want interval=%s days=%v got interval=%s days=%v", wantInterval, want, lastInterval, lastGot)
 }
 
 func normalizeDays(days []int64) []int64 {
