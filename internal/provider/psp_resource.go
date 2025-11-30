@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -505,9 +506,16 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	managedColors := plan.CustomSettings != nil && plan.CustomSettings.Colors != nil
 	managedFeatures := plan.CustomSettings != nil && plan.CustomSettings.Features != nil
 
+	pspForState := newPSP
+	if settled, err := waitPSPSettled(ctx, r.client, newPSP.ID, plan.Name.ValueString(), 60*time.Second); err == nil && settled != nil {
+		pspForState = settled
+	} else if err != nil {
+		resp.Diagnostics.AddWarning("PSP create settled slowly", err.Error())
+	}
+
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
-	pspToResourceData(ctx, newPSP, &updatedPlan)
+	pspToResourceData(ctx, pspForState, &updatedPlan)
 
 	if !managedColors && updatedPlan.CustomSettings != nil {
 		updatedPlan.CustomSettings.Colors = nil
@@ -763,10 +771,17 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	var newState = state
-	pspToResourceData(ctx, updatedPSP, &newState)
+	pspForState := updatedPSP
+	if settled, err := waitPSPSettled(ctx, r.client, id, plan.Name.ValueString(), 60*time.Second); err == nil && settled != nil {
+		pspForState = settled
+	} else if err != nil {
+		resp.Diagnostics.AddWarning("PSP update settled slowly", err.Error())
+	}
 
-	if len(updatedPSP.MonitorIDs) == 0 {
+	var newState = state
+	pspToResourceData(ctx, pspForState, &newState)
+
+	if len(pspForState.MonitorIDs) == 0 {
 		if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
 			newState.MonitorIDs = plan.MonitorIDs
 		} else {
@@ -823,6 +838,55 @@ func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 	if err != nil {
 		resp.Diagnostics.AddError("Timed out waiting for deletion", err.Error())
 		return // resource will be kept in state and self healed on read or via next apply
+	}
+}
+
+// Wait until PSP reflects expected state.
+func waitPSPSettled(ctx context.Context, c *client.Client, id int64, expectedName string, timeout time.Duration) (*client.PSP, error) {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	if dl, ok := ctx.Deadline(); ok {
+		if rem := time.Until(dl); rem > 0 && rem < timeout {
+			timeout = rem
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var last *client.PSP
+	backoff := 500 * time.Millisecond
+	const maxBackoff = 3 * time.Second
+
+	for {
+		psp, err := c.GetPSP(ctx, id)
+		if err == nil {
+			last = psp
+			if expectedName == "" || psp.Name == expectedName {
+				return psp, nil
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			if last != nil && (expectedName == "" || last.Name == expectedName) {
+				return last, nil
+			}
+			if last != nil {
+				return last, fmt.Errorf("timeout waiting for PSP to settle; last name=%q: %w", last.Name, ctx.Err())
+			}
+			return nil, fmt.Errorf("timeout waiting for PSP to settle: %w", ctx.Err())
+		case <-time.After(backoff):
+		}
+
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
 	}
 }
 

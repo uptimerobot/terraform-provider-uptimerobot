@@ -58,7 +58,13 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil {
 		settleTimeout = 120 * time.Second
 	}
-	if !equalComparable(want, got) {
+
+	needSettle := !equalComparable(want, got)
+	if want.DNSRecords != nil {
+		needSettle = true
+	}
+
+	if needSettle {
 		if updated, err = r.waitMonitorSettled(ctx, id, want, settleTimeout); err != nil {
 			if updated != nil {
 				got = buildComparableFromAPI(updated)
