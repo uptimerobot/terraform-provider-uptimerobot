@@ -38,6 +38,7 @@ type monComparable struct {
 	// Config children which we manage
 	SSLExpirationPeriodDays []int64
 	DNSRecords              map[string][]string
+	AssignedAlertContacts   []string
 }
 
 func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
@@ -148,6 +149,9 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	}
 	if len(req.Tags) > 0 {
 		c.Tags = normalizeTagSet(req.Tags)
+	}
+	if len(req.AssignedAlertContacts) > 0 {
+		c.AssignedAlertContacts = normalizeAlertContactIDsFromRequests(req.AssignedAlertContacts)
 	}
 	// length check because on empty slice we clear to defaults and we do not need to check for returned defaults
 	if len(req.SuccessHTTPResponseCodes) > 0 {
@@ -288,6 +292,9 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
 			c.DNSRecords = dr
 		}
+	}
+	if req.AssignedAlertContacts != nil {
+		c.AssignedAlertContacts = normalizeAlertContactIDsFromRequestsPtr(req.AssignedAlertContacts)
 	}
 
 	return c
@@ -432,6 +439,7 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 			c.DNSRecords = dr
 		}
 	}
+	c.AssignedAlertContacts = normalizeAlertContactIDs(m.AssignedAlertContacts)
 
 	return c
 }
@@ -482,6 +490,39 @@ func normalizeDNSRecords(dr *client.DNSRecords) map[string][]string {
 		return nil
 	}
 	return out
+}
+
+func normalizeAlertContactIDsFromRequests(reqs []client.AlertContactRequest) []string {
+	if len(reqs) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(reqs))
+	for _, ac := range reqs {
+		if ac.AlertContactID != "" {
+			ids = append(ids, strings.TrimSpace(ac.AlertContactID))
+		}
+	}
+	return normalizeStringSet(ids)
+}
+
+func normalizeAlertContactIDsFromRequestsPtr(reqs *[]client.AlertContactRequest) []string {
+	if reqs == nil {
+		return nil
+	}
+	return normalizeAlertContactIDsFromRequests(*reqs)
+}
+
+func normalizeAlertContactIDs(acs []client.AlertContact) []string {
+	if len(acs) == 0 {
+		return []string{}
+	}
+	ids := make([]string, 0, len(acs))
+	for _, ac := range acs {
+		if ac.AlertContactID != "" {
+			ids = append(ids, strings.TrimSpace(string(ac.AlertContactID)))
+		}
+	}
+	return normalizeStringSet(ids)
 }
 
 func equalDNSRecords(want, got map[string][]string) bool {
@@ -574,6 +615,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.Headers != nil && !equalStringMap(want.Headers, got.Headers) {
 		return false
 	}
+	if want.AssignedAlertContacts != nil && !equalStringSet(want.AssignedAlertContacts, got.AssignedAlertContacts) {
+		return false
+	}
 	if !want.skipMWIDsCompare {
 		if !equalInt64Set(want.MaintenanceWindowIDs, got.MaintenanceWindowIDs) {
 			return false
@@ -643,6 +687,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	}
 	if want.KeywordCaseType != nil && (got.KeywordCaseType == nil || *want.KeywordCaseType != *got.KeywordCaseType) {
 		f = append(f, "keyword_case_type")
+	}
+	if want.AssignedAlertContacts != nil && !equalStringSet(want.AssignedAlertContacts, got.AssignedAlertContacts) {
+		f = append(f, "assigned_alert_contacts")
 	}
 
 	return f
