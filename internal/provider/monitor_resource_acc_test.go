@@ -60,6 +60,18 @@ resource "uptimerobot_monitor" "test" {
 `, name, url)
 }
 
+func testAccMonitorResourceConfigWithURL(name, url string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+    name         = %q
+    url          = "%s"
+    type         = "HTTP"
+    interval     = 300
+	timeout   	 = 30
+}
+`, name, url)
+}
+
 func testAccMonitorResourceConfigWithTags(name string, tags []string) string {
 	url := testAccUniqueURL(name)
 	tagsStr := ""
@@ -470,7 +482,7 @@ func testAccUniqueDomain(name string) string {
 
 func TestAccMonitorResource(t *testing.T) {
 	name := "test-monitor"
-	url := testAccUniqueURL(name)
+	url := testAccUniqueURL("test-monitor-base")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -479,7 +491,7 @@ func TestAccMonitorResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccMonitorResourceConfig(name),
+				Config: testAccMonitorResourceConfigWithURL(name, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", name),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
@@ -489,9 +501,10 @@ func TestAccMonitorResource(t *testing.T) {
 			},
 			// Update testing
 			{
-				Config: testAccMonitorResourceConfig("test-monitor-updated"),
+				Config: testAccMonitorResourceConfigWithURL("test-monitor-updated", url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-updated"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
 				),
 			},
 			// Import testing
