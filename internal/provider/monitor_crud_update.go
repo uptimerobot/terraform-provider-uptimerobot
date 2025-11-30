@@ -54,20 +54,12 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	got := buildComparableFromAPI(initialUpdated)
 
 	updated := initialUpdated
-
-	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD {
-		if updated, err = r.waitMonitorSettled(ctx, id, want, 60*time.Second); err != nil {
-			if updated != nil {
-				got = buildComparableFromAPI(updated)
-			}
-			resp.Diagnostics.AddError(
-				"Update did not settle in time",
-				fmt.Sprintf("%v\nStill differing fields: %v", err, fieldsStillDifferent(want, got)),
-			)
-			return
-		}
-	} else if !equalComparable(want, got) {
-		if updated, err = r.waitMonitorSettled(ctx, id, want, 60*time.Second); err != nil {
+	settleTimeout := 60 * time.Second
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil {
+		settleTimeout = 120 * time.Second
+	}
+	if !equalComparable(want, got) {
+		if updated, err = r.waitMonitorSettled(ctx, id, want, settleTimeout); err != nil {
 			if updated != nil {
 				got = buildComparableFromAPI(updated)
 			}
