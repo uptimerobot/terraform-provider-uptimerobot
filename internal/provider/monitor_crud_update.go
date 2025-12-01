@@ -535,7 +535,7 @@ func applyUpdatedMonitorToState(
 			if region, ok := coerceRegion(m.RegionalData); ok {
 				out.RegionalData = types.StringValue(region)
 			} else {
-				out.RegionalData = plan.RegionalData // keep user’s value on unexpected shape of region
+				out.RegionalData = types.StringNull()
 			}
 		} else {
 			out.RegionalData = types.StringNull()
