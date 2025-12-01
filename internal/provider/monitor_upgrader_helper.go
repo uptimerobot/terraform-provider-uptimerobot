@@ -3,41 +3,66 @@ package provider
 import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 // retypeConfigToCurrent converts a config object from prior schema versions (V3/V4)
-// to the current V5 schema structure. It ensures the returned object contains both
-// required attributes (ssl_expiration_period_days and dns_records), preserving
-// existing values and defaulting missing ones to null.
+// to the current V5 schema structure. It dynamically ensures the returned object
+// contains all attributes defined in configObjectType(), preserving existing values
+// and defaulting missing ones to null.
 //
-// This is necessary because V3/V4 schemas only had ssl_expiration_period_days,
-// while V5 added dns_records. Without this normalization, state upgrades fail
-// with "Value Conversion Error" due to type mismatch.
+// This is necessary because prior schemas may not have all attributes that the
+// current schema requires. Without this normalization, state upgrades fail with
+// "Value Conversion Error" due to type mismatch.
 func retypeConfigToCurrent(in types.Object) types.Object {
 	want := configObjectType().AttrTypes
 
-	// If null or unknown, return a null-typed object with the current shape
 	if in.IsNull() || in.IsUnknown() {
 		return types.ObjectNull(want)
 	}
 
-	// Extract existing attributes and merge with current schema
 	attrs := in.Attributes()
-	newAttrs := map[string]attr.Value{
-		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
-		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+	newAttrs := make(map[string]attr.Value, len(want))
+
+	// Iterate over all attributes in the current schema
+	for name, attrType := range want {
+		if existing, ok := attrs[name]; ok && !existing.IsNull() {
+			newAttrs[name] = existing
+		} else {
+			newAttrs[name] = nullValueForType(attrType)
+		}
 	}
 
-	// Preserve ssl_expiration_period_days if present
-	if ssl, ok := attrs["ssl_expiration_period_days"]; ok && !ssl.IsNull() {
-		newAttrs["ssl_expiration_period_days"] = ssl
+	obj, diags := types.ObjectValue(want, newAttrs)
+	if diags.HasError() {
+		return types.ObjectNull(want)
 	}
-
-	// Preserve dns_records if present
-	if dns, ok := attrs["dns_records"]; ok && !dns.IsNull() {
-		newAttrs["dns_records"] = dns
-	}
-
-	obj, _ := types.ObjectValue(want, newAttrs)
 	return obj
+}
+
+// nullValueForType returns a typed null value for the given attribute type.
+// Supports the types used in configObjectType: Set, List, Map, Object, and primitives.
+func nullValueForType(attrType attr.Type) attr.Value {
+	switch t := attrType.(type) {
+	case types.SetType:
+		return types.SetNull(t.ElemType)
+	case types.ListType:
+		return types.ListNull(t.ElemType)
+	case types.MapType:
+		return types.MapNull(t.ElemType)
+	case types.ObjectType:
+		return types.ObjectNull(t.AttrTypes)
+	case basetypes.StringType:
+		return types.StringNull()
+	case basetypes.Int64Type:
+		return types.Int64Null()
+	case basetypes.BoolType:
+		return types.BoolNull()
+	case basetypes.Float64Type:
+		return types.Float64Null()
+	case basetypes.NumberType:
+		return types.NumberNull()
+	default:
+		return nil
+	}
 }

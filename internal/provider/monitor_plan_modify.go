@@ -31,35 +31,39 @@ func (m configNullIfOmitted) MarkdownDescription(ctx context.Context) string {
 //   - If omitted or unknown: force NULL to prevent TF from carrying prior empty sets forward
 //   - If partial (e.g., only ssl_expiration_period_days): normalize to include all expected attributes
 func (m configNullIfOmitted) PlanModifyObject(ctx context.Context, req planmodifier.ObjectRequest, resp *planmodifier.ObjectResponse) {
+	want := configObjectType().AttrTypes
+
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
-		resp.PlanValue = types.ObjectNull(configObjectType().AttrTypes)
+		resp.PlanValue = types.ObjectNull(want)
 		return
 	}
 
-	// Normalize partial config objects. When HCL specifies only one attribute
-	// (e.g., config = { ssl_expiration_period_days = [20, 30] }), Terraform creates
-	// an object missing dns_records, but the schema expects both attributes.
+	// Check if normalization is needed (some attributes missing from partial HCL config)
 	attrs := req.ConfigValue.Attributes()
-	_, hasSSL := attrs["ssl_expiration_period_days"]
-	_, hasDNS := attrs["dns_records"]
+	needsNormalization := false
+	for name := range want {
+		if _, ok := attrs[name]; !ok {
+			needsNormalization = true
+			break
+		}
+	}
 
-	if hasSSL && hasDNS {
+	if !needsNormalization {
 		return
 	}
 
-	normalized := map[string]attr.Value{
-		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
-		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+	// Normalize: iterate over schema attributes, preserve existing values,
+	// default missing ones to null
+	normalized := make(map[string]attr.Value, len(want))
+	for name, attrType := range want {
+		if existing, ok := attrs[name]; ok {
+			normalized[name] = existing
+		} else {
+			normalized[name] = nullValueForType(attrType)
+		}
 	}
 
-	if hasSSL {
-		normalized["ssl_expiration_period_days"] = attrs["ssl_expiration_period_days"]
-	}
-	if hasDNS {
-		normalized["dns_records"] = attrs["dns_records"]
-	}
-
-	obj, diags := types.ObjectValue(configObjectType().AttrTypes, normalized)
+	obj, diags := types.ObjectValue(want, normalized)
 	resp.Diagnostics.Append(diags...)
 	if !resp.Diagnostics.HasError() {
 		resp.PlanValue = obj
