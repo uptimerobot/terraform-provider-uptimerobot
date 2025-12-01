@@ -8,6 +8,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
+// configNullIfOmitted is a plan modifier for the monitor's config attribute.
+// It handles two cases:
+//  1. When config is omitted: forces NULL to prevent Terraform from carrying
+//     prior empty sets forward.
+//  2. When config is partial (e.g., only ssl_expiration_period_days specified):
+//     normalizes to include all expected attributes with null for missing ones.
+//
+// This normalization is required due to a terraform-plugin-framework limitation
+// where SingleNestedAttribute doesn't auto-fill missing nested attributes.
+// See: https://github.com/hashicorp/terraform-plugin-framework/issues/716
 type configNullIfOmitted struct{}
 
 func (m configNullIfOmitted) Description(ctx context.Context) string {
