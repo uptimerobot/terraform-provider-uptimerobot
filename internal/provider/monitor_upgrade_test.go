@@ -260,3 +260,82 @@ func TestUpgradeFromV4_Codes_EmptyListStaysEmpty(t *testing.T) {
 	requireNoDiags(t, up.SuccessHTTPResponseCodes.ElementsAs(ctx, &codes, false))
 	require.Len(t, codes, 0)
 }
+
+func TestUpgradeFromV4_Config_WithSSLDays(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// V4 config only had ssl_expiration_period_days (no dns_records)
+	v4ConfigType := types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
+		},
+	}
+	prior := monitorV4Model{
+		Config: types.ObjectValueMust(v4ConfigType.AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetValueMust(types.Int64Type, []attr.Value{
+				types.Int64Value(7),
+				types.Int64Value(30),
+			}),
+		}),
+	}
+
+	up, diags := upgradeMonitorFromV4(ctx, prior)
+	require.False(t, diags.HasError(), "diags: %+v", diags)
+
+	// Config should have both attributes
+	require.False(t, up.Config.IsNull(), "config should not be null")
+	attrs := up.Config.Attributes()
+	require.Contains(t, attrs, "ssl_expiration_period_days", "missing ssl_expiration_period_days")
+	require.Contains(t, attrs, "dns_records", "missing dns_records")
+
+	// ssl_expiration_period_days should preserve values
+	sslDays, ok := attrs["ssl_expiration_period_days"].(types.Set)
+	require.True(t, ok, "ssl_expiration_period_days should be types.Set")
+	require.False(t, sslDays.IsNull())
+	require.ElementsMatch(t, []int64{7, 30}, setInt64s(t, sslDays))
+
+	// dns_records should be null
+	dnsRecords, ok := attrs["dns_records"].(types.Object)
+	require.True(t, ok, "dns_records should be types.Object")
+	require.True(t, dnsRecords.IsNull(), "dns_records should be null")
+}
+
+func TestUpgradeFromV3_Config_WithSSLDays(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// V3 config only had ssl_expiration_period_days (no dns_records)
+	v3ConfigType := types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
+		},
+	}
+	prior := monitorV3Model{
+		Config: types.ObjectValueMust(v3ConfigType.AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetValueMust(types.Int64Type, []attr.Value{
+				types.Int64Value(14),
+			}),
+		}),
+	}
+
+	up, diags := upgradeMonitorFromV3(ctx, prior)
+	require.False(t, diags.HasError(), "diags: %+v", diags)
+
+	// Config should have both attributes
+	require.False(t, up.Config.IsNull(), "config should not be null")
+	attrs := up.Config.Attributes()
+	require.Contains(t, attrs, "ssl_expiration_period_days", "missing ssl_expiration_period_days")
+	require.Contains(t, attrs, "dns_records", "missing dns_records")
+
+	// ssl_expiration_period_days should preserve values
+	sslDays, ok := attrs["ssl_expiration_period_days"].(types.Set)
+	require.True(t, ok, "ssl_expiration_period_days should be types.Set")
+	require.False(t, sslDays.IsNull())
+	require.ElementsMatch(t, []int64{14}, setInt64s(t, sslDays))
+
+	// dns_records should be null
+	dnsRecords, ok := attrs["dns_records"].(types.Object)
+	require.True(t, ok, "dns_records should be types.Object")
+	require.True(t, dnsRecords.IsNull(), "dns_records should be null")
+}

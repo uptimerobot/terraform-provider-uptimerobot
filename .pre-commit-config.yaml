@@ -13,11 +13,14 @@ repos:
       - id: check-added-large-files
       - id: check-merge-conflict
 
+  # TODO: replace/remove it
+  # This hook is unmaintained, keeping here for reference
+  # only removing non-existing hooks for now.
   - repo: https://github.com/dnephin/pre-commit-golang
     rev: v0.5.1
     hooks:
       - id: go-fmt
-      - id: go-vet-mod
+      # - id: go-vet-mod
       - id: go-mod-tidy
       - id: go-generate
       - id: go-unit-tests

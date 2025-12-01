@@ -988,7 +988,7 @@ func upgradeMonitorFromV3(ctx context.Context, prior monitorV3Model) (monitorRes
 	codesSet, d := ensureCodesSetFromList(ctx, prior.SuccessHTTPResponseCodes)
 	diags.Append(d...)
 
-	config := retypeConfigToCurrent(ctx, prior.Config)
+	config := retypeConfigToCurrent(prior.Config)
 
 	up := monitorResourceModel{
 		Type:                     prior.Type,
@@ -1321,7 +1321,7 @@ func upgradeMonitorFromV4(ctx context.Context, prior monitorV4Model) (monitorRes
 	acSet, d := ensureAlertContactDefaults(ctx, prior.AssignedAlertContacts)
 	diags.Append(d...)
 
-	config := retypeConfigToCurrent(ctx, prior.Config)
+	config := retypeConfigToCurrent(prior.Config)
 
 	up := monitorResourceModel{
 		Type:                     prior.Type,
