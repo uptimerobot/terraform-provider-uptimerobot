@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"fmt"
+
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
@@ -42,6 +44,7 @@ func retypeConfigToCurrent(in types.Object) types.Object {
 
 // nullValueForType returns a typed null value for the given attribute type.
 // Supports the types used in configObjectType: Set, List, Map, Object, and primitives.
+// Panics on unsupported types to fail fast during development/testing.
 func nullValueForType(attrType attr.Type) attr.Value {
 	switch t := attrType.(type) {
 	case types.SetType:
@@ -63,6 +66,6 @@ func nullValueForType(attrType attr.Type) attr.Value {
 	case basetypes.NumberType:
 		return types.NumberNull()
 	default:
-		return nil
+		panic(fmt.Sprintf("nullValueForType: unsupported attr.Type %T", attrType))
 	}
 }
