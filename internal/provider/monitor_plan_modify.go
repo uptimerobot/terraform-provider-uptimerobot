@@ -44,9 +44,7 @@ func (m configNullIfOmitted) PlanModifyObject(ctx context.Context, req planmodif
 		return
 	}
 
-	// Normalize partial config objects. When HCL specifies only one attribute
-	// (e.g., config = { ssl_expiration_period_days = [20, 30] }), Terraform creates
-	// an object missing dns_records, but the schema expects both attributes.
+	// Check if normalization is needed (some attributes missing from partial HCL config)
 	attrs := req.ConfigValue.Attributes()
 	needsNormalization := false
 	for name := range want {
