@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -492,6 +493,8 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		Time:     plan.Time.ValueString(),
 		Duration: int(plan.Duration.ValueInt64()),
 	}
+	var expectedDays []int64
+	shouldWait := false
 
 	// Only set AutoAddMonitors if it was explicitly set
 	if !plan.AutoAddMonitors.IsNull() && !plan.AutoAddMonitors.IsUnknown() {
@@ -517,6 +520,8 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 				return daysInt64[i] < daysInt64[j]
 			})
 			updateReq.Days = daysInt64
+			expectedDays = append(expectedDays, daysInt64...)
+			shouldWait = true
 		} else {
 			updateReq.Days = nil
 		}
@@ -524,6 +529,8 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	iv := strings.ToLower(plan.Interval.ValueString())
 	if iv == intervalDaily || iv == intervalOnce {
 		updateReq.Days = nil
+		// expect days to be cleared when switching to daily and once
+		shouldWait = true
 	}
 
 	// Update maintenance window
@@ -536,12 +543,66 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
+	if shouldWait {
+		if err := waitMaintenanceWindowSettled(ctx, r.client, id, iv, expectedDays); err != nil {
+			resp.Diagnostics.AddError("Maintenance window did not settle", err.Error())
+			return
+		}
+	}
+
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+}
+
+func waitMaintenanceWindowSettled(ctx context.Context, c *client.Client, id int64, expectedInterval string, expectedDays []int64) error {
+	want := normalizeDays(expectedDays)
+	wantInterval := strings.ToLower(expectedInterval)
+	var lastGot []int64
+	var lastInterval string
+
+	for attempts := 0; attempts < 10; attempts++ {
+		mw, err := c.GetMaintenanceWindow(ctx, id)
+		if err != nil {
+			return err
+		}
+		lastInterval = strings.ToLower(mw.Interval)
+		lastGot = normalizeDays(mw.Days)
+
+		if lastInterval == wantInterval && equalInt64Sets(want, lastGot) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
+	}
+	return fmt.Errorf("maintenance window did not settle: want interval=%s days=%v got interval=%s days=%v", wantInterval, want, lastInterval, lastGot)
+}
+
+func normalizeDays(days []int64) []int64 {
+	if len(days) == 0 {
+		return nil
+	}
+	cp := append([]int64(nil), days...)
+	sort.Slice(cp, func(i, j int) bool { return cp[i] < cp[j] })
+	return cp
+}
+
+func equalInt64Sets(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *maintenanceWindowResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

@@ -54,8 +54,18 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	got := buildComparableFromAPI(initialUpdated)
 
 	updated := initialUpdated
-	if !equalComparable(want, got) {
-		if updated, err = r.waitMonitorSettled(ctx, id, want, 60*time.Second); err != nil {
+	settleTimeout := 60 * time.Second
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil {
+		settleTimeout = 120 * time.Second
+	}
+
+	needSettle := !equalComparable(want, got)
+	if want.DNSRecords != nil {
+		needSettle = true
+	}
+
+	if needSettle {
+		if updated, err = r.waitMonitorSettled(ctx, id, want, settleTimeout); err != nil {
 			if updated != nil {
 				got = buildComparableFromAPI(updated)
 			}
@@ -525,7 +535,7 @@ func applyUpdatedMonitorToState(
 			if region, ok := coerceRegion(m.RegionalData); ok {
 				out.RegionalData = types.StringValue(region)
 			} else {
-				out.RegionalData = plan.RegionalData // keep user’s value on unexpected shape of region
+				out.RegionalData = types.StringNull()
 			}
 		} else {
 			out.RegionalData = types.StringNull()

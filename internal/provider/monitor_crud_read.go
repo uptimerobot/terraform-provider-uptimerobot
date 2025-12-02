@@ -53,7 +53,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	readApplyHTTPBody(&state)
 	readApplyKeywordAndPort(&state, monitor, isImport)
 	readApplyIdentity(&state, monitor)
-	readApplyRegionalData(&state, monitor)
+	readApplyRegionalData(&state, monitor, isImport)
 	readApplyTagsHeadersAC(ctx, resp, &state, monitor, isImport)
 	readApplySuccessCodes(ctx, resp, &state, monitor)
 	readApplyBooleans(&state, monitor, isImport)
@@ -119,7 +119,7 @@ func readApplyOptionalDefaults(state *monitorResourceModel, m *client.Monitor, i
 		} else {
 			state.ResponseTimeThreshold = types.Int64Null()
 		}
-	} else if !state.ResponseTimeThreshold.IsNull() {
+	} else if state.ResponseTimeThreshold.IsNull() || state.ResponseTimeThreshold.IsUnknown() {
 		if m.ResponseTimeThreshold > 0 {
 			state.ResponseTimeThreshold = types.Int64Value(int64(m.ResponseTimeThreshold))
 		} else {
@@ -207,19 +207,32 @@ func readApplyIdentity(state *monitorResourceModel, m *client.Monitor) {
 	state.Status = types.StringValue(m.Status)
 }
 
-func readApplyRegionalData(state *monitorResourceModel, m *client.Monitor) {
-	if state.RegionalData.IsNull() || state.RegionalData.IsUnknown() {
-		return
-	}
-	if m.RegionalData != nil {
-		if region, ok := coerceRegion(m.RegionalData); ok {
-			state.RegionalData = types.StringValue(region)
+func readApplyRegionalData(state *monitorResourceModel, m *client.Monitor, isImport bool) {
+	if isImport {
+		if m.RegionalData != nil {
+			if region, ok := coerceRegion(m.RegionalData); ok && !isDefaultRegion(region) {
+				state.RegionalData = types.StringValue(region)
+				return
+			}
 		} else {
 			state.RegionalData = types.StringNull()
 		}
-	} else {
-		state.RegionalData = types.StringNull()
+		return
 	}
+	if state.RegionalData.IsNull() || state.RegionalData.IsUnknown() {
+		// user did not manage this field and it should be kept as null
+		return
+	}
+	if m.RegionalData != nil {
+		if region, ok := coerceRegion(m.RegionalData); ok && !isDefaultRegion(region) {
+			state.RegionalData = types.StringValue(region)
+		}
+		// if API returns default or empty values user intent will be kept
+	}
+}
+
+func isDefaultRegion(region string) bool {
+	return strings.EqualFold(strings.TrimSpace(region), "na") || strings.TrimSpace(region) == ""
 }
 
 func readApplyTagsHeadersAC(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
@@ -255,12 +268,16 @@ func readApplySuccessCodes(ctx context.Context, _ *resource.ReadResponse, state 
 		}
 
 		var vals []attr.Value
-		if m.SuccessHTTPResponseCodes != nil {
-			for _, c := range normalizeStringSet(m.SuccessHTTPResponseCodes) {
+		apiCodes := normalizeStringSet(m.SuccessHTTPResponseCodes)
+		if len(apiCodes) == len(prior) {
+			for _, c := range apiCodes {
 				vals = append(vals, types.StringValue(c))
 			}
 		} else {
-			vals = []attr.Value{}
+			// Preserve prior managed values if API normalized to a different or default set
+			for _, c := range normalizeStringSet(prior) {
+				vals = append(vals, types.StringValue(c))
+			}
 		}
 		state.SuccessHTTPResponseCodes = types.SetValueMust(types.StringType, vals)
 	}

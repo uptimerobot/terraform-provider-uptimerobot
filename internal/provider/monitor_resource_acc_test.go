@@ -60,6 +60,18 @@ resource "uptimerobot_monitor" "test" {
 `, name, url)
 }
 
+func testAccMonitorResourceConfigWithURL(name, url string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+    name         = %q
+    url          = "%s"
+    type         = "HTTP"
+    interval     = 300
+	timeout   	 = 30
+}
+`, name, url)
+}
+
 func testAccMonitorResourceConfigWithTags(name string, tags []string) string {
 	url := testAccUniqueURL(name)
 	tagsStr := ""
@@ -184,7 +196,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigPostNoBody(name string) string {
-	url := testAccUniqueURL(name)
+	url := fmt.Sprintf("%s/echo", testAccUniqueURL(name))
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
@@ -277,6 +289,7 @@ resource "uptimerobot_maintenance_window" "a" {
   date      = %q
   time      = %q
   duration  = 15
+  auto_add_monitors = false
 }
 
 resource "uptimerobot_maintenance_window" "b" {
@@ -285,6 +298,7 @@ resource "uptimerobot_maintenance_window" "b" {
   date      = %q
   time      = %q
   duration  = 20
+  auto_add_monitors = false
 }
 
 resource "uptimerobot_monitor" "test" {
@@ -312,6 +326,7 @@ resource "uptimerobot_maintenance_window" "a" {
   date      = %q
   time      = %q
   duration  = 15
+  auto_add_monitors = false
 }
 
 resource "uptimerobot_maintenance_window" "b" {
@@ -320,6 +335,7 @@ resource "uptimerobot_maintenance_window" "b" {
   date      = %q
   time      = %q
   duration  = 20
+  auto_add_monitors = false
 }
 
 resource "uptimerobot_monitor" "test" {
@@ -346,6 +362,7 @@ resource "uptimerobot_maintenance_window" "a" {
   date      = %q
   time      = %q
   duration  = 15
+  auto_add_monitors = false
 }
 
 resource "uptimerobot_maintenance_window" "b" {
@@ -354,6 +371,7 @@ resource "uptimerobot_maintenance_window" "b" {
   date      = %q
   time      = %q
   duration  = 20
+  auto_add_monitors = false
 }
 
 resource "uptimerobot_monitor" "test" {
@@ -464,7 +482,7 @@ func testAccUniqueDomain(name string) string {
 
 func TestAccMonitorResource(t *testing.T) {
 	name := "test-monitor"
-	url := testAccUniqueURL(name)
+	url := testAccUniqueURL("test-monitor-base")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -473,7 +491,7 @@ func TestAccMonitorResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccMonitorResourceConfig(name),
+				Config: testAccMonitorResourceConfigWithURL(name, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", name),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
@@ -483,9 +501,10 @@ func TestAccMonitorResource(t *testing.T) {
 			},
 			// Update testing
 			{
-				Config: testAccMonitorResourceConfig("test-monitor-updated"),
+				Config: testAccMonitorResourceConfigWithURL("test-monitor-updated", url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-updated"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
 				),
 			},
 			// Import testing
@@ -1009,8 +1028,9 @@ resource "uptimerobot_monitor" "test" {
 
 // TestAccMonitorResource_KeywordMonitorValidation tests that KEYWORD monitors require keyword fields.
 func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
-	name := "test-keyword-monitor"
-	url := testAccUniqueURL(name)
+	baseName := acctest.RandomWithPrefix("test-keyword-monitor")
+	url := testAccUniqueURL(baseName + "-exists")
+	urlNot := testAccUniqueURL(baseName + "-not")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1027,7 +1047,7 @@ resource "uptimerobot_monitor" "test" {
 	timeout 	 = 30
     keyword_value = "test"
 }
-`, name, url),
+`, baseName, url),
 				ExpectError: regexp.MustCompile("KeywordType required for KEYWORD monitor"),
 			},
 			// Test that KEYWORD monitor without keywordValue fails
@@ -1041,7 +1061,7 @@ resource "uptimerobot_monitor" "test" {
 	timeout 	 = 30
     keyword_type = "ALERT_EXISTS"
 }
-`, name, url),
+`, baseName, url),
 				ExpectError: regexp.MustCompile("KeywordValue required for KEYWORD monitor"),
 			},
 			// Test that KEYWORD monitor with invalid keywordType fails
@@ -1056,47 +1076,39 @@ resource "uptimerobot_monitor" "test" {
     keyword_type = "INVALID_TYPE"
     keyword_value = "test"
 }
-`, name, url),
+`, baseName, url),
 				ExpectError: regexp.MustCompile(`(?s)value must be one of:.*ALERT_EXISTS.*ALERT_NOT_EXISTS`),
 			},
-			// Test that KEYWORD monitor with valid fields succeeds
+			// Validate both keyword types succeed
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-    name         = %q
-    url          = %q
+resource "uptimerobot_monitor" "exists" {
+    name         = "%s-exists"
+    url          = "%s"
     type         = "KEYWORD"
     interval     = 300
 	timeout 	 = 30
     keyword_type = "ALERT_EXISTS"
     keyword_value = "test"
 }
-`, name, url),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", name),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "KEYWORD"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_type", "ALERT_EXISTS"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_value", "test"),
-				),
-			},
-			// Test ALERT_NOT_EXISTS keyword type
-			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-    name         = %q
-    url          = %q
+
+resource "uptimerobot_monitor" "not" {
+    name         = "%s-not"
+    url          = "%s"
     type         = "KEYWORD"
     interval     = 300
 	timeout 	 = 30
     keyword_type = "ALERT_NOT_EXISTS"
     keyword_value = "error"
 }
-`, name, url),
+`, baseName, url, baseName, urlNot),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", name),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "KEYWORD"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_type", "ALERT_NOT_EXISTS"),
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_value", "error"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.exists", "type", "KEYWORD"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.exists", "keyword_type", "ALERT_EXISTS"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.exists", "keyword_value", "test"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.not", "type", "KEYWORD"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.not", "keyword_type", "ALERT_NOT_EXISTS"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.not", "keyword_value", "error"),
 				),
 			},
 		},

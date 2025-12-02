@@ -106,6 +106,7 @@ func TestAccIntegrationResource(t *testing.T) {
 func TestAcc_Integration_Webhook_JSONPlanModifier_RoundTrip(t *testing.T) {
 	name := randomName("acc-webhook-json")
 	resourceName := "uptimerobot_integration.test"
+	value := fmt.Sprintf("https://example.com/hook?tfacc=%s", acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum))
 
 	cfg1 := fmt.Sprintf(`
 %s
@@ -113,7 +114,7 @@ func TestAcc_Integration_Webhook_JSONPlanModifier_RoundTrip(t *testing.T) {
 resource "uptimerobot_integration" "test" {
   name                     = %q
   type                     = "webhook"
-  value                    = "https://example.com/hook"
+  value                    = %q
   enable_notifications_for = 1
   ssl_expiration_reminder  = true
   // canonical JSON (key order a,b)
@@ -122,7 +123,7 @@ resource "uptimerobot_integration" "test" {
   send_as_query_string     = false
   send_as_post_parameters  = false
 }
-`, testAccIntegrationProviderConfig(), name)
+`, testAccIntegrationProviderConfig(), name, value)
 
 	// Same logical JSON but with different key order/formatting; plan should be empty
 	cfg2 := fmt.Sprintf(`
@@ -131,7 +132,7 @@ resource "uptimerobot_integration" "test" {
 resource "uptimerobot_integration" "test" {
   name                     = %q
   type                     = "webhook"
-  value                    = "https://example.com/hook"
+  value                    = %q
   enable_notifications_for = 1
   ssl_expiration_reminder  = true
   // key order b,a -> should be treated equivalent
@@ -140,7 +141,7 @@ resource "uptimerobot_integration" "test" {
   send_as_query_string     = false
   send_as_post_parameters  = false
 }
-`, testAccIntegrationProviderConfig(), name)
+`, testAccIntegrationProviderConfig(), name, value)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -218,8 +219,8 @@ resource "uptimerobot_integration" "test" {
 func TestAcc_Integration_PagerDuty_RegionAndAutoResolve(t *testing.T) {
 	name := randomName("acc-pagerduty")
 	resourceName := "uptimerobot_integration.test"
-	key1 := "01234567890123456789012345678901" // 32 chars
-	key2 := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	key1 := acctest.RandStringFromCharSet(32, acctest.CharSetAlphaNum)
+	key2 := acctest.RandStringFromCharSet(32, acctest.CharSetAlphaNum)
 
 	cfg1 := fmt.Sprintf(`
 %s
