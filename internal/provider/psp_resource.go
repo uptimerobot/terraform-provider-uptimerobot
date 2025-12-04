@@ -156,6 +156,8 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Computed:    true,
 				ElementType: types.Int64Type,
 			},
+			// monitors_count is computed by the API from the amount of monitors in the monitor_ids
+			// Do not use UseStateForUnknown because this field is managed completly by the API.
 			"monitors_count": schema.Int64Attribute{
 				Description: "Number of monitors in the PSP",
 				Computed:    true,
