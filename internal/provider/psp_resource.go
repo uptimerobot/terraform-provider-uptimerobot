@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -334,6 +335,16 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
+	hasMonitorPlan := !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown()
+	var requestedMonitorIDs []int64
+	if hasMonitorPlan {
+		diags := plan.MonitorIDs.ElementsAs(ctx, &requestedMonitorIDs, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
 	// Create new PSP
 	psp := &client.CreatePSPRequest{
 		Name:                       plan.Name.ValueString(),
@@ -348,14 +359,8 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		psp.CustomDomain = plan.CustomDomain.ValueStringPointer()
 	}
 
-	if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
-		var monitorIDs []int64
-		diags := plan.MonitorIDs.ElementsAs(ctx, &monitorIDs, false)
-		if diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
-		}
-		psp.MonitorIDs = monitorIDs
+	if hasMonitorPlan {
+		psp.MonitorIDs = &requestedMonitorIDs
 	}
 
 	if !plan.GACode.IsNull() && !plan.GACode.IsUnknown() {
@@ -513,9 +518,43 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		resp.Diagnostics.AddWarning("PSP create settled slowly", err.Error())
 	}
 
+	if hasMonitorPlan {
+		title, detail, mismatch := r.buildMonitorIDMismatchError(ctx, requestedMonitorIDs, pspForState.MonitorIDs)
+		if mismatch {
+			if delErr := r.client.DeletePSP(ctx, pspForState.ID); delErr != nil && !client.IsNotFound(delErr) {
+				resp.Diagnostics.AddWarning(
+					"Failed to clean up PSP after monitor_ids mismatch",
+					fmt.Sprintf(
+						"Attempted to delete PSP ID %d after monitor_ids mismatch but got error: %v. "+
+							"You may need to delete it manually in the UptimeRobot UI.",
+						pspForState.ID, delErr,
+					),
+				)
+			}
+
+			resp.Diagnostics.AddError(title, detail)
+			return // do NOT write a broken PSP to state with a mismatching value
+		}
+	}
+
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
 	pspToResourceData(ctx, pspForState, &updatedPlan)
+
+	if hasMonitorPlan {
+		updatedPlan.MonitorIDs = plan.MonitorIDs
+	} else {
+		if len(pspForState.MonitorIDs) > 0 {
+			setVal, d := types.SetValueFrom(ctx, types.Int64Type, pspForState.MonitorIDs)
+			resp.Diagnostics.Append(d...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			updatedPlan.MonitorIDs = setVal
+		} else {
+			updatedPlan.MonitorIDs = types.SetValueMust(types.Int64Type, []attr.Value{})
+		}
+	}
 
 	if !managedColors && updatedPlan.CustomSettings != nil {
 		updatedPlan.CustomSettings.Colors = nil
@@ -609,6 +648,16 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
+	hasMonitorPlan := !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown()
+	var requestedMonitorIDs []int64
+	if hasMonitorPlan {
+		diags := plan.MonitorIDs.ElementsAs(ctx, &requestedMonitorIDs, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
 	// Get current state
 	id, err := strconv.ParseInt(state.ID.ValueString(), 10, 64)
 	if err != nil {
@@ -657,14 +706,8 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		psp.Logo = &logo
 	}
 
-	if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
-		var monitorIDs []int64
-		diags := plan.MonitorIDs.ElementsAs(ctx, &monitorIDs, false)
-		if diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
-		}
-		psp.MonitorIDs = monitorIDs
+	if hasMonitorPlan {
+		psp.MonitorIDs = &requestedMonitorIDs
 	}
 
 	// Handle CustomSettings if set
@@ -778,15 +821,21 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		resp.Diagnostics.AddWarning("PSP update settled slowly", err.Error())
 	}
 
+	if hasMonitorPlan {
+		title, detail, mismatch := r.buildMonitorIDMismatchError(ctx, requestedMonitorIDs, pspForState.MonitorIDs)
+		if mismatch {
+			resp.Diagnostics.AddError(title, detail)
+			return
+		}
+	}
+
 	var newState = state
 	pspToResourceData(ctx, pspForState, &newState)
 
-	if len(pspForState.MonitorIDs) == 0 {
-		if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
-			newState.MonitorIDs = plan.MonitorIDs
-		} else {
-			newState.MonitorIDs = state.MonitorIDs
-		}
+	if hasMonitorPlan {
+		newState.MonitorIDs = plan.MonitorIDs
+	} else {
+		newState.MonitorIDs = state.MonitorIDs
 	}
 
 	// Respect current plan: if omitted, clear from state
@@ -950,17 +999,6 @@ func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceMo
 	} else {
 		// Keep as null if not set
 		plan.PinnedAnnouncementID = types.Int64Null()
-	}
-
-	// Handle monitor IDs - always update with what the API returns
-	if len(psp.MonitorIDs) > 0 {
-		monitorIDsSet, diags := types.SetValueFrom(ctx, types.Int64Type, psp.MonitorIDs)
-		if diags == nil || !diags.HasError() {
-			plan.MonitorIDs = monitorIDsSet
-		}
-	} else {
-		// API returned none so empty set in state
-		plan.MonitorIDs = types.SetValueMust(types.Int64Type, []attr.Value{})
 	}
 
 	// Handle CustomSettings if present in the API response
@@ -1173,4 +1211,79 @@ func (r *pspResource) UpgradeState(_ context.Context) map[int64]resource.StateUp
 			},
 		},
 	}
+}
+
+// diffMonitorIDs returns which IDs are missing from the applied list and which are extra.
+func diffMonitorIDs(requested, applied []int64) (missing, extra []int64) {
+	req := make(map[int64]struct{}, len(requested))
+	app := make(map[int64]struct{}, len(applied))
+
+	for _, id := range requested {
+		req[id] = struct{}{}
+	}
+	for _, id := range applied {
+		app[id] = struct{}{}
+		if _, ok := req[id]; !ok {
+			extra = append(extra, id)
+		}
+	}
+	for _, id := range requested {
+		if _, ok := app[id]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	return
+}
+
+// buildMonitorIDMismatchError compare requested vs applied monitor_ids
+// if mismatch, call GetMonitor for missing IDs to distinguish "not found" and "exists but PSP didn't attach".
+func (r *pspResource) buildMonitorIDMismatchError(
+	ctx context.Context,
+	requested, applied []int64,
+) (title, detail string, mismatch bool) {
+	missing, extra := diffMonitorIDs(requested, applied)
+	if len(missing) == 0 && len(extra) == 0 {
+		return "", "", false
+	}
+
+	var notFound []int64
+	var existsButNotAttached []int64
+	var validationErrors []string
+
+	for _, id := range missing {
+		monitor, err := r.client.GetMonitor(ctx, id)
+		if client.IsNotFound(err) {
+			notFound = append(notFound, id)
+			continue
+		}
+		if err != nil {
+			validationErrors = append(validationErrors, fmt.Sprintf("monitor %d: %v", id, err))
+			continue
+		}
+		if monitor != nil {
+			existsButNotAttached = append(existsButNotAttached, id)
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Requested monitor_ids: %v\nApplied monitor_ids:   %v\n", requested, applied)
+	if len(missing) > 0 {
+		fmt.Fprintf(&b, "Missing on PSP after apply: %v\n", missing)
+	}
+	if len(extra) > 0 {
+		fmt.Fprintf(&b, "Unexpected monitor_ids reported by PSP API: %v\n", extra)
+	}
+	if len(notFound) > 0 {
+		fmt.Fprintf(&b, "\nThe following monitor IDs do not exist in UptimeRobot (API returned \"Monitor not found\"): %v\n", notFound)
+	}
+	if len(existsButNotAttached) > 0 {
+		fmt.Fprintf(&b, "\nThe following monitors exist but were not attached to the PSP: %v\n", existsButNotAttached)
+	}
+	if len(validationErrors) > 0 {
+		fmt.Fprintf(&b, "\nAdditional errors while validating monitor_ids: %s\n", strings.Join(validationErrors, "; "))
+	}
+	fmt.Fprintf(&b, "\nThis mismatch would cause Terraform/state drift, so the provider is treating it as an error.\n")
+	fmt.Fprintf(&b, "Please fix monitor_ids (for example, remove invalid IDs or create the missing monitors) and run apply again.")
+
+	return "PSP monitor_ids do not match configuration", b.String(), true
 }
