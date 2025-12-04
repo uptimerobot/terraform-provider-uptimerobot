@@ -539,7 +539,14 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	managedFeatures := plan.CustomSettings != nil && plan.CustomSettings.Features != nil
 
 	pspForState := newPSP
-	if settled, err := waitPSPSettled(ctx, r.client, newPSP.ID, plan.Name.ValueString(), 60*time.Second); err == nil && settled != nil {
+	if settled, err := waitPSPSettled(
+		ctx,
+		r.client,
+		newPSP.ID,
+		plan.Name.ValueString(),
+		requestedMonitorIDs,
+		60*time.Second,
+	); err == nil && settled != nil {
 		pspForState = settled
 	} else if err != nil {
 		resp.Diagnostics.AddWarning("PSP create settled slowly", err.Error())
@@ -842,7 +849,14 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	pspForState := updatedPSP
-	if settled, err := waitPSPSettled(ctx, r.client, id, plan.Name.ValueString(), 60*time.Second); err == nil && settled != nil {
+	if settled, err := waitPSPSettled(
+		ctx,
+		r.client,
+		id,
+		plan.Name.ValueString(),
+		requestedMonitorIDs,
+		60*time.Second,
+	); err == nil && settled != nil {
 		pspForState = settled
 	} else if err != nil {
 		resp.Diagnostics.AddWarning("PSP update settled slowly", err.Error())
@@ -918,7 +932,15 @@ func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 }
 
 // Wait until PSP reflects expected state.
-func waitPSPSettled(ctx context.Context, c *client.Client, id int64, expectedName string, timeout time.Duration) (*client.PSP, error) {
+func waitPSPSettled(
+	ctx context.Context,
+	c *client.Client,
+	id int64,
+	expectedName string,
+	expectedMonitorIDs []int64, // nil means omitted and should not be checked
+	timeout time.Duration,
+) (*client.PSP, error) {
+
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
@@ -940,7 +962,16 @@ func waitPSPSettled(ctx context.Context, c *client.Client, id int64, expectedNam
 		psp, err := c.GetPSP(ctx, id)
 		if err == nil {
 			last = psp
-			if expectedName == "" || psp.Name == expectedName {
+
+			nameOK := (expectedName == "" || psp.Name == expectedName)
+			monitorsOK := true
+
+			if expectedMonitorIDs != nil {
+				missing, extra := diffMonitorIDs(expectedMonitorIDs, psp.MonitorIDs)
+				monitorsOK = (len(missing) == 0 && len(extra) == 0)
+			}
+
+			if nameOK && monitorsOK {
 				return psp, nil
 			}
 		}
@@ -948,10 +979,10 @@ func waitPSPSettled(ctx context.Context, c *client.Client, id int64, expectedNam
 		select {
 		case <-ctx.Done():
 			if last != nil && (expectedName == "" || last.Name == expectedName) {
-				return last, nil
+				return last, fmt.Errorf("timeout waiting for PSP to settle; last name=%q: %w", last.Name, ctx.Err())
 			}
 			if last != nil {
-				return last, fmt.Errorf("timeout waiting for PSP to settle; last name=%q: %w", last.Name, ctx.Err())
+				return last, fmt.Errorf("timeout waiting for PSP to settle: %w", ctx.Err())
 			}
 			return nil, fmt.Errorf("timeout waiting for PSP to settle: %w", ctx.Err())
 		case <-time.After(backoff):
