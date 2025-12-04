@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -144,6 +144,9 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			"is_password_set": schema.BoolAttribute{
 				Description: "Whether a password is set for the PSP",
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"monitor_ids": schema.SetAttribute{
 				Description: "Set of monitor IDs",
@@ -160,14 +163,23 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			"status": schema.StringAttribute{
 				Description: "Status of the PSP",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"url_key": schema.StringAttribute{
 				Description: "URL key for the PSP",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"homepage_link": schema.StringAttribute{
 				Description: "Homepage link for the PSP",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ga_code": schema.StringAttribute{
 				Description: "Google Analytics code",
@@ -177,13 +189,17 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Description: "Whether analytics sharing is consented",
 				Optional:    true,
 				Computed:    true,
-				Default:     booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"use_small_cookie_consent_modal": schema.BoolAttribute{
 				Description: "Whether to use small cookie consent modal",
 				Optional:    true,
 				Computed:    true,
-				Default:     booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"icon": schema.StringAttribute{
 				Description: "Icon for the PSP",
@@ -193,7 +209,9 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Description: "Whether to prevent indexing",
 				Optional:    true,
 				Computed:    true,
-				Default:     booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"logo": schema.StringAttribute{
 				Description: "Logo for the PSP",
@@ -203,17 +221,24 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Description: "Whether to hide URL links",
 				Optional:    true,
 				Computed:    true,
-				Default:     booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"subscription": schema.BoolAttribute{
 				Description: "Whether subscription is enabled",
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"show_cookie_bar": schema.BoolAttribute{
 				Description: "Whether to show cookie bar",
 				Optional:    true,
 				Computed:    true,
-				Default:     booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"pinned_announcement_id": schema.Int64Attribute{
 				Description: "ID of pinned announcement",
