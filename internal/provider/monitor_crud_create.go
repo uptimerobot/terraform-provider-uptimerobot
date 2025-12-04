@@ -41,7 +41,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	want := wantFromCreateReq(createReq)
 	settleTimeout := 60 * time.Second
 	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil {
-		settleTimeout = 120 * time.Second
+		settleTimeout = 180 * time.Second
 	}
 	api, err := r.waitMonitorSettled(ctx, created.ID, want, settleTimeout)
 	if err != nil {

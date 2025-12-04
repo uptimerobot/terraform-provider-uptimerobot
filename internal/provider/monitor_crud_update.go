@@ -55,12 +55,12 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	updated := initialUpdated
 	settleTimeout := 60 * time.Second
-	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil {
-		settleTimeout = 120 * time.Second
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil || want.MaintenanceWindowIDs != nil {
+		settleTimeout = 180 * time.Second
 	}
 
 	needSettle := !equalComparable(want, got)
-	if want.DNSRecords != nil {
+	if want.DNSRecords != nil || want.MaintenanceWindowIDs != nil {
 		needSettle = true
 	}
 

@@ -77,7 +77,7 @@ type FeatureSettings struct {
 type CreatePSPRequest struct {
 	Name                       string          `json:"friendlyName"`
 	CustomDomain               *string         `json:"customDomain,omitempty"`
-	MonitorIDs                 []int64         `json:"monitorIds,omitempty"`
+	MonitorIDs                 *[]int64        `json:"monitorIds,omitempty"`
 	GACode                     *string         `json:"gaCode,omitempty"`
 	ShareAnalyticsConsent      bool            `json:"shareAnalyticsConsent"`
 	UseSmallCookieConsentModal bool            `json:"useSmallCookieConsentModal"`
@@ -122,7 +122,7 @@ func (r *CreatePSPRequest) MarshalJSON() ([]byte, error) {
 type UpdatePSPRequest struct {
 	Name                       string          `json:"friendlyName,omitempty"`
 	CustomDomain               *string         `json:"customDomain,omitempty"`
-	MonitorIDs                 []int64         `json:"monitorIds,omitempty"`
+	MonitorIDs                 *[]int64        `json:"monitorIds,omitempty"`
 	GACode                     *string         `json:"gaCode,omitempty"`
 	ShareAnalyticsConsent      *bool           `json:"shareAnalyticsConsent,omitempty"`
 	UseSmallCookieConsentModal *bool           `json:"useSmallCookieConsentModal,omitempty"`

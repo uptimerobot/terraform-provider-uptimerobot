@@ -74,11 +74,30 @@ resource "uptimerobot_psp" "test" {
   name = %q
 
   // no monitor_ids
+  monitor_ids = []
+  
   custom_settings = {
     page = { layout = "logo_on_left", theme = "dark", density = "compact" }
   }
 }
 `, name)
+}
+
+func testAccPSPResourceConfigWithMonitor(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "psp" {
+  name     = %q
+  type     = "HTTP"
+  url      = "https://example.com/psp-%s"
+  interval = 300
+}
+
+resource "uptimerobot_psp" "test" {
+  name = %q
+
+  monitor_ids = [uptimerobot_monitor.psp.id]
+}
+`, name, name, name)
 }
 
 func TestAccPSPResource(t *testing.T) {
@@ -133,6 +152,7 @@ func TestAccPSPResource(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", "test-psp-nomon"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "0"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitors_count", "0"),
 				),
 			},
 			// Import testing
@@ -141,6 +161,34 @@ func TestAccPSPResource(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"monitor_ids", "name", "custom_settings"},
+			},
+		},
+	})
+}
+
+func TestAccPSPResource_MonitorCountFollowsMonitorIDs(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPSPDestroy,
+		Steps: []resource.TestStep{
+			// Step 1: PSP with one monitor
+			{
+				Config: testAccPSPResourceConfigWithMonitor("test-psp-monitors"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					// one monitor in the set
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "1"),
+					// count should match
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitors_count", "1"),
+				),
+			},
+			// Step 2: same PSP, no monitors
+			{
+				Config: testAccPSPResourceConfigWithoutMonitors("test-psp-monitors"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "0"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitors_count", "0"),
+				),
 			},
 		},
 	})
