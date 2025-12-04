@@ -964,7 +964,7 @@ func waitPSPSettled(ctx context.Context, c *client.Client, id int64, expectedNam
 	}
 }
 
-func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceModel) {
+func pspToResourceData(_ context.Context, psp *client.PSP, plan *pspResourceModel) {
 	plan.ID = types.StringValue(strconv.FormatInt(psp.ID, 10))
 	plan.Name = types.StringValue(psp.Name)
 	plan.Status = types.StringValue(psp.Status)
