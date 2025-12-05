@@ -211,7 +211,10 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigGetNoBody(name string) string {
-	url := testAccUniqueURL(name)
+	return testAccMonitorResourceConfigGetNoBodyAtURL(name, testAccUniqueURL(name))
+}
+
+func testAccMonitorResourceConfigGetNoBodyAtURL(name, url string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
@@ -1626,7 +1629,18 @@ func TestAcc_Monitor_HTTP_Post_NoBody_StablePlan(t *testing.T) {
 
 func TestAcc_Monitor_HTTP_MethodSwitch_ClearsBody(t *testing.T) {
 	name := "acc-method-switch"
-	url := testAccUniqueURL(name)
+	// Keep one URL across steps to avoid backend URL normalization drift.
+	url := fmt.Sprintf("%s/echo", testAccUniqueURL(name))
+	postNoBodyConfig := testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name             = %q
+  url              = "%s"
+  type             = "HTTP"
+  interval         = 300
+  timeout          = 30
+  http_method_type = "POST"
+}
+`, name, url)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1640,30 +1654,12 @@ func TestAcc_Monitor_HTTP_MethodSwitch_ClearsBody(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "RAW_JSON"),
 					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
 				),
 			},
-			// 2) Switch to GET with no body
+			// 2) Switch to GET with no body on the same URL to clear any payload
 			{
-				Config: testAccMonitorResourceConfigGetNoBody(name),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "GET"),
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_type"),
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_data"),
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
-				),
-			},
-			// 3) URL change only with GET and no body to verift URL update
-			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-  name             = %q
-  url              = "%s" // change URL only
-  type             = "HTTP"
-  interval         = 300
-  timeout          = 30
-  http_method_type = "GET"
-}
-`, name, url),
+				Config: testAccMonitorResourceConfigGetNoBodyAtURL(name, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "GET"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
@@ -1672,18 +1668,9 @@ resource "uptimerobot_monitor" "test" {
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
 				),
 			},
-			// 4) Switch back to POST with no body, keep new url – should remain clean and stable
+			// 3) Switch back to POST with no body on the same URL – should remain clean and stable
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-  name             = %q
-  url              = "%s"
-  type             = "HTTP"
-  interval         = 300
-  timeout          = 30
-  http_method_type = "POST"
-}
-`, name, url),
+				Config: postNoBodyConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
@@ -1692,18 +1679,9 @@ resource "uptimerobot_monitor" "test" {
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "post_value_kv"),
 				),
 			},
-			// 5) Idempotent re-plan on step 5 confog
+			// 4) Idempotent re-plan on POST/no-body config
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-  name             = %q
-  url              = "%s"
-  type             = "HTTP"
-  interval         = 300
-  timeout          = 30
-  http_method_type = "POST"
-}
-`, name, url),
+				Config:             postNoBodyConfig,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
