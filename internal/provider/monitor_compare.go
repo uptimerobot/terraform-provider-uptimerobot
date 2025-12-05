@@ -165,7 +165,7 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 		c.MaintenanceWindowIDs = ids
 	}
 	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
-		c.SSLExpirationPeriodDays = normalizeInt64Set(req.Config.SSLExpirationPeriodDays)
+		c.SSLExpirationPeriodDays = normalizeInt64Set(*req.Config.SSLExpirationPeriodDays)
 	}
 	if req.Config != nil && req.Config.DNSRecords != nil {
 		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
@@ -291,7 +291,7 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		c.MaintenanceWindowIDs = ids
 	}
 	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
-		c.SSLExpirationPeriodDays = normalizeInt64Set(req.Config.SSLExpirationPeriodDays)
+		c.SSLExpirationPeriodDays = normalizeInt64Set(*req.Config.SSLExpirationPeriodDays)
 	}
 	if req.Config != nil && req.Config.DNSRecords != nil {
 		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
@@ -439,7 +439,9 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 	c.MaintenanceWindowIDs = normalizeInt64Set(apiIDs)
 
 	if m.Config != nil {
-		c.SSLExpirationPeriodDays = normalizeInt64Set(m.Config.SSLExpirationPeriodDays) // empty slice is ok
+		if m.Config.SSLExpirationPeriodDays != nil {
+			c.SSLExpirationPeriodDays = normalizeInt64Set(*m.Config.SSLExpirationPeriodDays) // empty slice is ok
+		}
 		if dr := normalizeDNSRecords(m.Config.DNSRecords); dr != nil {
 			c.DNSRecords = dr
 		}
@@ -471,12 +473,18 @@ func normalizeDNSRecords(dr *client.DNSRecords) map[string][]string {
 		return nil
 	}
 	out := make(map[string][]string)
-	add := func(key string, vals []string) {
+
+	add := func(key string, valsPtr *[]string) {
+		if valsPtr == nil {
+			return
+		}
+		vals := *valsPtr
 		if vals == nil {
 			return
 		}
 		out[key] = normalizeStringSet(vals)
 	}
+
 	add("a", dr.A)
 	add("aaaa", dr.AAAA)
 	add("cname", dr.CNAME)
@@ -491,6 +499,7 @@ func normalizeDNSRecords(dr *client.DNSRecords) map[string][]string {
 	add("ds", dr.DS)
 	add("nsec", dr.NSEC)
 	add("nsec3", dr.NSEC3)
+
 	if len(out) == 0 {
 		return nil
 	}

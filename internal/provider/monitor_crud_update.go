@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -28,6 +29,12 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		resp.Diagnostics.Append(diags...)
 		return
 	}
+	var configVal basetypes.ObjectValue
+	if diags := req.Config.GetAttribute(ctx, path.Root("config"), &configVal); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+	configOmitted := configVal.IsNull() || configVal.IsUnknown()
 
 	id, err := strconv.ParseInt(plan.ID.ValueString(), 10, 64)
 	if err != nil {
@@ -39,10 +46,11 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, resp)
+	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, resp)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	configSent := updateReq.Config != nil
 
 	initialUpdated, err := r.client.UpdateMonitor(ctx, id, updateReq)
 	if err != nil {
@@ -77,7 +85,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
-	newState := applyUpdatedMonitorToState(ctx, plan, state, updated, effMethod, resp)
+	newState := applyUpdatedMonitorToState(ctx, plan, state, updated, effMethod, configSent, resp)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -119,6 +127,7 @@ func buildUpdateRequest(
 	ctx context.Context,
 	plan monitorResourceModel,
 	state monitorResourceModel,
+	configOmitted bool,
 	resp *resource.UpdateResponse,
 ) (*client.UpdateMonitorRequest, string) {
 	req := &client.UpdateMonitorRequest{
@@ -226,7 +235,7 @@ func buildUpdateRequest(
 	}
 
 	// Config
-	expandOrClearConfigOnUpdate(ctx, plan, state, req, resp)
+	expandOrClearConfigOnUpdate(ctx, plan, configOmitted, req, resp)
 
 	return req, effMethod
 }
@@ -478,6 +487,7 @@ func applyUpdatedMonitorToState(
 	prev monitorResourceModel,
 	m *client.Monitor,
 	effMethod string,
+	configSent bool,
 	resp *resource.UpdateResponse,
 ) monitorResourceModel {
 	out := plan
@@ -658,13 +668,16 @@ func applyUpdatedMonitorToState(
 
 	// Config in state
 	haveBlockConfig := !plan.Config.IsNull() && !plan.Config.IsUnknown()
-	if haveBlockConfig {
+	switch {
+	case !configSent && strings.ToUpper(plan.Type.ValueString()) != MonitorTypeDNS:
+		out.Config = types.ObjectNull(configObjectType().AttrTypes)
+	case haveBlockConfig:
 		cfgState, d := flattenConfigToState(ctx, haveBlockConfig, plan.Config, m.Config)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {
 			out.Config = cfgState
 		}
-	} else {
+	default:
 		out.Config = types.ObjectNull(configObjectType().AttrTypes)
 	}
 
@@ -697,16 +710,20 @@ func applyUpdatedMonitorToState(
 
 func expandOrClearConfigOnUpdate(
 	ctx context.Context,
-	plan, _ monitorResourceModel,
+	plan monitorResourceModel,
+	configOmitted bool,
 	req *client.UpdateMonitorRequest,
 	resp *resource.UpdateResponse,
 ) {
 	switch {
+	case configOmitted:
+		// User omitted the block - preserve remote
+		return
 	case plan.Config.IsUnknown():
-		// Omit - preserve remote
+		// Unknown - preserve remote
 		return
 	case plan.Config.IsNull():
-		// User removed the block - preserve remote
+		// Explicit null - preserve remote
 		return
 	default:
 		out, touched, diags := expandConfigToAPI(ctx, plan.Config)

@@ -19,8 +19,13 @@ func (m configNullIfOmitted) MarkdownDescription(ctx context.Context) string {
 // When the user omits the `config` block, ensure the planned value is NULL,
 // preventing TF from carrying prior empty sets (SetValEmpty) forward.
 func (m configNullIfOmitted) PlanModifyObject(ctx context.Context, req planmodifier.ObjectRequest, resp *planmodifier.ObjectResponse) {
-	// If omitted or unknown – force NULL for the whole object
+	// If omitted or unknown – use prior state on update and NULL on create for the whole object
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
-		resp.PlanValue = types.ObjectNull(configObjectType().AttrTypes)
+		switch {
+		case !req.StateValue.IsNull() && !req.StateValue.IsUnknown():
+			resp.PlanValue = req.StateValue
+		default:
+			resp.PlanValue = types.ObjectNull(configObjectType().AttrTypes)
+		}
 	}
 }

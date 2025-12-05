@@ -152,25 +152,25 @@ type AlertContact struct {
 }
 
 type MonitorConfig struct {
-	SSLExpirationPeriodDays []int64     `json:"sslExpirationPeriodDays,omitempty"`
+	SSLExpirationPeriodDays *[]int64    `json:"sslExpirationPeriodDays,omitempty"`
 	DNSRecords              *DNSRecords `json:"dnsRecords,omitempty"`
 }
 
 type DNSRecords struct {
-	CNAME  []string `json:"CNAME,omitempty"`
-	MX     []string `json:"MX,omitempty"`
-	NS     []string `json:"NS,omitempty"`
-	A      []string `json:"A,omitempty"`
-	AAAA   []string `json:"AAAA,omitempty"`
-	TXT    []string `json:"TXT,omitempty"`
-	SRV    []string `json:"SRV,omitempty"`
-	PTR    []string `json:"PTR,omitempty"`
-	SOA    []string `json:"SOA,omitempty"`
-	SPF    []string `json:"SPF,omitempty"`
-	DNSKEY []string `json:"DNSKEY,omitempty"`
-	DS     []string `json:"DS,omitempty"`
-	NSEC   []string `json:"NSEC,omitempty"`
-	NSEC3  []string `json:"NSEC3,omitempty"`
+	CNAME  *[]string `json:"CNAME,omitempty"`
+	MX     *[]string `json:"MX,omitempty"`
+	NS     *[]string `json:"NS,omitempty"`
+	A      *[]string `json:"A,omitempty"`
+	AAAA   *[]string `json:"AAAA,omitempty"`
+	TXT    *[]string `json:"TXT,omitempty"`
+	SRV    *[]string `json:"SRV,omitempty"`
+	PTR    *[]string `json:"PTR,omitempty"`
+	SOA    *[]string `json:"SOA,omitempty"`
+	SPF    *[]string `json:"SPF,omitempty"`
+	DNSKEY *[]string `json:"DNSKEY,omitempty"`
+	DS     *[]string `json:"DS,omitempty"`
+	NSEC   *[]string `json:"NSEC,omitempty"`
+	NSEC3  *[]string `json:"NSEC3,omitempty"`
 }
 
 type Incident struct {

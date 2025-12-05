@@ -389,6 +389,7 @@ Advanced monitor configuration.
 `,
 
 				Optional: true,
+				Computed: true,
 				PlanModifiers: []planmodifier.Object{
 					configNullIfOmitted{},
 				},
@@ -454,6 +455,15 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		if resp.Diagnostics.HasError() {
 			return
 		}
+	}
+
+	// If user omitted config on a not DNS monitors, drop it from the plan so it can be cleared from state
+	var rawConfig basetypes.ObjectValue
+	_ = req.Config.GetAttribute(ctx, path.Root("config"), &rawConfig)
+	planType := strings.ToUpper(firstNonEmpty(stringOrEmpty(plan.Type), stringOrEmpty(state.Type)))
+	if (rawConfig.IsNull() || rawConfig.IsUnknown()) && planType != "DNS" {
+		plan.Config = types.ObjectNull(configObjectType().AttrTypes)
+		_ = resp.Plan.SetAttribute(ctx, path.Root("config"), plan.Config)
 	}
 
 	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
