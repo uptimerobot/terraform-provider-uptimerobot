@@ -2378,3 +2378,179 @@ resource "uptimerobot_monitor" "test" {
 		},
 	})
 }
+
+func TestAcc_Monitor_Config_DNSRecords_EmptyList_A_StaysEmpty(t *testing.T) {
+	t.Parallel()
+
+	name := acctest.RandomWithPrefix("acc-dns-empty-a")
+	domain := testAccUniqueDomain(name)
+	res := "uptimerobot_monitor.test"
+
+	cfgEmpty := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "DNS"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    dns_records = {
+      a     = []              # explicitly managed empty list for A
+      cname = ["foo.%s."]     # keep a real record so the monitor is fully valid
+    }
+  }
+}
+`, name, domain, domain)
+
+	cfgNonEmpty := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "DNS"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    dns_records = {
+      a     = ["93.184.216.34"]
+      cname = ["foo.%s."]
+    }
+  }
+}
+`, name, domain, domain)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Start with a = []
+			{
+				Config: cfgEmpty,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.dns_records.a.#", "0"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "1"),
+				),
+			},
+			// Re-apply same config, have to be empty
+			{
+				Config:             cfgEmpty,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// Make A filled
+			{
+				Config: cfgNonEmpty,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.dns_records.a.#", "1"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "1"),
+				),
+			},
+			// Back to empty. Have to go back to an empty set
+			{
+				Config: cfgEmpty,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.dns_records.a.#", "0"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "1"),
+				),
+			},
+			{
+				Config:             cfgEmpty,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_DNSRecords_OmitConfig_Preserves(t *testing.T) {
+	t.Parallel()
+
+	name := acctest.RandomWithPrefix("acc-dns-omit-config")
+	domain := testAccUniqueDomain(name)
+	res := "uptimerobot_monitor.test"
+
+	cfgWithRecords := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "DNS"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    dns_records = {
+      a   = ["93.184.216.34"]
+      txt = ["v=spf1 include:%s ~all"]
+    }
+  }
+}
+`, name, domain, domain)
+
+	cfgOmitConfig := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s-updated"
+  type     = "DNS"
+  url      = "%s"
+  interval = 300
+  # config omitted on purpose to preserve remote dns_records
+}
+`, name, domain)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// 1) Create with explicit dns_records
+			{
+				Config: cfgWithRecords,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.dns_records.a.#", "1"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.txt.#", "1"),
+				),
+			},
+			// 2) Update without config, so server have to keep dns_records
+			{
+				Config: cfgOmitConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "name", name+"-updated"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.a.#", "1"),
+					resource.TestCheckResourceAttr(res, "config.dns_records.txt.#", "1"),
+				),
+			},
+			// 3) Re-plan same config to check for no drift
+			{
+				Config:             cfgOmitConfig,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_DNSRecords_ConfigWithoutRecords_Fails(t *testing.T) {
+	t.Parallel()
+
+	name := acctest.RandomWithPrefix("acc-dns-norecords")
+	domain := testAccUniqueDomain(name)
+
+	cfgMissing := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "DNS"
+  url      = "%s"
+  interval = 300
+
+  # config block present but dns_records omitted on purpose
+  config = {}
+}
+`, name, domain)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      cfgMissing,
+				ExpectError: regexp.MustCompile(`config\.dns_records.*required.*DNS monitors`),
+			},
+		},
+	})
+}
