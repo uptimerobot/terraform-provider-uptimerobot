@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -43,6 +44,7 @@ type pspResourceModel struct {
 	ID                         types.String         `tfsdk:"id"`
 	Name                       types.String         `tfsdk:"name"`
 	CustomDomain               types.String         `tfsdk:"custom_domain"`
+	Password                   types.String         `tfsdk:"password"`
 	IsPasswordSet              types.Bool           `tfsdk:"is_password_set"`
 	MonitorIDs                 types.Set            `tfsdk:"monitor_ids"`
 	MonitorsCount              types.Int64          `tfsdk:"monitors_count"`
@@ -141,12 +143,18 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Description: "Custom domain for the PSP",
 				Optional:    true,
 			},
+			"password": schema.StringAttribute{
+				Description: "Password for the PSP",
+				MarkdownDescription: `Password for accessing the PSP page.
+- Redacted in CLI output and logs.
+- Not returned by the UptimeRobot API. 'is_password_set' attribute tells that password was set for psp or not.
+- The provider keeps the last configured value in state.`,
+				Optional:  true,
+				Sensitive: true,
+			},
 			"is_password_set": schema.BoolAttribute{
 				Description: "Whether a password is set for the PSP",
 				Computed:    true,
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"monitor_ids": schema.SetAttribute{
 				Description: "Set of monitor IDs",
@@ -164,7 +172,11 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			},
 			"status": schema.StringAttribute{
 				Description: "Status of the PSP",
+				Optional:    true,
 				Computed:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("ENABLED", "PAUSED"),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -186,6 +198,16 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			"ga_code": schema.StringAttribute{
 				Description: "Google Analytics code",
 				Optional:    true,
+				Computed:    true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^G-[A-Z0-9]{10}$`),
+						"must match GA4 measurement ID (G-XXXXXXXXXX)",
+					),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"share_analytics_consent": schema.BoolAttribute{
 				Description: "Whether analytics sharing is consented",
@@ -386,8 +408,16 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		psp.CustomDomain = plan.CustomDomain.ValueStringPointer()
 	}
 
+	if !plan.Password.IsNull() && !plan.Password.IsUnknown() {
+		psp.Password = plan.Password.ValueStringPointer()
+	}
+
 	if hasMonitorPlan {
 		psp.MonitorIDs = &requestedMonitorIDs
+	}
+
+	if !plan.Status.IsNull() && !plan.Status.IsUnknown() {
+		psp.Status = plan.Status.ValueStringPointer()
 	}
 
 	if !plan.GACode.IsNull() && !plan.GACode.IsUnknown() {
@@ -725,9 +755,17 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		psp.CustomDomain = &customDomain
 	}
 
+	if !plan.Password.IsNull() && !plan.Password.IsUnknown() {
+		psp.Password = plan.Password.ValueStringPointer()
+	}
 	if !plan.GACode.IsNull() && !plan.GACode.IsUnknown() {
 		gaCode := plan.GACode.ValueString()
 		psp.GACode = &gaCode
+	}
+
+	if !plan.Status.IsNull() && !plan.Status.IsUnknown() {
+		status := plan.Status.ValueString()
+		psp.Status = &status
 	}
 
 	if !plan.Icon.IsNull() && !plan.Icon.IsUnknown() {
@@ -870,7 +908,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		}
 	}
 
-	var newState = state
+	var newState = plan
 	pspToResourceData(ctx, pspForState, &newState)
 
 	if hasMonitorPlan {
@@ -1034,7 +1072,7 @@ func pspToResourceData(_ context.Context, psp *client.PSP, plan *pspResourceMode
 		plan.CustomDomain = types.StringNull()
 	}
 
-	if psp.GACode != nil {
+	if psp.GACode != nil && strings.TrimSpace(*psp.GACode) != "" {
 		plan.GACode = types.StringValue(*psp.GACode)
 	} else {
 		plan.GACode = types.StringNull()
