@@ -13,8 +13,8 @@ Thanks for helping improve the provider! This doc shows how to build, test, and 
 
 1. **Build the provider**
    ```bash
-   make build
-   # or: go build -o ./bin/terraform-provider-uptimerobot_v0.0.0-dev . 
+   make build-dev
+   # or: go build -o ./bin/terraform-provider-uptimerobot_v0.0.0-dev .
    ```
 
 2. **Create override config**
