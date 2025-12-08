@@ -43,7 +43,7 @@ resource "uptimerobot_psp" "branded_status" {
   }
 
   # Google Analytics
-  ga_code = "UA-XXXXXXXXX-X"
+  ga_code = "G-ABCDEFGH12"
 
   # Cookie consent
   show_cookie_bar                = true
