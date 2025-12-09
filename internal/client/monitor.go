@@ -118,7 +118,7 @@ type Monitor struct {
 	Status                   string              `json:"status"`
 	URL                      string              `json:"url"`
 	CurrentStateDuration     int                 `json:"currentStateDuration"`
-	LastIncidentID           *int64              `json:"lastIncidentId"`
+	LastIncidentID           *string             `json:"lastIncidentId"`
 	UserID                   int64               `json:"userId"`
 	Tags                     []Tag               `json:"tags"`
 	AssignedAlertContacts    []AlertContact      `json:"assignedAlertContacts"`
@@ -174,7 +174,7 @@ type DNSRecords struct {
 }
 
 type Incident struct {
-	ID        int64       `json:"id"`
+	ID        string      `json:"id"`
 	Status    interface{} `json:"status"`
 	Cause     int         `json:"cause"`
 	Reason    string      `json:"reason"`
