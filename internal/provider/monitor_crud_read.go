@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"html"
 	"strconv"
 	"strings"
 
@@ -53,7 +52,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	readApplyOptionalDefaults(&state, monitor, isImport)
 	readApplyHTTPBody(&state)
 	readApplyKeywordAndPort(&state, monitor, isImport)
-	readApplyIdentity(&state, monitor, isImport)
+	readApplyIdentity(&state, monitor)
 	readApplyRegionalData(&state, monitor, isImport)
 	readApplyTagsHeadersAC(ctx, resp, &state, monitor, isImport)
 	readApplySuccessCodes(ctx, resp, &state, monitor)
@@ -105,10 +104,9 @@ func readApplyOptionalDefaults(state *monitorResourceModel, m *client.Monitor, i
 		state.HTTPUsername = types.StringNull()
 	}
 
-	// Preserve user's method unless import. API may omit and normalize it.
-	if isImport {
+	if isImport || state.HTTPMethodType.IsNull() || state.HTTPMethodType.IsUnknown() {
 		if m.HTTPMethodType != "" {
-			state.HTTPMethodType = types.StringValue(m.HTTPMethodType)
+			state.HTTPMethodType = types.StringValue(strings.ToUpper(m.HTTPMethodType))
 		} else {
 			state.HTTPMethodType = types.StringNull()
 		}
@@ -121,7 +119,7 @@ func readApplyOptionalDefaults(state *monitorResourceModel, m *client.Monitor, i
 		} else {
 			state.ResponseTimeThreshold = types.Int64Null()
 		}
-	} else if !state.ResponseTimeThreshold.IsNull() {
+	} else if state.ResponseTimeThreshold.IsNull() || state.ResponseTimeThreshold.IsUnknown() {
 		if m.ResponseTimeThreshold > 0 {
 			state.ResponseTimeThreshold = types.Int64Value(int64(m.ResponseTimeThreshold))
 		} else {
@@ -177,11 +175,13 @@ func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isI
 		state.KeywordType = types.StringNull()
 	}
 
-	// keyword_case_type — reflect only when importing or when user manages it
-	managed := isImport || (!state.KeywordCaseType.IsNull() && !state.KeywordCaseType.IsUnknown())
+	// keyword_case_type — should be kept as user set.
+	// API value should only be reflected on import or when attr is absent
+	managedKeyword := !state.KeywordCaseType.IsNull() && !state.KeywordCaseType.IsUnknown()
 
 	if strings.ToUpper(state.Type.ValueString()) == MonitorTypeKEYWORD {
-		if managed {
+		switch {
+		case isImport:
 			switch m.KeywordCaseType {
 			case 0:
 				state.KeywordCaseType = types.StringValue("CaseSensitive")
@@ -190,7 +190,9 @@ func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isI
 			default:
 				state.KeywordCaseType = types.StringNull()
 			}
-		} else {
+		case managedKeyword:
+			// keep state as-is to avoid situations when API normalizes back to default
+		default:
 			state.KeywordCaseType = types.StringNull()
 		}
 	} else {
@@ -198,39 +200,47 @@ func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isI
 	}
 }
 
-func readApplyIdentity(state *monitorResourceModel, m *client.Monitor, isImport bool) {
-	if isImport {
-		state.Name = types.StringValue(unescapeAPIText(m.Name))
-	} else {
-		state.Name = types.StringValue(m.Name)
-	}
+func readApplyIdentity(state *monitorResourceModel, m *client.Monitor) {
+	state.Name = types.StringValue(m.Name)
 	state.URL = types.StringValue(m.URL)
 	state.ID = types.StringValue(strconv.FormatInt(m.ID, 10))
 	state.Status = types.StringValue(m.Status)
 }
 
 func readApplyRegionalData(state *monitorResourceModel, m *client.Monitor, isImport bool) {
-	if !state.RegionalData.IsNull() {
+	if isImport {
 		if m.RegionalData != nil {
-			if region, ok := coerceRegion(m.RegionalData); ok {
+			if region, ok := coerceRegion(m.RegionalData); ok && !isDefaultRegion(region) {
 				state.RegionalData = types.StringValue(region)
-			} else {
-				state.RegionalData = types.StringNull()
+				return
 			}
 		} else {
 			state.RegionalData = types.StringNull()
 		}
-	} else if isImport {
-		state.RegionalData = types.StringNull()
+		return
 	}
+	if state.RegionalData.IsNull() || state.RegionalData.IsUnknown() {
+		// user did not manage this field and it should be kept as null
+		return
+	}
+	if m.RegionalData != nil {
+		if region, ok := coerceRegion(m.RegionalData); ok && !isDefaultRegion(region) {
+			state.RegionalData = types.StringValue(region)
+		}
+		// if API returns default or empty values user intent will be kept
+	}
+}
+
+func isDefaultRegion(region string) bool {
+	return strings.EqualFold(strings.TrimSpace(region), "na") || strings.TrimSpace(region) == ""
 }
 
 func readApplyTagsHeadersAC(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	state.Tags = tagsReadSet(state.Tags, m.Tags, isImport)
 
 	if isImport || state.CustomHTTPHeaders.IsNull() {
-		if len(m.CustomHTTPHeaders) > 0 {
-			v, d := attrFromMap(ctx, m.CustomHTTPHeaders)
+		if headers := headersFromAPIForState(m.CustomHTTPHeaders); len(headers) > 0 {
+			v, d := attrFromMap(ctx, headers)
 			resp.Diagnostics.Append(d...)
 			state.CustomHTTPHeaders = v
 		} else {
@@ -258,12 +268,16 @@ func readApplySuccessCodes(ctx context.Context, _ *resource.ReadResponse, state 
 		}
 
 		var vals []attr.Value
-		if m.SuccessHTTPResponseCodes != nil {
-			for _, c := range normalizeStringSet(m.SuccessHTTPResponseCodes) {
+		apiCodes := normalizeStringSet(m.SuccessHTTPResponseCodes)
+		if len(apiCodes) == len(prior) {
+			for _, c := range apiCodes {
 				vals = append(vals, types.StringValue(c))
 			}
 		} else {
-			vals = []attr.Value{}
+			// Preserve prior managed values if API normalized to a different or default set
+			for _, c := range normalizeStringSet(prior) {
+				vals = append(vals, types.StringValue(c))
+			}
 		}
 		state.SuccessHTTPResponseCodes = types.SetValueMust(types.StringType, vals)
 	}
@@ -309,18 +323,15 @@ func readApplyConfig(ctx context.Context, resp *resource.ReadResponse, state *mo
 	}
 
 	haveBlockConfig := !state.Config.IsNull() && !state.Config.IsUnknown()
-	if haveBlockConfig {
+	switch {
+	case haveBlockConfig && m.Config == nil:
+		// User removed the block or API returns nil config. Clear it to avoid the drift.
+		state.Config = types.ObjectNull(configObjectType().AttrTypes)
+	case haveBlockConfig:
 		cfgState, d := flattenConfigToState(ctx, haveBlockConfig, state.Config, m.Config)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {
 			state.Config = cfgState
 		}
 	}
-}
-
-func unescapeAPIText(s string) string {
-	if s == "" {
-		return s
-	}
-	return html.UnescapeString(s)
 }

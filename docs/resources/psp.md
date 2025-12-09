@@ -145,7 +145,7 @@ resource "uptimerobot_psp" "branded_status" {
   }
 
   # Google Analytics
-  ga_code = "UA-XXXXXXXXX-X"
+  ga_code = "G-ABCDEFGH12"
 
   # Cookie consent
   show_cookie_bar                = true
@@ -185,9 +185,14 @@ You can include specific monitors in your status page by providing their IDs in 
 - `logo` (String) Logo for the PSP
 - `monitor_ids` (Set of Number) Set of monitor IDs
 - `no_index` (Boolean) Whether to prevent indexing
+- `password` (String, Sensitive) Password for accessing the PSP page.
+- Redacted in CLI output and logs.
+- Not returned by the UptimeRobot API. 'is_password_set' attribute tells that password was set for psp or not.
+- The provider keeps the last configured value in state.
 - `pinned_announcement_id` (Number) ID of pinned announcement
 - `share_analytics_consent` (Boolean) Whether analytics sharing is consented
 - `show_cookie_bar` (Boolean) Whether to show cookie bar
+- `status` (String) Status of the PSP
 - `use_small_cookie_consent_modal` (Boolean) Whether to use small cookie consent modal
 
 ### Read-Only
@@ -196,7 +201,6 @@ You can include specific monitors in your status page by providing their IDs in 
 - `id` (String) PSP identifier
 - `is_password_set` (Boolean) Whether a password is set for the PSP
 - `monitors_count` (Number) Number of monitors in the PSP
-- `status` (String) Status of the PSP
 - `subscription` (Boolean) Whether subscription is enabled
 - `url_key` (String) URL key for the PSP
 

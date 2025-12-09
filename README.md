@@ -8,7 +8,7 @@ This is the official UptimeRobot Terraform provider.
 
 ## Requirements
 
-- [Terraform](https://developer.hashicorp.com/terraform/install) or [OpenTofu](https://opentofu.org/docs/intro/install/)
+- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5 or [OpenTofu](https://opentofu.org/docs/intro/install/) >= 1.7
 - An [UptimeRobot](https://uptimerobot.com) account.
 - An UptimeRobot API Key. You can generate your Main API Key from your UptimeRobot dashboard under "My Settings" -> "API Settings" -> "Main API Key".
 
@@ -21,7 +21,7 @@ terraform {
   required_providers {
     uptimerobot = {
       source  = "uptimerobot/uptimerobot"
-      version = "~> 1.0.0"
+      version = "~> 1.3.0"
     }
   }
 }
@@ -56,7 +56,7 @@ terraform {
   required_providers {
     uptimerobot = {
       source  = "uptimerobot/uptimerobot"
-      version = "0.1.0"
+      version = "~> 1.3.0"
     }
   }
 }
@@ -96,15 +96,14 @@ resource "uptimerobot_psp" "main_status" {
 
 Detailed documentation for the resources supported by this provider can be found in the `docs/resources/` directory or by clicking the links below:
 
-- `uptimerobot_monitor`: (Link to `docs/resources/monitor.md` or similar)
-- (Add links for other resources as they are created)
+- [uptimerobot_monitor](docs/resources/monitor.md)
+- [uptimerobot_maintenance_window](docs/resources/maintenance_window.md)
+- [uptimerobot_integration](docs/resources/integration.md)
+- [uptimerobot_psp](docs/resources/psp.md)
 
 ## Data Source Reference
 
-Detailed documentation for the data sources supported by this provider can be found in the `docs/data-sources/` directory or by clicking the links below:
-
-- `uptimerobot_account`: (Link to `docs/data-sources/account.md` or similar)
-- (Add links for other data sources as they are created)
+This provider does not currently expose data sources. When data sources are added, their documentation will live under `docs/data-sources/`.
 
 ## Developing the Provider
 
@@ -175,7 +174,7 @@ Then commit the changes to `go.mod` and `go.sum`.
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request if you have improvements or bug fixes.
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on proposing changes, running tests, and opening pull requests.
 
 ## License
 

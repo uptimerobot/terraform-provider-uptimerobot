@@ -1,5 +1,6 @@
 terraform-provider-uptimerobot
 dist/
+.tmp
 .claude
 .env
 
@@ -12,6 +13,8 @@ terraform.tfplan
 
 *.log
 go.work*
+.gocache
 test-uptimerobot/
 bin/
 claude.md
+

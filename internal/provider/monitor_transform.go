@@ -196,28 +196,18 @@ func expandConfigToAPI(
 	out := &client.MonitorConfig{}
 	touched := false
 
-	// ssl_expiration_period_days
-	if !c.SSLExpirationPeriodDays.IsUnknown() {
-		if c.SSLExpirationPeriodDays.IsNull() {
-			out.SSLExpirationPeriodDays = []int64{}
-			touched = true
-		} else {
-			var days []int64
-			diags.Append(c.SSLExpirationPeriodDays.ElementsAs(ctx, &days, false)...)
-			if diags.HasError() {
-				return nil, false, diags
-			}
-			if len(days) == 0 {
-				out.SSLExpirationPeriodDays = []int64{}
-				touched = true
-			} else {
-				out.SSLExpirationPeriodDays = make([]int64, 0, len(days))
-
-				out.SSLExpirationPeriodDays = append(out.SSLExpirationPeriodDays, days...)
-
-				touched = true
-			}
+	if !c.SSLExpirationPeriodDays.IsUnknown() && !c.SSLExpirationPeriodDays.IsNull() {
+		var days []int64
+		diags.Append(c.SSLExpirationPeriodDays.ElementsAs(ctx, &days, false)...)
+		if diags.HasError() {
+			return nil, false, diags
 		}
+
+		copied := make([]int64, len(days))
+		copy(copied, days)
+
+		out.SSLExpirationPeriodDays = &copied
+		touched = true
 	}
 
 	// dns_records
@@ -235,10 +225,37 @@ func expandConfigToAPI(
 		if drTouched {
 			out.DNSRecords = dr
 			touched = true
+		} else {
+			out.DNSRecords = &client.DNSRecords{}
+			touched = true
 		}
 	}
 
 	return out, touched, diags
+}
+
+func dnsSetFromTF(
+	ctx context.Context,
+	s types.Set,
+	diags *diag.Diagnostics,
+) (*[]string, bool) {
+
+	if s.IsUnknown() || s.IsNull() {
+		return nil, false
+	}
+
+	var vals []string
+	diags.Append(s.ElementsAs(ctx, &vals, false)...)
+	if diags.HasError() {
+		return nil, false
+	}
+
+	clean := make([]string, 0, len(vals))
+	for _, v := range vals {
+		clean = append(clean, strings.TrimSpace(v))
+	}
+
+	return &clean, true
 }
 
 func expandDNSRecords(
@@ -249,45 +266,62 @@ func expandDNSRecords(
 	out := &client.DNSRecords{}
 	touched := false
 
-	set := func(s types.Set, dst *[]string) {
-		if s.IsUnknown() {
-			return
-		}
-		if s.IsNull() {
-			*dst = []string{}
-			touched = true
-			return
-		}
-		var vals []string
-		diags.Append(s.ElementsAs(ctx, &vals, false)...)
-		if len(vals) == 0 {
-			*dst = []string{}
-			touched = true
-			return
-		}
-		// trim whitespaces only
-		clean := make([]string, 0, len(vals))
-		for _, v := range vals {
-			clean = append(clean, strings.TrimSpace(v))
-		}
-		*dst = clean
+	if ptr, changed := dnsSetFromTF(ctx, in.CNAME, &diags); changed {
+		out.CNAME = ptr
 		touched = true
 	}
-
-	set(in.CNAME, &out.CNAME)
-	set(in.MX, &out.MX)
-	set(in.NS, &out.NS)
-	set(in.A, &out.A)
-	set(in.AAAA, &out.AAAA)
-	set(in.TXT, &out.TXT)
-	set(in.SRV, &out.SRV)
-	set(in.PTR, &out.PTR)
-	set(in.SOA, &out.SOA)
-	set(in.SPF, &out.SPF)
-	set(in.DNSKEY, &out.DNSKEY)
-	set(in.DS, &out.DS)
-	set(in.NSEC, &out.NSEC)
-	set(in.NSEC3, &out.NSEC3)
+	if ptr, changed := dnsSetFromTF(ctx, in.MX, &diags); changed {
+		out.MX = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.NS, &diags); changed {
+		out.NS = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.A, &diags); changed {
+		out.A = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.AAAA, &diags); changed {
+		out.AAAA = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.TXT, &diags); changed {
+		out.TXT = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.SRV, &diags); changed {
+		out.SRV = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.PTR, &diags); changed {
+		out.PTR = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.SOA, &diags); changed {
+		out.SOA = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.SPF, &diags); changed {
+		out.SPF = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.DNSKEY, &diags); changed {
+		out.DNSKEY = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.DS, &diags); changed {
+		out.DS = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.NSEC, &diags); changed {
+		out.NSEC = ptr
+		touched = true
+	}
+	if ptr, changed := dnsSetFromTF(ctx, in.NSEC3, &diags); changed {
+		out.NSEC3 = ptr
+		touched = true
+	}
 
 	return out, touched, diags
 }
@@ -311,8 +345,8 @@ func flattenConfigToState(
 	if !c.SSLExpirationPeriodDays.IsNull() && !c.SSLExpirationPeriodDays.IsUnknown() {
 		prevDays = c.SSLExpirationPeriodDays
 	}
-	if api != nil {
-		c.SSLExpirationPeriodDays = setInt64sRespectingShape(prevDays, api.SSLExpirationPeriodDays)
+	if api != nil && api.SSLExpirationPeriodDays != nil {
+		c.SSLExpirationPeriodDays = setInt64sRespectingShape(prevDays, *api.SSLExpirationPeriodDays)
 	} else {
 		// No config object from API will be treated as nil
 		c.SSLExpirationPeriodDays = setInt64sRespectingShape(prevDays, nil)
@@ -328,26 +362,56 @@ func flattenConfigToState(
 	if api != nil {
 		dr = api.DNSRecords // may be nil
 	}
-	dns := dnsRecordsModel{
-		CNAME:  setStringsRespectingShape(prevDNS.CNAME, dr, func(x *client.DNSRecords) []string { return x.CNAME }),
-		MX:     setStringsRespectingShape(prevDNS.MX, dr, func(x *client.DNSRecords) []string { return x.MX }),
-		NS:     setStringsRespectingShape(prevDNS.NS, dr, func(x *client.DNSRecords) []string { return x.NS }),
-		A:      setStringsRespectingShape(prevDNS.A, dr, func(x *client.DNSRecords) []string { return x.A }),
-		AAAA:   setStringsRespectingShape(prevDNS.AAAA, dr, func(x *client.DNSRecords) []string { return x.AAAA }),
-		TXT:    setStringsRespectingShape(prevDNS.TXT, dr, func(x *client.DNSRecords) []string { return x.TXT }),
-		SRV:    setStringsRespectingShape(prevDNS.SRV, dr, func(x *client.DNSRecords) []string { return x.SRV }),
-		PTR:    setStringsRespectingShape(prevDNS.PTR, dr, func(x *client.DNSRecords) []string { return x.PTR }),
-		SOA:    setStringsRespectingShape(prevDNS.SOA, dr, func(x *client.DNSRecords) []string { return x.SOA }),
-		SPF:    setStringsRespectingShape(prevDNS.SPF, dr, func(x *client.DNSRecords) []string { return x.SPF }),
-		DNSKEY: setStringsRespectingShape(prevDNS.DNSKEY, dr, func(x *client.DNSRecords) []string { return x.DNSKEY }),
-		DS:     setStringsRespectingShape(prevDNS.DS, dr, func(x *client.DNSRecords) []string { return x.DS }),
-		NSEC:   setStringsRespectingShape(prevDNS.NSEC, dr, func(x *client.DNSRecords) []string { return x.NSEC }),
-		NSEC3:  setStringsRespectingShape(prevDNS.NSEC3, dr, func(x *client.DNSRecords) []string { return x.NSEC3 }),
-	}
-	dnsObj, d := types.ObjectValueFrom(ctx, dnsRecordsObjectType().AttrTypes, dns)
-	diags.Append(d...)
-	if !diags.HasError() {
-		c.DNSRecords = dnsObj
+
+	switch {
+	case (c.DNSRecords.IsNull() || c.DNSRecords.IsUnknown()) && dr == nil:
+		// User is not managing dns_records and API has none – keep it null for diffs avoidance on non-DNS monitors
+		c.DNSRecords = types.ObjectNull(dnsRecordsObjectType().AttrTypes)
+	case dnsRecordsAllNil(dr):
+		empty := types.SetValueMust(types.StringType, []attr.Value{})
+		dns := dnsRecordsModel{
+			CNAME:  empty,
+			MX:     empty,
+			NS:     empty,
+			A:      empty,
+			AAAA:   empty,
+			TXT:    empty,
+			SRV:    empty,
+			PTR:    empty,
+			SOA:    empty,
+			SPF:    empty,
+			DNSKEY: empty,
+			DS:     empty,
+			NSEC:   empty,
+			NSEC3:  empty,
+		}
+		dnsObj, d := types.ObjectValueFrom(ctx, dnsRecordsObjectType().AttrTypes, dns)
+		diags.Append(d...)
+		if !diags.HasError() {
+			c.DNSRecords = dnsObj
+		}
+	default:
+		dns := dnsRecordsModel{
+			CNAME:  setStringsRespectingShape(prevDNS.CNAME, dr, func(x *client.DNSRecords) *[]string { return x.CNAME }),
+			MX:     setStringsRespectingShape(prevDNS.MX, dr, func(x *client.DNSRecords) *[]string { return x.MX }),
+			NS:     setStringsRespectingShape(prevDNS.NS, dr, func(x *client.DNSRecords) *[]string { return x.NS }),
+			A:      setStringsRespectingShape(prevDNS.A, dr, func(x *client.DNSRecords) *[]string { return x.A }),
+			AAAA:   setStringsRespectingShape(prevDNS.AAAA, dr, func(x *client.DNSRecords) *[]string { return x.AAAA }),
+			TXT:    setStringsRespectingShape(prevDNS.TXT, dr, func(x *client.DNSRecords) *[]string { return x.TXT }),
+			SRV:    setStringsRespectingShape(prevDNS.SRV, dr, func(x *client.DNSRecords) *[]string { return x.SRV }),
+			PTR:    setStringsRespectingShape(prevDNS.PTR, dr, func(x *client.DNSRecords) *[]string { return x.PTR }),
+			SOA:    setStringsRespectingShape(prevDNS.SOA, dr, func(x *client.DNSRecords) *[]string { return x.SOA }),
+			SPF:    setStringsRespectingShape(prevDNS.SPF, dr, func(x *client.DNSRecords) *[]string { return x.SPF }),
+			DNSKEY: setStringsRespectingShape(prevDNS.DNSKEY, dr, func(x *client.DNSRecords) *[]string { return x.DNSKEY }),
+			DS:     setStringsRespectingShape(prevDNS.DS, dr, func(x *client.DNSRecords) *[]string { return x.DS }),
+			NSEC:   setStringsRespectingShape(prevDNS.NSEC, dr, func(x *client.DNSRecords) *[]string { return x.NSEC }),
+			NSEC3:  setStringsRespectingShape(prevDNS.NSEC3, dr, func(x *client.DNSRecords) *[]string { return x.NSEC3 }),
+		}
+		dnsObj, d := types.ObjectValueFrom(ctx, dnsRecordsObjectType().AttrTypes, dns)
+		diags.Append(d...)
+		if !diags.HasError() {
+			c.DNSRecords = dnsObj
+		}
 	}
 
 	return types.ObjectValueFrom(ctx, configObjectType().AttrTypes, c)
@@ -355,11 +419,8 @@ func flattenConfigToState(
 
 func setInt64sRespectingShape(prev types.Set, api []int64) types.Set {
 	if api == nil {
-		// If omitted via API - keep user's shape
-		if prev.IsNull() || prev.IsUnknown() {
-			return types.SetNull(types.Int64Type)
-		}
-		return types.SetValueMust(types.Int64Type, []attr.Value{})
+		// API omitted the field. Keep what user managed
+		return prev
 	}
 	elems := make([]attr.Value, 0, len(api))
 	for _, v := range api {
@@ -373,22 +434,36 @@ func setInt64sRespectingShape(prev types.Set, api []int64) types.Set {
 func setStringsRespectingShape(
 	prev types.Set,
 	dr *client.DNSRecords,
-	get func(*client.DNSRecords) []string,
+	get func(*client.DNSRecords) *[]string,
 ) types.Set {
-	if dr == nil {
+	if dnsRecordsAllNil(dr) {
 		if prev.IsNull() || prev.IsUnknown() {
-			return types.SetNull(types.StringType)
+			return types.SetValueMust(types.StringType, []attr.Value{})
 		}
-		// managed but API omitted => keep empty
-		return types.SetValueMust(types.StringType, []attr.Value{})
+		return prev
 	}
 
-	v := get(dr)
-	if v == nil {
-		if prev.IsNull() || prev.IsUnknown() {
+	if dr == nil {
+		if prev.IsUnknown() {
 			return types.SetNull(types.StringType)
 		}
-		return types.SetValueMust(types.StringType, []attr.Value{})
+		return prev
+	}
+
+	vPtr := get(dr)
+	if vPtr == nil {
+		if prev.IsUnknown() {
+			return types.SetNull(types.StringType)
+		}
+		return prev
+	}
+
+	v := *vPtr
+	if v == nil {
+		if prev.IsUnknown() {
+			return types.SetNull(types.StringType)
+		}
+		return prev
 	}
 
 	elems := make([]attr.Value, 0, len(v))
@@ -399,6 +474,26 @@ func setStringsRespectingShape(
 }
 
 // Comparable helpers for monitor resource
+
+func dnsRecordsAllNil(dr *client.DNSRecords) bool {
+	if dr == nil {
+		return true
+	}
+	return (dr.A == nil || len(*dr.A) == 0) &&
+		(dr.AAAA == nil || len(*dr.AAAA) == 0) &&
+		(dr.CNAME == nil || len(*dr.CNAME) == 0) &&
+		(dr.MX == nil || len(*dr.MX) == 0) &&
+		(dr.NS == nil || len(*dr.NS) == 0) &&
+		(dr.TXT == nil || len(*dr.TXT) == 0) &&
+		(dr.SRV == nil || len(*dr.SRV) == 0) &&
+		(dr.PTR == nil || len(*dr.PTR) == 0) &&
+		(dr.SOA == nil || len(*dr.SOA) == 0) &&
+		(dr.SPF == nil || len(*dr.SPF) == 0) &&
+		(dr.DNSKEY == nil || len(*dr.DNSKEY) == 0) &&
+		(dr.DS == nil || len(*dr.DS) == 0) &&
+		(dr.NSEC == nil || len(*dr.NSEC) == 0) &&
+		(dr.NSEC3 == nil || len(*dr.NSEC3) == 0)
+}
 
 func normalizeInt64Set(ids []int64) []int64 {
 	if len(ids) == 0 {
@@ -440,6 +535,16 @@ func attrFromMap(ctx context.Context, m map[string]string) (types.Map, diag.Diag
 		return types.MapNull(types.StringType), nil
 	}
 	return types.MapValueFrom(ctx, types.StringType, m)
+}
+
+// headersFromAPIForState drops added by server Content-Type headers so state stays clean
+// when the API injects a default for POST/JSON bodies.
+func headersFromAPIForState(in map[string]string) map[string]string {
+	m := normalizeHeadersForCompareNoCT(in)
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 func firstNonEmpty(values ...string) string {

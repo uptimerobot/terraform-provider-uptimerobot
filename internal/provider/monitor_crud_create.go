@@ -39,7 +39,11 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	// Wait to apply in the API
 	plan.ID = types.StringValue(strconv.FormatInt(created.ID, 10))
 	want := wantFromCreateReq(createReq)
-	api, err := r.waitMonitorSettled(ctx, created.ID, want, 60*time.Second)
+	settleTimeout := 60 * time.Second
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil {
+		settleTimeout = 180 * time.Second
+	}
+	api, err := r.waitMonitorSettled(ctx, created.ID, want, settleTimeout)
 	if err != nil {
 		resp.Diagnostics.AddWarning("Create settled slowly", "Backend took longer to reflect changes; proceeding.")
 		if api == nil {
@@ -394,6 +398,16 @@ func (r *monitorResource) buildStateAfterCreate(
 ) monitorResourceModel {
 	plan.Status = types.StringValue(api.Status)
 
+	methodManaged := !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown()
+	actualMethod := strings.ToUpper(effMethod)
+	if api.HTTPMethodType != "" {
+		actualMethod = strings.ToUpper(api.HTTPMethodType)
+	}
+	methodForState := actualMethod
+	if methodManaged && effMethod != "" {
+		methodForState = strings.ToUpper(effMethod)
+	}
+
 	// Headers. Keep null if omitted in plan
 	if plan.CustomHTTPHeaders.IsNull() || plan.CustomHTTPHeaders.IsUnknown() {
 		plan.CustomHTTPHeaders = types.MapNull(types.StringType)
@@ -402,7 +416,11 @@ func (r *monitorResource) buildStateAfterCreate(
 	// Method presence in state only for HTTP or KEYWORD
 	switch strings.ToUpper(plan.Type.ValueString()) {
 	case MonitorTypeHTTP, MonitorTypeKEYWORD:
-		plan.HTTPMethodType = types.StringValue(effMethod)
+		if methodForState != "" {
+			plan.HTTPMethodType = types.StringValue(methodForState)
+		} else {
+			plan.HTTPMethodType = types.StringNull()
+		}
 	default:
 		plan.HTTPMethodType = types.StringNull()
 	}
@@ -440,7 +458,7 @@ func (r *monitorResource) buildStateAfterCreate(
 	}
 
 	// Body related state normalization
-	switch strings.ToUpper(effMethod) {
+	switch strings.ToUpper(methodForState) {
 	case "GET", "HEAD":
 		plan.PostValueType = types.StringNull()
 		plan.PostValueData = jsontypes.NewNormalizedNull()
