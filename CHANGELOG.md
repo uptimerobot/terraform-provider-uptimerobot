@@ -1,6 +1,7 @@
 ## Unreleased
 
-- No changes yet.
+### Fixed
+- Validation gaps: type of `lastIncidentId`.
 
 ## 1.3.2 — 2025-12-09
 
