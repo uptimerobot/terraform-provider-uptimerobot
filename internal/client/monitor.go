@@ -118,7 +118,7 @@ type Monitor struct {
 	Status                   string              `json:"status"`
 	URL                      string              `json:"url"`
 	CurrentStateDuration     int                 `json:"currentStateDuration"`
-	LastIncidentID           *string             `json:"lastIncidentId"`
+	LastIncidentID           StringOrNumberID    `json:"lastIncidentId"`
 	UserID                   int64               `json:"userId"`
 	Tags                     []Tag               `json:"tags"`
 	AssignedAlertContacts    []AlertContact      `json:"assignedAlertContacts"`
