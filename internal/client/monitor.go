@@ -164,8 +164,10 @@ func (m *Monitor) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
+	dec := json.NewDecoder(bytes.NewReader(aux.LastIncidentID))
+	dec.UseNumber()
 	var n json.Number
-	if err := json.Unmarshal(aux.LastIncidentID, &n); err == nil {
+	if err := dec.Decode(&n); err == nil {
 		val := n.String()
 		m.LastIncidentID = &val
 		return nil
@@ -217,7 +219,7 @@ type DNSRecords struct {
 }
 
 type Incident struct {
-	ID        int64       `json:"id"`
+	ID        string      `json:"id"`
 	Status    interface{} `json:"status"`
 	Cause     int         `json:"cause"`
 	Reason    string      `json:"reason"`

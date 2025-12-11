@@ -1,6 +1,7 @@
 ## Unreleased
 
-- No changes yet.
+### Fixed
+- Changed field types of `Incident.ID` and `Monitor.LastIncidentID` to string
 
 ## 1.3.2 — 2025-12-09
 
