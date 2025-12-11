@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -119,7 +118,7 @@ type Monitor struct {
 	Status                   string              `json:"status"`
 	URL                      string              `json:"url"`
 	CurrentStateDuration     int                 `json:"currentStateDuration"`
-	LastIncidentID           *string             `json:"lastIncidentId"`
+	LastIncidentID           StringOrNumberID    `json:"lastIncidentId"`
 	UserID                   int64               `json:"userId"`
 	Tags                     []Tag               `json:"tags"`
 	AssignedAlertContacts    []AlertContact      `json:"assignedAlertContacts"`
@@ -130,50 +129,6 @@ type Monitor struct {
 	RegionalData             interface{}         `json:"regionalData"`
 	ResponseTimeThreshold    int                 `json:"responseTimeThreshold"`
 	Config                   *MonitorConfig      `json:"config"`
-}
-
-// UnmarshalJSON handles API responses where lastIncidentId may be a number, string, or null.
-// This may be adjusted later for other unmarshalling logic.
-func (m *Monitor) UnmarshalJSON(data []byte) error {
-	type Alias Monitor
-	var aux struct {
-		Alias
-		LastIncidentID json.RawMessage `json:"lastIncidentId"`
-	}
-
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-
-	*m = Monitor(aux.Alias)
-
-	// LastIncidentID is optional and may be null, empty, number, or a string representing number
-	if len(aux.LastIncidentID) == 0 || bytes.Equal(aux.LastIncidentID, []byte("null")) {
-		m.LastIncidentID = nil
-		return nil
-	}
-
-	var s string
-	if err := json.Unmarshal(aux.LastIncidentID, &s); err == nil {
-		s = strings.TrimSpace(s)
-		if s == "" {
-			m.LastIncidentID = nil
-			return nil
-		}
-		m.LastIncidentID = &s
-		return nil
-	}
-
-	dec := json.NewDecoder(bytes.NewReader(aux.LastIncidentID))
-	dec.UseNumber()
-	var n json.Number
-	if err := dec.Decode(&n); err == nil {
-		val := n.String()
-		m.LastIncidentID = &val
-		return nil
-	}
-
-	return fmt.Errorf("lastIncidentId: unsupported value %s", string(aux.LastIncidentID))
 }
 
 type Tag struct {
