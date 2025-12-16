@@ -54,8 +54,9 @@ For more advanced features and better integration with development workflows, yo
 The pre-commit framework configuration includes:
 
 - **Standard hooks**: trailing whitespace, end-of-file-fixer, etc.
-- **Go-specific hooks**: 
+- **Go-specific hooks**:
   - Code formatting with `gofmt`
+  - Static analysis with `go vet`
   - Module tidying with `go mod tidy`
   - Code generation with `go generate`
   - Unit tests with `go test -short`
@@ -125,4 +126,4 @@ The same checks can be run in CI/CD pipelines:
 # Example GitHub Actions step
 - name: Run pre-commit checks
   run: make pre-commit
-``` 
+```

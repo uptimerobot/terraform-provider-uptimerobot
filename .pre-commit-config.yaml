@@ -17,11 +17,10 @@ repos:
     rev: v0.5.1
     hooks:
       - id: go-fmt
-      - id: go-vet-mod
+      - id: go-vet
       - id: go-mod-tidy
       - id: go-generate
       - id: go-unit-tests
-        args: [-short]
       - id: golangci-lint
         args: [--config=.golangci.yml]
 
@@ -29,4 +28,3 @@ repos:
     rev: v1.0.0-rc.1
     hooks:
       - id: go-fmt-repo
-      - id: go-mod-tidy-repo
