@@ -102,8 +102,11 @@ func validateUpdateHighLevel(plan monitorResourceModel, resp *resource.UpdateRes
 	t := plan.Type.ValueString()
 
 	// PORT requires port to be set
-	if t == MonitorTypePORT && plan.Port.IsNull() {
-		resp.Diagnostics.AddError("Port required for PORT monitor", "Port must be specified for PORT monitor type")
+	if t == MonitorTypePORT && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
+		resp.Diagnostics.AddError(
+			"Port required for PORT monitor",
+			"Port must be specified and known for PORT monitor type",
+		)
 		return false
 	}
 

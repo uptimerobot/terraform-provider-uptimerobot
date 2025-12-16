@@ -309,7 +309,7 @@ func validatePortMonitor(
 		return
 	}
 
-	if monitorType == MonitorTypePORT && (data.Port.IsNull() || data.Port.IsUnknown()) {
+	if monitorType == MonitorTypePORT && data.Port.IsNull() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("port"),
 			"Port required for PORT monitor",

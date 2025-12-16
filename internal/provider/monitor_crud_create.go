@@ -23,6 +23,10 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	if !validateCreateHighLevel(plan, resp) {
+		return
+	}
+
 	// Build API request from plan
 	createReq, effMethod := r.buildCreateRequest(ctx, plan, resp)
 	if resp.Diagnostics.HasError() {
@@ -58,6 +62,22 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, final)...)
+}
+
+// High level validate create plan
+
+func validateCreateHighLevel(plan monitorResourceModel, resp *resource.CreateResponse) bool {
+	t := strings.ToUpper(plan.Type.ValueString())
+
+	if t == MonitorTypePORT && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
+		resp.Diagnostics.AddError(
+			"Port required for PORT monitor",
+			"Port must be specified and known for PORT monitor type.",
+		)
+		return false
+	}
+
+	return true
 }
 
 // Build request

@@ -211,6 +211,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"port": schema.Int64Attribute{
 				Description: "The port to monitor",
 				Optional:    true,
+				Validators: []validator.Int64{
+					int64validator.Between(1, 65535),
+				},
 			},
 			"grace_period": schema.Int64Attribute{
 				Description: "The grace period (in seconds). Only for HEARTBEAT monitors",
