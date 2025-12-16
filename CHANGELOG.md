@@ -1,12 +1,18 @@
 ## Unreleased
 
+## 1.3.4 — 2025-12-16
+
 ### Fixed
-- Changed field types of `Incident.ID` and `Monitor.LastIncidentID` to string
 - State upgrader for `config` block now includes `dns_records` attribute when upgrading from V3/V4 state, fixing "Value Conversion Error" when using `config` with only `ssl_expiration_period_days`
 - Plan modifier normalizes partial `config` objects to include all expected attributes
 
 ### Tests
 - Added unit tests for V3/V4 config state upgrades
+
+## 1.3.3 — 2025-12-11
+
+### Fixed
+- Changed field types of `Incident.ID` and `Monitor.LastIncidentID` to string
 
 ## 1.3.2 — 2025-12-09
 

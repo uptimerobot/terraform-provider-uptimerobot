@@ -8,8 +8,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
-// retypeConfigToCurrent converts a config object from prior schema versions (V3/V4)
-// to the current V5 schema structure. It dynamically ensures the returned object
+// retypeConfigToCurrent converts a config object from prior schema versions (e.g. V3/V4)
+// to the current schema structure. It dynamically ensures the returned object
 // contains all attributes defined in configObjectType(), preserving existing values
 // and defaulting missing ones to null.
 //

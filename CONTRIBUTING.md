@@ -66,7 +66,7 @@ First add UptimeRobot API key to env vars:
 Use `make testacc` to run whole test suite
 
 They can be slow and sometimes flaky due to network and API interactions and connections.
-Or use 
+Or use
 `go test ./internal/provider -run 'Acc' -v -timeout 45m -parallel=1`
 
 ### Single test execution
@@ -177,21 +177,21 @@ Handoff: “Unassigning, can’t continue. Notes: …”
 `enhancement` — New feature or request
 `documentation` — Documentation updates
 `refactor` — Activities related to refactoring of the current structure or logic
-`test` — Additional tests, unit or acceptance 
+`test` — Additional tests, unit or acceptance
 `breaking-change` — Breaking change in any aspect of logic, structure, etc
 
 ### When we may reject an issue
 
 We close issues with a clear reason and label:
 
-- **Duplicate** — Tracked elsewhere.  
+- **Duplicate** — Tracked elsewhere.
   Label: `status/duplicate`. We link the canonical / original issue and close.
 
-- **Invalid / no repro** — Not a provider bug, misconfiguration, or we can’t reproduce.  
+- **Invalid / no repro** — Not a provider bug, misconfiguration, or we can’t reproduce.
   Label: `status/invalid`. If you later provide a minimal repro, we’ll reopen.
 
-- **Wontfix (by design / out of scope)** — Conflicts with our design guardrails or provider scope.  
-  Label: `status/wontfix`.  
+- **Wontfix (by design / out of scope)** — Conflicts with our design guardrails or provider scope.
+  Label: `status/wontfix`.
 
 
 
@@ -225,7 +225,7 @@ We follow these principles to keep plans predictable and safe. Requests that con
 
 ## Reopening closed issues
   Maintainers and collaborators with triage or write access may reopen issues.
-  
+
   Bring new information, like reproducible configuration, additional information, or when upstream change, or clarified scope and we’ll happily reopen or create a follow-up or new issue.
 
   Apply `status/reopened` when reopening, then it will be moved back to status/triage.
@@ -239,7 +239,7 @@ When to reopen vs. open new:
 
 ## Questions belong in Discussions and not in the Issues
 
-“How do I configure X?”, “Why does my plan show a change?”, and general how-to/support questions go to **GitHub Discussions**.  
+“How do I configure X?”, “Why does my plan show a change?”, and general how-to/support questions go to **GitHub Discussions**.
 Issues are for **bugs** with a reproducible configuration and **feature requests** with a clear problem statement and proposed UX.
 
 If a question is opened as an issue, we’ll move it to Discussions or close with the `question` label and a link to Discussions.

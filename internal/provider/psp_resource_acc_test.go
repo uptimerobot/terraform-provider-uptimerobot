@@ -9,11 +9,9 @@ import (
 
 // Basic config with features + a few custom settings to cover both bool and string fields.
 func testAccPSPResourceConfigWithFeatures(name string) string {
-	// add after bug fix with empty monitor ids return   "monitor_ids  = [12345, 67890]"
 	return testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_psp" "test" {
-  name         = %q
-
+	resource "uptimerobot_psp" "test" {
+	  name         = %q
 
   custom_settings = {
     page = {
@@ -40,11 +38,9 @@ resource "uptimerobot_psp" "test" {
 
 // Updated config: flip a couple of feature flags and tweak a string field.
 func testAccPSPResourceConfigWithFeaturesUpdated(name string) string {
-	// add after bug fix with empty monitor ids return   "monitor_ids  = [12345, 67890]"
 	return testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_psp" "test" {
-  name         = %q
-
+	resource "uptimerobot_psp" "test" {
+	  name         = %q
 
   custom_settings = {
     page = {
@@ -112,11 +108,6 @@ func TestAccPSPResource(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// top-level
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", "test-psp"),
-					// monitor_ids check commented due to the bug in the API that returns empty monitor_ids all the time
-					// uncomment after bug is fixed
-					// resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "2"),
-					// resource.TestCheckTypeSetElemAttr("uptimerobot_psp.test", "monitor_ids.*", "12345"),
-					// resource.TestCheckTypeSetElemAttr("uptimerobot_psp.test", "monitor_ids.*", "67890"),
 					// nested: page
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.page.layout", "logo_on_left"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.page.theme", "dark"),
