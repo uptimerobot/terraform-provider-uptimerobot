@@ -33,7 +33,6 @@ func (m configNullIfOmitted) MarkdownDescription(ctx context.Context) string {
 func (m configNullIfOmitted) PlanModifyObject(ctx context.Context, req planmodifier.ObjectRequest, resp *planmodifier.ObjectResponse) {
 	want := configObjectType().AttrTypes
 
-	// If omitted or unknown – use prior state on update and NULL on create for the whole object
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
 		switch {
 		case !req.StateValue.IsNull() && !req.StateValue.IsUnknown():
