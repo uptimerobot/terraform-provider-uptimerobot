@@ -159,8 +159,8 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			"monitor_ids": schema.SetAttribute{
 				Description: "Set of monitor IDs",
 				Optional:    true,
-				// Computed is set due to the bug in the API which returns empty monitor_ids all the time.
-				// Remove Computed after bug fix
+				// Optional+Computed allows monitor IDs to be managed when configured,
+				// and observed from the API (including on import) when omitted.
 				Computed:    true,
 				ElementType: types.Int64Type,
 			},
