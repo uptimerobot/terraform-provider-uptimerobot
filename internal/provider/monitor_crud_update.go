@@ -46,7 +46,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, resp)
+	updateReq, effMethod := buildUpdateRequest(ctx, plan, configOmitted, resp)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -112,12 +112,17 @@ func validateUpdateHighLevel(plan monitorResourceModel, resp *resource.UpdateRes
 
 	// KEYWORD requires keyword_type & keyword_value to be set
 	if t == MonitorTypeKEYWORD {
-		if plan.KeywordType.IsNull() {
+		if plan.KeywordType.IsNull() || plan.KeywordType.IsUnknown() {
 			resp.Diagnostics.AddError("KeywordType required for KEYWORD monitor",
 				"KeywordType must be ALERT_EXISTS or ALERT_NOT_EXISTS")
 			return false
 		}
-		if plan.KeywordValue.IsNull() {
+		if plan.KeywordCaseType.IsNull() || plan.KeywordCaseType.IsUnknown() {
+			resp.Diagnostics.AddError("KeywordCaseType required for KEYWORD monitor",
+				"KeywordCaseType must be CaseSensitive or CaseInsensitive")
+			return false
+		}
+		if plan.KeywordValue.IsNull() || plan.KeywordValue.IsUnknown() {
 			resp.Diagnostics.AddError("KeywordValue required for KEYWORD monitor",
 				"KeywordValue must be specified for KEYWORD monitor type")
 			return false
@@ -129,7 +134,6 @@ func validateUpdateHighLevel(plan monitorResourceModel, resp *resource.UpdateRes
 func buildUpdateRequest(
 	ctx context.Context,
 	plan monitorResourceModel,
-	state monitorResourceModel,
 	configOmitted bool,
 	resp *resource.UpdateResponse,
 ) (*client.UpdateMonitorRequest, string) {
@@ -170,24 +174,19 @@ func buildUpdateRequest(
 	if !plan.Port.IsNull() {
 		req.Port = int(plan.Port.ValueInt64())
 	}
-	if !plan.KeywordValue.IsNull() {
-		req.KeywordValue = plan.KeywordValue.ValueString()
-	}
-
+	// keyword fields are only supported for KEYWORD monitors
 	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD {
-		// try plan
-		kct := keywordCaseTypeToPtrFromString(plan.KeywordCaseType)
-		// fall back to state to keep it sticky on the API
-		if kct == nil {
-			kct = keywordCaseTypeToPtrFromString(state.KeywordCaseType)
+		if !plan.KeywordValue.IsNull() && !plan.KeywordValue.IsUnknown() {
+			req.KeywordValue = plan.KeywordValue.ValueString()
 		}
-		if kct != nil {
-			req.KeywordCaseType = kct
+		if !plan.KeywordType.IsNull() && !plan.KeywordType.IsUnknown() {
+			req.KeywordType = plan.KeywordType.ValueString()
 		}
-	}
-
-	if !plan.KeywordType.IsNull() {
-		req.KeywordType = plan.KeywordType.ValueString()
+		if !plan.KeywordCaseType.IsNull() && !plan.KeywordCaseType.IsUnknown() {
+			if kct := keywordCaseTypeToPtrFromString(plan.KeywordCaseType); kct != nil {
+				req.KeywordCaseType = kct
+			}
+		}
 	}
 
 	// succes_http_status_codes

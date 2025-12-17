@@ -77,6 +77,30 @@ func validateCreateHighLevel(plan monitorResourceModel, resp *resource.CreateRes
 		return false
 	}
 
+	if t == MonitorTypeKEYWORD {
+		if plan.KeywordType.IsNull() || plan.KeywordType.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"KeywordType required for KEYWORD monitor",
+				"KeywordType must be ALERT_EXISTS or ALERT_NOT_EXISTS.",
+			)
+			return false
+		}
+		if plan.KeywordCaseType.IsNull() || plan.KeywordCaseType.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"KeywordCaseType required for KEYWORD monitor",
+				"KeywordCaseType must be CaseSensitive or CaseInsensitive.",
+			)
+			return false
+		}
+		if plan.KeywordValue.IsNull() || plan.KeywordValue.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"KeywordValue required for KEYWORD monitor",
+				"KeywordValue must be specified and known for KEYWORD monitor type.",
+			)
+			return false
+		}
+	}
+
 	return true
 }
 
@@ -108,15 +132,16 @@ func (r *monitorResource) buildCreateRequest(
 	if !plan.Port.IsNull() && !plan.Port.IsUnknown() {
 		req.Port = int(plan.Port.ValueInt64())
 	}
-	if !plan.KeywordValue.IsNull() && !plan.KeywordValue.IsUnknown() {
-		req.KeywordValue = plan.KeywordValue.ValueString()
-	}
-	if !plan.KeywordType.IsNull() && !plan.KeywordType.IsUnknown() {
-		req.KeywordType = plan.KeywordType.ValueString()
-	}
 
-	// keyword_case_type. From string to numeric
+	// keyword fields are only supported for KEYWORD monitors
 	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD {
+		if !plan.KeywordValue.IsNull() && !plan.KeywordValue.IsUnknown() {
+			req.KeywordValue = plan.KeywordValue.ValueString()
+		}
+		if !plan.KeywordType.IsNull() && !plan.KeywordType.IsUnknown() {
+			req.KeywordType = plan.KeywordType.ValueString()
+		}
+		// keyword_case_type. From string to numeric.
 		if !plan.KeywordCaseType.IsNull() && !plan.KeywordCaseType.IsUnknown() {
 			switch plan.KeywordCaseType.ValueString() {
 			case "CaseSensitive":
@@ -126,11 +151,6 @@ func (r *monitorResource) buildCreateRequest(
 				v := 1
 				req.KeywordCaseType = &v
 			}
-		}
-		// default to CaseInsensitive (1)
-		if req.KeywordCaseType == nil {
-			v := 1
-			req.KeywordCaseType = &v
 		}
 	}
 

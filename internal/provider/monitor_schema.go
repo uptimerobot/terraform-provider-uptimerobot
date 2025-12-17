@@ -225,6 +225,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"keyword_value": schema.StringAttribute{
 				Description: "The keyword to search for",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtMost(500),
+				},
 			},
 			"keyword_case_type": schema.StringAttribute{
 				Description: "Case sensitivity for keyword. One of: CaseSensitive, CaseInsensitive. Omit to leave server as-is.",

@@ -1042,75 +1042,97 @@ func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
 			// Test that KEYWORD monitor without keywordType fails
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-    name         = %q
-    url          = %q
-    type         = "KEYWORD"
-    interval     = 300
-	timeout 	 = 30
-    keyword_value = "test"
-}
-`, baseName, url),
+	resource "uptimerobot_monitor" "test" {
+	    name         = %q
+	    url          = %q
+	    type         = "KEYWORD"
+	    interval     = 300
+		timeout 	 = 30
+	    keyword_case_type = "CaseInsensitive"
+	    keyword_value = "test"
+	}
+	`, baseName, url),
 				ExpectError: regexp.MustCompile("KeywordType required for KEYWORD monitor"),
+			},
+			// Test that KEYWORD monitor without keywordCaseType fails
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+	resource "uptimerobot_monitor" "test" {
+	    name         = %q
+	    url          = %q
+	    type         = "KEYWORD"
+	    interval     = 300
+		timeout 	 = 30
+	    keyword_type = "ALERT_EXISTS"
+	    keyword_value = "test"
+	}
+	`, baseName, url),
+				ExpectError: regexp.MustCompile("KeywordCaseType required for KEYWORD monitor"),
 			},
 			// Test that KEYWORD monitor without keywordValue fails
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-    name         = %q
-    url          = %q
-    type         = "KEYWORD"
-    interval     = 300
-	timeout 	 = 30
-    keyword_type = "ALERT_EXISTS"
-}
-`, baseName, url),
+	resource "uptimerobot_monitor" "test" {
+	    name         = %q
+	    url          = %q
+	    type         = "KEYWORD"
+	    interval     = 300
+		timeout 	 = 30
+	    keyword_type = "ALERT_EXISTS"
+	    keyword_case_type = "CaseInsensitive"
+	}
+	`, baseName, url),
 				ExpectError: regexp.MustCompile("KeywordValue required for KEYWORD monitor"),
 			},
 			// Test that KEYWORD monitor with invalid keywordType fails
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-    name         = %q
-    url          = %q
-    type         = "KEYWORD"
-    interval     = 300
-	timeout 	 = 30
-    keyword_type = "INVALID_TYPE"
-    keyword_value = "test"
-}
-`, baseName, url),
+	resource "uptimerobot_monitor" "test" {
+	    name         = %q
+	    url          = %q
+	    type         = "KEYWORD"
+	    interval     = 300
+		timeout 	 = 30
+	    keyword_type = "INVALID_TYPE"
+	    keyword_case_type = "CaseInsensitive"
+	    keyword_value = "test"
+	}
+	`, baseName, url),
 				ExpectError: regexp.MustCompile(`(?s)value must be one of:.*ALERT_EXISTS.*ALERT_NOT_EXISTS`),
 			},
 			// Validate both keyword types succeed
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "exists" {
-    name         = "%s-exists"
-    url          = "%s"
-    type         = "KEYWORD"
-    interval     = 300
-	timeout 	 = 30
-    keyword_type = "ALERT_EXISTS"
-    keyword_value = "test"
-}
+	resource "uptimerobot_monitor" "exists" {
+	    name         = "%s-exists"
+	    url          = "%s"
+	    type         = "KEYWORD"
+	    interval     = 300
+		timeout 	 = 30
+	    keyword_type = "ALERT_EXISTS"
+	    keyword_case_type = "CaseInsensitive"
+	    keyword_value = "test"
+	}
 
-resource "uptimerobot_monitor" "not" {
-    name         = "%s-not"
-    url          = "%s"
-    type         = "KEYWORD"
-    interval     = 300
-	timeout 	 = 30
-    keyword_type = "ALERT_NOT_EXISTS"
-    keyword_value = "error"
-}
-`, baseName, url, baseName, urlNot),
+	resource "uptimerobot_monitor" "not" {
+	    name         = "%s-not"
+	    url          = "%s"
+	    type         = "KEYWORD"
+	    interval     = 300
+		timeout 	 = 30
+	    keyword_type = "ALERT_NOT_EXISTS"
+	    keyword_case_type = "CaseInsensitive"
+	    keyword_value = "error"
+	}
+	`, baseName, url, baseName, urlNot),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.exists", "type", "KEYWORD"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.exists", "keyword_type", "ALERT_EXISTS"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.exists", "keyword_case_type", "CaseInsensitive"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.exists", "keyword_value", "test"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.not", "type", "KEYWORD"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.not", "keyword_type", "ALERT_NOT_EXISTS"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.not", "keyword_case_type", "CaseInsensitive"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.not", "keyword_value", "error"),
 				),
 			},
@@ -1943,82 +1965,51 @@ func TestAccMonitorResource_KeywordCaseType_Semantics(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-  name          = %q
-  url           = %q
-  type          = "KEYWORD"
-  interval      = 300
-  timeout       = 30
-  keyword_type  = "ALERT_EXISTS"
-  keyword_value = "ok"
-}
-`, name, url),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "keyword_case_type"),
-				),
-			},
-			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-  name              = %q
-  url               = %q
-  type              = "KEYWORD"
-  interval          = 300
-  timeout           = 30
-  keyword_type      = "ALERT_EXISTS"
-  keyword_value     = "ok"
-  keyword_case_type = "CaseSensitive"
-}
-`, name, url),
+	resource "uptimerobot_monitor" "test" {
+	  name          = %q
+	  url           = %q
+	  type          = "KEYWORD"
+	  interval      = 300
+	  timeout       = 30
+	  keyword_type  = "ALERT_EXISTS"
+	  keyword_case_type = "CaseSensitive"
+	  keyword_value = "ok"
+	}
+	`, name, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_case_type", "CaseSensitive"),
 				),
 			},
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
+	resource "uptimerobot_monitor" "test" {
   name              = %q
   url               = %q
   type              = "KEYWORD"
-  interval          = 300
-  timeout           = 30
-  keyword_type      = "ALERT_EXISTS"
-  keyword_value     = "ok"
-  keyword_case_type = "CaseInsensitive"
-}
-`, name, url),
+	  interval          = 300
+	  timeout           = 30
+	  keyword_type      = "ALERT_EXISTS"
+	  keyword_value     = "ok"
+	  keyword_case_type = "CaseInsensitive"
+	}
+	`, name, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "keyword_case_type", "CaseInsensitive"),
 				),
 			},
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-  name          = %q
-  url           = %q
-  type          = "KEYWORD"
-  interval      = 300
-  timeout       = 30
-  keyword_type  = "ALERT_EXISTS"
-  keyword_value = "ok"
-}
-`, name, url),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "keyword_case_type"),
-				),
-			},
-			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-  name          = %q
-  url           = %q
-  type          = "KEYWORD"
-  interval      = 300
-  timeout       = 30
-  keyword_type  = "ALERT_EXISTS"
-  keyword_value = "ok"
-}
-`, name, url),
+	resource "uptimerobot_monitor" "test" {
+	  name          = %q
+	  url           = %q
+	  type          = "KEYWORD"
+	  interval      = 300
+	  timeout       = 30
+	  keyword_type  = "ALERT_EXISTS"
+	  keyword_case_type = "CaseInsensitive"
+	  keyword_value = "ok"
+	}
+	`, name, url),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},

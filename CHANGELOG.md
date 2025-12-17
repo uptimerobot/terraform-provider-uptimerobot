@@ -1,5 +1,21 @@
 ## Unreleased
 
+## 1.3.5 — 2025-12-17
+
+### Changed
+- **BREAKING:** `keyword_value`, `keyword_type`, and `keyword_case_type` are now only allowed for `type = KEYWORD` monitors. Non-KEYWORD monitors no longer send or retain these fields to prevent drift.
+- **BREAKING:** `type = KEYWORD` monitors now require explicitly setting `keyword_case_type` (no implicit defaulting).
+
+### Fixed
+- Added `keyword_value` max length validation (≤ 500 characters) to match API constraints.
+- Create/update plan validation now requires `keyword_type`, `keyword_case_type`, and `keyword_value` to be set and known for `type = KEYWORD`.
+- Port monitor validation behavior was adjusted.
+- Validate `url` format for `type = HTTP/KEYWORD` to require an `http://` or `https://` URL, avoiding API-side "Wrong URL or IP" errors for bare hosts.
+
+### Tests
+- Consolidated monitor port/validation tests into `monitor_validate_test.go` and removed the dedicated CRUD port-guard test file.
+- Added coverage for PORT high-level plan validation and KEYWORD validation edge cases.
+
 ## 1.3.4 — 2025-12-16
 
 ### Fixed
