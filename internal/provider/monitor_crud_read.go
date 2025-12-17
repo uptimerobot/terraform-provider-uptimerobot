@@ -163,10 +163,18 @@ func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isI
 		state.Port = types.Int64Null()
 	}
 
+	t := strings.ToUpper(state.Type.ValueString())
+	if t != MonitorTypeKEYWORD {
+		state.KeywordValue = types.StringNull()
+		state.KeywordType = types.StringNull()
+		state.KeywordCaseType = types.StringNull()
+		return
+	}
+
 	// keyword value/type
 	if m.KeywordValue != "" {
 		state.KeywordValue = types.StringValue(m.KeywordValue)
-	} else if !state.KeywordValue.IsNull() {
+	} else {
 		state.KeywordValue = types.StringNull()
 	}
 	if m.KeywordType != nil {
@@ -179,23 +187,19 @@ func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isI
 	// API value should only be reflected on import or when attr is absent
 	managedKeyword := !state.KeywordCaseType.IsNull() && !state.KeywordCaseType.IsUnknown()
 
-	if strings.ToUpper(state.Type.ValueString()) == MonitorTypeKEYWORD {
-		switch {
-		case isImport:
-			switch m.KeywordCaseType {
-			case 0:
-				state.KeywordCaseType = types.StringValue("CaseSensitive")
-			case 1:
-				state.KeywordCaseType = types.StringValue("CaseInsensitive")
-			default:
-				state.KeywordCaseType = types.StringNull()
-			}
-		case managedKeyword:
-			// keep state as-is to avoid situations when API normalizes back to default
+	switch {
+	case isImport:
+		switch m.KeywordCaseType {
+		case 0:
+			state.KeywordCaseType = types.StringValue("CaseSensitive")
+		case 1:
+			state.KeywordCaseType = types.StringValue("CaseInsensitive")
 		default:
 			state.KeywordCaseType = types.StringNull()
 		}
-	} else {
+	case managedKeyword:
+		// keep state as-is to avoid situations when API normalizes back to default
+	default:
 		state.KeywordCaseType = types.StringNull()
 	}
 }

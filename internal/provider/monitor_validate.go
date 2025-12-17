@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
@@ -41,6 +42,7 @@ func (r *monitorResource) ValidateConfig(
 
 	t := strings.ToUpper(data.Type.ValueString())
 
+	validateURL(ctx, t, &data, resp)
 	validateGracePeriodAndTimeout(ctx, t, &data, resp)
 	validateMethodVsBody(ctx, &data, resp)
 	validateAssignedAlertContacts(ctx, &data, resp)
@@ -50,6 +52,43 @@ func (r *monitorResource) ValidateConfig(
 	validateKeywordMonitor(ctx, t, &data, resp)
 	validateHTTPPasswordWithoutUserName(ctx, &data, resp)
 
+}
+
+func validateURL(
+	_ context.Context,
+	monitorType string,
+	data *monitorResourceModel,
+	resp *resource.ValidateConfigResponse,
+) {
+	if data.URL.IsNull() || data.URL.IsUnknown() {
+		return
+	}
+
+	raw := strings.TrimSpace(data.URL.ValueString())
+	if raw == "" {
+		return
+	}
+
+	switch monitorType {
+	case MonitorTypeHTTP, MonitorTypeKEYWORD:
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("url"),
+				"Invalid URL",
+				"When type is HTTP or KEYWORD, url must be a valid http(s) URL (e.g., https://example.com/health).",
+			)
+			return
+		}
+		s := strings.ToLower(u.Scheme)
+		if s != "http" && s != "https" {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("url"),
+				"Invalid URL scheme",
+				"When type is HTTP or KEYWORD, url must start with http:// or https://.",
+			)
+		}
+	}
 }
 
 func validateGracePeriodAndTimeout(
@@ -325,6 +364,27 @@ func validateKeywordMonitor(
 	resp *resource.ValidateConfigResponse,
 ) {
 	if monitorType != MonitorTypeKEYWORD {
+		if !data.KeywordValue.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("keyword_value"),
+				"keyword_value only allowed for KEYWORD monitors",
+				"Set type = KEYWORD to manage keyword_value, or remove keyword_value from non-KEYWORD monitors.",
+			)
+		}
+		if !data.KeywordType.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("keyword_type"),
+				"keyword_type only allowed for KEYWORD monitors",
+				"Set type = KEYWORD to manage keyword_type, or remove keyword_type from non-KEYWORD monitors.",
+			)
+		}
+		if !data.KeywordCaseType.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("keyword_case_type"),
+				"keyword_case_type only allowed for KEYWORD monitors",
+				"Set type = KEYWORD to manage keyword_case_type, or remove keyword_case_type from non-KEYWORD monitors.",
+			)
+		}
 		return
 	}
 
@@ -336,11 +396,25 @@ func validateKeywordMonitor(
 		)
 	}
 
+	if data.KeywordCaseType.IsNull() || data.KeywordCaseType.IsUnknown() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("keyword_case_type"),
+			"KeywordCaseType required for KEYWORD monitor",
+			"KEYWORD monitors require keyword_case_type (CaseSensitive or CaseInsensitive).",
+		)
+	}
+
 	if data.KeywordValue.IsNull() || data.KeywordValue.IsUnknown() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("keyword_value"),
 			"KeywordValue required for KEYWORD monitor",
 			"KEYWORD monitors require keyword_value.",
+		)
+	} else if len(data.KeywordValue.ValueString()) > 500 {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("keyword_value"),
+			"keyword_value too long",
+			"keyword_value must be 500 characters or fewer.",
 		)
 	}
 }
