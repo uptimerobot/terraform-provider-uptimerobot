@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -96,6 +97,85 @@ resource "uptimerobot_psp" "test" {
 `, name, name, name)
 }
 
+func testAccPSPResourceConfigCustomSettingsOmitDefaults(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name       = %q
+  monitor_ids = []
+
+  custom_settings = {
+    page = {
+      density = "compact"
+      # layout/theme intentionally omitted to check consistency logic
+    }
+    colors = {
+      # main intentionally omitted
+      text = "#F9FAFB"
+      link = "#60A5FA"
+    }
+    features = {
+      show_bars = true
+      # show_outage_updates intentionally omitted
+    }
+  }
+}
+`, name)
+}
+
+func testAccPSPResourceConfigCustomSettingsEmpty(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name        = %q
+  monitor_ids = []
+
+  custom_settings = {}
+}
+`, name)
+}
+
+func testAccPSPResourceConfigOptionalsSet(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name = %q
+
+  icon    = "https://example.com/icon.png"
+  logo    = "https://example.com/logo.png"
+  ga_code = "G-ABCDE12349"
+
+  # Sensitive and not returned by the API. Provider should still not error.
+  password = "change-me"
+}
+`, name)
+}
+
+func testAccPSPResourceConfigOptionalsOmitted(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name = %q
+
+  # icon/logo/ga_code/password intentionally omitted for checking stability
+}
+`, name)
+}
+
+func testAccPSPResourceConfigPinnedAnnouncementID(name string, pinnedID int64) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name = %q
+
+  pinned_announcement_id = %d
+}
+`, name, pinnedID)
+}
+
+func testAccPSPResourceConfigPinnedAnnouncementIDOmitted(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name = %q
+}
+`, name)
+}
+
 func TestAccPSPResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -179,6 +259,121 @@ func TestAccPSPResource_MonitorCountFollowsMonitorIDs(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "0"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitors_count", "0"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccPSPResource_CustomSettings_OmittedDefaultsNotPersisted(t *testing.T) {
+	name := randomName("acc-psp-omit-defaults")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPSPDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPSPResourceConfigCustomSettingsOmitDefaults(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.page.density", "compact"),
+					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "custom_settings.page.layout"),
+					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "custom_settings.page.theme"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.colors.text", "#F9FAFB"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.colors.link", "#60A5FA"),
+					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "custom_settings.colors.main"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.features.show_bars", "true"),
+					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "custom_settings.features.show_outage_updates"),
+					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "custom_settings.font.family"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccPSPResource_CustomSettings_EmptyObjectStable(t *testing.T) {
+	name := randomName("acc-psp-empty-settings")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPSPDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPSPResourceConfigCustomSettingsEmpty(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "custom_settings.page.layout"),
+					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "custom_settings.page.theme"),
+					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "custom_settings.page.density"),
+					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "custom_settings.colors.main"),
+					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "custom_settings.features.show_bars"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
+	name := randomName("acc-psp-opt")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPSPDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPSPResourceConfigOptionalsSet(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon", "https://example.com/icon.png"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo", "https://example.com/logo.png"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "ga_code", "G-ABCDE12349"),
+				),
+			},
+			{
+				Config: testAccPSPResourceConfigOptionalsOmitted(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon", "https://example.com/icon.png"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo", "https://example.com/logo.png"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "ga_code", "G-ABCDE12349"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccPSPResource_PinnedAnnouncementID_OmitDoesNotClear(t *testing.T) {
+	idStr, ok := testAccOptionalEnv("UPTIMEROBOT_TEST_PINNED_ANNOUNCEMENT_ID")
+	if !ok {
+		t.Skip("Set UPTIMEROBOT_TEST_PINNED_ANNOUNCEMENT_ID to run pinned_announcement_id acceptance")
+	}
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		t.Fatalf("invalid UPTIMEROBOT_TEST_PINNED_ANNOUNCEMENT_ID %q: %v", idStr, err)
+	}
+
+	name := randomName("acc-psp-pinned")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPSPDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPSPResourceConfigPinnedAnnouncementID(name, id),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "pinned_announcement_id", idStr),
+				),
+			},
+			{
+				Config: testAccPSPResourceConfigPinnedAnnouncementIDOmitted(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "pinned_announcement_id", idStr),
 				),
 			},
 		},
