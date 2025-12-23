@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"html"
 	"sort"
 	"strings"
 
@@ -65,11 +66,11 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 		}
 	}
 	if req.URL != "" {
-		s := req.URL
+		s := unescapeHTMLFromAPI(req.URL)
 		c.URL = &s
 	}
 	if req.Name != "" {
-		s := req.Name
+		s := unescapeHTMLFromAPI(req.Name)
 		c.Name = &s
 	}
 	if req.Interval > 0 {
@@ -199,11 +200,11 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		}
 	}
 	if req.URL != "" {
-		s := req.URL
+		s := unescapeHTMLFromAPI(req.URL)
 		c.URL = &s
 	}
 	if req.Name != "" {
-		s := req.Name
+		s := unescapeHTMLFromAPI(req.Name)
 		c.Name = &s
 	}
 	if req.Interval > 0 {
@@ -314,11 +315,11 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 		c.Type = &s
 	}
 	if m.URL != "" {
-		s := m.URL
+		s := unescapeHTMLFromAPI(m.URL)
 		c.URL = &s
 	}
 	if m.Name != "" {
-		s := m.Name
+		s := unescapeHTMLFromAPI(m.Name)
 		c.Name = &s
 	}
 	if m.Interval != 0 {
@@ -812,4 +813,11 @@ func equalTagSet(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func unescapeHTMLFromAPI(s string) string {
+	if s == "" {
+		return s
+	}
+	return html.UnescapeString(s)
 }

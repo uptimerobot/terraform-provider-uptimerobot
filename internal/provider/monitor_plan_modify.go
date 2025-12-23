@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"html"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -72,5 +73,30 @@ func (m configNullIfOmitted) PlanModifyObject(ctx context.Context, req planmodif
 	resp.Diagnostics.Append(diags...)
 	if !resp.Diagnostics.HasError() {
 		resp.PlanValue = obj
+	}
+}
+
+// htmlUnescapeStringPlanModifier one of rare cases where modifying and normalizing user input is ok,
+// because it does not change business case behavior or meaning, it changes representation view of HTML encoding.
+type htmlUnescapeStringPlanModifier struct{}
+
+func (m htmlUnescapeStringPlanModifier) Description(context.Context) string {
+	return "Normalize HTML entities (e.g. &#061;, &amp;) to plain text for stable diffs."
+}
+func (m htmlUnescapeStringPlanModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m htmlUnescapeStringPlanModifier) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	// Only normalize explicit config values. Unknown or null values should remain as-is
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	raw := req.ConfigValue.ValueString()
+	decoded := html.UnescapeString(raw)
+
+	if decoded != raw {
+		resp.PlanValue = types.StringValue(decoded)
 	}
 }
