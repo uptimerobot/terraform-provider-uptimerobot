@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
 /*
@@ -1918,13 +1920,13 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
-func TestAcc_Monitor_Name_HTMLNormalization(t *testing.T) {
+func TestAcc_Monitor_NameURL_HTMLNormalization(t *testing.T) {
 	if os.Getenv("TF_ACC") == "" {
 		t.Skip("TF_ACC not set")
 	}
 
 	resourceName := "uptimerobot_monitor.test"
-	url := fmt.Sprintf("%s/health", testAccUniqueURL("acc-html-normalization"))
+	url := fmt.Sprintf("%s/health?a=1&b=2", testAccUniqueURL("acc-html-normalization"))
 
 	cfgPlain := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
@@ -1942,6 +1944,7 @@ resource "uptimerobot_monitor" "test" {
 				Config: cfgPlain,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "name", "A & B <C>"),
+					resource.TestCheckResourceAttr(resourceName, "url", url),
 				),
 			},
 			{
@@ -1950,6 +1953,146 @@ resource "uptimerobot_monitor" "test" {
 				ImportStateVerify: true,
 			},
 			{Config: cfgPlain, PlanOnly: true, ExpectNonEmptyPlan: false},
+		},
+	})
+}
+
+func TestAcc_Monitor_Import_NameURL_HTMLNormalizationFromAPI(t *testing.T) {
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("TF_ACC not set")
+	}
+
+	apiKey := os.Getenv("UPTIMEROBOT_API_KEY")
+	if apiKey == "" {
+		t.Skip("UPTIMEROBOT_API_KEY not set")
+	}
+
+	apiClient := client.NewClient(apiKey)
+	if apiURL := os.Getenv("UPTIMEROBOT_API_URL"); apiURL != "" {
+		apiClient.SetBaseURL(apiURL)
+	}
+	apiClient.SetUserAgent("terraform-provider-uptimerobot/acc-test")
+	apiClient.AddHeader("X-Terraform-Provider", "uptimerobot/acc-test")
+
+	// Create a monitor via API with intentionally escaped inputs to simulate
+	// out-of-band creation (UI, direct API usage, other tools).
+	rawURL := fmt.Sprintf("%s/health?a=1&amp;b=2", testAccUniqueURL("acc-import-html-normalization"))
+	rawName := "A &amp; B <C>"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	timeout := 30
+	grace := 0
+	method := "GET"
+	var created *client.Monitor
+	{
+		backoff := 500 * time.Millisecond
+		for attempt := 0; attempt < 4; attempt++ {
+			m, err := apiClient.CreateMonitor(ctx, &client.CreateMonitorRequest{
+				Type:           client.MonitorTypeHTTP,
+				Name:           rawName,
+				URL:            rawURL,
+				Interval:       300,
+				Timeout:        &timeout,
+				GracePeriod:    &grace,
+				HTTPMethodType: method,
+				Tags:           []string{},
+			})
+			if err == nil {
+				created = m
+				break
+			}
+
+			// If the POST request timed out mid executio, the monitor might still have been created.
+			// Attempt to find it before retrying create to avoid duplicates.
+			if existing, findErr := apiClient.FindExistingMonitorByNameAndURL(ctx, rawName, rawURL); findErr == nil && existing != nil {
+				created = existing
+				break
+			}
+
+			if attempt == 3 {
+				t.Fatalf("failed to create monitor via API: %v", err)
+			}
+			time.Sleep(backoff)
+			if backoff < 4*time.Second {
+				backoff *= 2
+				if backoff > 4*time.Second {
+					backoff = 4 * time.Second
+				}
+			}
+		}
+	}
+
+	// The create endpoint may return before the monitor is consistently visible for GETs.
+	// Wait for a few consecutive successes so ImportStateVerify doesn't race eventual consistency.
+	{
+		deadline := time.Now().Add(90 * time.Second)
+		backoff := 500 * time.Millisecond
+		okCount := 0
+		for {
+			if time.Now().After(deadline) {
+				t.Fatalf("monitor %d not visible via API after create", created.ID)
+			}
+			_, err := apiClient.GetMonitor(ctx, created.ID)
+			if err == nil {
+				okCount++
+				if okCount >= 3 {
+					break
+				}
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			if !client.IsNotFound(err) {
+				t.Fatalf("failed to fetch created monitor %d: %v", created.ID, err)
+			}
+			okCount = 0
+			time.Sleep(backoff)
+			if backoff < 5*time.Second {
+				backoff *= 2
+				if backoff > 5*time.Second {
+					backoff = 5 * time.Second
+				}
+			}
+		}
+	}
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		_ = apiClient.DeleteMonitor(ctx, created.ID)
+		_ = apiClient.WaitMonitorDeleted(ctx, created.ID, 90*time.Second)
+	})
+
+	plainName := unescapeHTML(rawName)
+	plainURL := unescapeHTML(rawURL)
+
+	resourceName := "uptimerobot_monitor.test"
+	cfg := testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = %q
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+}
+`, plainName, plainURL)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:             cfg,
+				ResourceName:       resourceName,
+				ImportState:        true,
+				ImportStateId:      fmt.Sprintf("%d", created.ID),
+				ImportStatePersist: true,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "name", plainName),
+					resource.TestCheckResourceAttr(resourceName, "url", plainURL),
+				),
+			},
+			{Config: cfg, PlanOnly: true, ExpectNonEmptyPlan: false},
 		},
 	})
 }

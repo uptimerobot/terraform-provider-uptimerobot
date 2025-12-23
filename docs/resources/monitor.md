@@ -373,7 +373,7 @@ Common monitoring intervals:
 ### Required
 
 - `interval` (Number) Interval for the monitoring check (in seconds)
-- `name` (String) Tip: Write names as plain text (do not use HTML entities like `&amp;` or `&#39;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
+- `name` (String) Tip: Write names as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
 - `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)
 - `url` (String) Tip: Write url as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
 
