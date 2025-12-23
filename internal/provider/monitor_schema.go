@@ -270,9 +270,6 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				     change them to plain text to avoid plan diffs. Import will normalize remote HTML entities to plain text.
 				`,
 				Required: true,
-				PlanModifiers: []planmodifier.String{
-					htmlUnescapeStringPlanModifier{},
-				},
 			},
 			// Status may change its values quickly due to changes on the API side.
 			// On create after operation it should be a known value.
@@ -288,8 +285,8 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"url": schema.StringAttribute{
 				Description: "URL to monitor",
 				Required:    true,
-				PlanModifiers: []planmodifier.String{
-					htmlUnescapeStringPlanModifier{},
+				Validators: []validator.String{
+					stringvalidator.LengthAtMost(10000),
 				},
 			},
 			"tags": schema.SetAttribute{

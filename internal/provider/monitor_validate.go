@@ -388,7 +388,7 @@ func validateKeywordMonitor(
 		return
 	}
 
-	if data.KeywordType.IsNull() || data.KeywordType.IsUnknown() {
+	if data.KeywordType.IsNull() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("keyword_type"),
 			"KeywordType required for KEYWORD monitor",

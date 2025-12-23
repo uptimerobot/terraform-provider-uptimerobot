@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"strconv"
 	"strings"
 	"time"
@@ -113,8 +114,8 @@ func (r *monitorResource) buildCreateRequest(
 ) (*client.CreateMonitorRequest, string) {
 	req := &client.CreateMonitorRequest{
 		Type:     client.MonitorType(plan.Type.ValueString()),
-		URL:      plan.URL.ValueString(),
-		Name:     plan.Name.ValueString(),
+		URL:      html.UnescapeString(plan.URL.ValueString()),
+		Name:     html.UnescapeString(plan.Name.ValueString()),
 		Interval: int(plan.Interval.ValueInt64()),
 	}
 
