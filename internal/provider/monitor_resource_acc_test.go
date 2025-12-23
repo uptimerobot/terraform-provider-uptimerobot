@@ -1941,7 +1941,7 @@ resource "uptimerobot_monitor" "test" {
 			{
 				Config: cfgEncoded,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(resourceName, "name", "A &amp; B <C>"),
+					resource.TestCheckResourceAttr(resourceName, "name", "A & B <C>"),
 				),
 			},
 			{
