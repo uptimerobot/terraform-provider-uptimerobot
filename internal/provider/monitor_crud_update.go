@@ -141,7 +141,7 @@ func buildUpdateRequest(
 	req := &client.UpdateMonitorRequest{
 		Type:     client.MonitorType(plan.Type.ValueString()),
 		Interval: int(plan.Interval.ValueInt64()),
-		Name:     html.EscapeString(plan.Name.ValueString()),
+		Name:     html.UnescapeString(plan.Name.ValueString()),
 	}
 
 	// URL is optional on update and should be send only if managed
