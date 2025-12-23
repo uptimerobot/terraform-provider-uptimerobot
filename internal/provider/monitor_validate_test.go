@@ -5,9 +5,40 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
+
+func TestValidateNoHTMLEntities_AllowsPlainText(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateNoHTMLEntities(path.Root("name"), types.StringValue("A & B <C>"), resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateNoHTMLEntities_RejectsHTMLEntities(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateNoHTMLEntities(path.Root("name"), types.StringValue("A &amp; B <C>"), resp)
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateNoHTMLEntities_AllowsLiteralAmpersandToken(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateNoHTMLEntities(path.Root("url"), types.StringValue("https://example.com/?a=1&feature;=2"), resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors, got: %v", resp.Diagnostics)
+	}
+}
 
 func TestValidatePortMonitor_PortType_AllowsUnknownPort(t *testing.T) {
 	resp := &resource.ValidateConfigResponse{}

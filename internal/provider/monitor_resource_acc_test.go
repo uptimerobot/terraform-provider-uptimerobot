@@ -1926,9 +1926,9 @@ func TestAcc_Monitor_Name_HTMLNormalization(t *testing.T) {
 	resourceName := "uptimerobot_monitor.test"
 	url := fmt.Sprintf("%s/health", testAccUniqueURL("acc-html-normalization"))
 
-	cfgEncoded := fmt.Sprintf(`
+	cfgPlain := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "A &amp; B <C>"
+  name     = "A & B <C>"
   type     = "HTTP"
   url      = "%s"
   interval = 300
@@ -1939,7 +1939,7 @@ resource "uptimerobot_monitor" "test" {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: cfgEncoded,
+				Config: cfgPlain,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "name", "A & B <C>"),
 				),
@@ -1949,7 +1949,7 @@ resource "uptimerobot_monitor" "test" {
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
-			{Config: cfgEncoded, PlanOnly: true, ExpectNonEmptyPlan: false},
+			{Config: cfgPlain, PlanOnly: true, ExpectNonEmptyPlan: false},
 		},
 	})
 }

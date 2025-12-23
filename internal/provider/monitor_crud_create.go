@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"html"
 	"strconv"
 	"strings"
 	"time"
@@ -114,8 +113,8 @@ func (r *monitorResource) buildCreateRequest(
 ) (*client.CreateMonitorRequest, string) {
 	req := &client.CreateMonitorRequest{
 		Type:     client.MonitorType(plan.Type.ValueString()),
-		URL:      html.UnescapeString(plan.URL.ValueString()),
-		Name:     html.UnescapeString(plan.Name.ValueString()),
+		URL:      unescapeHTML(plan.URL.ValueString()),
+		Name:     unescapeHTML(plan.Name.ValueString()),
 		Interval: int(plan.Interval.ValueInt64()),
 	}
 
@@ -437,6 +436,8 @@ func (r *monitorResource) buildStateAfterCreate(
 	effMethod string,
 	resp *resource.CreateResponse,
 ) monitorResourceModel {
+	plan.Name = types.StringValue(unescapeHTML(api.Name))
+	plan.URL = types.StringValue(unescapeHTML(api.URL))
 	plan.Status = types.StringValue(api.Status)
 
 	methodManaged := !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown()
