@@ -376,7 +376,8 @@ Common monitoring intervals:
 - `name` (String) Tip: Write names as plain text. If you used HTML entities in HCL (e.g., &amp;, &#39;),
 				     change them to plain text to avoid plan diffs. Import will normalize remote HTML entities to plain text.
 - `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)
-- `url` (String) URL to monitor
+- `url` (String) Tip: Write url as plain text. If you used HTML entities in HCL (e.g., &amp;, &#39;),
+				     change them to plain text to avoid plan diffs. Import will normalize remote HTML entities to plain text.
 
 ### Optional
 

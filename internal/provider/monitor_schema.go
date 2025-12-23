@@ -284,7 +284,11 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"url": schema.StringAttribute{
 				Description: "URL to monitor",
-				Required:    true,
+				MarkdownDescription: `
+				Tip: Write url as plain text. If you used HTML entities in HCL (e.g., &amp;, &#39;),
+				     change them to plain text to avoid plan diffs. Import will normalize remote HTML entities to plain text.
+				`,
+				Required: true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtMost(10000),
 				},
