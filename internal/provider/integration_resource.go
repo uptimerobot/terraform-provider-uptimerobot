@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
@@ -64,6 +65,17 @@ type webhookConfig struct {
 func isTempServerErr(err error) bool {
 	if err == nil {
 		return false
+	}
+	if code, ok := client.StatusCode(err); ok {
+		switch code {
+		case http.StatusInternalServerError,
+			http.StatusBadGateway,
+			http.StatusServiceUnavailable,
+			http.StatusGatewayTimeout:
+			return true
+		default:
+			return false
+		}
 	}
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "status 500") ||
@@ -496,6 +508,21 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 
 	newIntegration, err := r.client.CreateIntegration(ctx, integration)
 	if err != nil {
+		if apiErr, ok := client.AsAPIError(err); ok && apiErr.StatusCode == http.StatusConflict {
+			msg := strings.TrimSpace(apiErr.Message)
+			if msg == "" {
+				msg = "UptimeRobot reported the integration already exists"
+			}
+			msg = strings.TrimSuffix(msg, ".")
+			if apiErr.Code != "" {
+				msg = fmt.Sprintf("%s (code %s)", msg, apiErr.Code)
+			}
+			resp.Diagnostics.AddError(
+				"Integration already exists",
+				msg+". Import the existing integration or change the configuration to create a new one.",
+			)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error creating integration",
 			"Could not create integration, unexpected error: "+err.Error(),
