@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Fixed
+- Surface integration creation conflicts (already exists) as diagnostics with API message details instead of raw 409 errors.
+
 ## 1.3.7 — 2025-12-24
 
 ### Fixed

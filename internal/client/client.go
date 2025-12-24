@@ -258,7 +258,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		}
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(respBody))
+			return nil, newAPIError(resp.StatusCode, respBody)
 		}
 
 		return respBody, nil
