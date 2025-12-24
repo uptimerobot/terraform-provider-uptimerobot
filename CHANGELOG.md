@@ -1,5 +1,10 @@
 ## Unreleased
 
+## 1.3.9 — 2025-12-24
+
+### Fixed
+- Prevented `config.dns_records` from showing as `(known after apply)` when `http_method_type` is GET/HEAD on HTTP/KEYWORD monitors.
+
 ## 1.3.8 — 2025-12-24
 
 ### Fixed
