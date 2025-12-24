@@ -140,12 +140,12 @@ func buildUpdateRequest(
 	req := &client.UpdateMonitorRequest{
 		Type:     client.MonitorType(plan.Type.ValueString()),
 		Interval: int(plan.Interval.ValueInt64()),
-		Name:     plan.Name.ValueString(),
+		Name:     unescapeHTML(plan.Name.ValueString()),
 	}
 
 	// URL is optional on update and should be send only if managed
 	if !plan.URL.IsNull() && !plan.URL.IsUnknown() {
-		req.URL = plan.URL.ValueString()
+		req.URL = unescapeHTML(plan.URL.ValueString())
 	}
 
 	// timeout, grace, config for monitor type
@@ -493,6 +493,8 @@ func applyUpdatedMonitorToState(
 	resp *resource.UpdateResponse,
 ) monitorResourceModel {
 	out := plan
+	out.Name = types.StringValue(unescapeHTML(m.Name))
+	out.URL = types.StringValue(unescapeHTML(m.URL))
 	out.Status = prev.Status
 
 	methodManaged := !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown()

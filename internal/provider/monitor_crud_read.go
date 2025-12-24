@@ -205,8 +205,8 @@ func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isI
 }
 
 func readApplyIdentity(state *monitorResourceModel, m *client.Monitor) {
-	state.Name = types.StringValue(m.Name)
-	state.URL = types.StringValue(m.URL)
+	state.Name = types.StringValue(unescapeHTML(m.Name))
+	state.URL = types.StringValue(unescapeHTML(m.URL))
 	state.ID = types.StringValue(strconv.FormatInt(m.ID, 10))
 	state.Status = types.StringValue(m.Status)
 }

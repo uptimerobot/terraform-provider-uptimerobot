@@ -36,6 +36,12 @@ func (r *monitorResource) ValidateConfig(
 		return
 	}
 
+	validateNoHTMLEntities(path.Root("name"), data.Name, resp)
+	validateNoHTMLEntities(path.Root("url"), data.URL, resp)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	if data.Type.IsUnknown() || data.Type.IsNull() {
 		return
 	}
@@ -52,6 +58,27 @@ func (r *monitorResource) ValidateConfig(
 	validateKeywordMonitor(ctx, t, &data, resp)
 	validateHTTPPasswordWithoutUserName(ctx, &data, resp)
 
+}
+
+func validateNoHTMLEntities(p path.Path, v interface {
+	IsNull() bool
+	IsUnknown() bool
+	ValueString() string
+}, resp *resource.ValidateConfigResponse) {
+	if v.IsNull() || v.IsUnknown() {
+		return
+	}
+
+	raw := v.ValueString()
+	if unescapeHTML(raw) == raw {
+		return
+	}
+	resp.Diagnostics.AddAttributeError(
+		p,
+		"HTML entities are not supported",
+		"Write the value as plain text (e.g. use `&` instead of `&amp;`). "+
+			"The UptimeRobot API may return escaped values; the provider normalizes them to plain text on read/import.",
+	)
 }
 
 func validateURL(
@@ -388,7 +415,7 @@ func validateKeywordMonitor(
 		return
 	}
 
-	if data.KeywordType.IsNull() || data.KeywordType.IsUnknown() {
+	if data.KeywordType.IsNull() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("keyword_type"),
 			"KeywordType required for KEYWORD monitor",

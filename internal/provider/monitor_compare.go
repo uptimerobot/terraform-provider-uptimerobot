@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"html"
 	"sort"
 	"strings"
 
@@ -65,11 +66,11 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 		}
 	}
 	if req.URL != "" {
-		s := req.URL
+		s := unescapeHTML(req.URL)
 		c.URL = &s
 	}
 	if req.Name != "" {
-		s := req.Name
+		s := unescapeHTML(req.Name)
 		c.Name = &s
 	}
 	if req.Interval > 0 {
@@ -199,11 +200,11 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		}
 	}
 	if req.URL != "" {
-		s := req.URL
+		s := unescapeHTML(req.URL)
 		c.URL = &s
 	}
 	if req.Name != "" {
-		s := req.Name
+		s := unescapeHTML(req.Name)
 		c.Name = &s
 	}
 	if req.Interval > 0 {
@@ -314,11 +315,11 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 		c.Type = &s
 	}
 	if m.URL != "" {
-		s := m.URL
+		s := unescapeHTML(m.URL)
 		c.URL = &s
 	}
 	if m.Name != "" {
-		s := m.Name
+		s := unescapeHTML(m.Name)
 		c.Name = &s
 	}
 	if m.Interval != 0 {
@@ -812,4 +813,29 @@ func equalTagSet(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// unescapeHTML repeatedly applies html.UnescapeString until the value is
+// stable or a small maximum iteration count is reached.
+//
+// UptimeRobot (and third-party tools) can return values that are already
+// escaped, or accidentally double-escaped (e.g. "&amp;lt;" instead of "&lt;").
+// For monitor "name" and "url" we canonicalize into a plain-text form to avoid
+// perpetual diffs and import drift.
+func unescapeHTML(s string) string {
+	const maxPasses = 5
+
+	if !strings.Contains(s, "&") {
+		return s
+	}
+
+	out := s
+	for i := 0; i < maxPasses; i++ {
+		next := html.UnescapeString(out)
+		if next == out {
+			return out
+		}
+		out = next
+	}
+	return out
 }

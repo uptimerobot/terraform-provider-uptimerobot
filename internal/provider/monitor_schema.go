@@ -266,8 +266,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"name": schema.StringAttribute{
 				Description: "Name of the monitor",
 				MarkdownDescription: `
-				Tip: Write names as plain text. If you used HTML entities in HCL (e.g., &amp;, &#39;),
-				     change them to plain text to avoid plan diffs. Import will normalize remote HTML entities to plain text.
+				Tip: Write names as plain text (do not use HTML entities like ` + "`&amp;`" + `). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
 				`,
 				Required: true,
 			},
@@ -284,7 +283,13 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"url": schema.StringAttribute{
 				Description: "URL to monitor",
-				Required:    true,
+				MarkdownDescription: `
+				Tip: Write url as plain text (do not use HTML entities like ` + "`&amp;`" + `). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
+				`,
+				Required: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtMost(10000),
+				},
 			},
 			"tags": schema.SetAttribute{
 				Description: "Tags for the monitor. Must be lowercase. Duplicates are removed by set semantics.",

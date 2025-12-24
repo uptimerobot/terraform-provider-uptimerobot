@@ -113,8 +113,8 @@ func (r *monitorResource) buildCreateRequest(
 ) (*client.CreateMonitorRequest, string) {
 	req := &client.CreateMonitorRequest{
 		Type:     client.MonitorType(plan.Type.ValueString()),
-		URL:      plan.URL.ValueString(),
-		Name:     plan.Name.ValueString(),
+		URL:      unescapeHTML(plan.URL.ValueString()),
+		Name:     unescapeHTML(plan.Name.ValueString()),
 		Interval: int(plan.Interval.ValueInt64()),
 	}
 
@@ -436,6 +436,8 @@ func (r *monitorResource) buildStateAfterCreate(
 	effMethod string,
 	resp *resource.CreateResponse,
 ) monitorResourceModel {
+	plan.Name = types.StringValue(unescapeHTML(api.Name))
+	plan.URL = types.StringValue(unescapeHTML(api.URL))
 	plan.Status = types.StringValue(api.Status)
 
 	methodManaged := !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown()

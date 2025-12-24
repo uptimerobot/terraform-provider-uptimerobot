@@ -373,10 +373,9 @@ Common monitoring intervals:
 ### Required
 
 - `interval` (Number) Interval for the monitoring check (in seconds)
-- `name` (String) Tip: Write names as plain text. If you used HTML entities in HCL (e.g., &amp;, &#39;),
-				     change them to plain text to avoid plan diffs. Import will normalize remote HTML entities to plain text.
+- `name` (String) Tip: Write names as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
 - `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)
-- `url` (String) URL to monitor
+- `url` (String) Tip: Write url as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
 
 ### Optional
 
