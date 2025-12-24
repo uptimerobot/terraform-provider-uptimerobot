@@ -1,5 +1,28 @@
 ## Unreleased
 
+## 1.3.7 — 2025-12-24
+
+### Fixed
+- Normalized monitor `name` and `url` when the API returns HTML-escaped values, avoiding drift and import/update issues.
+- Import now correctly handles percent-encoded monitor `name`/`url` values.
+
+### Changed
+- Documentation clarifies that `name` and `url` should be written as plain text (no HTML entities).
+
+### Tests
+- Added acceptance coverage for importing monitors with encoded `name`/`url`.
+- Adjusted monitor acceptance expectations and added unit tests for monitor `name`/`url` normalization.
+
+## 1.3.6 — 2025-12-20
+
+### Fixed
+- Stabilized `uptimerobot_psp` attribute handling (including `custom_settings`) to prevent inconsistent API responses causing perpetual diffs.
+- Provider now validates `monitor_ids` consistency after apply to prevent drift.
+- Various inconsistencies related to `uptimerobot_psp` resource.
+
+### Tests
+- Added acceptance coverage for PSP attribute consistency and `custom_settings` stability.
+
 ## 1.3.5 — 2025-12-17
 
 ### Changed
