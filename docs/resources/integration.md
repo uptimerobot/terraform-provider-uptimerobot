@@ -9,6 +9,12 @@ description: |-
 
 Manages an integration in UptimeRobot.
 
+## Notes
+
+- The UptimeRobot API enforces uniqueness for some integration types by webhook URL, but the check is not fully transactional. Concurrent creates with the same webhook can occasionally yield duplicates or mixed 201/409 responses.
+- If you create multiple integrations with the same webhook, prefer serial execution: run `terraform apply -parallelism=1`, or use `depends_on` to force ordering.
+- If a create returns "already exists" (409), import the existing integration and re-apply instead of retrying blindly.
+
 
 ## Example Usage
 
