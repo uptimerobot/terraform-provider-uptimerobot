@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -950,6 +951,17 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	// Create PSP
 	newPSP, err := r.client.CreatePSP(ctx, psp)
 	if err != nil {
+		if apiErr, ok := client.AsAPIError(err); ok && apiErr.StatusCode == http.StatusForbidden {
+			msg := strings.TrimSpace(apiErr.Message)
+			if msg == "" {
+				msg = "UptimeRobot denied access to the requested resource"
+			}
+			if apiErr.Code != "" {
+				msg = fmt.Sprintf("%s (code %s)", msg, apiErr.Code)
+			}
+			resp.Diagnostics.AddError("PSP access denied", msg)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error creating PSP",
 			"Could not create PSP, unexpected error: "+err.Error(),
