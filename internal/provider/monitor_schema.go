@@ -557,25 +557,24 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
 		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringNull())
-		return
-	}
+	} else {
+		hasJSON := !plan.PostValueData.IsNull() && !plan.PostValueData.IsUnknown()
+		hasKV := !plan.PostValueKV.IsNull() && !plan.PostValueKV.IsUnknown()
 
-	hasJSON := !plan.PostValueData.IsNull() && !plan.PostValueData.IsUnknown()
-	hasKV := !plan.PostValueKV.IsNull() && !plan.PostValueKV.IsUnknown()
+		switch {
+		case hasJSON:
+			resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringValue(PostTypeRawJSON))
+			resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
 
-	switch {
-	case hasJSON:
-		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringValue(PostTypeRawJSON))
-		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
+		case hasKV:
+			resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringValue(PostTypeKeyValue))
+			resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
 
-	case hasKV:
-		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringValue(PostTypeKeyValue))
-		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
-
-	default:
-		resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
-		resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
-		resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringNull())
+		default:
+			resp.Plan.SetAttribute(ctx, path.Root("post_value_data"), jsontypes.NewNormalizedNull())
+			resp.Plan.SetAttribute(ctx, path.Root("post_value_kv"), types.MapNull(types.StringType))
+			resp.Plan.SetAttribute(ctx, path.Root("post_value_type"), types.StringNull())
+		}
 	}
 
 	if !plan.Config.IsNull() && !plan.Config.IsUnknown() {
