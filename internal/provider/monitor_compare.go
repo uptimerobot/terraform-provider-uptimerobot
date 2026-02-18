@@ -41,6 +41,7 @@ type monComparable struct {
 	SSLExpirationPeriodDays []int64
 	DNSRecords              map[string][]string
 	IPVersion               *string
+	ExpectIPVersionUnset    bool
 	AssignedAlertContacts   []string
 }
 
@@ -189,6 +190,9 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 			c.IPVersion = &normalized
 		}
 	}
+	if req.Config != nil && req.Config.IPVersion == nil {
+		c.ExpectIPVersionUnset = true
+	}
 	return c
 }
 
@@ -328,6 +332,9 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		if normalized, keep := normalizeIPVersionForAPI(*req.Config.IPVersion); keep {
 			c.IPVersion = &normalized
 		}
+	}
+	if req.Config != nil && req.Config.IPVersion == nil {
+		c.ExpectIPVersionUnset = true
 	}
 	if req.AssignedAlertContacts != nil {
 		c.AssignedAlertContacts = normalizeAlertContactIDsFromRequestsPtr(req.AssignedAlertContacts)
@@ -670,6 +677,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.IPVersion != nil && (got.IPVersion == nil || *want.IPVersion != *got.IPVersion) {
 		return false
 	}
+	if want.ExpectIPVersionUnset && got.IPVersion != nil {
+		return false
+	}
 
 	if want.SuccessCodes != nil && !equalStringSet(want.SuccessCodes, got.SuccessCodes) {
 		return false
@@ -754,6 +764,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 		f = append(f, "config.dns_records")
 	}
 	if want.IPVersion != nil && (got.IPVersion == nil || *want.IPVersion != *got.IPVersion) {
+		f = append(f, "config.ip_version")
+	}
+	if want.ExpectIPVersionUnset && got.IPVersion != nil {
 		f = append(f, "config.ip_version")
 	}
 	if want.KeywordCaseType != nil && (got.KeywordCaseType == nil || *want.KeywordCaseType != *got.KeywordCaseType) {

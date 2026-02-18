@@ -420,6 +420,7 @@ Advanced monitor configuration.
 - **Omit** the block → **preserve** remote values (no change). *(Exception: DNS on create requires ` + "`config`" + `.)*
 - ` + "`config = {}`" + ` (empty block) → treat as **managed but keep** current remote values.
 - ` + "`ssl_expiration_period_days = []`" + ` → **clear** days on the server; non-empty list sets exactly those days (max 10).
+- Removing ` + "`ip_version`" + ` from a managed ` + "`config`" + ` block clears remote ` + "`ipVersion`" + ` (reverts to API default dual-stack behavior).
 
 **Validation**
 - For ` + "`type = \"DNS\"`" + ` on create, ` + "`config`" + ` is required (use ` + "`config = {}`" + ` for defaults).
