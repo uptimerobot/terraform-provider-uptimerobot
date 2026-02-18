@@ -300,6 +300,58 @@ resource "uptimerobot_monitor" "ui_driven_ssl" {
   config = {}
 }
 
+# HTTP monitor with forced IPv4
+resource "uptimerobot_monitor" "ipv4_only" {
+  name     = "HTTP IPv4 only"
+  type     = "HTTP"
+  url      = "https://example.com/health"
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+  }
+}
+
+# KEYWORD monitor with forced IPv6
+resource "uptimerobot_monitor" "ipv6_only_keyword" {
+  name              = "Keyword IPv6 only"
+  type              = "KEYWORD"
+  url               = "https://example.com/status"
+  interval          = 300
+  keyword_type      = "ALERT_EXISTS"
+  keyword_case_type = "CaseInsensitive"
+  keyword_value     = "ok"
+
+  config = {
+    ip_version = "ipv6Only"
+  }
+}
+
+# PING monitor with forced IPv4
+resource "uptimerobot_monitor" "ipv4_only_ping" {
+  name     = "Ping IPv4 only"
+  type     = "PING"
+  url      = "example.com"
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+  }
+}
+
+# PORT monitor with forced IPv6
+resource "uptimerobot_monitor" "ipv6_only_port" {
+  name     = "Port IPv6 only"
+  type     = "PORT"
+  url      = "example.com"
+  port     = 443
+  interval = 300
+
+  config = {
+    ip_version = "ipv6Only"
+  }
+}
+
 # DNS monitor - manage DNS record lists. Only for type=DNS.
 resource "uptimerobot_monitor" "dns_records" {
   name     = "example.org DNS"
@@ -388,6 +440,7 @@ Common monitoring intervals:
 - For `type = "DNS"` on create, `config` is required (use `config = {}` for defaults).
 - `dns_records` is only valid for DNS monitors.
 - `config.ssl_expiration_period_days` is only valid for DNS monitors.
+- `ip_version` is only valid for HTTP/KEYWORD/PING/PORT monitors.
 - Top-level `ssl_expiration_reminder` and `check_ssl_errors` are valid for HTTPS URLs on HTTP/KEYWORD monitors.
 - API v3 also documents `config.apiAssertions` / `config.udp` / `config.ipVersion` branches, but this provider currently supports monitor types HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS only. (see [below for nested schema](#nestedatt--config))
 - `custom_http_headers` (Map of String) Custom HTTP headers as key:value. **Keys are case-insensitive.** The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. Tip: add keys in lower-case (e.g., `"content-type" = "application/json"`).
@@ -443,6 +496,7 @@ Required:
 Optional:
 
 - `dns_records` (Attributes) DNS record lists for DNS monitors. If present on non-DNS types, validation fails. (see [below for nested schema](#nestedatt--config--dns_records))
+- `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT monitors. Use ipv4Only or ipv6Only.
 - `ssl_expiration_period_days` (Set of Number) Reminder days before SSL expiry (0..365). Max 10 items.
 
 - Omit the attribute → **preserve** remote values.

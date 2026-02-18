@@ -50,6 +50,58 @@ resource "uptimerobot_monitor" "ui_driven_ssl" {
   config = {}
 }
 
+# HTTP monitor with forced IPv4
+resource "uptimerobot_monitor" "ipv4_only" {
+  name     = "HTTP IPv4 only"
+  type     = "HTTP"
+  url      = "https://example.com/health"
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+  }
+}
+
+# KEYWORD monitor with forced IPv6
+resource "uptimerobot_monitor" "ipv6_only_keyword" {
+  name              = "Keyword IPv6 only"
+  type              = "KEYWORD"
+  url               = "https://example.com/status"
+  interval          = 300
+  keyword_type      = "ALERT_EXISTS"
+  keyword_case_type = "CaseInsensitive"
+  keyword_value     = "ok"
+
+  config = {
+    ip_version = "ipv6Only"
+  }
+}
+
+# PING monitor with forced IPv4
+resource "uptimerobot_monitor" "ipv4_only_ping" {
+  name     = "Ping IPv4 only"
+  type     = "PING"
+  url      = "example.com"
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+  }
+}
+
+# PORT monitor with forced IPv6
+resource "uptimerobot_monitor" "ipv6_only_port" {
+  name     = "Port IPv6 only"
+  type     = "PORT"
+  url      = "example.com"
+  port     = 443
+  interval = 300
+
+  config = {
+    ip_version = "ipv6Only"
+  }
+}
+
 # DNS monitor - manage DNS record lists. Only for type=DNS.
 resource "uptimerobot_monitor" "dns_records" {
   name     = "example.org DNS"
