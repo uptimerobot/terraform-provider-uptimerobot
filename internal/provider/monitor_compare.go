@@ -40,6 +40,7 @@ type monComparable struct {
 	// Config children which we manage
 	SSLExpirationPeriodDays []int64
 	DNSRecords              map[string][]string
+	IPVersion               *string
 	AssignedAlertContacts   []string
 }
 
@@ -183,6 +184,11 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 			c.DNSRecords = dr
 		}
 	}
+	if req.Config != nil && req.Config.IPVersion != nil {
+		if normalized, keep := normalizeIPVersionForAPI(*req.Config.IPVersion); keep {
+			c.IPVersion = &normalized
+		}
+	}
 	return c
 }
 
@@ -316,6 +322,11 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 	if req.Config != nil && req.Config.DNSRecords != nil {
 		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
 			c.DNSRecords = dr
+		}
+	}
+	if req.Config != nil && req.Config.IPVersion != nil {
+		if normalized, keep := normalizeIPVersionForAPI(*req.Config.IPVersion); keep {
+			c.IPVersion = &normalized
 		}
 	}
 	if req.AssignedAlertContacts != nil {
@@ -473,6 +484,11 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 		}
 		if dr := normalizeDNSRecords(m.Config.DNSRecords); dr != nil {
 			c.DNSRecords = dr
+		}
+		if m.Config.IPVersion != nil {
+			if normalized, keep := normalizeIPVersionForAPI(*m.Config.IPVersion); keep {
+				c.IPVersion = &normalized
+			}
 		}
 	}
 	c.AssignedAlertContacts = normalizeAlertContactIDs(m.AssignedAlertContacts)
@@ -651,6 +667,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.DNSRecords != nil && !equalDNSRecords(want.DNSRecords, got.DNSRecords) {
 		return false
 	}
+	if want.IPVersion != nil && (got.IPVersion == nil || *want.IPVersion != *got.IPVersion) {
+		return false
+	}
 
 	if want.SuccessCodes != nil && !equalStringSet(want.SuccessCodes, got.SuccessCodes) {
 		return false
@@ -733,6 +752,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	}
 	if want.DNSRecords != nil && !equalDNSRecords(want.DNSRecords, got.DNSRecords) {
 		f = append(f, "config.dns_records")
+	}
+	if want.IPVersion != nil && (got.IPVersion == nil || *want.IPVersion != *got.IPVersion) {
+		f = append(f, "config.ip_version")
 	}
 	if want.KeywordCaseType != nil && (got.KeywordCaseType == nil || *want.KeywordCaseType != *got.KeywordCaseType) {
 		f = append(f, "keyword_case_type")

@@ -231,6 +231,13 @@ func expandConfigToAPI(
 		}
 	}
 
+	if !c.IPVersion.IsUnknown() && !c.IPVersion.IsNull() {
+		if normalized, keep := normalizeIPVersionForAPI(c.IPVersion.ValueString()); keep {
+			out.IPVersion = &normalized
+			touched = true
+		}
+	}
+
 	return out, touched, diags
 }
 
@@ -414,6 +421,13 @@ func flattenConfigToState(
 		}
 	}
 
+	c.IPVersion = types.StringNull()
+	if api != nil && api.IPVersion != nil {
+		if normalized, keep := normalizeIPVersionForAPI(*api.IPVersion); keep {
+			c.IPVersion = types.StringValue(normalized)
+		}
+	}
+
 	return types.ObjectValueFrom(ctx, configObjectType().AttrTypes, c)
 }
 
@@ -427,6 +441,21 @@ func setInt64sRespectingShape(prev types.Set, api []int64) types.Set {
 		elems = append(elems, types.Int64Value(v))
 	}
 	return types.SetValueMust(types.Int64Type, elems)
+}
+
+// normalizeIPVersionForAPI returns a canonical provider value and whether it should be sent/stored.
+func normalizeIPVersionForAPI(in string) (string, bool) {
+	v := strings.TrimSpace(in)
+	switch strings.ToLower(v) {
+	case "":
+		return "", false
+	case strings.ToLower(IPVersionIPv4Only):
+		return IPVersionIPv4Only, true
+	case strings.ToLower(IPVersionIPv6Only):
+		return IPVersionIPv6Only, true
+	default:
+		return "", false
+	}
 }
 
 // setStringsRespectingShape keeps empty-set vs null consistent with user's intent.
