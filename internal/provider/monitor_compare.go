@@ -29,6 +29,7 @@ type monComparable struct {
 	CheckSSLErrors           *bool
 	ResponseTimeThreshold    *int
 	RegionalData             *string
+	GroupID                  *int
 
 	// Collections compared as sets and maps when present
 	SuccessCodes         []string
@@ -141,6 +142,10 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	if req.RegionalData != "" {
 		s := strings.ToLower(strings.TrimSpace(req.RegionalData))
 		c.RegionalData = &s
+	}
+	if req.GroupID != nil {
+		v := *req.GroupID
+		c.GroupID = &v
 	}
 
 	// Assert collections only when they are actually sent
@@ -274,6 +279,10 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		s := strings.ToLower(strings.TrimSpace(*req.RegionalData))
 		c.RegionalData = &s
 	}
+	if req.GroupID != nil {
+		v := *req.GroupID
+		c.GroupID = &v
+	}
 
 	if req.SuccessHTTPResponseCodes != nil && len(*req.SuccessHTTPResponseCodes) > 0 {
 		c.SuccessCodes = normalizeStringSet(*req.SuccessHTTPResponseCodes)
@@ -404,6 +413,10 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 				}
 			}
 		}
+	}
+	{
+		v := int(m.GroupID)
+		c.GroupID = &v
 	}
 
 	// Collections
@@ -617,6 +630,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		return false
 	}
+	if want.GroupID != nil && (got.GroupID == nil || *want.GroupID != *got.GroupID) {
+		return false
+	}
 	if want.DNSRecords != nil && !equalDNSRecords(want.DNSRecords, got.DNSRecords) {
 		return false
 	}
@@ -696,6 +712,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	}
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		f = append(f, "regional_data")
+	}
+	if want.GroupID != nil && (got.GroupID == nil || *want.GroupID != *got.GroupID) {
+		f = append(f, "group_id")
 	}
 	if want.DNSRecords != nil && !equalDNSRecords(want.DNSRecords, got.DNSRecords) {
 		f = append(f, "config.dns_records")
