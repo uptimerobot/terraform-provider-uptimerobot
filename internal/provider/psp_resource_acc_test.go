@@ -138,8 +138,6 @@ func testAccPSPResourceConfigOptionalsSet(name string) string {
 resource "uptimerobot_psp" "test" {
   name = %q
 
-  icon    = "https://example.com/icon.png"
-  logo    = "https://example.com/logo.png"
   ga_code = "G-ABCDE12349"
 
   # Sensitive and not returned by the API. Provider should still not error.
@@ -153,7 +151,7 @@ func testAccPSPResourceConfigOptionalsOmitted(name string) string {
 resource "uptimerobot_psp" "test" {
   name = %q
 
-  # icon/logo/ga_code/password intentionally omitted for checking stability
+  # ga_code/password intentionally omitted for checking stability
 }
 `, name)
 }
@@ -327,8 +325,6 @@ func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
 				Config: testAccPSPResourceConfigOptionalsSet(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon", "https://example.com/icon.png"),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo", "https://example.com/logo.png"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "ga_code", "G-ABCDE12349"),
 				),
 			},
@@ -336,8 +332,6 @@ func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
 				Config: testAccPSPResourceConfigOptionalsOmitted(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon", "https://example.com/icon.png"),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo", "https://example.com/logo.png"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "ga_code", "G-ABCDE12349"),
 				),
 			},

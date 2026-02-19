@@ -539,9 +539,19 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				},
 			},
 			"icon": schema.StringAttribute{
-				Description: "Icon for the PSP",
+				Description: "Icon for the PSP. API accepts file uploads only; non-empty string values are not supported by this provider.",
+				MarkdownDescription: "Icon for the PSP.\n\n" +
+					"The API accepts this field only as a file upload via `multipart/form-data`.\n" +
+					"This provider currently does not upload files, so non-empty string values are rejected.\n" +
+					"Use `\"\"` only if you intentionally want to clear the icon.",
 				Optional:    true,
 				Computed:    true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^$`),
+						"icon supports only empty string in this provider; file upload via multipart/form-data is not implemented",
+					),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -555,9 +565,19 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				},
 			},
 			"logo": schema.StringAttribute{
-				Description: "Logo for the PSP",
+				Description: "Logo for the PSP. API accepts file uploads only; non-empty string values are not supported by this provider.",
+				MarkdownDescription: "Logo for the PSP.\n\n" +
+					"The API accepts this field only as a file upload via `multipart/form-data`.\n" +
+					"This provider currently does not upload files, so non-empty string values are rejected.\n" +
+					"Use `\"\"` only if you intentionally want to clear the logo.",
 				Optional:    true,
 				Computed:    true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^$`),
+						"logo supports only empty string in this provider; file upload via multipart/form-data is not implemented",
+					),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
