@@ -119,11 +119,18 @@ func readApplyOptionalDefaults(state *monitorResourceModel, m *client.Monitor, i
 		} else {
 			state.ResponseTimeThreshold = types.Int64Null()
 		}
+		state.GroupID = types.Int64Value(m.GroupID)
 	} else if state.ResponseTimeThreshold.IsNull() || state.ResponseTimeThreshold.IsUnknown() {
 		if m.ResponseTimeThreshold > 0 {
 			state.ResponseTimeThreshold = types.Int64Value(int64(m.ResponseTimeThreshold))
 		} else {
 			state.ResponseTimeThreshold = types.Int64Null()
+		}
+	}
+
+	if !isImport {
+		if !state.GroupID.IsNull() && !state.GroupID.IsUnknown() {
+			state.GroupID = types.Int64Value(m.GroupID)
 		}
 	}
 }

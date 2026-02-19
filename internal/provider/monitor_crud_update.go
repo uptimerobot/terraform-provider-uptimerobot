@@ -231,6 +231,10 @@ func buildUpdateRequest(
 		v := plan.RegionalData.ValueString()
 		req.RegionalData = &v
 	}
+	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
+		v := int(plan.GroupID.ValueInt64())
+		req.GroupID = &v
+	}
 	if !plan.CheckSSLErrors.IsNull() && !plan.CheckSSLErrors.IsUnknown() {
 		v := plan.CheckSSLErrors.ValueBool()
 		req.CheckSSLErrors = &v
@@ -556,6 +560,13 @@ func applyUpdatedMonitorToState(
 		}
 	} else {
 		out.RegionalData = types.StringNull()
+	}
+
+	// group_id set only if managed
+	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
+		out.GroupID = types.Int64Value(m.GroupID)
+	} else {
+		out.GroupID = types.Int64Null()
 	}
 
 	// tags
