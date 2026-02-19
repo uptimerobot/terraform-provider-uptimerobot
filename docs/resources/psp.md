@@ -177,8 +177,16 @@ You can include specific monitors in your status page by providing their IDs in 
 - `custom_settings` (Attributes) Custom settings for the PSP (see [below for nested schema](#nestedatt--custom_settings))
 - `ga_code` (String) Google Analytics code
 - `hide_url_links` (Boolean) Whether to hide URL links
-- `icon` (String) Icon for the PSP. API accepts this field only as multipart file upload. This provider currently supports only empty string (`""`) to request clearing it.
-- `logo` (String) Logo for the PSP. API accepts this field only as multipart file upload. This provider currently supports only empty string (`""`) to request clearing it.
+- `icon` (String) Icon for the PSP.
+
+The API accepts this field only as a file upload via `multipart/form-data`.
+This provider currently does not upload files, so non-empty string values are rejected.
+Use `""` only if you intentionally want to clear the icon.
+- `logo` (String) Logo for the PSP.
+
+The API accepts this field only as a file upload via `multipart/form-data`.
+This provider currently does not upload files, so non-empty string values are rejected.
+Use `""` only if you intentionally want to clear the logo.
 - `monitor_ids` (Set of Number) Set of monitor IDs
 - `no_index` (Boolean) Whether to prevent indexing
 - `password` (String, Sensitive) Password for accessing the PSP page.
