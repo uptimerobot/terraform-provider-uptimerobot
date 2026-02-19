@@ -23,6 +23,11 @@ resource "uptimerobot_monitor" "website" {
   # Optional: SSL certificate expiration monitoring
   ssl_expiration_reminder = true
 
+  # Optional: to send reminder on selected days (0...365)
+  config = {
+    ssl_expiration_period_days = [20, 30, 44, 52, 67]
+  }
+
   # Optional: SSL check errors
   check_ssl_errors = true
 
@@ -319,7 +324,7 @@ resource "uptimerobot_monitor" "dns" {
   url      = "example.org"
   interval = 300
 
-  config = {} # valid empty object
+  config = {}
 }
 
 # DNS on UPDATE - to preserve server values, omit the config block entirely
@@ -370,7 +375,7 @@ Common monitoring intervals:
 - Terraform sends exactly what you specify; the provider does not inject hidden defaults.
 - **Free plan**: set `threshold = 0`, `recurrence = 0`.
 - **Paid plans**: any non-negative minutes for both fields. (see [below for nested schema](#nestedatt--assigned_alert_contacts))
-- `auth_type` (String) Authentication type. Allowed: `NONE`, `HTTP_BASIC`, `DIGEST`, `BEARER`.
+- `auth_type` (String) Authentication type. Allowed: NONE, HTTP_BASIC, DIGEST, BEARER.
 - `check_ssl_errors` (Boolean) If true, monitor checks SSL certificate errors (hostname mismatch, invalid chain, etc.).
 - `config` (Attributes) Advanced monitor configuration.
 
@@ -383,13 +388,13 @@ Common monitoring intervals:
 - For `type = "DNS"` on create, `config` is required (use `config = {}` for defaults).
 - `dns_records` is only valid for DNS monitors.
 - `config.ssl_expiration_period_days` is only valid for DNS monitors.
-- Top-level SSL settings are valid only for HTTPS URLs on HTTP/KEYWORD monitors. (see [below for nested schema](#nestedatt--config))
-- API v3 also documents `config.apiAssertions` / `config.udp` / `config.ipVersion` branches, but this provider currently supports monitor types HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS only.
+- Top-level `ssl_expiration_reminder` and `check_ssl_errors` are valid for HTTPS URLs on HTTP/KEYWORD monitors.
+- API v3 also documents `config.apiAssertions` / `config.udp` / `config.ipVersion` branches, but this provider currently supports monitor types HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS only. (see [below for nested schema](#nestedatt--config))
 - `custom_http_headers` (Map of String) Custom HTTP headers as key:value. **Keys are case-insensitive.** The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. Tip: add keys in lower-case (e.g., `"content-type" = "application/json"`).
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
 - `follow_redirections` (Boolean) Whether to follow redirections
-- `group_id` (Number) Monitor group ID to assign monitor to. Use `0` for the default group.
 - `grace_period` (Number) The grace period (in seconds). Only for HEARTBEAT monitors
+- `group_id` (Number) Monitor group ID to assign monitor to. Use 0 for default group.
 - `http_method_type` (String) The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS)
 - `http_password` (String, Sensitive) The password for HTTP authentication
 - `http_username` (String) The username for HTTP authentication
