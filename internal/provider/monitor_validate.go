@@ -252,22 +252,24 @@ func validateConfig(
 		!data.CheckSSLErrors.IsUnknown() &&
 		data.CheckSSLErrors.ValueBool()
 
-	sslTouched := sslRemTouched || sslDaysTouched || sslCheckErrTouched
+	sslHTTPFlagsTouched := sslRemTouched || sslCheckErrTouched
 
-	// Only HTTP/KEYWORD may use SSL settings
-	if sslTouched && monitorType != MonitorTypeHTTP && monitorType != MonitorTypeKEYWORD {
+	// ssl_expiration_period_days is currently accepted by API only in DNS monitor config.
+	if sslDaysTouched && monitorType != MonitorTypeDNS {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("ssl_expiration_period_days"),
+			"SSL reminder days not allowed for this monitor type",
+			"ssl_expiration_period_days is only supported for DNS monitors.",
+		)
+	}
+
+	// Top-level SSL flags apply only to HTTP/KEYWORD monitors.
+	if sslHTTPFlagsTouched && monitorType != MonitorTypeHTTP && monitorType != MonitorTypeKEYWORD {
 		if sslRemTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("ssl_expiration_reminder"),
 				"SSL reminder not allowed for this monitor type",
 				"ssl_expiration_reminder is only supported for HTTP/KEYWORD monitors.",
-			)
-		}
-		if sslDaysTouched {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("config").AtName("ssl_expiration_period_days"),
-				"SSL reminder days not allowed for this monitor type",
-				"ssl_expiration_period_days is only supported for HTTP/KEYWORD monitors.",
 			)
 		}
 		if sslCheckErrTouched {
@@ -280,8 +282,8 @@ func validateConfig(
 		return
 	}
 
-	// If type is HTTP/KEYWORD but URL is not HTTPS, block SSL settings
-	if sslTouched && (monitorType == MonitorTypeHTTP || monitorType == MonitorTypeKEYWORD) &&
+	// For HTTP/KEYWORD monitors, top-level SSL flags require HTTPS URL.
+	if sslHTTPFlagsTouched && (monitorType == MonitorTypeHTTP || monitorType == MonitorTypeKEYWORD) &&
 		!data.URL.IsNull() && !data.URL.IsUnknown() &&
 		!strings.HasPrefix(strings.ToLower(data.URL.ValueString()), "https://") {
 
@@ -290,13 +292,6 @@ func validateConfig(
 				path.Root("ssl_expiration_reminder"),
 				"SSL reminders require an HTTPS URL",
 				"Set an https:// URL or remove ssl_expiration_reminder.",
-			)
-		}
-		if sslDaysTouched {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("config").AtName("ssl_expiration_period_days"),
-				"SSL reminders require an HTTPS URL",
-				"Set an https:// URL or remove ssl_expiration_period_days.",
 			)
 		}
 		if sslCheckErrTouched {
@@ -319,16 +314,18 @@ func validateConfig(
 		)
 	}
 
-	// Omitting the whole config block preserves/clears remote, but if you include it for DNS,
-	// you typically want to manage dns_records explicitly.
+	// Omitting the whole config block preserves/clears remote.
+	// If DNS config block is present but has no managed fields, warn.
 	if monitorType == MonitorTypeDNS &&
 		!data.Config.IsNull() && !data.Config.IsUnknown() &&
-		(cfg.DNSRecords.IsNull() || cfg.DNSRecords.IsUnknown()) {
+		(cfg.DNSRecords.IsNull() || cfg.DNSRecords.IsUnknown()) &&
+		(cfg.SSLExpirationPeriodDays.IsNull() || cfg.SSLExpirationPeriodDays.IsUnknown()) {
 		resp.Diagnostics.AddAttributeWarning(
 			path.Root("config"),
-			"DNS config provided without dns_records",
-			"You added a config block for a DNS monitor but omitted dns_records. "+
-				"Omit the config block to preserve/clear remote values, or set config.dns_records to manage records explicitly.",
+			"DNS config has no managed fields",
+			"You added a config block for a DNS monitor, but set neither "+
+				"config.dns_records nor config.ssl_expiration_period_days. "+
+				"Omit the config block to preserve remote values, or set one of these fields to manage DNS config.",
 		)
 	}
 
