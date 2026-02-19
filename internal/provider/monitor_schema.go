@@ -109,6 +109,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"interval": schema.Int64Attribute{
 				Description: "Interval for the monitoring check (in seconds)",
 				Required:    true,
+				Validators: []validator.Int64{
+					int64validator.AtLeast(30),
+				},
 			},
 			"ssl_expiration_reminder": schema.BoolAttribute{
 				Description: "Whether to enable SSL expiration reminders",
@@ -129,19 +132,28 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Default:     booldefault.StaticBool(false),
 			},
 			"auth_type": schema.StringAttribute{
-				Description: "The authentication type (HTTP_BASIC)",
+				Description: "Authentication type. Allowed: NONE, HTTP_BASIC, DIGEST, BEARER.",
 				Optional:    true,
 				Computed:    true,
 				Default:     stringdefault.StaticString("HTTP_BASIC"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("NONE", "HTTP_BASIC", "DIGEST", "BEARER"),
+				},
 			},
 			"http_username": schema.StringAttribute{
 				Description: "The username for HTTP authentication",
 				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtMost(255),
+				},
 			},
 			"http_password": schema.StringAttribute{
 				Description: "The password for HTTP authentication",
 				Optional:    true,
 				Sensitive:   true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtMost(255),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -212,7 +224,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "The port to monitor",
 				Optional:    true,
 				Validators: []validator.Int64{
-					int64validator.Between(1, 65535),
+					int64validator.Between(0, 65535),
 				},
 			},
 			"grace_period": schema.Int64Attribute{
@@ -269,6 +281,9 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Tip: Write names as plain text (do not use HTML entities like ` + "`&amp;`" + `). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
 				`,
 				Required: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtMost(250),
+				},
 			},
 			// Status may change its values quickly due to changes on the API side.
 			// On create after operation it should be a known value.
@@ -289,6 +304,17 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Required: true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtMost(10000),
+				},
+			},
+			"group_id": schema.Int64Attribute{
+				Description: "Monitor group ID to assign monitor to. Use 0 for default group.",
+				Optional:    true,
+				Computed:    true,
+				Validators: []validator.Int64{
+					int64validator.AtLeast(0),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
 				},
 			},
 			"tags": schema.SetAttribute{
@@ -362,6 +388,9 @@ Alert contacts assigned to this monitor.
 			"response_time_threshold": schema.Int64Attribute{
 				Description: "Response time threshold in milliseconds. Response time over this threshold will trigger an incident",
 				Optional:    true,
+				Validators: []validator.Int64{
+					int64validator.Between(0, 60000),
+				},
 			},
 			"regional_data": schema.StringAttribute{
 				Description: "Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)",
@@ -385,18 +414,16 @@ Alert contacts assigned to this monitor.
 Advanced monitor configuration.
 
 **Semantics**
-- **Omit** the block → **preserve** remote values (no change). *(Exception: DNS on create — see DNS rules.)*
-- ` + "`config = {}`" + ` (empty block) → treat as **managed but keep** current remote values. *(Not allowed for DNS; include ` + "`dns_records`" + ` instead.)*
+- **Omit** the block → **preserve** remote values (no change). *(Exception: DNS on create requires ` + "`config`" + `.)*
+- ` + "`config = {}`" + ` (empty block) → treat as **managed but keep** current remote values.
 - ` + "`ssl_expiration_period_days = []`" + ` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 
-**DNS-only rules**
-- For ` + "`type = \"DNS\"`" + `:
-  - **Create:** ` + "`config`" + ` **must** include ` + "`dns_records`" + ` (it may be empty: ` + "`dns_records = {}`" + `).
-  - **Update:** if you include ` + "`config`" + `, you **must** include ` + "`dns_records`" + `. To preserve server values, omit ` + "`config`" + `.
-
 **Validation**
+- For ` + "`type = \"DNS\"`" + ` on create, ` + "`config`" + ` is required (use ` + "`config = {}`" + ` for defaults).
 - ` + "`dns_records`" + ` is only valid for DNS monitors.
-- SSL settings are valid only for HTTPS URLs on HTTP/KEYWORD monitors.
+- ` + "`config.ssl_expiration_period_days`" + ` is only valid for DNS monitors.
+- Top-level ` + "`ssl_expiration_reminder`" + ` and ` + "`check_ssl_errors`" + ` are valid for HTTPS URLs on HTTP/KEYWORD monitors.
+- API v3 also documents ` + "`config.apiAssertions`" + ` / ` + "`config.udp`" + ` / ` + "`config.ipVersion`" + ` branches, but this provider currently supports monitor types HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS only.
 `,
 
 				Optional: true,
@@ -406,11 +433,11 @@ Advanced monitor configuration.
 				},
 				Attributes: map[string]schema.Attribute{
 					"ssl_expiration_period_days": schema.SetAttribute{
-						Description: "Custom reminder days before SSL expiry (0..365). Max 10 items. Only relevant for HTTPS.",
+						Description: "Custom reminder days before SSL expiry (0..365). Max 10 items. Supported for DNS monitor config.",
 						MarkdownDescription: "Reminder days before SSL expiry (0..365). Max 10 items.\n\n" +
 							"- Omit the attribute → **preserve** remote values.\n" +
 							"- Empty set `[]` → **clear** values on server.\n" +
-							"Effective for HTTPS URLs when `ssl_expiration_reminder = true`.",
+							"Supported when `type = \"DNS\"`.",
 						Optional:    true,
 						Computed:    true,
 						ElementType: types.Int64Type,
@@ -590,35 +617,13 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		}
 	}
 
-	// Enforce DNS requirements:
-	// - On CREATE: config and dns_records required.
-	// - On UPDATE: if config present, dns_records must be present. If config is omitted, it's fine, server will preserve,
-	isCreate := req.State.Raw.IsNull()
-	if !plan.Type.IsNull() && !plan.Type.IsUnknown() &&
-		strings.ToUpper(plan.Type.ValueString()) == "DNS" {
-
-		if plan.Config.IsNull() || plan.Config.IsUnknown() {
-			if isCreate {
-				resp.Diagnostics.AddAttributeError(
-					path.Root("config"),
-					"`config` is required for DNS monitors",
-					"Provide `config { dns_records = {} }` or include specific record lists.",
-				)
-			}
-		} else {
-			var cfg configTF
-			diags := plan.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})
-			resp.Diagnostics.Append(diags...)
-			if !resp.Diagnostics.HasError() &&
-				(cfg.DNSRecords.IsNull() || cfg.DNSRecords.IsUnknown()) {
-				resp.Diagnostics.AddAttributeError(
-					path.Root("config").AtName("dns_records"),
-					"`config.dns_records` is required for DNS monitors when `config` is present",
-					"Either omit the whole `config` block to preserve remote values, "+
-						"or provide `config { dns_records = {} }` (and add lists like `a = [\"1.2.3.4\"]` as needed).",
-				)
-			}
-		}
+	if planType == MonitorTypeDNS && req.State.Raw.IsNull() &&
+		(plan.Config.IsNull() || plan.Config.IsUnknown()) {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config"),
+			"`config` is required for DNS monitors on create",
+			"Set `config = {}` to use server defaults, or provide DNS fields such as `dns_records`/`ssl_expiration_period_days`.",
+		)
 	}
 
 }
