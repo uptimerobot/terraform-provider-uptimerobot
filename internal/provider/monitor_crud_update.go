@@ -757,9 +757,37 @@ func expandOrClearConfigOnUpdate(
 			return
 		}
 		if clearIPVersion {
-			req.Config = &client.MonitorConfig{}
+			cfg, d := configPayloadForIPVersionClear(ctx, priorConfig)
+			resp.Diagnostics.Append(d...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			req.Config = cfg
 		}
 	}
+}
+
+func configPayloadForIPVersionClear(
+	ctx context.Context,
+	priorConfig types.Object,
+) (*client.MonitorConfig, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if priorConfig.IsNull() || priorConfig.IsUnknown() {
+		return &client.MonitorConfig{}, diags
+	}
+
+	prev, _, d := expandConfigToAPI(ctx, priorConfig)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if prev == nil {
+		return &client.MonitorConfig{}, diags
+	}
+
+	prev.IPVersion = nil
+	return prev, diags
 }
 
 func shouldClearIPVersionOnUpdate(
