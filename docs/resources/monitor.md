@@ -23,11 +23,6 @@ resource "uptimerobot_monitor" "website" {
   # Optional: SSL certificate expiration monitoring
   ssl_expiration_reminder = true
 
-  # Optional: to send reminder on selected days (0...365)
-  config = {
-    ssl_expiration_period_days = [20, 30, 44, 52, 67]
-  }
-
   # Optional: SSL check errors
   check_ssl_errors = true
 
@@ -250,12 +245,10 @@ resource "uptimerobot_monitor" "website" {
 ```terraform
 # Set specific days for SSL expiration period days
 resource "uptimerobot_monitor" "set_days" {
-  name     = "HTTP set days"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "DNS set days"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   config = {
     ssl_expiration_period_days = [3, 5, 30, 69] # max 10 items in range 0..365
@@ -264,12 +257,10 @@ resource "uptimerobot_monitor" "set_days" {
 
 # Preserve remote values but manage the block. Nothing will be sent
 resource "uptimerobot_monitor" "preserve" {
-  name     = "HTTP preserve"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "DNS preserve"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   # Empty block present - provider will read current remote values into state
   # but does NOT update the server
@@ -278,12 +269,10 @@ resource "uptimerobot_monitor" "preserve" {
 
 # Clear days on server - send an explicit empty list
 resource "uptimerobot_monitor" "clear" {
-  name     = "HTTP clear"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "DNS clear"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   config = {
     ssl_expiration_period_days = [] # empty list means clear on server
@@ -292,12 +281,10 @@ resource "uptimerobot_monitor" "clear" {
 
 # UI-managed SSL days. Ignore drift if management is preferred via dashboard
 resource "uptimerobot_monitor" "ui_driven_ssl" {
-  name     = "UI-driven SSL days"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "UI-driven DNS SSL days"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   lifecycle {
     ignore_changes = [config]
@@ -325,16 +312,14 @@ resource "uptimerobot_monitor" "dns_records" {
   }
 }
 
-# DNS on CREATE — API requires config.dns_records, which may be empty
+# DNS on CREATE - config is required, even when using defaults
 resource "uptimerobot_monitor" "dns" {
   name     = "example.org DNS (create)"
   type     = "DNS"
   url      = "example.org"
   interval = 300
 
-  config = {
-    dns_records = {} # required for DNS on create
-  }
+  config = {} # valid empty object
 }
 
 # DNS on UPDATE - to preserve server values, omit the config block entirely
@@ -385,26 +370,25 @@ Common monitoring intervals:
 - Terraform sends exactly what you specify; the provider does not inject hidden defaults.
 - **Free plan**: set `threshold = 0`, `recurrence = 0`.
 - **Paid plans**: any non-negative minutes for both fields. (see [below for nested schema](#nestedatt--assigned_alert_contacts))
-- `auth_type` (String) The authentication type (HTTP_BASIC)
+- `auth_type` (String) Authentication type. Allowed: `NONE`, `HTTP_BASIC`, `DIGEST`, `BEARER`.
 - `check_ssl_errors` (Boolean) If true, monitor checks SSL certificate errors (hostname mismatch, invalid chain, etc.).
 - `config` (Attributes) Advanced monitor configuration.
 
 **Semantics**
-- **Omit** the block → **preserve** remote values (no change). *(Exception: DNS on create — see DNS rules.)*
-- `config = {}` (empty block) → treat as **managed but keep** current remote values. *(Not allowed for DNS; include `dns_records` instead.)*
+- **Omit** the block → **preserve** remote values (no change). *(Exception: DNS on create requires `config`.)*
+- `config = {}` (empty block) → treat as **managed but keep** current remote values.
 - `ssl_expiration_period_days = []` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 
-**DNS-only rules**
-- For `type = "DNS"`:
-  - **Create:** `config` **must** include `dns_records` (it may be empty: `dns_records = {}`).
-  - **Update:** if you include `config`, you **must** include `dns_records`. To preserve server values, omit `config`.
-
 **Validation**
+- For `type = "DNS"` on create, `config` is required (use `config = {}` for defaults).
 - `dns_records` is only valid for DNS monitors.
-- SSL settings are valid only for HTTPS URLs on HTTP/KEYWORD monitors. (see [below for nested schema](#nestedatt--config))
+- `config.ssl_expiration_period_days` is only valid for DNS monitors.
+- Top-level SSL settings are valid only for HTTPS URLs on HTTP/KEYWORD monitors. (see [below for nested schema](#nestedatt--config))
+- API v3 also documents `config.apiAssertions` / `config.udp` / `config.ipVersion` branches, but this provider currently supports monitor types HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS only.
 - `custom_http_headers` (Map of String) Custom HTTP headers as key:value. **Keys are case-insensitive.** The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. Tip: add keys in lower-case (e.g., `"content-type" = "application/json"`).
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
 - `follow_redirections` (Boolean) Whether to follow redirections
+- `group_id` (Number) Monitor group ID to assign monitor to. Use `0` for the default group.
 - `grace_period` (Number) The grace period (in seconds). Only for HEARTBEAT monitors
 - `http_method_type` (String) The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS)
 - `http_password` (String, Sensitive) The password for HTTP authentication
@@ -458,7 +442,7 @@ Optional:
 
 - Omit the attribute → **preserve** remote values.
 - Empty set `[]` → **clear** values on server.
-Effective for HTTPS URLs when `ssl_expiration_reminder = true`.
+Supported when `type = "DNS"`.
 
 <a id="nestedatt--config--dns_records"></a>
 ### Nested Schema for `config.dns_records`

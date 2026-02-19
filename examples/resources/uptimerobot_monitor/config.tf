@@ -1,11 +1,9 @@
 # Set specific days for SSL expiration period days
 resource "uptimerobot_monitor" "set_days" {
-  name     = "HTTP set days"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "DNS set days"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   config = {
     ssl_expiration_period_days = [3, 5, 30, 69] # max 10 items in range 0..365
@@ -14,12 +12,10 @@ resource "uptimerobot_monitor" "set_days" {
 
 # Preserve remote values but manage the block. Nothing will be sent
 resource "uptimerobot_monitor" "preserve" {
-  name     = "HTTP preserve"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "DNS preserve"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   # Empty block present - provider will read current remote values into state
   # but does NOT update the server
@@ -28,12 +24,10 @@ resource "uptimerobot_monitor" "preserve" {
 
 # Clear days on server - send an explicit empty list
 resource "uptimerobot_monitor" "clear" {
-  name     = "HTTP clear"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "DNS clear"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   config = {
     ssl_expiration_period_days = [] # empty list means clear on server
@@ -42,12 +36,10 @@ resource "uptimerobot_monitor" "clear" {
 
 # UI-managed SSL days. Ignore drift if management is preferred via dashboard
 resource "uptimerobot_monitor" "ui_driven_ssl" {
-  name     = "UI-driven SSL days"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "UI-driven DNS SSL days"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   lifecycle {
     ignore_changes = [config]
@@ -75,16 +67,14 @@ resource "uptimerobot_monitor" "dns_records" {
   }
 }
 
-# DNS on CREATE — API requires config.dns_records, which may be empty
+# DNS on CREATE - config is required, even when using defaults
 resource "uptimerobot_monitor" "dns" {
   name     = "example.org DNS (create)"
   type     = "DNS"
   url      = "example.org"
   interval = 300
 
-  config = {
-    dns_records = {} # required for DNS on create
-  }
+  config = {}
 }
 
 # DNS on UPDATE - to preserve server values, omit the config block entirely
