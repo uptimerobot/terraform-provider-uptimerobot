@@ -114,10 +114,6 @@ resource "uptimerobot_psp" "branded_status" {
     uptimerobot_monitor.website.id,
   ]
 
-  # Custom branding
-  logo = "https://example.com/logo.png"
-  icon = "https://example.com/favicon.ico"
-
   # Custom styling
   custom_settings = {
     colors = {
@@ -181,8 +177,8 @@ You can include specific monitors in your status page by providing their IDs in 
 - `custom_settings` (Attributes) Custom settings for the PSP (see [below for nested schema](#nestedatt--custom_settings))
 - `ga_code` (String) Google Analytics code
 - `hide_url_links` (Boolean) Whether to hide URL links
-- `icon` (String) Icon for the PSP
-- `logo` (String) Logo for the PSP
+- `icon` (String) Icon for the PSP. API accepts this field only as multipart file upload. This provider currently supports only empty string (`""`) to request clearing it.
+- `logo` (String) Logo for the PSP. API accepts this field only as multipart file upload. This provider currently supports only empty string (`""`) to request clearing it.
 - `monitor_ids` (Set of Number) Set of monitor IDs
 - `no_index` (Boolean) Whether to prevent indexing
 - `password` (String, Sensitive) Password for accessing the PSP page.
