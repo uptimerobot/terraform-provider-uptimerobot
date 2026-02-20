@@ -563,8 +563,10 @@ func waitMaintenanceWindowSettled(ctx context.Context, c *client.Client, id int6
 	wantInterval := strings.ToLower(expectedInterval)
 	var lastGot []int64
 	var lastInterval string
+	const requiredConsecutiveMatches = 3
+	consecutiveMatches := 0
 
-	for attempts := 0; attempts < 10; attempts++ {
+	for attempts := 0; attempts < 20; attempts++ {
 		mw, err := c.GetMaintenanceWindow(ctx, id)
 		if err != nil {
 			return err
@@ -573,7 +575,12 @@ func waitMaintenanceWindowSettled(ctx context.Context, c *client.Client, id int6
 		lastGot = normalizeDays(mw.Days)
 
 		if lastInterval == wantInterval && equalInt64Sets(want, lastGot) {
-			return nil
+			consecutiveMatches++
+			if consecutiveMatches >= requiredConsecutiveMatches {
+				return nil
+			}
+		} else {
+			consecutiveMatches = 0
 		}
 		select {
 		case <-ctx.Done():
