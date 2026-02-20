@@ -522,7 +522,7 @@ func normalizeDNSRecords(dr *client.DNSRecords) map[string][]string {
 
 func normalizeAlertContactIDsFromRequests(reqs []client.AlertContactRequest) []string {
 	if len(reqs) == 0 {
-		return nil
+		return []string{}
 	}
 	ids := make([]string, 0, len(reqs))
 	for _, ac := range reqs {
