@@ -1186,15 +1186,36 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 
 	isImport := state.Name.IsNull()
 
+	expectedName := ""
+	if !state.Name.IsNull() && !state.Name.IsUnknown() {
+		expectedName = state.Name.ValueString()
+	}
+
+	var expectedMonitorIDs []int64
+	if !state.MonitorIDs.IsNull() && !state.MonitorIDs.IsUnknown() {
+		diags := state.MonitorIDs.ElementsAs(ctx, &expectedMonitorIDs, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	nameMismatch := expectedName != "" && psp.Name != expectedName
+	monitorsMismatch := false
+	if expectedMonitorIDs != nil {
+		missing, extra := diffMonitorIDs(expectedMonitorIDs, psp.MonitorIDs)
+		monitorsMismatch = len(missing) > 0 || len(extra) > 0
+	}
+
 	// PSP reads can be eventually consistent right after updates.
-	// If the API returns a transient old name, re-poll briefly before accepting drift.
-	if !isImport && !state.Name.IsUnknown() && psp.Name != state.Name.ValueString() {
+	// If the API returns transient old values, re-poll briefly before accepting drift.
+	if !isImport && (nameMismatch || monitorsMismatch) {
 		if settled, err := waitPSPSettled(
 			ctx,
 			r.client,
 			id,
-			state.Name.ValueString(),
-			nil,
+			expectedName,
+			expectedMonitorIDs,
 			20*time.Second,
 		); err == nil && settled != nil {
 			psp = settled
