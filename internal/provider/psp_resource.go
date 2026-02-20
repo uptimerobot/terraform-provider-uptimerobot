@@ -154,6 +154,84 @@ func preferPlannedTopLevelValues(plan *pspResourceModel, state *pspResourceModel
 	}
 }
 
+func preferPlannedCustomSettingsValues(plan *pspResourceModel, state *pspResourceModel) {
+	if plan == nil || state == nil || plan.CustomSettings == nil || state.CustomSettings == nil {
+		return
+	}
+
+	if plan.CustomSettings.Font != nil {
+		if state.CustomSettings.Font == nil {
+			state.CustomSettings.Font = &fontSettingsModel{}
+		}
+		if hasConfiguredString(plan.CustomSettings.Font.Family) {
+			state.CustomSettings.Font.Family = plan.CustomSettings.Font.Family
+		}
+	}
+
+	if plan.CustomSettings.Page != nil {
+		if state.CustomSettings.Page == nil {
+			state.CustomSettings.Page = &pageSettingsModel{}
+		}
+		if hasConfiguredString(plan.CustomSettings.Page.Layout) {
+			state.CustomSettings.Page.Layout = plan.CustomSettings.Page.Layout
+		}
+		if hasConfiguredString(plan.CustomSettings.Page.Theme) {
+			state.CustomSettings.Page.Theme = plan.CustomSettings.Page.Theme
+		}
+		if hasConfiguredString(plan.CustomSettings.Page.Density) {
+			state.CustomSettings.Page.Density = plan.CustomSettings.Page.Density
+		}
+	}
+
+	if plan.CustomSettings.Colors != nil {
+		if state.CustomSettings.Colors == nil {
+			state.CustomSettings.Colors = &colorSettingsModel{}
+		}
+		if hasConfiguredString(plan.CustomSettings.Colors.Main) {
+			state.CustomSettings.Colors.Main = plan.CustomSettings.Colors.Main
+		}
+		if hasConfiguredString(plan.CustomSettings.Colors.Text) {
+			state.CustomSettings.Colors.Text = plan.CustomSettings.Colors.Text
+		}
+		if hasConfiguredString(plan.CustomSettings.Colors.Link) {
+			state.CustomSettings.Colors.Link = plan.CustomSettings.Colors.Link
+		}
+	}
+
+	if plan.CustomSettings.Features != nil {
+		if state.CustomSettings.Features == nil {
+			state.CustomSettings.Features = &featureSettingsModel{}
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowBars) {
+			state.CustomSettings.Features.ShowBars = plan.CustomSettings.Features.ShowBars
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowUptimePercentage) {
+			state.CustomSettings.Features.ShowUptimePercentage = plan.CustomSettings.Features.ShowUptimePercentage
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.EnableFloatingStatus) {
+			state.CustomSettings.Features.EnableFloatingStatus = plan.CustomSettings.Features.EnableFloatingStatus
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowOverallUptime) {
+			state.CustomSettings.Features.ShowOverallUptime = plan.CustomSettings.Features.ShowOverallUptime
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowOutageUpdates) {
+			state.CustomSettings.Features.ShowOutageUpdates = plan.CustomSettings.Features.ShowOutageUpdates
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowOutageDetails) {
+			state.CustomSettings.Features.ShowOutageDetails = plan.CustomSettings.Features.ShowOutageDetails
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.EnableDetailsPage) {
+			state.CustomSettings.Features.EnableDetailsPage = plan.CustomSettings.Features.EnableDetailsPage
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowMonitorURL) {
+			state.CustomSettings.Features.ShowMonitorURL = plan.CustomSettings.Features.ShowMonitorURL
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.HidePausedMonitors) {
+			state.CustomSettings.Features.HidePausedMonitors = plan.CustomSettings.Features.HidePausedMonitors
+		}
+	}
+}
+
 func ensureKnownTopLevelOptionals(state *pspResourceModel) {
 	if state == nil {
 		return
@@ -1030,6 +1108,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
 	pspToResourceData(ctx, pspForState, &updatedPlan)
+	updatedPlan.Name = plan.Name
 
 	if hasMonitorPlan {
 		updatedPlan.MonitorIDs = plan.MonitorIDs
@@ -1062,6 +1141,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		updatedPlan.CustomSettings = nil
 	}
 	maskCustomSettingsFromPlan(&plan, &updatedPlan)
+	preferPlannedCustomSettingsValues(&plan, &updatedPlan)
 	maskOptionalTopLevelNullsFromPlan(&plan, &updatedPlan)
 	preferPlannedTopLevelValues(&plan, &updatedPlan)
 	ensureKnownTopLevelOptionals(&updatedPlan)
@@ -1391,6 +1471,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 
 	var newState = plan
 	pspToResourceData(ctx, pspForState, &newState)
+	newState.Name = plan.Name
 
 	if hasMonitorPlan {
 		newState.MonitorIDs = plan.MonitorIDs
@@ -1399,6 +1480,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	maskCustomSettingsFromPlan(&plan, &newState)
+	preferPlannedCustomSettingsValues(&plan, &newState)
 	maskOptionalTopLevelNullsFromPlan(&plan, &newState)
 	preferPlannedTopLevelValues(&plan, &newState)
 	ensureKnownTopLevelOptionals(&newState)
