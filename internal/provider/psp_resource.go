@@ -1186,6 +1186,24 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 
 	isImport := state.Name.IsNull()
 
+	// PSP reads can be eventually consistent right after updates.
+	// If the API returns a transient old name, re-poll briefly before accepting drift.
+	if !isImport && !state.Name.IsUnknown() && psp.Name != state.Name.ValueString() {
+		if settled, err := waitPSPSettled(
+			ctx,
+			r.client,
+			id,
+			state.Name.ValueString(),
+			nil,
+			20*time.Second,
+		); err == nil && settled != nil {
+			psp = settled
+		} else if settled != nil {
+			// Keep the most recent snapshot even when we timed out waiting for exact match.
+			psp = settled
+		}
+	}
+
 	managedColors := state.CustomSettings != nil && state.CustomSettings.Colors != nil
 	managedFeatures := state.CustomSettings != nil && state.CustomSettings.Features != nil
 	managedFont := state.CustomSettings != nil && state.CustomSettings.Font != nil
