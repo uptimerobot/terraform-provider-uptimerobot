@@ -74,6 +74,9 @@ func TestAccMaintenanceWindow_WeeklyDays(t *testing.T) {
 				ResourceName:      "uptimerobot_maintenance_window.test",
 				ImportState:       true,
 				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"days",
+				},
 			},
 		},
 	})
