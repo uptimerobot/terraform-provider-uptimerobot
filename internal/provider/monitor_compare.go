@@ -171,7 +171,12 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 		c.MaintenanceWindowIDs = ids
 	}
 	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
-		c.SSLExpirationPeriodDays = normalizeInt64Set(*req.Config.SSLExpirationPeriodDays)
+		days := *req.Config.SSLExpirationPeriodDays
+		if len(days) == 0 {
+			c.SSLExpirationPeriodDays = []int64{}
+		} else {
+			c.SSLExpirationPeriodDays = normalizeInt64Set(days)
+		}
 	}
 	if req.Config != nil && req.Config.DNSRecords != nil {
 		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
@@ -301,7 +306,12 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		c.MaintenanceWindowIDs = ids
 	}
 	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
-		c.SSLExpirationPeriodDays = normalizeInt64Set(*req.Config.SSLExpirationPeriodDays)
+		days := *req.Config.SSLExpirationPeriodDays
+		if len(days) == 0 {
+			c.SSLExpirationPeriodDays = []int64{}
+		} else {
+			c.SSLExpirationPeriodDays = normalizeInt64Set(days)
+		}
 	}
 	if req.Config != nil && req.Config.DNSRecords != nil {
 		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
@@ -454,7 +464,12 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 
 	if m.Config != nil {
 		if m.Config.SSLExpirationPeriodDays != nil {
-			c.SSLExpirationPeriodDays = normalizeInt64Set(*m.Config.SSLExpirationPeriodDays) // empty slice is ok
+			days := *m.Config.SSLExpirationPeriodDays
+			if len(days) == 0 {
+				c.SSLExpirationPeriodDays = []int64{}
+			} else {
+				c.SSLExpirationPeriodDays = normalizeInt64Set(days)
+			}
 		}
 		if dr := normalizeDNSRecords(m.Config.DNSRecords); dr != nil {
 			c.DNSRecords = dr
