@@ -34,8 +34,10 @@ func (r *monitorResource) waitMonitorSettled(
 	backoff := 500 * time.Millisecond
 	const maxBackoff = 3 * time.Second
 	requiredConsecutiveMatches := 3
-	if want.AssignedAlertContacts != nil || want.SSLExpirationPeriodDays != nil {
-		// Alert contacts and SSL config clears are more eventually-consistent.
+	if want.AssignedAlertContacts != nil ||
+		want.SSLExpirationPeriodDays != nil ||
+		want.MaintenanceWindowIDs != nil {
+		// Alert contacts, MW assignment changes, and SSL config clears are more eventually-consistent.
 		requiredConsecutiveMatches = 5
 	}
 	if want.DNSRecords != nil || want.Headers != nil {

@@ -293,13 +293,26 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 	if !state.URL.IsNull() && !state.URL.IsUnknown() {
 		expectedURL = unescapeHTML(state.URL.ValueString())
 	}
-	if expectedName == "" && expectedURL == "" {
+
+	var expectedMWIDs []int64
+	if !state.MaintenanceWindowIDs.IsNull() && !state.MaintenanceWindowIDs.IsUnknown() {
+		var ids []int64
+		if diags := state.MaintenanceWindowIDs.ElementsAs(ctx, &ids, false); !diags.HasError() {
+			expectedMWIDs = normalizeInt64Set(ids)
+		}
+	}
+	if expectedName == "" && expectedURL == "" && expectedMWIDs == nil {
 		return monitor
 	}
 
 	nameMatches := expectedName == "" || unescapeHTML(monitor.Name) == expectedName
 	urlMatches := expectedURL == "" || unescapeHTML(monitor.URL) == expectedURL
-	if nameMatches && urlMatches {
+	mwMatches := true
+	if expectedMWIDs != nil {
+		got := buildComparableFromAPI(monitor)
+		mwMatches = equalInt64Set(expectedMWIDs, got.MaintenanceWindowIDs)
+	}
+	if nameMatches && urlMatches && mwMatches {
 		return monitor
 	}
 
@@ -310,8 +323,11 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 	if expectedURL != "" {
 		want.URL = &expectedURL
 	}
+	if expectedMWIDs != nil {
+		want.MaintenanceWindowIDs = expectedMWIDs
+	}
 
-	if settled, err := r.waitMonitorSettled(ctx, id, want, 30*time.Second); err == nil && settled != nil {
+	if settled, err := r.waitMonitorSettled(ctx, id, want, 45*time.Second); err == nil && settled != nil {
 		return settled
 	} else if settled != nil {
 		return settled

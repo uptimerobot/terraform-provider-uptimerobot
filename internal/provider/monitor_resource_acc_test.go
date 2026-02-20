@@ -909,7 +909,7 @@ resource "uptimerobot_monitor" "test" {
 // TestAccMonitorResource_MaintenanceWindows tests the specific case where maintenance window IDs
 // are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
-	sfx := "acc-mw"
+	sfx := acctest.RandomWithPrefix("acc-mw")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
