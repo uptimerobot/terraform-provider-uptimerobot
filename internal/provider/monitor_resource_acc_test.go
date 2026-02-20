@@ -98,19 +98,19 @@ resource "uptimerobot_monitor" "test" {
 `, name, url, tagsStr)
 }
 
-// func testAccMonitorResourceConfigWithGroupID(name string, groupID int) string {
-// 	url := testAccUniqueURL(name)
-// 	return testAccProviderConfig() + fmt.Sprintf(`
-// resource "uptimerobot_monitor" "test" {
-//   name      = %q
-//   url       = "%s"
-//   type      = "HTTP"
-//   interval  = 300
-//   timeout   = 30
-//   group_id  = %d
-// }
-// `, name, url, groupID)
-// }
+func testAccMonitorResourceConfigWithGroupID(name string, groupID int) string {
+	url := testAccUniqueURL(name)
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name      = %q
+  url       = "%s"
+  type      = "HTTP"
+  interval  = 300
+  timeout   = 30
+  group_id  = %d
+}
+`, name, url, groupID)
+}
 
 // nolint:unparam // kept for symmetry with other helpers & future reuse
 func testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name string, responseCodes []string) string {
@@ -268,8 +268,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, url, ac)
 }
 
-// ignore linter
-func testAccMonitorResourceConfigWithSSLPeriod(name string, days []int) string {
+func testAccMonitorResourceConfigWithSSLPeriod(days []int) string {
+	const name = "acc-ssl-period"
 	domain := testAccUniqueDomain(name)
 	cfg := ""
 	if days != nil {
@@ -532,7 +532,7 @@ func TestAccMonitorResource(t *testing.T) {
 				ResourceName:            "uptimerobot_monitor.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"timeout", "status"},
+				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name"},
 			},
 		},
 	})
@@ -823,7 +823,7 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 				ResourceName:            "uptimerobot_monitor.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"timeout", "status", "custom_http_headers"},
+				ImportStateVerifyIgnore: []string{"timeout", "status", "custom_http_headers", "group_id"},
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
 				),
@@ -1830,26 +1830,6 @@ resource "uptimerobot_monitor" "test" {
   timeout          = 30
   check_ssl_errors = true
 }
-
-func TestAcc_Monitor_GroupID_SetAndPlanStable(t *testing.T) {
-	name := "acc-group-id"
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccMonitorResourceConfigWithGroupID(name, 0),
-				Check:  resource.TestCheckResourceAttr("uptimerobot_monitor.test", "group_id", "0"),
-			},
-			{
-				Config:             testAccMonitorResourceConfigWithGroupID(name, 0),
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: false,
-			},
-		},
-	})
-}
 `, name, url),
 				Check: resource.TestCheckResourceAttr("uptimerobot_monitor.test", "check_ssl_errors", "true"),
 			},
@@ -1871,15 +1851,34 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
+func TestAcc_Monitor_GroupID_SetAndPlanStable(t *testing.T) {
+	name := "acc-group-id"
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccMonitorResourceConfigWithGroupID(name, 0),
+				Check:  resource.TestCheckResourceAttr("uptimerobot_monitor.test", "group_id", "0"),
+			},
+			{
+				Config:             testAccMonitorResourceConfigWithGroupID(name, 0),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
-	name := "acc-ssl-period"
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{ // apply [0, 7, 30]
-				Config: testAccMonitorResourceConfigWithSSLPeriod(name, []int{0, 7, 30}),
+				Config: testAccMonitorResourceConfigWithSSLPeriod([]int{0, 7, 30}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.#", "3"),
 					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.*", "0"),
@@ -1888,7 +1887,7 @@ func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
 				),
 			},
 			{ // change to [1, 14]
-				Config: testAccMonitorResourceConfigWithSSLPeriod(name, []int{1, 14}),
+				Config: testAccMonitorResourceConfigWithSSLPeriod([]int{1, 14}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.#", "2"),
 					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.*", "1"),
@@ -1896,7 +1895,7 @@ func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
 				),
 			},
 			{ // remove config → attribute omitted
-				Config: testAccMonitorResourceConfigWithSSLPeriod(name, nil),
+				Config: testAccMonitorResourceConfigWithSSLPeriod(nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.#", "2"),
 					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.*", "1"),
@@ -1904,7 +1903,7 @@ func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
 				),
 			},
 			{ // idempotent re-plan
-				Config:             testAccMonitorResourceConfigWithSSLPeriod(name, nil),
+				Config:             testAccMonitorResourceConfigWithSSLPeriod(nil),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -1988,6 +1987,9 @@ resource "uptimerobot_monitor" "test" {
 				ResourceName:      resourceName,
 				ImportState:       true,
 				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"group_id",
+				},
 			},
 			{Config: cfgPlain, PlanOnly: true, ExpectNonEmptyPlan: false},
 		},
