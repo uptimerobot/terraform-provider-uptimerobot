@@ -544,8 +544,8 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 					"The API accepts this field only as a file upload via `multipart/form-data`.\n" +
 					"This provider currently does not upload files, so non-empty string values are rejected.\n" +
 					"Use `\"\"` only if you intentionally want to clear the icon.",
-				Optional:    true,
-				Computed:    true,
+				Optional: true,
+				Computed: true,
 				Validators: []validator.String{
 					stringvalidator.RegexMatches(
 						regexp.MustCompile(`^$`),
@@ -570,8 +570,8 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 					"The API accepts this field only as a file upload via `multipart/form-data`.\n" +
 					"This provider currently does not upload files, so non-empty string values are rejected.\n" +
 					"Use `\"\"` only if you intentionally want to clear the logo.",
-				Optional:    true,
-				Computed:    true,
+				Optional: true,
+				Computed: true,
 				Validators: []validator.String{
 					stringvalidator.RegexMatches(
 						regexp.MustCompile(`^$`),
@@ -1001,7 +1001,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		newPSP.ID,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
-		60*time.Second,
+		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
 	} else if err != nil {
@@ -1374,7 +1374,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		id,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
-		60*time.Second,
+		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
 	} else if err != nil {
@@ -1469,6 +1469,8 @@ func waitPSPSettled(
 	var last *client.PSP
 	backoff := 500 * time.Millisecond
 	const maxBackoff = 3 * time.Second
+	const requiredConsecutiveMatches = 3
+	consecutiveMatches := 0
 
 	for {
 		psp, err := c.GetPSP(ctx, id)
@@ -1484,8 +1486,15 @@ func waitPSPSettled(
 			}
 
 			if nameOK && monitorsOK {
-				return psp, nil
+				consecutiveMatches++
+				if consecutiveMatches >= requiredConsecutiveMatches {
+					return psp, nil
+				}
+			} else {
+				consecutiveMatches = 0
 			}
+		} else {
+			consecutiveMatches = 0
 		}
 
 		select {
