@@ -33,7 +33,11 @@ func (r *monitorResource) waitMonitorSettled(
 	var last *client.Monitor
 	backoff := 500 * time.Millisecond
 	const maxBackoff = 3 * time.Second
-	const requiredConsecutiveMatches = 3
+	requiredConsecutiveMatches := 3
+	if want.AssignedAlertContacts != nil || want.SSLExpirationPeriodDays != nil {
+		// Alert contacts and SSL config clears are more eventually-consistent on backend.
+		requiredConsecutiveMatches = 5
+	}
 	consecutiveMatches := 0
 
 	for attempt := 0; ; attempt++ {
