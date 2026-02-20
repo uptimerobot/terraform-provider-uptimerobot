@@ -793,20 +793,15 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.AutoResolve = types.BoolNull()
 
 	case "pagerduty":
-		// location from customValue2
-		if v := strings.TrimSpace(integration.CustomValue2); v != "" {
-			state.Location = types.StringValue(strings.ToLower(v)) // "us"/"eu"
+		if location, ok := pagerDutyLocationFromAPI(integration); ok {
+			state.Location = stickyStringPreferPrevOnMismatch(prev.Location, location, strings.ToLower)
 		} else {
 			state.Location = stickyString(prev.Location, "", strings.ToLower)
 		}
 
-		// autoResolve from customValue: "1"/"0", guard to include "true"/"false"
-		switch strings.ToLower(strings.TrimSpace(integration.CustomValue)) {
-		case "1", "true":
-			state.AutoResolve = types.BoolValue(true)
-		case "0", "false":
-			state.AutoResolve = types.BoolValue(false)
-		default:
+		if autoResolve, ok := pagerDutyAutoResolveFromAPI(integration); ok {
+			state.AutoResolve = stickyBool(prev.AutoResolve, autoResolve, false)
+		} else {
 			state.AutoResolve = stickyBool(prev.AutoResolve, false, false)
 		}
 
@@ -1129,6 +1124,26 @@ func stickyString(prev types.String, api string, norm func(string) string) types
 	return types.StringNull()
 }
 
+func stickyStringPreferPrevOnMismatch(prev types.String, api string, norm func(string) string) types.String {
+	api = strings.TrimSpace(api)
+	if norm != nil && api != "" {
+		api = norm(api)
+	}
+	if !prev.IsNull() && !prev.IsUnknown() {
+		prevVal := strings.TrimSpace(prev.ValueString())
+		if norm != nil && prevVal != "" {
+			prevVal = norm(prevVal)
+		}
+		if api == "" || (prevVal != "" && api != prevVal) {
+			return prev
+		}
+	}
+	if api != "" {
+		return types.StringValue(api)
+	}
+	return types.StringNull()
+}
+
 func stickyBool(prev types.Bool, api bool, emptyIsNull bool) types.Bool {
 	// If we have a known previous value, prefer it to avoid transient flips
 	if !prev.IsNull() && !prev.IsUnknown() {
@@ -1159,4 +1174,32 @@ func stickyEF(prev types.Int64, api string) types.Int64 {
 		return prev
 	}
 	return types.Int64Value(v)
+}
+
+func pagerDutyLocationFromAPI(integration *client.Integration) (string, bool) {
+	if integration == nil {
+		return "", false
+	}
+	if v := strings.TrimSpace(integration.CustomValue2); v != "" {
+		return strings.ToLower(v), true
+	}
+	if v := strings.TrimSpace(integration.Location); v != "" {
+		return strings.ToLower(v), true
+	}
+	return "", false
+}
+
+func pagerDutyAutoResolveFromAPI(integration *client.Integration) (bool, bool) {
+	if integration == nil {
+		return false, false
+	}
+	switch strings.ToLower(strings.TrimSpace(integration.CustomValue)) {
+	case "1", "true":
+		return true, true
+	case "0", "false":
+		return false, true
+	}
+
+	// Fallback to dedicated field when API returns it directly.
+	return integration.AutoResolve, true
 }
