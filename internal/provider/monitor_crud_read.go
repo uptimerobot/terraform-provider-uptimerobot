@@ -301,18 +301,44 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 			expectedMWIDs = normalizeInt64Set(ids)
 		}
 	}
-	if expectedName == "" && expectedURL == "" && expectedMWIDs == nil {
+
+	var expectedDNSRecords map[string][]string
+	var expectedSSLDays []int64
+	if !state.Config.IsNull() && !state.Config.IsUnknown() {
+		if cfg, touched, diags := expandConfigToAPI(ctx, state.Config); touched && !diags.HasError() && cfg != nil {
+			if cfg.DNSRecords != nil {
+				expectedDNSRecords = normalizeDNSRecords(cfg.DNSRecords)
+			}
+			if cfg.SSLExpirationPeriodDays != nil {
+				days := *cfg.SSLExpirationPeriodDays
+				if len(days) == 0 {
+					expectedSSLDays = []int64{}
+				} else {
+					expectedSSLDays = normalizeInt64Set(days)
+				}
+			}
+		}
+	}
+
+	if expectedName == "" && expectedURL == "" && expectedMWIDs == nil && expectedDNSRecords == nil && expectedSSLDays == nil {
 		return monitor
 	}
 
 	nameMatches := expectedName == "" || unescapeHTML(monitor.Name) == expectedName
 	urlMatches := expectedURL == "" || unescapeHTML(monitor.URL) == expectedURL
 	mwMatches := true
-	if expectedMWIDs != nil {
+	cfgMatches := true
+	if expectedMWIDs != nil || expectedDNSRecords != nil || expectedSSLDays != nil {
 		got := buildComparableFromAPI(monitor)
 		mwMatches = equalInt64Set(expectedMWIDs, got.MaintenanceWindowIDs)
+		if expectedDNSRecords != nil {
+			cfgMatches = cfgMatches && equalDNSRecords(expectedDNSRecords, got.DNSRecords)
+		}
+		if expectedSSLDays != nil {
+			cfgMatches = cfgMatches && equalInt64Set(expectedSSLDays, got.SSLExpirationPeriodDays)
+		}
 	}
-	if nameMatches && urlMatches && mwMatches {
+	if nameMatches && urlMatches && mwMatches && cfgMatches {
 		return monitor
 	}
 
@@ -326,8 +352,14 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 	if expectedMWIDs != nil {
 		want.MaintenanceWindowIDs = expectedMWIDs
 	}
+	if expectedDNSRecords != nil {
+		want.DNSRecords = expectedDNSRecords
+	}
+	if expectedSSLDays != nil {
+		want.SSLExpirationPeriodDays = expectedSSLDays
+	}
 
-	if settled, err := r.waitMonitorSettled(ctx, id, want, 45*time.Second); err == nil && settled != nil {
+	if settled, err := r.waitMonitorSettled(ctx, id, want, 60*time.Second); err == nil && settled != nil {
 		return settled
 	} else if settled != nil {
 		return settled
