@@ -33,6 +33,8 @@ func (r *monitorResource) waitMonitorSettled(
 	var last *client.Monitor
 	backoff := 500 * time.Millisecond
 	const maxBackoff = 3 * time.Second
+	const requiredConsecutiveMatches = 3
+	consecutiveMatches := 0
 
 	for attempt := 0; ; attempt++ {
 		m, err := r.client.GetMonitor(ctx, id)
@@ -40,8 +42,15 @@ func (r *monitorResource) waitMonitorSettled(
 			last = m
 			got := buildComparableFromAPI(m)
 			if equalComparable(want, got) {
-				return m, nil
+				consecutiveMatches++
+				if consecutiveMatches >= requiredConsecutiveMatches {
+					return m, nil
+				}
+			} else {
+				consecutiveMatches = 0
 			}
+		} else {
+			consecutiveMatches = 0
 		}
 
 		wait := backoff
@@ -50,10 +59,6 @@ func (r *monitorResource) waitMonitorSettled(
 		}
 		select {
 		case <-ctx.Done():
-			// One last equality check before failing
-			if last != nil && equalComparable(want, buildComparableFromAPI(last)) {
-				return last, nil
-			}
 			var got monComparable
 			if last != nil {
 				got = buildComparableFromAPI(last)
