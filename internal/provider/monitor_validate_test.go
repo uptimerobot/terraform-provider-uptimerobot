@@ -171,6 +171,21 @@ func TestValidateKeywordMonitor_KeywordType_RequiresKeywordCaseType(t *testing.T
 	}
 }
 
+func TestValidateKeywordMonitor_KeywordType_AllowsUnknownKeywordFieldsAtPlanTime(t *testing.T) {
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{
+		KeywordValue:    types.StringUnknown(),
+		KeywordType:     types.StringUnknown(),
+		KeywordCaseType: types.StringUnknown(),
+	}
+
+	validateKeywordMonitor(context.TODO(), MonitorTypeKEYWORD, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for unknown keyword fields at plan time, got: %v", resp.Diagnostics)
+	}
+}
+
 func TestValidateURL_HTTPLike_RequiresSchemeAndHost(t *testing.T) {
 	resp := &resource.ValidateConfigResponse{}
 	data := &monitorResourceModel{URL: types.StringValue("example.com")}

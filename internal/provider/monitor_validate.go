@@ -648,21 +648,21 @@ func validateKeywordMonitor(
 	resp *resource.ValidateConfigResponse,
 ) {
 	if monitorType != MonitorTypeKEYWORD {
-		if !data.KeywordValue.IsNull() {
+		if !data.KeywordValue.IsNull() && !data.KeywordValue.IsUnknown() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("keyword_value"),
 				"keyword_value only allowed for KEYWORD monitors",
 				"Set type = KEYWORD to manage keyword_value, or remove keyword_value from non-KEYWORD monitors.",
 			)
 		}
-		if !data.KeywordType.IsNull() {
+		if !data.KeywordType.IsNull() && !data.KeywordType.IsUnknown() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("keyword_type"),
 				"keyword_type only allowed for KEYWORD monitors",
 				"Set type = KEYWORD to manage keyword_type, or remove keyword_type from non-KEYWORD monitors.",
 			)
 		}
-		if !data.KeywordCaseType.IsNull() {
+		if !data.KeywordCaseType.IsNull() && !data.KeywordCaseType.IsUnknown() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("keyword_case_type"),
 				"keyword_case_type only allowed for KEYWORD monitors",
@@ -680,7 +680,7 @@ func validateKeywordMonitor(
 		)
 	}
 
-	if data.KeywordCaseType.IsNull() || data.KeywordCaseType.IsUnknown() {
+	if data.KeywordCaseType.IsNull() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("keyword_case_type"),
 			"KeywordCaseType required for KEYWORD monitor",
@@ -688,13 +688,13 @@ func validateKeywordMonitor(
 		)
 	}
 
-	if data.KeywordValue.IsNull() || data.KeywordValue.IsUnknown() {
+	if data.KeywordValue.IsNull() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("keyword_value"),
 			"KeywordValue required for KEYWORD monitor",
 			"KEYWORD monitors require keyword_value.",
 		)
-	} else if len(data.KeywordValue.ValueString()) > 500 {
+	} else if !data.KeywordValue.IsUnknown() && len(data.KeywordValue.ValueString()) > 500 {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("keyword_value"),
 			"keyword_value too long",
