@@ -1054,7 +1054,7 @@ resource "uptimerobot_monitor" "test" {
 	timeout 	 = 30
 }
 `, name, url),
-				ExpectError: regexp.MustCompile("Port required for PORT monitor"),
+				ExpectError: regexp.MustCompile("Port required for PORT/UDP monitor"),
 			},
 			// Test that PORT monitor with port succeeds
 			{

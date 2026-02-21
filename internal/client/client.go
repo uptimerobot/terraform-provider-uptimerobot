@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"mime"
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/textproto"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -300,7 +302,20 @@ func (c *Client) doMultipartRequest(
 			return nil, fmt.Errorf("open file for field %q (%q): %w", fieldName, cleanPath, err)
 		}
 
-		part, err := writer.CreateFormFile(fieldName, filepath.Base(cleanPath))
+		filename := filepath.Base(cleanPath)
+		contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename)))
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+
+		header := make(textproto.MIMEHeader)
+		header.Set(
+			"Content-Disposition",
+			fmt.Sprintf(`form-data; name=%q; filename=%q`, fieldName, filename),
+		)
+		header.Set("Content-Type", contentType)
+
+		part, err := writer.CreatePart(header)
 		if err != nil {
 			_ = file.Close()
 			_ = writer.Close()

@@ -49,13 +49,16 @@ func TestClient_DoMultipartRequest_SendsFieldsAndFiles(t *testing.T) {
 			t.Fatalf("expected mode=update, got %q", got)
 		}
 
-		f, _, err := r.FormFile("icon")
+		f, fh, err := r.FormFile("icon")
 		if err != nil {
 			t.Fatalf("expected icon file part: %v", err)
 		}
 		defer func() {
 			_ = f.Close()
 		}()
+		if got := fh.Header.Get("Content-Type"); got != "image/png" {
+			t.Fatalf("expected icon content-type image/png, got %q", got)
+		}
 
 		body, err := io.ReadAll(f)
 		if err != nil {
@@ -132,24 +135,30 @@ func TestClient_UpdatePSPFiles(t *testing.T) {
 			t.Fatalf("expected icon clear marker to be empty string, got %q", got)
 		}
 
-		logo, _, err := r.FormFile("logo")
+		logo, logoHeader, err := r.FormFile("logo")
 		if err != nil {
 			t.Fatalf("expected logo multipart file: %v", err)
 		}
 		defer func() {
 			_ = logo.Close()
 		}()
+		if got := logoHeader.Header.Get("Content-Type"); got != "image/png" {
+			t.Fatalf("expected logo content-type image/png, got %q", got)
+		}
 		if body, _ := io.ReadAll(logo); string(body) != "logo-content" {
 			t.Fatalf("unexpected logo contents")
 		}
 
-		icon, _, err := r.FormFile("icon")
+		icon, iconHeader, err := r.FormFile("icon")
 		if err != nil {
 			t.Fatalf("expected icon multipart file: %v", err)
 		}
 		defer func() {
 			_ = icon.Close()
 		}()
+		if got := iconHeader.Header.Get("Content-Type"); got != "image/png" {
+			t.Fatalf("expected icon content-type image/png, got %q", got)
+		}
 		if body, _ := io.ReadAll(icon); string(body) != "icon-content" {
 			t.Fatalf("unexpected icon contents")
 		}
