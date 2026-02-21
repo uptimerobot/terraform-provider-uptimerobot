@@ -129,6 +129,48 @@ func TestCreateMonitorRequest_Config_APIAssertions_JSON(t *testing.T) {
 	}
 }
 
+func TestCreateMonitorRequest_Config_UDP_JSON(t *testing.T) {
+	packetLossThreshold := int64(50)
+	payload := "ping"
+	req := CreateMonitorRequest{
+		Name:     "udp-monitor",
+		URL:      "example.com",
+		Type:     MonitorTypeUDP,
+		Interval: 300,
+		Port:     53,
+		Config: &MonitorConfig{
+			UDP: &UDPMonitorConfig{
+				Payload:             &payload,
+				PacketLossThreshold: &packetLossThreshold,
+			},
+		},
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	cfg, ok := m["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected config object, got %#v", m["config"])
+	}
+	udp, ok := cfg["udp"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected udp object, got %#v", cfg["udp"])
+	}
+	if got := udp["payload"]; got != "ping" {
+		t.Fatalf("expected payload=ping, got %#v", got)
+	}
+	if got, ok := udp["packetLossThreshold"].(float64); !ok || int64(got) != 50 {
+		t.Fatalf("expected packetLossThreshold=50, got %#v", udp["packetLossThreshold"])
+	}
+}
+
 func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	createReq := CreateMaintenanceWindowRequest{
 		Name:     "mw-create",

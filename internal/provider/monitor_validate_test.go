@@ -53,6 +53,17 @@ func TestValidatePortMonitor_PortType_AllowsUnknownPort(t *testing.T) {
 	}
 }
 
+func TestValidatePortMonitor_UDPType_AllowsUnknownPort(t *testing.T) {
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{Port: types.Int64Unknown()}
+
+	validatePortMonitor(context.TODO(), MonitorTypeUDP, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for unknown port value, got: %v", resp.Diagnostics)
+	}
+}
+
 func TestValidatePortMonitor_PortType_RequiresPortWhenNull(t *testing.T) {
 	resp := &resource.ValidateConfigResponse{}
 	data := &monitorResourceModel{Port: types.Int64Null()}
@@ -92,10 +103,45 @@ func TestValidateCreateHighLevel_PortType_RejectsUnknownPort(t *testing.T) {
 	}
 }
 
+func TestValidateCreateHighLevel_UDPType_RejectsUnknownPort(t *testing.T) {
+	resp := &resource.CreateResponse{}
+	plan := monitorResourceModel{
+		Type:   types.StringValue(MonitorTypeUDP),
+		Port:   types.Int64Unknown(),
+		Config: types.ObjectNull(configObjectType().AttrTypes),
+	}
+
+	ok := validateCreateHighLevel(context.TODO(), plan, resp)
+
+	if ok {
+		t.Fatalf("expected ok=false for unknown port")
+	}
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected diagnostics error for unknown port")
+	}
+}
+
 func TestValidateUpdateHighLevel_PortType_RejectsUnknownPort(t *testing.T) {
 	resp := &resource.UpdateResponse{}
 	plan := monitorResourceModel{
 		Type: types.StringValue(MonitorTypePORT),
+		Port: types.Int64Unknown(),
+	}
+
+	ok := validateUpdateHighLevel(plan, resp)
+
+	if ok {
+		t.Fatalf("expected ok=false for unknown port")
+	}
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected diagnostics error for unknown port")
+	}
+}
+
+func TestValidateUpdateHighLevel_UDPType_RejectsUnknownPort(t *testing.T) {
+	resp := &resource.UpdateResponse{}
+	plan := monitorResourceModel{
+		Type: types.StringValue(MonitorTypeUDP),
 		Port: types.Int64Unknown(),
 	}
 
@@ -263,12 +309,62 @@ func TestValidateCreateHighLevel_APIType_AllowsAPIAssertions(t *testing.T) {
 				"checks": types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{check}),
 			}),
 			"ip_version": types.StringNull(),
+			"udp":        types.ObjectNull(udpObjectType().AttrTypes),
 		}),
 	}
 
 	ok := validateCreateHighLevel(context.TODO(), plan, resp)
 	if !ok {
 		t.Fatalf("expected ok=true for valid API monitor config, diagnostics: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateCreateHighLevel_UDPType_RequiresUDPConfig(t *testing.T) {
+	resp := &resource.CreateResponse{}
+	plan := monitorResourceModel{
+		Type: types.StringValue(MonitorTypeUDP),
+		Port: types.Int64Value(53),
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"ip_version":                 types.StringNull(),
+			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		}),
+	}
+
+	ok := validateCreateHighLevel(context.TODO(), plan, resp)
+	if ok {
+		t.Fatalf("expected ok=false when UDP monitor has no udp config")
+	}
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected diagnostics error for missing UDP config")
+	}
+}
+
+func TestValidateCreateHighLevel_UDPType_AllowsUDPConfig(t *testing.T) {
+	resp := &resource.CreateResponse{}
+	plan := monitorResourceModel{
+		Type: types.StringValue(MonitorTypeUDP),
+		Port: types.Int64Value(53),
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"ip_version":                 types.StringNull(),
+			"udp": types.ObjectValueMust(udpObjectType().AttrTypes, map[string]attr.Value{
+				"payload":               types.StringValue("ping"),
+				"packet_loss_threshold": types.Int64Value(50),
+			}),
+		}),
+	}
+
+	ok := validateCreateHighLevel(context.TODO(), plan, resp)
+	if !ok {
+		t.Fatalf("expected ok=true when UDP monitor has udp config")
+	}
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no diagnostics, got: %v", resp.Diagnostics)
 	}
 }
 

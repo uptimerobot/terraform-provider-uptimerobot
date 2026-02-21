@@ -1193,8 +1193,10 @@ func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
 func TestAccMonitorResource_NewMonitorTypes(t *testing.T) {
 	hbName := acctest.RandomWithPrefix("acc-hb-newtypes")
 	dnsName := acctest.RandomWithPrefix("acc-dns-newtypes")
+	udpName := acctest.RandomWithPrefix("acc-udp-newtypes")
 	hbURL := testAccUniqueURL(hbName)
 	dnsDomain := testAccUniqueDomain(dnsName)
+	udpDomain := testAccUniqueDomain(udpName)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1234,6 +1236,31 @@ resource "uptimerobot_monitor" "test" {
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", dnsName),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "DNS"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", dnsDomain),
+				),
+			},
+			// Test UDP monitor
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "` + udpName + `"
+    url          = "` + udpDomain + `"
+    type         = "UDP"
+    interval     = 300
+    port         = 53
+    config = {
+      udp = {
+        payload = "ping"
+        packet_loss_threshold = 50
+      }
+    }
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", udpName),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "UDP"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", udpDomain),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "port", "53"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "config.udp.packet_loss_threshold", "50"),
 				),
 			},
 		},
@@ -1433,7 +1460,7 @@ resource "uptimerobot_monitor" "test" {
 	timeout 	 = 30
 }
 `,
-				ExpectError: regexp.MustCompile(`(?s)value must be one of:.*HTTP.*KEYWORD.*PING.*PORT.*HEARTBEAT.*DNS`),
+				ExpectError: regexp.MustCompile(`(?s)value must be one of:.*HTTP.*KEYWORD.*PING.*PORT.*HEARTBEAT.*DNS.*API.*UDP`),
 			},
 		},
 	})
@@ -3043,7 +3070,7 @@ resource "uptimerobot_monitor" "test" {
 		Steps: []resource.TestStep{
 			{
 				Config:      cfgMissingConfig,
-				ExpectError: regexp.MustCompile("config.*required.*DNS monitors.*create"),
+				ExpectError: regexp.MustCompile("config.*required.*DNS/API/UDP monitors.*create"),
 			},
 		},
 	})

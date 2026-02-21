@@ -190,6 +190,27 @@ resource "uptimerobot_monitor" "gateway_ping" {
 }
 ```
 
+### UDP Monitor
+
+```terraform
+resource "uptimerobot_monitor" "udp_service" {
+  name     = "UDP Service Check"
+  type     = "UDP"
+  url      = "dns.google"
+  port     = 53
+  interval = 300
+
+  config = {
+    udp = {
+      payload               = "ping"
+      packet_loss_threshold = 50
+    }
+  }
+
+  tags = ["udp", "network", "critical"]
+}
+```
+
 ### Alert Contacts Example
 
 ```terraform
@@ -425,6 +446,8 @@ resource "uptimerobot_monitor" "api_assertions" {
 - `PORT` — Port monitoring
 - `HEARTBEAT` — Heartbeat monitoring
 - `DNS` — DNS record monitoring
+- `API` — API assertions monitoring
+- `UDP` — UDP packet monitoring
 
 ## Intervals
 

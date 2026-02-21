@@ -36,6 +36,7 @@ func TestExpandConfigToAPI_DNSRecordsEmptyObjectMarksTouched(t *testing.T) {
 		"dns_records":                dnsRecordsNullObject(),
 		"ip_version":                 types.StringNull(),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 
 	out, touched, diags := expandConfigToAPI(ctx, cfg)
@@ -62,6 +63,7 @@ func TestFlattenConfigToState_NoAPIAndPrevNullDNS_StaysNull(t *testing.T) {
 		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
 		"ip_version":                 types.StringNull(),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 
 	stateObj, diags := flattenConfigToState(ctx, true, prev, nil)
@@ -90,6 +92,7 @@ func TestFlattenConfigToState_DNSFromAPI_PopulatesSets(t *testing.T) {
 		"dns_records":                dnsRecordsNullObject(),
 		"ip_version":                 types.StringNull(),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 
 	a := []string{"1.1.1.1"}
@@ -159,6 +162,7 @@ func TestExpandConfigToAPI_APIAssertionsTouched(t *testing.T) {
 			"checks": types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{check}),
 		}),
 		"ip_version": types.StringNull(),
+		"udp":        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 
 	out, touched, diags := expandConfigToAPI(ctx, cfg)
@@ -192,6 +196,7 @@ func TestFlattenConfigToState_APIAssertionsFromAPI_PopulatesObject(t *testing.T)
 		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringNull(),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 
 	stateObj, diags := flattenConfigToState(ctx, true, prev, &client.MonitorConfig{
@@ -262,5 +267,81 @@ func TestMapFromAttr_AllowsUnknownHeaderValues(t *testing.T) {
 	}
 	if _, exists := got["x-unknown"]; exists {
 		t.Fatalf("unexpected unknown value key in result map")
+	}
+}
+
+func TestExpandConfigToAPI_UDPTouched(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	cfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"ip_version":                 types.StringNull(),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"udp": types.ObjectValueMust(udpObjectType().AttrTypes, map[string]attr.Value{
+			"payload":               types.StringValue("ping"),
+			"packet_loss_threshold": types.Int64Value(50),
+		}),
+	})
+
+	out, touched, diags := expandConfigToAPI(ctx, cfg)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if !touched {
+		t.Fatalf("expected touched=true when udp exists")
+	}
+	if out == nil || out.UDP == nil {
+		t.Fatalf("expected udp payload to be set")
+	}
+	if out.UDP.Payload == nil || *out.UDP.Payload != "ping" {
+		t.Fatalf("expected payload=ping, got %#v", out.UDP.Payload)
+	}
+	if out.UDP.PacketLossThreshold == nil || *out.UDP.PacketLossThreshold != 50 {
+		t.Fatalf("expected packetLossThreshold=50, got %#v", out.UDP.PacketLossThreshold)
+	}
+}
+
+func TestFlattenConfigToState_UDPFromAPI_PopulatesObject(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	prev := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"ip_version":                 types.StringNull(),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+	})
+	payload := "ping"
+	packetLossThreshold := int64(50)
+	stateObj, diags := flattenConfigToState(ctx, true, prev, &client.MonitorConfig{
+		UDP: &client.UDPMonitorConfig{
+			Payload:             &payload,
+			PacketLossThreshold: &packetLossThreshold,
+		},
+	})
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+
+	var cfg configTF
+	if d := stateObj.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); d.HasError() {
+		t.Fatalf("unexpected object decode diagnostics: %+v", d)
+	}
+	if cfg.UDP.IsNull() || cfg.UDP.IsUnknown() {
+		t.Fatalf("expected udp object to be present")
+	}
+
+	var udp udpTF
+	if d := cfg.UDP.As(ctx, &udp, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); d.HasError() {
+		t.Fatalf("unexpected udp decode diagnostics: %+v", d)
+	}
+	if udp.Payload.IsNull() || udp.Payload.ValueString() != "ping" {
+		t.Fatalf("expected payload=ping, got %#v", udp.Payload)
+	}
+	if udp.PacketLossThreshold.IsNull() || udp.PacketLossThreshold.ValueInt64() != 50 {
+		t.Fatalf("expected packet_loss_threshold=50, got %#v", udp.PacketLossThreshold)
 	}
 }

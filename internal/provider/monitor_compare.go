@@ -44,6 +44,7 @@ type monComparable struct {
 	IPVersion               *string
 	ExpectIPVersionUnset    bool
 	APIAssertions           *apiAssertionsComparable
+	UDPConfig               *udpComparable
 	AssignedAlertContacts   []string
 }
 
@@ -56,6 +57,11 @@ type apiAssertionCheckComparable struct {
 	Property   string
 	Comparison string
 	TargetJSON string
+}
+
+type udpComparable struct {
+	Payload             *string
+	PacketLossThreshold *int64
 }
 
 func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
@@ -209,6 +215,9 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	if req.Config != nil && req.Config.APIAssertions != nil {
 		c.APIAssertions = normalizeAPIAssertions(req.Config.APIAssertions)
 	}
+	if req.Config != nil && req.Config.UDP != nil {
+		c.UDPConfig = normalizeUDPConfig(req.Config.UDP)
+	}
 	return c
 }
 
@@ -354,6 +363,9 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 	}
 	if req.Config != nil && req.Config.APIAssertions != nil {
 		c.APIAssertions = normalizeAPIAssertions(req.Config.APIAssertions)
+	}
+	if req.Config != nil && req.Config.UDP != nil {
+		c.UDPConfig = normalizeUDPConfig(req.Config.UDP)
 	}
 	if req.AssignedAlertContacts != nil {
 		c.AssignedAlertContacts = normalizeAlertContactIDsFromRequestsPtr(req.AssignedAlertContacts)
@@ -518,6 +530,9 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 		}
 		if m.Config.APIAssertions != nil {
 			c.APIAssertions = normalizeAPIAssertions(m.Config.APIAssertions)
+		}
+		if m.Config.UDP != nil {
+			c.UDPConfig = normalizeUDPConfig(m.Config.UDP)
 		}
 	}
 	c.AssignedAlertContacts = normalizeAlertContactIDs(m.AssignedAlertContacts)
@@ -705,6 +720,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.APIAssertions != nil && !equalAPIAssertions(want.APIAssertions, got.APIAssertions) {
 		return false
 	}
+	if want.UDPConfig != nil && !equalUDPConfig(want.UDPConfig, got.UDPConfig) {
+		return false
+	}
 
 	if want.SuccessCodes != nil && !equalStringSet(want.SuccessCodes, got.SuccessCodes) {
 		return false
@@ -797,6 +815,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	if want.APIAssertions != nil && !equalAPIAssertions(want.APIAssertions, got.APIAssertions) {
 		f = append(f, "config.api_assertions")
 	}
+	if want.UDPConfig != nil && !equalUDPConfig(want.UDPConfig, got.UDPConfig) {
+		f = append(f, "config.udp")
+	}
 	if want.KeywordCaseType != nil && (got.KeywordCaseType == nil || *want.KeywordCaseType != *got.KeywordCaseType) {
 		f = append(f, "keyword_case_type")
 	}
@@ -860,6 +881,22 @@ func normalizeAPIAssertions(in *client.APIMonitorAssertions) *apiAssertionsCompa
 	return out
 }
 
+func normalizeUDPConfig(in *client.UDPMonitorConfig) *udpComparable {
+	if in == nil {
+		return nil
+	}
+	out := &udpComparable{}
+	if in.Payload != nil {
+		v := strings.TrimSpace(*in.Payload)
+		out.Payload = &v
+	}
+	if in.PacketLossThreshold != nil {
+		v := *in.PacketLossThreshold
+		out.PacketLossThreshold = &v
+	}
+	return out
+}
+
 func equalAPIAssertions(want, got *apiAssertionsComparable) bool {
 	if want == nil {
 		return true
@@ -878,6 +915,35 @@ func equalAPIAssertions(want, got *apiAssertionsComparable) bool {
 			return false
 		}
 	}
+	return true
+}
+
+func equalUDPConfig(want, got *udpComparable) bool {
+	if want == nil {
+		return true
+	}
+	if got == nil {
+		return false
+	}
+
+	switch {
+	case want.Payload == nil && got.Payload != nil:
+		return false
+	case want.Payload != nil && got.Payload == nil:
+		return false
+	case want.Payload != nil && got.Payload != nil && *want.Payload != *got.Payload:
+		return false
+	}
+
+	switch {
+	case want.PacketLossThreshold == nil && got.PacketLossThreshold != nil:
+		return false
+	case want.PacketLossThreshold != nil && got.PacketLossThreshold == nil:
+		return false
+	case want.PacketLossThreshold != nil && got.PacketLossThreshold != nil && *want.PacketLossThreshold != *got.PacketLossThreshold:
+		return false
+	}
+
 	return true
 }
 

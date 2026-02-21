@@ -165,3 +165,19 @@ resource "uptimerobot_monitor" "api_assertions" {
     }
   }
 }
+
+# UDP monitor with config.udp
+resource "uptimerobot_monitor" "udp_monitor" {
+  name     = "UDP monitor"
+  type     = "UDP"
+  url      = "example.com"
+  port     = 53
+  interval = 300
+
+  config = {
+    udp = {
+      payload               = "ping"
+      packet_loss_threshold = 50
+    }
+  }
+}

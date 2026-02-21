@@ -286,6 +286,34 @@ func expandConfigToAPI(
 		touched = true
 	}
 
+	// udp
+	if !c.UDP.IsUnknown() && !c.UDP.IsNull() {
+		var tf udpTF
+		diags.Append(c.UDP.As(ctx, &tf, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if diags.HasError() {
+			return nil, false, diags
+		}
+
+		udp := &client.UDPMonitorConfig{}
+		fieldTouched := false
+		if !tf.Payload.IsUnknown() && !tf.Payload.IsNull() {
+			v := strings.TrimSpace(tf.Payload.ValueString())
+			udp.Payload = &v
+			fieldTouched = true
+		}
+		if !tf.PacketLossThreshold.IsUnknown() && !tf.PacketLossThreshold.IsNull() {
+			v := tf.PacketLossThreshold.ValueInt64()
+			udp.PacketLossThreshold = &v
+			fieldTouched = true
+		}
+		if fieldTouched {
+			out.UDP = udp
+		} else {
+			out.UDP = &client.UDPMonitorConfig{}
+		}
+		touched = true
+	}
+
 	return out, touched, diags
 }
 
@@ -491,7 +519,45 @@ func flattenConfigToState(
 		c.APIAssertions = prevAPIAssertions
 	}
 
+	// UDP config
+	prevUDP := types.ObjectNull(udpObjectType().AttrTypes)
+	if !c.UDP.IsNull() && !c.UDP.IsUnknown() {
+		prevUDP = c.UDP
+	}
+	if api != nil && api.UDP != nil {
+		udpObj, d := udpFromAPI(ctx, api.UDP)
+		diags.Append(d...)
+		if !diags.HasError() {
+			c.UDP = udpObj
+		}
+	} else {
+		c.UDP = prevUDP
+	}
+
 	return types.ObjectValueFrom(ctx, configObjectType().AttrTypes, c)
+}
+
+func udpFromAPI(ctx context.Context, in *client.UDPMonitorConfig) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if in == nil {
+		return types.ObjectNull(udpObjectType().AttrTypes), diags
+	}
+
+	payload := types.StringNull()
+	if in.Payload != nil {
+		payload = types.StringValue(*in.Payload)
+	}
+	packetLoss := types.Int64Null()
+	if in.PacketLossThreshold != nil {
+		packetLoss = types.Int64Value(*in.PacketLossThreshold)
+	}
+
+	out, d := types.ObjectValueFrom(ctx, udpObjectType().AttrTypes, udpTF{
+		Payload:             payload,
+		PacketLossThreshold: packetLoss,
+	})
+	diags.Append(d...)
+	return out, diags
 }
 
 func apiAssertionsFromAPI(ctx context.Context, in *client.APIMonitorAssertions) (types.Object, diag.Diagnostics) {

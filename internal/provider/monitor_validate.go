@@ -259,6 +259,7 @@ func validateConfig(
 	sslHTTPFlagsTouched := sslRemTouched || sslCheckErrTouched
 
 	apiAssertionsTouched := !cfg.APIAssertions.IsNull() && !cfg.APIAssertions.IsUnknown()
+	udpTouched := !cfg.UDP.IsNull() && !cfg.UDP.IsUnknown()
 
 	// ssl_expiration_period_days is accepted by API only in DNS monitor config.
 	if sslDaysTouched && monitorType != MonitorTypeDNS {
@@ -275,6 +276,14 @@ func validateConfig(
 			path.Root("config").AtName("api_assertions"),
 			"api_assertions only allowed for API monitors",
 			"Set type = API or remove config.api_assertions.",
+		)
+	}
+
+	if udpTouched && monitorType != MonitorTypeUDP {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("udp"),
+			"udp only allowed for UDP monitors",
+			"Set type = UDP or remove config.udp.",
 		)
 	}
 
@@ -508,6 +517,31 @@ func validateConfig(
 			}
 		}
 	}
+
+	if monitorType == MonitorTypeUDP && !data.Config.IsNull() && !data.Config.IsUnknown() {
+		if cfg.UDP.IsNull() || cfg.UDP.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("udp"),
+				"UDP monitor requires udp config",
+				"Set config.udp.packet_loss_threshold for UDP monitors.",
+			)
+			return
+		}
+
+		var udp udpTF
+		resp.Diagnostics.Append(cfg.UDP.As(ctx, &udp, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		if udp.PacketLossThreshold.IsNull() || udp.PacketLossThreshold.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("udp").AtName("packet_loss_threshold"),
+				"Missing packet_loss_threshold",
+				"UDP monitors require config.udp.packet_loss_threshold.",
+			)
+		}
+	}
 }
 
 func validateConfigIPVersion(
@@ -623,20 +657,20 @@ func validatePortMonitor(
 	data *monitorResourceModel,
 	resp *resource.ValidateConfigResponse,
 ) {
-	if !data.Port.IsNull() && !data.Port.IsUnknown() && monitorType != MonitorTypePORT {
+	if !data.Port.IsNull() && !data.Port.IsUnknown() && monitorType != MonitorTypePORT && monitorType != MonitorTypeUDP {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("port"),
-			"port not allowed for non-PORT monitor",
-			"When type is not PORT, omit port.",
+			"port not allowed for this monitor type",
+			"When type is not PORT or UDP, omit port.",
 		)
 		return
 	}
 
-	if monitorType == MonitorTypePORT && data.Port.IsNull() {
+	if (monitorType == MonitorTypePORT || monitorType == MonitorTypeUDP) && data.Port.IsNull() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("port"),
-			"Port required for PORT monitor",
-			"When type is PORT, you must set port.",
+			"Port required for PORT/UDP monitor",
+			"When type is PORT or UDP, you must set port.",
 		)
 	}
 }

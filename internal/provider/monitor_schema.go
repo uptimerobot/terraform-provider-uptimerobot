@@ -38,6 +38,7 @@ const (
 	MonitorTypeHEARTBEAT = "HEARTBEAT"
 	MonitorTypeDNS       = "DNS"
 	MonitorTypeAPI       = "API"
+	MonitorTypeUDP       = "UDP"
 
 	IPVersionIPv4Only = "ipv4Only"
 	IPVersionIPv6Only = "ipv6Only"
@@ -90,11 +91,11 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Version:     5,
+		Version:     6,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
-				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API)",
+				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API, UDP)",
 				Required:    true,
 				Validators: []validator.String{
 					stringvalidator.OneOf(
@@ -105,6 +106,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 						MonitorTypeHEARTBEAT,
 						MonitorTypeDNS,
 						MonitorTypeAPI,
+						MonitorTypeUDP,
 					),
 				},
 				PlanModifiers: []planmodifier.String{
@@ -431,6 +433,7 @@ Advanced monitor configuration.
 - ` + "`config.ssl_expiration_period_days`" + ` is only valid for DNS monitors.
 - ` + "`ip_version`" + ` is only valid for HTTP/KEYWORD/PING/PORT monitors.
 - ` + "`config.api_assertions`" + ` is only valid for API monitors.
+- ` + "`config.udp`" + ` is only valid for UDP monitors.
 - Top-level ` + "`ssl_expiration_reminder`" + ` and ` + "`check_ssl_errors`" + ` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors.
 `,
 
@@ -517,6 +520,29 @@ Advanced monitor configuration.
 											CustomType:  jsontypes.NormalizedType{},
 										},
 									},
+								},
+							},
+						},
+					},
+					"udp": schema.SingleNestedAttribute{
+						Description: "UDP monitor configuration. Supported only for type=UDP.",
+						Optional:    true,
+						Computed:    true,
+						Attributes: map[string]schema.Attribute{
+							"payload": schema.StringAttribute{
+								Description: "Optional UDP payload to send.",
+								Optional:    true,
+								Computed:    true,
+								PlanModifiers: []planmodifier.String{
+									stringplanmodifier.UseStateForUnknown(),
+								},
+							},
+							"packet_loss_threshold": schema.Int64Attribute{
+								Description: "Packet loss threshold percentage.",
+								Optional:    true,
+								Computed:    true,
+								PlanModifiers: []planmodifier.Int64{
+									int64planmodifier.UseStateForUnknown(),
 								},
 							},
 						},
@@ -680,15 +706,18 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 			if cfg.APIAssertions.IsUnknown() {
 				_ = resp.Plan.SetAttribute(ctx, path.Root("config").AtName("api_assertions"), types.ObjectNull(apiAssertionsObjectType().AttrTypes))
 			}
+			if cfg.UDP.IsUnknown() {
+				_ = resp.Plan.SetAttribute(ctx, path.Root("config").AtName("udp"), types.ObjectNull(udpObjectType().AttrTypes))
+			}
 		}
 	}
 
-	if (planType == MonitorTypeDNS || planType == MonitorTypeAPI) && req.State.Raw.IsNull() &&
+	if (planType == MonitorTypeDNS || planType == MonitorTypeAPI || planType == MonitorTypeUDP) && req.State.Raw.IsNull() &&
 		(plan.Config.IsNull() || plan.Config.IsUnknown()) {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("config"),
-			"`config` is required for DNS/API monitors on create",
-			"For DNS use `config = {}` or set DNS fields. For API set `config.api_assertions` with logic and checks.",
+			"`config` is required for DNS/API/UDP monitors on create",
+			"For DNS use `config = {}` or set DNS fields. For API set `config.api_assertions` with logic and checks. For UDP set `config.udp.packet_loss_threshold`.",
 		)
 	}
 
@@ -847,6 +876,19 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 					return
 				}
 
+				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
+			},
+		},
+		5: {
+			PriorSchema: priorSchemaV5(),
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				var prior monitorV5Model
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				upgraded := upgradeMonitorFromV5(ctx, prior)
 				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
 			},
 		},
