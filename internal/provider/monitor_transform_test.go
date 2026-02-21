@@ -240,3 +240,27 @@ func TestFlattenConfigToState_APIAssertionsFromAPI_PopulatesObject(t *testing.T)
 		t.Fatalf("expected target=ok, got %#v", target)
 	}
 }
+
+func TestMapFromAttr_AllowsUnknownHeaderValues(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	headers := types.MapValueMust(types.StringType, map[string]attr.Value{
+		"x-known":   types.StringValue("v"),
+		"x-unknown": types.StringUnknown(),
+	})
+
+	got, diags := mapFromAttr(ctx, headers)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if got == nil {
+		t.Fatalf("expected non-nil map")
+	}
+	if got["x-known"] != "v" {
+		t.Fatalf("expected x-known=v, got %#v", got["x-known"])
+	}
+	if _, exists := got["x-unknown"]; exists {
+		t.Fatalf("unexpected unknown value key in result map")
+	}
+}

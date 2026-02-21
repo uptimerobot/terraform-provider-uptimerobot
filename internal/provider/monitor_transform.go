@@ -668,10 +668,27 @@ func mapFromAttr(ctx context.Context, attr types.Map) (map[string]string, diag.D
 	if attr.IsNull() || attr.IsUnknown() {
 		return nil, nil
 	}
-	var m map[string]string
+
+	// Decode into framework string values so unknown/sensitive values
+	// from interpolations can be handled without conversion panics.
+	var raw map[string]types.String
 	var diags diag.Diagnostics
-	diags.Append(attr.ElementsAs(ctx, &m, false)...)
-	return m, diags
+	diags.Append(attr.ElementsAs(ctx, &raw, false)...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if v.IsUnknown() || v.IsNull() {
+			continue
+		}
+		out[k] = v.ValueString()
+	}
+	if len(out) == 0 {
+		return nil, diags
+	}
+	return out, diags
 }
 
 func attrFromMap(ctx context.Context, m map[string]string) (types.Map, diag.Diagnostics) {
