@@ -171,8 +171,8 @@ func testAccPSPResourceConfigOptionalsSet(name, logoPath, iconPath string) strin
 resource "uptimerobot_psp" "test" {
   name = %q
 
-  logo_file_path = %q
-  icon_file_path = %q
+  logo = %q
+  icon = %q
   ga_code        = "G-ABCDE12349"
 
   # Sensitive and not returned by the API. Provider should still not error.
@@ -187,6 +187,17 @@ resource "uptimerobot_psp" "test" {
   name = %q
 
   # ga_code/password intentionally omitted for checking stability
+}
+`, name)
+}
+
+func testAccPSPResourceConfigOptionalsClearFiles(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name = %q
+
+  logo = ""
+  icon = ""
 }
 `, name)
 }
@@ -368,10 +379,8 @@ func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
 				Config: testAccPSPResourceConfigOptionalsSet(name, logoPath, iconPath),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
-					resource.TestCheckResourceAttrSet("uptimerobot_psp.test", "icon"),
-					resource.TestCheckResourceAttrSet("uptimerobot_psp.test", "logo"),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon_file_path", iconPath),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo_file_path", logoPath),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon", iconPath),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo", logoPath),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "ga_code", "G-ABCDE12349"),
 				),
 			},
@@ -379,11 +388,17 @@ func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
 				Config: testAccPSPResourceConfigOptionalsOmitted(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
-					resource.TestCheckResourceAttrSet("uptimerobot_psp.test", "icon"),
-					resource.TestCheckResourceAttrSet("uptimerobot_psp.test", "logo"),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon_file_path", iconPath),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo_file_path", logoPath),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon", iconPath),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo", logoPath),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "ga_code", "G-ABCDE12349"),
+				),
+			},
+			{
+				Config: testAccPSPResourceConfigOptionalsClearFiles(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon", ""),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo", ""),
 				),
 			},
 		},

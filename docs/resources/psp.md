@@ -115,8 +115,8 @@ resource "uptimerobot_psp" "branded_status" {
   ]
 
   # Custom branding files (multipart upload)
-  logo_file_path = "${path.module}/assets/logo.png"
-  icon_file_path = "${path.module}/assets/icon.png"
+  logo = "${path.module}/assets/logo.png"
+  icon = "${path.module}/assets/icon.png"
   # Custom styling
   custom_settings = {
     colors = {
@@ -152,8 +152,9 @@ resource "uptimerobot_psp" "branded_status" {
 }
 ```
 
-`logo_file_path` and `icon_file_path` accept only local filesystem paths.
+`logo` and `icon` accept only local filesystem paths.
 If you need to fetch files from a URL, download them first (for example in CI) and point Terraform to the downloaded file paths.
+Set either field to an empty string (`""`) to clear the existing uploaded file.
 
 ## Status Page Features
 
@@ -183,10 +184,16 @@ You can include specific monitors in your status page by providing their IDs in 
 - `custom_settings` (Attributes) Custom settings for the PSP (see [below for nested schema](#nestedatt--custom_settings))
 - `ga_code` (String) Google Analytics code
 - `hide_url_links` (Boolean) Whether to hide URL links
-- `icon` (String) PSP icon URL returned by API (read-only). Set to empty string to clear existing icon.
-- `icon_file_path` (String) Local filesystem path to icon image file to upload via multipart/form-data.
-- `logo` (String) PSP logo URL returned by API (read-only). Set to empty string to clear existing logo.
-- `logo_file_path` (String) Local filesystem path to logo image file to upload via multipart/form-data.
+- `icon` (String) Local filesystem path to icon image file to upload via multipart/form-data.
+
+This field accepts only local filesystem paths. If you need a remote file, download it first (for example in CI) and then pass the downloaded file path.
+
+Set to an empty string (`""`) to clear the existing icon.
+- `logo` (String) Local filesystem path to logo image file to upload via multipart/form-data.
+
+This field accepts only local filesystem paths. If you need a remote file, download it first (for example in CI) and then pass the downloaded file path.
+
+Set to an empty string (`""`) to clear the existing logo.
 - `monitor_ids` (Set of Number) Set of monitor IDs
 - `no_index` (Boolean) Whether to prevent indexing
 - `password` (String, Sensitive) Password for accessing the PSP page.

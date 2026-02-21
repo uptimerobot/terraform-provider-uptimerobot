@@ -19,7 +19,7 @@
 - Acceptance test execution strategy was adjusted:
   - Pull Requests now run a reduced acceptance matrix (`terraform latest`, `opentofu latest`) for faster feedback.
   - `main`/manual runs execute an extended acceptance matrix (4 lanes) for broader compatibility coverage.
-- `uptimerobot_psp` now uploads `logo` and `icon` via multipart/form-data using new `logo_file_path` and `icon_file_path` attributes.
+- `uptimerobot_psp` now uploads `logo` and `icon` via multipart/form-data using local filesystem paths in `logo` and `icon` attributes. Set empty string to clear.
 - PSP docs/examples were updated to use local file-path uploads for branding images.
 
 ### Fixed

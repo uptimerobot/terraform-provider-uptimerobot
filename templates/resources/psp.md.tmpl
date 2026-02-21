@@ -27,6 +27,10 @@ description: |-
 
 {{tffile "examples/resources/uptimerobot_psp/custom_styling.tf"}}
 
+`logo` and `icon` accept only local filesystem paths.
+If you need to fetch files from a URL, download them first (for example in CI) and point Terraform to the downloaded file paths.
+Set either field to an empty string (`""`) to clear the existing uploaded file.
+
 ## Status Page Features
 
 - **Custom Domain**: Use your own domain for the status page

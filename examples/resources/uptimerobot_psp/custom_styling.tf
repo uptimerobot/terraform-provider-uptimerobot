@@ -13,8 +13,8 @@ resource "uptimerobot_psp" "branded_status" {
   ]
 
   # Custom branding files (multipart upload)
-  logo_file_path = "${path.module}/assets/logo.png"
-  icon_file_path = "${path.module}/assets/icon.png"
+  logo = "${path.module}/assets/logo.png"
+  icon = "${path.module}/assets/icon.png"
   # Custom styling
   custom_settings = {
     colors = {
