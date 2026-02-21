@@ -436,6 +436,22 @@ resource "uptimerobot_monitor" "api_assertions" {
     }
   }
 }
+
+# UDP monitor with config.udp
+resource "uptimerobot_monitor" "udp_monitor" {
+  name     = "UDP monitor"
+  type     = "UDP"
+  url      = "example.com"
+  port     = 53
+  interval = 300
+
+  config = {
+    udp = {
+      payload               = "ping"
+      packet_loss_threshold = 50
+    }
+  }
+}
 ```
 
 ## Monitor Types
@@ -480,7 +496,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 
 - `interval` (Number) Interval for the monitoring check (in seconds)
 - `name` (String) Tip: Write names as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
-- `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API)
+- `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API, UDP)
 - `url` (String) Tip: Write url as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
 
 ### Optional
@@ -508,6 +524,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `config.ssl_expiration_period_days` is only valid for DNS monitors.
 - `ip_version` is only valid for HTTP/KEYWORD/PING/PORT monitors.
 - `config.api_assertions` is only valid for API monitors.
+- `config.udp` is only valid for UDP monitors.
 - Top-level `ssl_expiration_reminder` and `check_ssl_errors` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors. (see [below for nested schema](#nestedatt--config))
 - `custom_http_headers` (Map of String) Custom HTTP headers as key:value. **Keys are case-insensitive.** The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. Tip: add keys in lower-case (e.g., `"content-type" = "application/json"`).
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
@@ -569,6 +586,7 @@ Optional:
 - Omit the attribute → **preserve** remote values.
 - Empty set `[]` → **clear** values on server.
 Supported when `type = "DNS"`.
+- `udp` (Attributes) UDP monitor configuration. Supported only for type=UDP. (see [below for nested schema](#nestedatt--config--udp))
 
 <a id="nestedatt--config--api_assertions"></a>
 ### Nested Schema for `config.api_assertions`
@@ -611,3 +629,12 @@ Optional:
 - `spf` (Set of String)
 - `srv` (Set of String)
 - `txt` (Set of String)
+
+
+<a id="nestedatt--config--udp"></a>
+### Nested Schema for `config.udp`
+
+Optional:
+
+- `packet_loss_threshold` (Number) Packet loss threshold percentage.
+- `payload` (String) Optional UDP payload to send.
