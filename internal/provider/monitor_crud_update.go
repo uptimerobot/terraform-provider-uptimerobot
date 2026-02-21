@@ -63,7 +63,11 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	updated := initialUpdated
 	settleTimeout := 120 * time.Second
-	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil || want.MaintenanceWindowIDs != nil {
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD ||
+		want.DNSRecords != nil ||
+		want.APIAssertions != nil ||
+		want.AssignedAlertContacts != nil ||
+		want.MaintenanceWindowIDs != nil {
 		settleTimeout = 240 * time.Second
 	}
 
@@ -267,7 +271,7 @@ func setTimeoutAndGraceOnUpdate(_ context.Context, plan monitorResourceModel, re
 		req.GracePeriod = &zero
 		req.Timeout = &zero
 
-	default: // HTTP, KEYWORD, PORT
+	default: // HTTP, KEYWORD, PORT, API
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
 			req.Timeout = &v
@@ -646,7 +650,7 @@ func applyUpdatedMonitorToState(
 	case MonitorTypeDNS, MonitorTypePING:
 		out.Timeout = types.Int64Null()
 		out.GracePeriod = types.Int64Null()
-	default:
+	default: // HTTP, KEYWORD, PORT, API
 		out.GracePeriod = types.Int64Null()
 		if m.Timeout > 0 {
 			out.Timeout = types.Int64Value(int64(m.Timeout))

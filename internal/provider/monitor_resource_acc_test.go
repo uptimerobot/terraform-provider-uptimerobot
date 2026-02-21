@@ -297,6 +297,35 @@ resource "uptimerobot_monitor" "test" {
 `, name, domain, cfg)
 }
 
+func testAccMonitorResourceConfigWithAPIAssertions(name, logic, comparison, targetExpr string) string {
+	url := testAccUniqueURL(name)
+	target := ""
+	if strings.TrimSpace(targetExpr) != "" {
+		target = "\n          target     = " + targetExpr
+	}
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "API"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    api_assertions = {
+      logic = %q
+      checks = [
+        {
+          property   = "$.status"
+          comparison = %q%s
+        }
+      ]
+    }
+  }
+}
+`, name, url, logic, comparison, target)
+}
+
 // ---------- MW helpers that embed STABLE (literal) date/time ----------
 
 func testAccConfigMonitorWithTwoMWs(sfx string) string {
@@ -1206,6 +1235,103 @@ resource "uptimerobot_monitor" "test" {
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "DNS"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", dnsDomain),
 				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_API_ConfigAssertions_RoundTrip(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-api-assert")
+	res := "uptimerobot_monitor.test"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccMonitorResourceConfigWithAPIAssertions(name, "AND", "equals", `jsonencode("ok")`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "type", "API"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.logic", "AND"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.#", "1"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.0.comparison", "equals"),
+				),
+			},
+			{
+				Config: testAccMonitorResourceConfigWithAPIAssertions(name, "OR", "not_equals", `jsonencode("down")`),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "type", "API"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.logic", "OR"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.#", "1"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.0.comparison", "not_equals"),
+				),
+			},
+			{
+				Config:             testAccMonitorResourceConfigWithAPIAssertions(name, "OR", "not_equals", `jsonencode("down")`),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_API_RequiresConfigOnCreate(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-api-reqcfg")
+	url := testAccUniqueURL(name)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = %q
+  type     = "API"
+  interval = 300
+  timeout  = 30
+}
+`, name, url),
+				ExpectError: regexp.MustCompile(`(?i)config.*required.*dns/api`),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_APIAssertions_ForbiddenOnHTTP(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-apiassert-http")
+	url := testAccUniqueURL(name)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = %q
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.status"
+          comparison = "equals"
+          target     = jsonencode("ok")
+        }
+      ]
+    }
+  }
+}
+`, name, url),
+				ExpectError: regexp.MustCompile(`(?i)api_assertions[\s\S]*only[\s\S]*api monitors?`),
 			},
 		},
 	})

@@ -388,6 +388,33 @@ resource "uptimerobot_monitor" "dns_preserve" {
 
   # No config block - provider will preserves server-side DNS records
 }
+
+# API monitor with assertions
+resource "uptimerobot_monitor" "api_assertions" {
+  name     = "API assertions"
+  type     = "API"
+  url      = "https://example.com/api/health"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.status"
+          comparison = "equals"
+          target     = jsonencode("ok")
+        },
+        {
+          property   = "$.count"
+          comparison = "greater_than"
+          target     = jsonencode(0)
+        },
+      ]
+    }
+  }
+}
 ```
 
 ## Monitor Types
@@ -416,7 +443,7 @@ Common monitoring intervals:
 
 - `interval` (Number) Interval for the monitoring check (in seconds)
 - `name` (String) Tip: Write names as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
-- `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)
+- `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API)
 - `url` (String) Tip: Write url as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
 
 ### Optional
@@ -432,18 +459,19 @@ Common monitoring intervals:
 - `config` (Attributes) Advanced monitor configuration.
 
 **Semantics**
-- **Omit** the block → **preserve** remote values (no change). *(Exception: DNS on create requires `config`.)*
+- **Omit** the block → **preserve** remote values (no change). *(Exception: DNS/API on create require `config`.)*
 - `config = {}` (empty block) → treat as **managed but keep** current remote values.
 - `ssl_expiration_period_days = []` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 - Removing `ip_version` from a managed `config` block clears remote `ipVersion` (reverts to API default dual-stack behavior).
 
 **Validation**
 - For `type = "DNS"` on create, `config` is required (use `config = {}` for defaults).
+- For `type = "API"` on create, set `config.api_assertions` with `logic` and 1-5 `checks`.
 - `dns_records` is only valid for DNS monitors.
 - `config.ssl_expiration_period_days` is only valid for DNS monitors.
 - `ip_version` is only valid for HTTP/KEYWORD/PING/PORT monitors.
-- Top-level `ssl_expiration_reminder` and `check_ssl_errors` are valid for HTTPS URLs on HTTP/KEYWORD monitors.
-- API v3 also documents `config.apiAssertions` / `config.udp` / `config.ipVersion` branches, but this provider currently supports monitor types HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS only. (see [below for nested schema](#nestedatt--config))
+- `config.api_assertions` is only valid for API monitors.
+- Top-level `ssl_expiration_reminder` and `check_ssl_errors` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors. (see [below for nested schema](#nestedatt--config))
 - `custom_http_headers` (Map of String) Custom HTTP headers as key:value. **Keys are case-insensitive.** The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. Tip: add keys in lower-case (e.g., `"content-type" = "application/json"`).
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
 - `follow_redirections` (Boolean) Whether to follow redirections
@@ -496,6 +524,7 @@ Required:
 
 Optional:
 
+- `api_assertions` (Attributes) API monitor assertion rules. Supported only for type=API. (see [below for nested schema](#nestedatt--config--api_assertions))
 - `dns_records` (Attributes) DNS record lists for DNS monitors. If present on non-DNS types, validation fails. (see [below for nested schema](#nestedatt--config--dns_records))
 - `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT monitors. Use ipv4Only or ipv6Only.
 - `ssl_expiration_period_days` (Set of Number) Reminder days before SSL expiry (0..365). Max 10 items.
@@ -503,6 +532,28 @@ Optional:
 - Omit the attribute → **preserve** remote values.
 - Empty set `[]` → **clear** values on server.
 Supported when `type = "DNS"`.
+
+<a id="nestedatt--config--api_assertions"></a>
+### Nested Schema for `config.api_assertions`
+
+Optional:
+
+- `checks` (Attributes List) Assertion checks list. Each check uses JSONPath property, comparison, and optional target. (see [below for nested schema](#nestedatt--config--api_assertions--checks))
+- `logic` (String) How checks are combined. Allowed: AND, OR.
+
+<a id="nestedatt--config--api_assertions--checks"></a>
+### Nested Schema for `config.api_assertions.checks`
+
+Required:
+
+- `comparison` (String) Comparison operator.
+- `property` (String) JSONPath expression, for example $.data.status
+
+Optional:
+
+- `target` (String) Optional target value as JSON. Use jsonencode(...) for strings/numbers/booleans/null.
+
+
 
 <a id="nestedatt--config--dns_records"></a>
 ### Nested Schema for `config.dns_records`

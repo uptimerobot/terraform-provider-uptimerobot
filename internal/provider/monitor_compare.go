@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"html"
 	"sort"
 	"strings"
@@ -42,7 +43,19 @@ type monComparable struct {
 	DNSRecords              map[string][]string
 	IPVersion               *string
 	ExpectIPVersionUnset    bool
+	APIAssertions           *apiAssertionsComparable
 	AssignedAlertContacts   []string
+}
+
+type apiAssertionsComparable struct {
+	Logic  string
+	Checks []apiAssertionCheckComparable
+}
+
+type apiAssertionCheckComparable struct {
+	Property   string
+	Comparison string
+	TargetJSON string
 }
 
 func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
@@ -193,6 +206,9 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	if req.Config != nil && req.Config.IPVersion == nil {
 		c.ExpectIPVersionUnset = true
 	}
+	if req.Config != nil && req.Config.APIAssertions != nil {
+		c.APIAssertions = normalizeAPIAssertions(req.Config.APIAssertions)
+	}
 	return c
 }
 
@@ -335,6 +351,9 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 	}
 	if req.Config != nil && req.Config.IPVersion == nil {
 		c.ExpectIPVersionUnset = true
+	}
+	if req.Config != nil && req.Config.APIAssertions != nil {
+		c.APIAssertions = normalizeAPIAssertions(req.Config.APIAssertions)
 	}
 	if req.AssignedAlertContacts != nil {
 		c.AssignedAlertContacts = normalizeAlertContactIDsFromRequestsPtr(req.AssignedAlertContacts)
@@ -496,6 +515,9 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 			if normalized, keep := normalizeIPVersionForAPI(*m.Config.IPVersion); keep {
 				c.IPVersion = &normalized
 			}
+		}
+		if m.Config.APIAssertions != nil {
+			c.APIAssertions = normalizeAPIAssertions(m.Config.APIAssertions)
 		}
 	}
 	c.AssignedAlertContacts = normalizeAlertContactIDs(m.AssignedAlertContacts)
@@ -680,6 +702,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.ExpectIPVersionUnset && got.IPVersion != nil {
 		return false
 	}
+	if want.APIAssertions != nil && !equalAPIAssertions(want.APIAssertions, got.APIAssertions) {
+		return false
+	}
 
 	if want.SuccessCodes != nil && !equalStringSet(want.SuccessCodes, got.SuccessCodes) {
 		return false
@@ -769,6 +794,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	if want.ExpectIPVersionUnset && got.IPVersion != nil {
 		f = append(f, "config.ip_version")
 	}
+	if want.APIAssertions != nil && !equalAPIAssertions(want.APIAssertions, got.APIAssertions) {
+		f = append(f, "config.api_assertions")
+	}
 	if want.KeywordCaseType != nil && (got.KeywordCaseType == nil || *want.KeywordCaseType != *got.KeywordCaseType) {
 		f = append(f, "keyword_case_type")
 	}
@@ -787,6 +815,66 @@ func equalStringSet(a, b []string) bool {
 	}
 	for i := range a {
 		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeAPIAssertions(in *client.APIMonitorAssertions) *apiAssertionsComparable {
+	if in == nil {
+		return nil
+	}
+	out := &apiAssertionsComparable{
+		Logic: strings.ToUpper(strings.TrimSpace(in.Logic)),
+	}
+	if len(in.Checks) == 0 {
+		out.Checks = []apiAssertionCheckComparable{}
+		return out
+	}
+
+	checks := make([]apiAssertionCheckComparable, 0, len(in.Checks))
+	for _, c := range in.Checks {
+		targetJSON := ""
+		if c.Target != nil {
+			if b, err := json.Marshal(c.Target); err == nil {
+				targetJSON = string(b)
+			}
+		}
+		checks = append(checks, apiAssertionCheckComparable{
+			Property:   strings.TrimSpace(c.Property),
+			Comparison: strings.ToLower(strings.TrimSpace(c.Comparison)),
+			TargetJSON: targetJSON,
+		})
+	}
+	sort.Slice(checks, func(i, j int) bool {
+		if checks[i].Property != checks[j].Property {
+			return checks[i].Property < checks[j].Property
+		}
+		if checks[i].Comparison != checks[j].Comparison {
+			return checks[i].Comparison < checks[j].Comparison
+		}
+		return checks[i].TargetJSON < checks[j].TargetJSON
+	})
+	out.Checks = checks
+	return out
+}
+
+func equalAPIAssertions(want, got *apiAssertionsComparable) bool {
+	if want == nil {
+		return true
+	}
+	if got == nil {
+		return false
+	}
+	if want.Logic != got.Logic {
+		return false
+	}
+	if len(want.Checks) != len(got.Checks) {
+		return false
+	}
+	for i := range want.Checks {
+		if want.Checks[i] != got.Checks[i] {
 			return false
 		}
 	}

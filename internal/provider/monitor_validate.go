@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
@@ -99,13 +101,13 @@ func validateURL(
 	}
 
 	switch monitorType {
-	case MonitorTypeHTTP, MonitorTypeKEYWORD:
+	case MonitorTypeHTTP, MonitorTypeKEYWORD, MonitorTypeAPI:
 		u, err := url.Parse(raw)
 		if err != nil || u.Scheme == "" || u.Host == "" {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("url"),
 				"Invalid URL",
-				"When type is HTTP or KEYWORD, url must be a valid http(s) URL (e.g., https://example.com/health).",
+				"When type is HTTP, KEYWORD, or API, url must be a valid http(s) URL (e.g., https://example.com/health).",
 			)
 			return
 		}
@@ -114,7 +116,7 @@ func validateURL(
 			resp.Diagnostics.AddAttributeError(
 				path.Root("url"),
 				"Invalid URL scheme",
-				"When type is HTTP or KEYWORD, url must start with http:// or https://.",
+				"When type is HTTP, KEYWORD, or API, url must start with http:// or https://.",
 			)
 		}
 	}
@@ -256,7 +258,9 @@ func validateConfig(
 
 	sslHTTPFlagsTouched := sslRemTouched || sslCheckErrTouched
 
-	// ssl_expiration_period_days is currently accepted by API only in DNS monitor config.
+	apiAssertionsTouched := !cfg.APIAssertions.IsNull() && !cfg.APIAssertions.IsUnknown()
+
+	// ssl_expiration_period_days is accepted by API only in DNS monitor config.
 	if sslDaysTouched && monitorType != MonitorTypeDNS {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("config").AtName("ssl_expiration_period_days"),
@@ -265,27 +269,36 @@ func validateConfig(
 		)
 	}
 
-	// Top-level SSL flags apply only to HTTP/KEYWORD monitors.
-	if sslHTTPFlagsTouched && monitorType != MonitorTypeHTTP && monitorType != MonitorTypeKEYWORD {
+	// api_assertions is accepted only for API monitors.
+	if apiAssertionsTouched && monitorType != MonitorTypeAPI {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("api_assertions"),
+			"api_assertions only allowed for API monitors",
+			"Set type = API or remove config.api_assertions.",
+		)
+	}
+
+	// Top-level SSL flags apply only to HTTP/KEYWORD/API monitors.
+	if sslHTTPFlagsTouched && monitorType != MonitorTypeHTTP && monitorType != MonitorTypeKEYWORD && monitorType != MonitorTypeAPI {
 		if sslRemTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("ssl_expiration_reminder"),
 				"SSL reminder not allowed for this monitor type",
-				"ssl_expiration_reminder is only supported for HTTP/KEYWORD monitors.",
+				"ssl_expiration_reminder is only supported for HTTP/KEYWORD/API monitors.",
 			)
 		}
 		if sslCheckErrTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("check_ssl_errors"),
 				"Check SSL errors not allowed for this monitor type",
-				"check_ssl_errors is only supported for HTTP/KEYWORD monitors.",
+				"check_ssl_errors is only supported for HTTP/KEYWORD/API monitors.",
 			)
 		}
 		return
 	}
 
-	// For HTTP/KEYWORD monitors, top-level SSL flags require HTTPS URL.
-	if sslHTTPFlagsTouched && (monitorType == MonitorTypeHTTP || monitorType == MonitorTypeKEYWORD) &&
+	// For HTTP/KEYWORD/API monitors, top-level SSL flags require HTTPS URL.
+	if sslHTTPFlagsTouched && (monitorType == MonitorTypeHTTP || monitorType == MonitorTypeKEYWORD || monitorType == MonitorTypeAPI) &&
 		!data.URL.IsNull() && !data.URL.IsUnknown() &&
 		!strings.HasPrefix(strings.ToLower(data.URL.ValueString()), "https://") {
 
@@ -335,6 +348,166 @@ func validateConfig(
 		)
 	}
 
+	if monitorType == MonitorTypeAPI && !data.Config.IsNull() && !data.Config.IsUnknown() {
+		if cfg.APIAssertions.IsNull() || cfg.APIAssertions.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("api_assertions"),
+				"API monitor requires api_assertions",
+				"Set config.api_assertions with logic and checks.",
+			)
+			return
+		}
+
+		var assertions apiAssertionsTF
+		resp.Diagnostics.Append(cfg.APIAssertions.As(ctx, &assertions, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		if assertions.Logic.IsNull() || assertions.Logic.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("api_assertions").AtName("logic"),
+				"Missing API assertions logic",
+				"Set logic to AND or OR.",
+			)
+		}
+
+		if assertions.Checks.IsNull() || assertions.Checks.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("api_assertions").AtName("checks"),
+				"Missing API assertions checks",
+				"Set 1 to 5 checks in config.api_assertions.checks.",
+			)
+			return
+		}
+
+		var checks []apiAssertionCheckTF
+		resp.Diagnostics.Append(assertions.Checks.ElementsAs(ctx, &checks, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if len(checks) < 1 || len(checks) > 5 {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("api_assertions").AtName("checks"),
+				"Invalid number of checks",
+				"API assertions checks must contain 1 to 5 items.",
+			)
+			return
+		}
+
+		for i, check := range checks {
+			checkPath := path.Root("config").AtName("api_assertions").AtName("checks").AtListIndex(i)
+			if check.Property.IsNull() || check.Property.IsUnknown() || strings.TrimSpace(check.Property.ValueString()) == "" {
+				resp.Diagnostics.AddAttributeError(
+					checkPath.AtName("property"),
+					"Missing assertion property",
+					"Each check.property must be a non-empty JSONPath expression.",
+				)
+			}
+			if !check.Property.IsNull() && !check.Property.IsUnknown() && !strings.HasPrefix(strings.TrimSpace(check.Property.ValueString()), "$") {
+				resp.Diagnostics.AddAttributeError(
+					checkPath.AtName("property"),
+					"Invalid assertion property",
+					"check.property must start with '$' (JSONPath syntax).",
+				)
+			}
+
+			comparison := strings.TrimSpace(strings.ToLower(stringOrEmpty(check.Comparison)))
+			switch comparison {
+			case "equals", "not_equals", "contains", "not_contains", "greater_than", "less_than", "is_null", "is_not_null":
+			default:
+				resp.Diagnostics.AddAttributeError(
+					checkPath.AtName("comparison"),
+					"Invalid assertion comparison",
+					"Allowed values: equals, not_equals, contains, not_contains, greater_than, less_than, is_null, is_not_null.",
+				)
+				continue
+			}
+
+			hasTarget := !check.Target.IsNull() && !check.Target.IsUnknown() && strings.TrimSpace(check.Target.ValueString()) != ""
+			var target interface{}
+			if hasTarget {
+				if err := json.Unmarshal([]byte(check.Target.ValueString()), &target); err != nil {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Invalid JSON target",
+						"target must be valid JSON. Use jsonencode(...) for strings, numbers, booleans, or null.",
+					)
+					continue
+				}
+			}
+
+			switch comparison {
+			case "is_null", "is_not_null":
+				if hasTarget && target != nil {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Target is not allowed",
+						"is_null and is_not_null comparisons must not define target.",
+					)
+				}
+			case "greater_than", "less_than":
+				if !hasTarget {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Missing numeric target",
+						"greater_than and less_than require numeric target.",
+					)
+					continue
+				}
+				if _, ok := target.(float64); !ok {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Invalid numeric target",
+						"greater_than and less_than require a number target.",
+					)
+				}
+			case "contains", "not_contains":
+				if !hasTarget {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Missing string target",
+						"contains and not_contains require a non-empty string target.",
+					)
+					continue
+				}
+				s, ok := target.(string)
+				if !ok || strings.TrimSpace(s) == "" {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Invalid string target",
+						"contains and not_contains require a non-empty string target.",
+					)
+				}
+			case "equals", "not_equals":
+				if !hasTarget {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Missing target",
+						"equals and not_equals require string, number, or boolean target.",
+					)
+					continue
+				}
+				switch v := target.(type) {
+				case string:
+					if strings.TrimSpace(v) == "" {
+						resp.Diagnostics.AddAttributeError(
+							checkPath.AtName("target"),
+							"Invalid string target",
+							"equals and not_equals do not allow empty string target.",
+						)
+					}
+				case float64, bool:
+				default:
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Invalid target type",
+						"equals and not_equals require string, number, or boolean target.",
+					)
+				}
+			}
+		}
+	}
 }
 
 func validateConfigIPVersion(

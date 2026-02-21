@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -80,7 +82,7 @@ func TestValidateCreateHighLevel_PortType_RejectsUnknownPort(t *testing.T) {
 		Port: types.Int64Unknown(),
 	}
 
-	ok := validateCreateHighLevel(plan, resp)
+	ok := validateCreateHighLevel(context.TODO(), plan, resp)
 
 	if ok {
 		t.Fatalf("expected ok=false for unknown port")
@@ -199,6 +201,59 @@ func TestValidateURL_NonHTTPLike_AllowsBareHost(t *testing.T) {
 
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("expected no errors for bare host on PING, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateURL_API_RequiresSchemeAndHost(t *testing.T) {
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{URL: types.StringValue("example.com")}
+
+	validateURL(context.TODO(), MonitorTypeAPI, data, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error for API URL without scheme/host, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateCreateHighLevel_APIType_RequiresAPIAssertions(t *testing.T) {
+	resp := &resource.CreateResponse{}
+	plan := monitorResourceModel{
+		Type:   types.StringValue(MonitorTypeAPI),
+		Config: types.ObjectNull(configObjectType().AttrTypes),
+	}
+
+	ok := validateCreateHighLevel(context.TODO(), plan, resp)
+	if ok {
+		t.Fatalf("expected ok=false when API monitor has null config")
+	}
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected diagnostics error for missing API config")
+	}
+}
+
+func TestValidateCreateHighLevel_APIType_AllowsAPIAssertions(t *testing.T) {
+	resp := &resource.CreateResponse{}
+	check := types.ObjectValueMust(apiAssertionCheckObjectType().AttrTypes, map[string]attr.Value{
+		"property":   types.StringValue("$.status"),
+		"comparison": types.StringValue("equals"),
+		"target":     jsontypes.NewNormalizedValue(`"ok"`),
+	})
+	plan := monitorResourceModel{
+		Type: types.StringValue(MonitorTypeAPI),
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions": types.ObjectValueMust(apiAssertionsObjectType().AttrTypes, map[string]attr.Value{
+				"logic":  types.StringValue("AND"),
+				"checks": types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{check}),
+			}),
+			"ip_version": types.StringNull(),
+		}),
+	}
+
+	ok := validateCreateHighLevel(context.TODO(), plan, resp)
+	if !ok {
+		t.Fatalf("expected ok=true for valid API monitor config, diagnostics: %v", resp.Diagnostics)
 	}
 }
 

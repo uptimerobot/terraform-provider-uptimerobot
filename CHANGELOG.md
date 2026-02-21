@@ -1,5 +1,17 @@
 ## Unreleased
 
+### Added
+- Added `type = "API"` monitor support in `uptimerobot_monitor`.
+- Added `config.api_assertions` support with create/update/read transforms and API payload mapping to `config.apiAssertions`.
+
+### Changed
+- Extended monitor URL validation and HTTP-like method handling to include API monitors.
+- Updated monitor docs/examples to cover API monitor assertions configuration.
+
+### Tests
+- Added acceptance coverage for API monitor assertions round-trip and API-specific validation cases.
+- Added unit coverage for API assertions config transform/compare/marshal behavior.
+
 ## 1.3.9 — 2025-12-24
 
 ### Fixed

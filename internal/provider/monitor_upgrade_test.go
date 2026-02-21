@@ -283,12 +283,13 @@ func TestUpgradeFromV4_Config_WithSSLDays(t *testing.T) {
 	up, diags := upgradeMonitorFromV4(ctx, prior)
 	require.False(t, diags.HasError(), "diags: %+v", diags)
 
-	// Config should have both attributes
+	// Config should have all current attributes
 	require.False(t, up.Config.IsNull(), "config should not be null")
 	attrs := up.Config.Attributes()
 	require.Contains(t, attrs, "ssl_expiration_period_days", "missing ssl_expiration_period_days")
 	require.Contains(t, attrs, "dns_records", "missing dns_records")
 	require.Contains(t, attrs, "ip_version", "missing ip_version")
+	require.Contains(t, attrs, "api_assertions", "missing api_assertions")
 
 	// ssl_expiration_period_days should preserve values
 	sslDays, ok := attrs["ssl_expiration_period_days"].(types.Set)
@@ -304,6 +305,10 @@ func TestUpgradeFromV4_Config_WithSSLDays(t *testing.T) {
 	ipVersion, ok := attrs["ip_version"].(types.String)
 	require.True(t, ok, "ip_version should be types.String")
 	require.True(t, ipVersion.IsNull(), "ip_version should be null")
+
+	apiAssertions, ok := attrs["api_assertions"].(types.Object)
+	require.True(t, ok, "api_assertions should be types.Object")
+	require.True(t, apiAssertions.IsNull(), "api_assertions should be null")
 }
 
 func TestUpgradeFromV3_Config_WithSSLDays(t *testing.T) {
@@ -327,12 +332,13 @@ func TestUpgradeFromV3_Config_WithSSLDays(t *testing.T) {
 	up, diags := upgradeMonitorFromV3(ctx, prior)
 	require.False(t, diags.HasError(), "diags: %+v", diags)
 
-	// Config should have both attributes
+	// Config should have all current attributes
 	require.False(t, up.Config.IsNull(), "config should not be null")
 	attrs := up.Config.Attributes()
 	require.Contains(t, attrs, "ssl_expiration_period_days", "missing ssl_expiration_period_days")
 	require.Contains(t, attrs, "dns_records", "missing dns_records")
 	require.Contains(t, attrs, "ip_version", "missing ip_version")
+	require.Contains(t, attrs, "api_assertions", "missing api_assertions")
 
 	// ssl_expiration_period_days should preserve values
 	sslDays, ok := attrs["ssl_expiration_period_days"].(types.Set)
@@ -348,4 +354,8 @@ func TestUpgradeFromV3_Config_WithSSLDays(t *testing.T) {
 	ipVersion, ok := attrs["ip_version"].(types.String)
 	require.True(t, ok, "ip_version should be types.String")
 	require.True(t, ipVersion.IsNull(), "ip_version should be null")
+
+	apiAssertions, ok := attrs["api_assertions"].(types.Object)
+	require.True(t, ok, "api_assertions should be types.Object")
+	require.True(t, apiAssertions.IsNull(), "api_assertions should be null")
 }

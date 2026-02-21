@@ -2,8 +2,10 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
@@ -33,6 +35,7 @@ func TestExpandConfigToAPI_DNSRecordsEmptyObjectMarksTouched(t *testing.T) {
 		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
 		"dns_records":                dnsRecordsNullObject(),
 		"ip_version":                 types.StringNull(),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 	})
 
 	out, touched, diags := expandConfigToAPI(ctx, cfg)
@@ -58,6 +61,7 @@ func TestFlattenConfigToState_NoAPIAndPrevNullDNS_StaysNull(t *testing.T) {
 		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
 		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
 		"ip_version":                 types.StringNull(),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 	})
 
 	stateObj, diags := flattenConfigToState(ctx, true, prev, nil)
@@ -85,6 +89,7 @@ func TestFlattenConfigToState_DNSFromAPI_PopulatesSets(t *testing.T) {
 		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
 		"dns_records":                dnsRecordsNullObject(),
 		"ip_version":                 types.StringNull(),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 	})
 
 	a := []string{"1.1.1.1"}
@@ -135,4 +140,103 @@ func dnsRecordsNullObject() types.Object {
 		"nsec":   types.SetNull(types.StringType),
 		"nsec3":  types.SetNull(types.StringType),
 	})
+}
+
+func TestExpandConfigToAPI_APIAssertionsTouched(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	check := types.ObjectValueMust(apiAssertionCheckObjectType().AttrTypes, map[string]attr.Value{
+		"property":   types.StringValue("$.status"),
+		"comparison": types.StringValue("equals"),
+		"target":     jsontypes.NewNormalizedValue(`"ok"`),
+	})
+	cfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions": types.ObjectValueMust(apiAssertionsObjectType().AttrTypes, map[string]attr.Value{
+			"logic":  types.StringValue("AND"),
+			"checks": types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{check}),
+		}),
+		"ip_version": types.StringNull(),
+	})
+
+	out, touched, diags := expandConfigToAPI(ctx, cfg)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if !touched {
+		t.Fatalf("expected touched=true when api_assertions exists")
+	}
+	if out == nil || out.APIAssertions == nil {
+		t.Fatalf("expected apiAssertions payload to be set")
+	}
+	if out.APIAssertions.Logic != "AND" {
+		t.Fatalf("expected logic AND, got %q", out.APIAssertions.Logic)
+	}
+	if len(out.APIAssertions.Checks) != 1 {
+		t.Fatalf("expected one assertion check, got %d", len(out.APIAssertions.Checks))
+	}
+	gotTarget, ok := out.APIAssertions.Checks[0].Target.(string)
+	if !ok || gotTarget != "ok" {
+		t.Fatalf("expected string target=ok, got %#v", out.APIAssertions.Checks[0].Target)
+	}
+}
+
+func TestFlattenConfigToState_APIAssertionsFromAPI_PopulatesObject(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	prev := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"ip_version":                 types.StringNull(),
+	})
+
+	stateObj, diags := flattenConfigToState(ctx, true, prev, &client.MonitorConfig{
+		APIAssertions: &client.APIMonitorAssertions{
+			Logic: "AND",
+			Checks: []client.APIMonitorAssertionCheck{
+				{
+					Property:   "$.status",
+					Comparison: "equals",
+					Target:     "ok",
+				},
+			},
+		},
+	})
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+
+	var cfg configTF
+	if d := stateObj.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); d.HasError() {
+		t.Fatalf("unexpected object decode diagnostics: %+v", d)
+	}
+	if cfg.APIAssertions.IsNull() || cfg.APIAssertions.IsUnknown() {
+		t.Fatalf("expected api_assertions object to be present")
+	}
+
+	var assertions apiAssertionsTF
+	if d := cfg.APIAssertions.As(ctx, &assertions, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); d.HasError() {
+		t.Fatalf("unexpected api_assertions decode diagnostics: %+v", d)
+	}
+	if assertions.Logic.ValueString() != "AND" {
+		t.Fatalf("expected logic=AND, got %q", assertions.Logic.ValueString())
+	}
+	var checks []apiAssertionCheckTF
+	if d := assertions.Checks.ElementsAs(ctx, &checks, false); d.HasError() {
+		t.Fatalf("unexpected checks decode diagnostics: %+v", d)
+	}
+	if len(checks) != 1 {
+		t.Fatalf("expected one check, got %d", len(checks))
+	}
+	var target interface{}
+	if err := json.Unmarshal([]byte(checks[0].Target.ValueString()), &target); err != nil {
+		t.Fatalf("unexpected target json decode error: %v", err)
+	}
+	if target != "ok" {
+		t.Fatalf("expected target=ok, got %#v", target)
+	}
 }
