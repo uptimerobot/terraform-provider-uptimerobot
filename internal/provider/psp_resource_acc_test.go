@@ -4,11 +4,42 @@ package provider
 
 import (
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
+
+func writeAccPSPImageFile(t *testing.T, name string, fill color.RGBA) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), name+".png")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create test image file: %v", err)
+	}
+
+	img := image.NewRGBA(image.Rect(0, 0, 20, 20))
+	for y := 0; y < 20; y++ {
+		for x := 0; x < 20; x++ {
+			img.Set(x, y, fill)
+		}
+	}
+	if err := png.Encode(file, img); err != nil {
+		_ = file.Close()
+		t.Fatalf("encode test image: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close test image file: %v", err)
+	}
+
+	return path
+}
 
 // Basic config with features + a few custom settings to cover both bool and string fields.
 func testAccPSPResourceConfigWithFeatures(name string) string {
@@ -135,17 +166,19 @@ resource "uptimerobot_psp" "test" {
 `, name)
 }
 
-func testAccPSPResourceConfigOptionalsSet(name string) string {
+func testAccPSPResourceConfigOptionalsSet(name, logoPath, iconPath string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name = %q
 
-  ga_code = "G-ABCDE12349"
+  logo_file_path = %q
+  icon_file_path = %q
+  ga_code        = "G-ABCDE12349"
 
   # Sensitive and not returned by the API. Provider should still not error.
   password = "change-me"
 }
-`, name)
+`, name, logoPath, iconPath)
 }
 
 func testAccPSPResourceConfigOptionalsOmitted(name string) string {
@@ -323,6 +356,8 @@ func TestAccPSPResource_CustomSettings_EmptyObjectStable(t *testing.T) {
 
 func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
 	name := randomName("acc-psp-opt")
+	logoPath := writeAccPSPImageFile(t, "logo", color.RGBA{R: 20, G: 120, B: 220, A: 255})
+	iconPath := writeAccPSPImageFile(t, "icon", color.RGBA{R: 220, G: 120, B: 20, A: 255})
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -330,9 +365,13 @@ func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
 		CheckDestroy:             testAccCheckPSPDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccPSPResourceConfigOptionalsSet(name),
+				Config: testAccPSPResourceConfigOptionalsSet(name, logoPath, iconPath),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckResourceAttrSet("uptimerobot_psp.test", "icon"),
+					resource.TestCheckResourceAttrSet("uptimerobot_psp.test", "logo"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon_file_path", iconPath),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo_file_path", logoPath),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "ga_code", "G-ABCDE12349"),
 				),
 			},
@@ -340,6 +379,10 @@ func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
 				Config: testAccPSPResourceConfigOptionalsOmitted(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckResourceAttrSet("uptimerobot_psp.test", "icon"),
+					resource.TestCheckResourceAttrSet("uptimerobot_psp.test", "logo"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon_file_path", iconPath),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo_file_path", logoPath),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "ga_code", "G-ABCDE12349"),
 				),
 			},

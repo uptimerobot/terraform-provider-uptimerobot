@@ -19,10 +19,12 @@
 - Acceptance test execution strategy was adjusted:
   - Pull Requests now run a reduced acceptance matrix (`terraform latest`, `opentofu latest`) for faster feedback.
   - `main`/manual runs execute an extended acceptance matrix (4 lanes) for broader compatibility coverage.
+- `uptimerobot_psp` now uploads `logo` and `icon` via multipart/form-data using new `logo_file_path` and `icon_file_path` attributes.
+- PSP docs/examples were updated to use local file-path uploads for branding images.
 
 ### Fixed
 - DNS config validation warning now correctly treats both `config.dns_records` and `config.ssl_expiration_period_days` as managed DNS config fields.
-- PSP create/update no longer fails with API 400 when `icon`/`logo` are configured as URL strings: provider now rejects non-empty `icon`/`logo` config values with a clear validation message, matching API v3 multipart-only behavior for these fields.
+- Stopped sending JSON string values for PSP `logo`/`icon` writes, aligning provider behavior with API v3 binary-file validation.
 - Stabilized monitor/maintenance-window/PSP eventual-consistency waits by requiring consecutive matching reads before treating updates as settled.
 - Fixed monitor alert-contact settle comparison for explicit clears (`assigned_alert_contacts = []`).
 - Fixed monitor refresh drift after maintenance-window updates by stabilizing read snapshots against managed `maintenance_window_ids`.
@@ -36,6 +38,8 @@
 - Consolidated monitor unit tests into thematic files with explicit section separators to reduce test-file fragmentation.
 - Added acceptance coverage for API monitor assertions round-trip and API-specific validation cases.
 - Added unit coverage for API assertions config transform/compare/marshal behavior.
+- Added client unit tests for multipart requests and PSP file upload operations.
+- Updated PSP acceptance coverage to exercise image upload via local file paths.
 
 ## 1.3.9 — 2025-12-24
 

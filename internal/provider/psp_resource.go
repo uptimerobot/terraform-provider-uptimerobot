@@ -57,8 +57,10 @@ type pspResourceModel struct {
 	ShareAnalyticsConsent      types.Bool           `tfsdk:"share_analytics_consent"`
 	UseSmallCookieConsentModal types.Bool           `tfsdk:"use_small_cookie_consent_modal"`
 	Icon                       types.String         `tfsdk:"icon"`
+	IconFilePath               types.String         `tfsdk:"icon_file_path"`
 	NoIndex                    types.Bool           `tfsdk:"no_index"`
 	Logo                       types.String         `tfsdk:"logo"`
+	LogoFilePath               types.String         `tfsdk:"logo_file_path"`
 	HideURLLinks               types.Bool           `tfsdk:"hide_url_links"`
 	Subscription               types.Bool           `tfsdk:"subscription"`
 	ShowCookieBar              types.Bool           `tfsdk:"show_cookie_bar"`
@@ -116,14 +118,14 @@ func maskOptionalTopLevelNullsFromPlan(plan *pspResourceModel, state *pspResourc
 	if plan.Password.IsNull() {
 		state.Password = types.StringNull()
 	}
-	if plan.Icon.IsNull() {
-		state.Icon = types.StringNull()
-	}
-	if plan.Logo.IsNull() {
-		state.Logo = types.StringNull()
-	}
 	if plan.CustomDomain.IsNull() {
 		state.CustomDomain = types.StringNull()
+	}
+	if plan.IconFilePath.IsNull() {
+		state.IconFilePath = types.StringNull()
+	}
+	if plan.LogoFilePath.IsNull() {
+		state.LogoFilePath = types.StringNull()
 	}
 	if plan.PinnedAnnouncementID.IsNull() {
 		state.PinnedAnnouncementID = types.Int64Null()
@@ -143,11 +145,17 @@ func preferPlannedTopLevelValues(plan *pspResourceModel, state *pspResourceModel
 	if hasConfiguredString(plan.GACode) {
 		state.GACode = plan.GACode
 	}
-	if hasConfiguredString(plan.Icon) {
+	if hasConfiguredString(plan.Icon) && strings.TrimSpace(plan.Icon.ValueString()) == "" {
 		state.Icon = plan.Icon
 	}
-	if hasConfiguredString(plan.Logo) {
+	if hasConfiguredString(plan.Logo) && strings.TrimSpace(plan.Logo.ValueString()) == "" {
 		state.Logo = plan.Logo
+	}
+	if hasConfiguredString(plan.IconFilePath) {
+		state.IconFilePath = plan.IconFilePath
+	}
+	if hasConfiguredString(plan.LogoFilePath) {
+		state.LogoFilePath = plan.LogoFilePath
 	}
 	if !plan.PinnedAnnouncementID.IsNull() && !plan.PinnedAnnouncementID.IsUnknown() {
 		state.PinnedAnnouncementID = plan.PinnedAnnouncementID
@@ -250,6 +258,12 @@ func ensureKnownTopLevelOptionals(state *pspResourceModel) {
 	}
 	if state.Logo.IsUnknown() {
 		state.Logo = types.StringNull()
+	}
+	if state.IconFilePath.IsUnknown() {
+		state.IconFilePath = types.StringNull()
+	}
+	if state.LogoFilePath.IsUnknown() {
+		state.LogoFilePath = types.StringNull()
 	}
 	if state.PinnedAnnouncementID.IsUnknown() {
 		state.PinnedAnnouncementID = types.Int64Null()
@@ -617,19 +631,20 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				},
 			},
 			"icon": schema.StringAttribute{
-				Description: "Icon for the PSP. API accepts file uploads only; non-empty string values are not supported by this provider.",
-				MarkdownDescription: "Icon for the PSP.\n\n" +
-					"The API accepts this field only as a file upload via `multipart/form-data`.\n" +
-					"This provider currently does not upload files, so non-empty string values are rejected.\n" +
-					"Use `\"\"` only if you intentionally want to clear the icon.",
-				Optional: true,
-				Computed: true,
+				Description: "PSP icon URL returned by API (read-only). Set to empty string to clear existing icon.",
+				Optional:    true,
+				Computed:    true,
 				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						regexp.MustCompile(`^$`),
-						"icon supports only empty string in this provider; file upload via multipart/form-data is not implemented",
-					),
+					stringvalidator.OneOf(""),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"icon_file_path": schema.StringAttribute{
+				Description: "Local filesystem path to icon image file to upload via multipart/form-data.",
+				Optional:    true,
+				Computed:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -643,19 +658,20 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				},
 			},
 			"logo": schema.StringAttribute{
-				Description: "Logo for the PSP. API accepts file uploads only; non-empty string values are not supported by this provider.",
-				MarkdownDescription: "Logo for the PSP.\n\n" +
-					"The API accepts this field only as a file upload via `multipart/form-data`.\n" +
-					"This provider currently does not upload files, so non-empty string values are rejected.\n" +
-					"Use `\"\"` only if you intentionally want to clear the logo.",
-				Optional: true,
-				Computed: true,
+				Description: "PSP logo URL returned by API (read-only). Set to empty string to clear existing logo.",
+				Optional:    true,
+				Computed:    true,
 				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						regexp.MustCompile(`^$`),
-						"logo supports only empty string in this provider; file upload via multipart/form-data is not implemented",
-					),
+					stringvalidator.OneOf(""),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"logo_file_path": schema.StringAttribute{
+				Description: "Local filesystem path to logo image file to upload via multipart/form-data.",
+				Optional:    true,
+				Computed:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -911,14 +927,6 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		psp.GACode = plan.GACode.ValueStringPointer()
 	}
 
-	if !plan.Icon.IsNull() && !plan.Icon.IsUnknown() {
-		psp.Icon = plan.Icon.ValueStringPointer()
-	}
-
-	if !plan.Logo.IsNull() && !plan.Logo.IsUnknown() {
-		psp.Logo = plan.Logo.ValueStringPointer()
-	}
-
 	// According to the API DTO, we should only include customSettings if needed
 	// The API expects customSettings.page, customSettings.colors, and customSettings.features to be objects, not null
 
@@ -1065,6 +1073,30 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 			"Could not create PSP, unexpected error: "+err.Error(),
 		)
 		return
+	}
+
+	var logoPath, iconPath *string
+	if hasConfiguredString(plan.LogoFilePath) {
+		if value := strings.TrimSpace(plan.LogoFilePath.ValueString()); value != "" {
+			logoPath = &value
+		}
+	}
+	if hasConfiguredString(plan.IconFilePath) {
+		if value := strings.TrimSpace(plan.IconFilePath.ValueString()); value != "" {
+			iconPath = &value
+		}
+	}
+
+	if logoPath != nil || iconPath != nil {
+		pspWithFiles, err := r.client.UpdatePSPFiles(ctx, newPSP.ID, logoPath, iconPath, false, false)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error uploading PSP files",
+				"Could not upload PSP logo/icon files, unexpected error: "+err.Error(),
+			)
+			return
+		}
+		newPSP = pspWithFiles
 	}
 
 	managedColors := plan.CustomSettings != nil && plan.CustomSettings.Colors != nil
@@ -1233,6 +1265,8 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	updatedState := state
 
 	pspToResourceData(ctx, psp, &updatedState)
+	updatedState.IconFilePath = state.IconFilePath
+	updatedState.LogoFilePath = state.LogoFilePath
 
 	if len(psp.MonitorIDs) > 0 {
 		setVal, d := types.SetValueFrom(ctx, types.Int64Type, psp.MonitorIDs)
@@ -1346,18 +1380,6 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		psp.Status = &status
 	}
 
-	if !plan.Icon.IsNull() && !plan.Icon.IsUnknown() &&
-		(state.Icon.IsNull() || state.Icon.IsUnknown() || plan.Icon.ValueString() != state.Icon.ValueString()) {
-		icon := plan.Icon.ValueString()
-		psp.Icon = &icon
-	}
-
-	if !plan.Logo.IsNull() && !plan.Logo.IsUnknown() &&
-		(state.Logo.IsNull() || state.Logo.IsUnknown() || plan.Logo.ValueString() != state.Logo.ValueString()) {
-		logo := plan.Logo.ValueString()
-		psp.Logo = &logo
-	}
-
 	if hasMonitorPlan {
 		psp.MonitorIDs = &requestedMonitorIDs
 	}
@@ -1365,6 +1387,36 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	if !plan.PinnedAnnouncementID.IsNull() && !plan.PinnedAnnouncementID.IsUnknown() &&
 		(state.PinnedAnnouncementID.IsNull() || state.PinnedAnnouncementID.IsUnknown() || plan.PinnedAnnouncementID.ValueInt64() != state.PinnedAnnouncementID.ValueInt64()) {
 		psp.PinnedAnnouncementID = plan.PinnedAnnouncementID.ValueInt64Pointer()
+	}
+
+	var uploadLogoPath, uploadIconPath *string
+	if hasConfiguredString(plan.LogoFilePath) &&
+		(state.LogoFilePath.IsNull() || state.LogoFilePath.IsUnknown() || strings.TrimSpace(plan.LogoFilePath.ValueString()) != strings.TrimSpace(state.LogoFilePath.ValueString())) {
+		if value := strings.TrimSpace(plan.LogoFilePath.ValueString()); value != "" {
+			uploadLogoPath = &value
+		}
+	}
+	if hasConfiguredString(plan.IconFilePath) &&
+		(state.IconFilePath.IsNull() || state.IconFilePath.IsUnknown() || strings.TrimSpace(plan.IconFilePath.ValueString()) != strings.TrimSpace(state.IconFilePath.ValueString())) {
+		if value := strings.TrimSpace(plan.IconFilePath.ValueString()); value != "" {
+			uploadIconPath = &value
+		}
+	}
+
+	clearLogo := hasConfiguredString(plan.Logo) &&
+		strings.TrimSpace(plan.Logo.ValueString()) == "" &&
+		!state.Logo.IsNull() && !state.Logo.IsUnknown() &&
+		strings.TrimSpace(state.Logo.ValueString()) != ""
+	clearIcon := hasConfiguredString(plan.Icon) &&
+		strings.TrimSpace(plan.Icon.ValueString()) == "" &&
+		!state.Icon.IsNull() && !state.Icon.IsUnknown() &&
+		strings.TrimSpace(state.Icon.ValueString()) != ""
+
+	if uploadLogoPath != nil {
+		clearLogo = false
+	}
+	if uploadIconPath != nil {
+		clearIcon = false
 	}
 
 	// Handle CustomSettings only when at least one value is configured in plan.
@@ -1484,6 +1536,18 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 			"Could not update PSP, unexpected error: "+err.Error(),
 		)
 		return
+	}
+
+	if uploadLogoPath != nil || uploadIconPath != nil || clearLogo || clearIcon {
+		pspWithFiles, err := r.client.UpdatePSPFiles(ctx, id, uploadLogoPath, uploadIconPath, clearLogo, clearIcon)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error uploading PSP files",
+				"Could not upload/clear PSP logo/icon files, unexpected error: "+err.Error(),
+			)
+			return
+		}
+		updatedPSP = pspWithFiles
 	}
 
 	pspForState := updatedPSP
@@ -1687,12 +1751,14 @@ func pspToResourceData(_ context.Context, psp *client.PSP, plan *pspResourceMode
 	} else {
 		plan.Icon = types.StringNull()
 	}
+	plan.IconFilePath = types.StringNull()
 
 	if psp.Logo != nil {
 		plan.Logo = types.StringValue(*psp.Logo)
 	} else {
 		plan.Logo = types.StringNull()
 	}
+	plan.LogoFilePath = types.StringNull()
 
 	if psp.PinnedAnnouncementID != nil {
 		plan.PinnedAnnouncementID = types.Int64Value(*psp.PinnedAnnouncementID)

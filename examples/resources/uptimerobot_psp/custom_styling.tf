@@ -12,6 +12,9 @@ resource "uptimerobot_psp" "branded_status" {
     uptimerobot_monitor.website.id,
   ]
 
+  # Custom branding files (multipart upload)
+  logo_file_path = "${path.module}/assets/logo.png"
+  icon_file_path = "${path.module}/assets/icon.png"
   # Custom styling
   custom_settings = {
     colors = {
@@ -26,8 +29,8 @@ resource "uptimerobot_psp" "branded_status" {
 
     page = {
       theme   = "light"
-      layout  = "default"
-      density = "comfortable"
+      layout  = "logo_on_left"
+      density = "normal"
     }
 
     features = {
