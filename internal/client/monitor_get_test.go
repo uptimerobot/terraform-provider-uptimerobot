@@ -93,3 +93,59 @@ func TestClient_GetMonitor_NoFallbackOnNotFound(t *testing.T) {
 		t.Fatalf("expected no list fallback for 404, got %d list calls", listCalls)
 	}
 }
+
+func TestClient_GetMonitor_FallbackListMissReturnsExplicitError(t *testing.T) {
+	t.Parallel()
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			switch req.URL.Path {
+			case "/monitors/71234":
+				return jsonResponse(http.StatusInternalServerError, `{"statusCode":500}`), nil
+			case "/monitors":
+				return jsonResponse(http.StatusOK, `{"monitors":[{"id":80001,"friendlyName":"other","type":"HTTP","url":"https://example.com","interval":300,"status":"STARTED"}]}`), nil
+			default:
+				t.Fatalf("unexpected path %q", req.URL.Path)
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	_, err := c.GetMonitor(context.Background(), 71234)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "fallback /monitors list succeeded but monitor id 71234 was not found") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestClient_GetMonitor_FallbackListRequestFailureReturnsExplicitError(t *testing.T) {
+	t.Parallel()
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			switch req.URL.Path {
+			case "/monitors/71234":
+				return jsonResponse(http.StatusInternalServerError, `{"statusCode":500}`), nil
+			case "/monitors":
+				return jsonResponse(http.StatusInternalServerError, `{"statusCode":500}`), nil
+			default:
+				t.Fatalf("unexpected path %q", req.URL.Path)
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	_, err := c.GetMonitor(context.Background(), 71234)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "fallback /monitors list request also failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

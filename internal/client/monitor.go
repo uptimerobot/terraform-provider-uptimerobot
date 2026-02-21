@@ -235,7 +235,18 @@ func (c *Client) GetMonitor(ctx context.Context, id int64) (*Monitor, error) {
 						return &m, nil
 					}
 				}
+				return nil, fmt.Errorf(
+					"failed to get monitor: %v (fallback /monitors list succeeded but monitor id %d was not found among %d listed monitors)",
+					err,
+					id,
+					len(monitors),
+				)
 			}
+			return nil, fmt.Errorf(
+				"failed to get monitor: %v (fallback /monitors list request also failed: %v)",
+				err,
+				listErr,
+			)
 		}
 		return nil, fmt.Errorf("failed to get monitor: %v", err)
 	}
