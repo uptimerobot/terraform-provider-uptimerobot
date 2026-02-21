@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
@@ -1365,48 +1364,4 @@ func upgradeMonitorFromV4(ctx context.Context, prior monitorV4Model) (monitorRes
 	}
 
 	return up, diags
-}
-
-// V5 -> V6
-// V5 differs from V6 only by missing config.udp field.
-type monitorV5Model = monitorResourceModel
-
-func priorSchemaV5() *schema.Schema {
-	r := &monitorResource{}
-	var resp resource.SchemaResponse
-	r.Schema(context.Background(), resource.SchemaRequest{}, &resp)
-
-	s := resp.Schema
-	s.Version = 5
-
-	// Remove V6-only UDP type from validator/description.
-	if tAttr, ok := s.Attributes["type"].(schema.StringAttribute); ok {
-		tAttr.Description = "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API)"
-		tAttr.Validators = []validator.String{
-			stringvalidator.OneOf(
-				MonitorTypeHTTP,
-				MonitorTypeKEYWORD,
-				MonitorTypePING,
-				MonitorTypePORT,
-				MonitorTypeHEARTBEAT,
-				MonitorTypeDNS,
-				MonitorTypeAPI,
-			),
-		}
-		s.Attributes["type"] = tAttr
-	}
-
-	// Remove V6-only config.udp attribute.
-	if cfgAttr, ok := s.Attributes["config"].(schema.SingleNestedAttribute); ok {
-		delete(cfgAttr.Attributes, "udp")
-		s.Attributes["config"] = cfgAttr
-	}
-
-	return &s
-}
-
-func upgradeMonitorFromV5(_ context.Context, prior monitorV5Model) monitorResourceModel {
-	up := prior
-	up.Config = retypeConfigToCurrent(prior.Config)
-	return up
 }

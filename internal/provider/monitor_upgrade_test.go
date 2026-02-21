@@ -369,35 +369,3 @@ func TestUpgradeFromV3_Config_WithSSLDays(t *testing.T) {
 	require.True(t, ok, "udp should be types.Object")
 	require.True(t, udp.IsNull(), "udp should be null")
 }
-
-func TestUpgradeFromV5_Config_AddsUDPField(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	// V5 config had no udp field.
-	v5ConfigType := types.ObjectType{
-		AttrTypes: map[string]attr.Type{
-			"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
-			"dns_records":                dnsRecordsObjectType(),
-			"ip_version":                 types.StringType,
-			"api_assertions":             apiAssertionsObjectType(),
-		},
-	}
-	prior := monitorV5Model{
-		Config: types.ObjectValueMust(v5ConfigType.AttrTypes, map[string]attr.Value{
-			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
-			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
-			"ip_version":                 types.StringNull(),
-			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
-		}),
-	}
-
-	up := upgradeMonitorFromV5(ctx, prior)
-
-	require.False(t, up.Config.IsNull(), "config should not be null")
-	attrs := up.Config.Attributes()
-	require.Contains(t, attrs, "udp", "missing udp")
-	udp, ok := attrs["udp"].(types.Object)
-	require.True(t, ok, "udp should be types.Object")
-	require.True(t, udp.IsNull(), "udp should be null")
-}

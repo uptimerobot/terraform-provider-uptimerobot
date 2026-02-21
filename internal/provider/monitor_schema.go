@@ -91,7 +91,7 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Version:     6,
+		Version:     5,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
@@ -876,19 +876,6 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 					return
 				}
 
-				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
-			},
-		},
-		5: {
-			PriorSchema: priorSchemaV5(),
-			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
-				var prior monitorV5Model
-				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-
-				upgraded := upgradeMonitorFromV5(ctx, prior)
 				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
 			},
 		},
