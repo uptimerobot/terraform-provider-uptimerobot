@@ -37,6 +37,7 @@ const (
 	MonitorTypePORT      = "PORT"
 	MonitorTypeHEARTBEAT = "HEARTBEAT"
 	MonitorTypeDNS       = "DNS"
+	MonitorTypeAPI       = "API"
 
 	IPVersionIPv4Only = "ipv4Only"
 	IPVersionIPv6Only = "ipv6Only"
@@ -93,7 +94,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
-				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS)",
+				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API)",
 				Required:    true,
 				Validators: []validator.String{
 					stringvalidator.OneOf(
@@ -103,6 +104,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 						MonitorTypePORT,
 						MonitorTypeHEARTBEAT,
 						MonitorTypeDNS,
+						MonitorTypeAPI,
 					),
 				},
 				PlanModifiers: []planmodifier.String{
@@ -417,18 +419,19 @@ Alert contacts assigned to this monitor.
 Advanced monitor configuration.
 
 **Semantics**
-- **Omit** the block → **preserve** remote values (no change). *(Exception: DNS on create requires ` + "`config`" + `.)*
+- **Omit** the block → **preserve** remote values (no change). *(Exception: DNS/API on create require ` + "`config`" + `.)*
 - ` + "`config = {}`" + ` (empty block) → treat as **managed but keep** current remote values.
 - ` + "`ssl_expiration_period_days = []`" + ` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 - Removing ` + "`ip_version`" + ` from a managed ` + "`config`" + ` block clears remote ` + "`ipVersion`" + ` (reverts to API default dual-stack behavior).
 
 **Validation**
 - For ` + "`type = \"DNS\"`" + ` on create, ` + "`config`" + ` is required (use ` + "`config = {}`" + ` for defaults).
+- For ` + "`type = \"API\"`" + ` on create, set ` + "`config.api_assertions`" + ` with ` + "`logic`" + ` and 1-5 ` + "`checks`" + `.
 - ` + "`dns_records`" + ` is only valid for DNS monitors.
 - ` + "`config.ssl_expiration_period_days`" + ` is only valid for DNS monitors.
 - ` + "`ip_version`" + ` is only valid for HTTP/KEYWORD/PING/PORT monitors.
-- Top-level ` + "`ssl_expiration_reminder`" + ` and ` + "`check_ssl_errors`" + ` are valid for HTTPS URLs on HTTP/KEYWORD monitors.
-- API v3 also documents ` + "`config.apiAssertions`" + ` / ` + "`config.udp`" + ` / ` + "`config.ipVersion`" + ` branches, but this provider currently supports monitor types HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS only.
+- ` + "`config.api_assertions`" + ` is only valid for API monitors.
+- Top-level ` + "`ssl_expiration_reminder`" + ` and ` + "`check_ssl_errors`" + ` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors.
 `,
 
 				Optional: true,
@@ -472,6 +475,50 @@ Advanced monitor configuration.
 							"ds":     schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
 							"nsec":   schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
 							"nsec3":  schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+						},
+					},
+					"api_assertions": schema.SingleNestedAttribute{
+						Description: "API monitor assertion rules. Supported only for type=API.",
+						Optional:    true,
+						Computed:    true,
+						Attributes: map[string]schema.Attribute{
+							"logic": schema.StringAttribute{
+								Description: "How checks are combined. Allowed: AND, OR.",
+								Optional:    true,
+								Computed:    true,
+								Validators: []validator.String{
+									stringvalidator.OneOf("AND", "OR"),
+								},
+							},
+							"checks": schema.ListNestedAttribute{
+								Description: "Assertion checks list. Each check uses JSONPath property, comparison, and optional target.",
+								Optional:    true,
+								Computed:    true,
+								NestedObject: schema.NestedAttributeObject{
+									Attributes: map[string]schema.Attribute{
+										"property": schema.StringAttribute{
+											Description: "JSONPath expression, for example $.data.status",
+											Required:    true,
+											Validators: []validator.String{
+												stringvalidator.LengthAtLeast(1),
+												stringvalidator.LengthAtMost(500),
+											},
+										},
+										"comparison": schema.StringAttribute{
+											Description: "Comparison operator.",
+											Required:    true,
+											Validators: []validator.String{
+												stringvalidator.OneOf("equals", "not_equals", "contains", "not_contains", "greater_than", "less_than", "is_null", "is_not_null"),
+											},
+										},
+										"target": schema.StringAttribute{
+											Description: "Optional target value as JSON. Use jsonencode(...) for strings/numbers/booleans/null.",
+											Optional:    true,
+											CustomType:  jsontypes.NormalizedType{},
+										},
+									},
+								},
+							},
 						},
 					},
 					"ip_version": schema.StringAttribute{
@@ -630,15 +677,18 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 			if cfg.DNSRecords.IsUnknown() {
 				_ = resp.Plan.SetAttribute(ctx, path.Root("config").AtName("dns_records"), types.ObjectNull(dnsRecordsObjectType().AttrTypes))
 			}
+			if cfg.APIAssertions.IsUnknown() {
+				_ = resp.Plan.SetAttribute(ctx, path.Root("config").AtName("api_assertions"), types.ObjectNull(apiAssertionsObjectType().AttrTypes))
+			}
 		}
 	}
 
-	if planType == MonitorTypeDNS && req.State.Raw.IsNull() &&
+	if (planType == MonitorTypeDNS || planType == MonitorTypeAPI) && req.State.Raw.IsNull() &&
 		(plan.Config.IsNull() || plan.Config.IsUnknown()) {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("config"),
-			"`config` is required for DNS monitors on create",
-			"Set `config = {}` to use server defaults, or provide DNS fields such as `dns_records`/`ssl_expiration_period_days`.",
+			"`config` is required for DNS/API monitors on create",
+			"For DNS use `config = {}` or set DNS fields. For API set `config.api_assertions` with logic and checks.",
 		)
 	}
 
@@ -808,7 +858,7 @@ func isMethodHTTPLike(t types.String) bool {
 		return false
 	}
 	switch strings.ToUpper(t.ValueString()) {
-	case MonitorTypeHTTP, MonitorTypeKEYWORD:
+	case MonitorTypeHTTP, MonitorTypeKEYWORD, MonitorTypeAPI:
 		return true
 	default:
 		return false

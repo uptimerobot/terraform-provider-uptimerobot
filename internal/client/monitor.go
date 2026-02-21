@@ -18,6 +18,7 @@ const (
 	MonitorTypePort      MonitorType = "PORT"
 	MonitorTypeHeartbeat MonitorType = "HEARTBEAT"
 	MonitorTypeDNS       MonitorType = "DNS"
+	MonitorTypeAPI       MonitorType = "API"
 )
 
 // CreateMonitorRequest represents the request to create a new monitor.
@@ -155,9 +156,21 @@ type AlertContact struct {
 }
 
 type MonitorConfig struct {
-	SSLExpirationPeriodDays *[]int64    `json:"sslExpirationPeriodDays,omitempty"`
-	DNSRecords              *DNSRecords `json:"dnsRecords,omitempty"`
-	IPVersion               *string     `json:"ipVersion,omitempty"`
+	SSLExpirationPeriodDays *[]int64              `json:"sslExpirationPeriodDays,omitempty"`
+	DNSRecords              *DNSRecords           `json:"dnsRecords,omitempty"`
+	APIAssertions           *APIMonitorAssertions `json:"apiAssertions,omitempty"`
+	IPVersion               *string               `json:"ipVersion,omitempty"`
+}
+
+type APIMonitorAssertions struct {
+	Logic  string                     `json:"logic,omitempty"`
+	Checks []APIMonitorAssertionCheck `json:"checks,omitempty"`
+}
+
+type APIMonitorAssertionCheck struct {
+	Property   string      `json:"property"`
+	Comparison string      `json:"comparison"`
+	Target     interface{} `json:"target,omitempty"`
 }
 
 type DNSRecords struct {

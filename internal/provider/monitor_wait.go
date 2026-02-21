@@ -40,8 +40,8 @@ func (r *monitorResource) waitMonitorSettled(
 		// Alert contacts, MW assignment changes, and SSL config clears are more eventually-consistent.
 		requiredConsecutiveMatches = 5
 	}
-	if want.DNSRecords != nil || want.Headers != nil {
-		// DNS records and headers can lag longer across API replicas.
+	if want.DNSRecords != nil || want.Headers != nil || want.APIAssertions != nil {
+		// DNS records, API assertions, and headers can lag longer across API replicas.
 		requiredConsecutiveMatches = 7
 	}
 	consecutiveMatches := 0

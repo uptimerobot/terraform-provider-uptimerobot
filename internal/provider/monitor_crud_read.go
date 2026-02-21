@@ -304,6 +304,7 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 
 	var expectedDNSRecords map[string][]string
 	var expectedSSLDays []int64
+	var expectedAPIAssertions *apiAssertionsComparable
 	if !state.Config.IsNull() && !state.Config.IsUnknown() {
 		if cfg, touched, diags := expandConfigToAPI(ctx, state.Config); touched && !diags.HasError() && cfg != nil {
 			if cfg.DNSRecords != nil {
@@ -317,10 +318,13 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 					expectedSSLDays = normalizeInt64Set(days)
 				}
 			}
+			if cfg.APIAssertions != nil {
+				expectedAPIAssertions = normalizeAPIAssertions(cfg.APIAssertions)
+			}
 		}
 	}
 
-	if expectedName == "" && expectedURL == "" && expectedMWIDs == nil && expectedDNSRecords == nil && expectedSSLDays == nil {
+	if expectedName == "" && expectedURL == "" && expectedMWIDs == nil && expectedDNSRecords == nil && expectedSSLDays == nil && expectedAPIAssertions == nil {
 		return monitor
 	}
 
@@ -328,7 +332,7 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 	urlMatches := expectedURL == "" || unescapeHTML(monitor.URL) == expectedURL
 	mwMatches := true
 	cfgMatches := true
-	if expectedMWIDs != nil || expectedDNSRecords != nil || expectedSSLDays != nil {
+	if expectedMWIDs != nil || expectedDNSRecords != nil || expectedSSLDays != nil || expectedAPIAssertions != nil {
 		got := buildComparableFromAPI(monitor)
 		mwMatches = equalInt64Set(expectedMWIDs, got.MaintenanceWindowIDs)
 		if expectedDNSRecords != nil {
@@ -336,6 +340,9 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 		}
 		if expectedSSLDays != nil {
 			cfgMatches = cfgMatches && equalInt64Set(expectedSSLDays, got.SSLExpirationPeriodDays)
+		}
+		if expectedAPIAssertions != nil {
+			cfgMatches = cfgMatches && equalAPIAssertions(expectedAPIAssertions, got.APIAssertions)
 		}
 	}
 	if nameMatches && urlMatches && mwMatches && cfgMatches {
@@ -357,6 +364,9 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 	}
 	if expectedSSLDays != nil {
 		want.SSLExpirationPeriodDays = expectedSSLDays
+	}
+	if expectedAPIAssertions != nil {
+		want.APIAssertions = expectedAPIAssertions
 	}
 
 	if settled, err := r.waitMonitorSettled(ctx, id, want, 60*time.Second); err == nil && settled != nil {

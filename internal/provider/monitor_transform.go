@@ -2,10 +2,12 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -238,6 +240,52 @@ func expandConfigToAPI(
 		}
 	}
 
+	// api_assertions
+	if !c.APIAssertions.IsUnknown() && !c.APIAssertions.IsNull() {
+		var tf apiAssertionsTF
+		diags.Append(c.APIAssertions.As(ctx, &tf, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if diags.HasError() {
+			return nil, false, diags
+		}
+
+		assertions := &client.APIMonitorAssertions{}
+		if !tf.Logic.IsUnknown() && !tf.Logic.IsNull() {
+			assertions.Logic = strings.TrimSpace(tf.Logic.ValueString())
+		}
+
+		if !tf.Checks.IsUnknown() && !tf.Checks.IsNull() {
+			var checks []apiAssertionCheckTF
+			diags.Append(tf.Checks.ElementsAs(ctx, &checks, false)...)
+			if diags.HasError() {
+				return nil, false, diags
+			}
+
+			outChecks := make([]client.APIMonitorAssertionCheck, 0, len(checks))
+			for _, check := range checks {
+				item := client.APIMonitorAssertionCheck{
+					Property:   strings.TrimSpace(stringOrEmpty(check.Property)),
+					Comparison: strings.TrimSpace(stringOrEmpty(check.Comparison)),
+				}
+				if !check.Target.IsNull() && !check.Target.IsUnknown() && strings.TrimSpace(check.Target.ValueString()) != "" {
+					var target interface{}
+					if err := json.Unmarshal([]byte(check.Target.ValueString()), &target); err != nil {
+						diags.AddError(
+							"Invalid API assertion target",
+							fmt.Sprintf("api_assertions.checks.target must contain valid JSON: %v", err),
+						)
+						return nil, false, diags
+					}
+					item.Target = target
+				}
+				outChecks = append(outChecks, item)
+			}
+			assertions.Checks = outChecks
+		}
+
+		out.APIAssertions = assertions
+		touched = true
+	}
+
 	return out, touched, diags
 }
 
@@ -428,7 +476,74 @@ func flattenConfigToState(
 		}
 	}
 
+	// API assertions
+	prevAPIAssertions := types.ObjectNull(apiAssertionsObjectType().AttrTypes)
+	if !c.APIAssertions.IsNull() && !c.APIAssertions.IsUnknown() {
+		prevAPIAssertions = c.APIAssertions
+	}
+	if api != nil && api.APIAssertions != nil {
+		apiAssertionsObj, d := apiAssertionsFromAPI(ctx, api.APIAssertions)
+		diags.Append(d...)
+		if !diags.HasError() {
+			c.APIAssertions = apiAssertionsObj
+		}
+	} else {
+		c.APIAssertions = prevAPIAssertions
+	}
+
 	return types.ObjectValueFrom(ctx, configObjectType().AttrTypes, c)
+}
+
+func apiAssertionsFromAPI(ctx context.Context, in *client.APIMonitorAssertions) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if in == nil {
+		return types.ObjectNull(apiAssertionsObjectType().AttrTypes), diags
+	}
+
+	logic := types.StringNull()
+	if s := strings.TrimSpace(in.Logic); s != "" {
+		logic = types.StringValue(s)
+	}
+
+	var checksValue types.List
+	if in.Checks == nil {
+		checksValue = types.ListNull(apiAssertionCheckObjectType())
+	} else if len(in.Checks) == 0 {
+		checksValue = types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{})
+	} else {
+		tfChecks := make([]apiAssertionCheckTF, 0, len(in.Checks))
+		for _, check := range in.Checks {
+			target := jsontypes.NewNormalizedNull()
+			if check.Target != nil {
+				b, err := json.Marshal(check.Target)
+				if err != nil {
+					diags.AddError("Invalid API assertion target from API", err.Error())
+					return types.ObjectNull(apiAssertionsObjectType().AttrTypes), diags
+				}
+				target = jsontypes.NewNormalizedValue(string(b))
+			}
+			tfChecks = append(tfChecks, apiAssertionCheckTF{
+				Property:   types.StringValue(check.Property),
+				Comparison: types.StringValue(check.Comparison),
+				Target:     target,
+			})
+		}
+
+		lv, d := types.ListValueFrom(ctx, apiAssertionCheckObjectType(), tfChecks)
+		diags.Append(d...)
+		if diags.HasError() {
+			return types.ObjectNull(apiAssertionsObjectType().AttrTypes), diags
+		}
+		checksValue = lv
+	}
+
+	out, d := types.ObjectValueFrom(ctx, apiAssertionsObjectType().AttrTypes, apiAssertionsTF{
+		Logic:  logic,
+		Checks: checksValue,
+	})
+	diags.Append(d...)
+	return out, diags
 }
 
 func setInt64sRespectingShape(prev types.Set, api []int64) types.Set {

@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -23,7 +24,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	if !validateCreateHighLevel(plan, resp) {
+	if !validateCreateHighLevel(ctx, plan, resp) {
 		return
 	}
 
@@ -44,7 +45,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	plan.ID = types.StringValue(strconv.FormatInt(created.ID, 10))
 	want := wantFromCreateReq(createReq)
 	settleTimeout := 60 * time.Second
-	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil {
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.APIAssertions != nil || want.AssignedAlertContacts != nil {
 		settleTimeout = 180 * time.Second
 	}
 	api, err := r.waitMonitorSettled(ctx, created.ID, want, settleTimeout)
@@ -66,7 +67,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 
 // High level validate create plan
 
-func validateCreateHighLevel(plan monitorResourceModel, resp *resource.CreateResponse) bool {
+func validateCreateHighLevel(ctx context.Context, plan monitorResourceModel, resp *resource.CreateResponse) bool {
 	t := strings.ToUpper(plan.Type.ValueString())
 
 	if t == MonitorTypePORT && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
@@ -96,6 +97,28 @@ func validateCreateHighLevel(plan monitorResourceModel, resp *resource.CreateRes
 			resp.Diagnostics.AddError(
 				"KeywordValue required for KEYWORD monitor",
 				"KeywordValue must be specified and known for KEYWORD monitor type.",
+			)
+			return false
+		}
+	}
+
+	if t == MonitorTypeAPI {
+		if plan.Config.IsNull() || plan.Config.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"Config required for API monitor",
+				"API monitors require config.api_assertions on create.",
+			)
+			return false
+		}
+		var cfg configTF
+		resp.Diagnostics.Append(plan.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return false
+		}
+		if cfg.APIAssertions.IsNull() || cfg.APIAssertions.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"api_assertions required for API monitor",
+				"Set config.api_assertions with logic and checks.",
 			)
 			return false
 		}
@@ -240,7 +263,7 @@ func (r *monitorResource) applyTimeoutAndGrace(plan *monitorResourceModel, req *
 	case MonitorTypePING:
 		req.GracePeriod = &zero
 		req.Timeout = &zero
-	default: // HTTP, KEYWORD, PORT
+	default: // HTTP, KEYWORD, PORT, API
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
 			req.Timeout = &v
@@ -470,9 +493,9 @@ func (r *monitorResource) buildStateAfterCreate(
 		plan.CustomHTTPHeaders = types.MapNull(types.StringType)
 	}
 
-	// Method presence in state only for HTTP or KEYWORD
+	// Method presence in state only for HTTP/KEYWORD/API
 	switch strings.ToUpper(plan.Type.ValueString()) {
-	case MonitorTypeHTTP, MonitorTypeKEYWORD:
+	case MonitorTypeHTTP, MonitorTypeKEYWORD, MonitorTypeAPI:
 		if methodForState != "" {
 			plan.HTTPMethodType = types.StringValue(methodForState)
 		} else {
@@ -503,7 +526,7 @@ func (r *monitorResource) buildStateAfterCreate(
 	case MonitorTypeDNS, MonitorTypePING:
 		plan.Timeout = types.Int64Null()
 		plan.GracePeriod = types.Int64Null()
-	default: // HTTP, KEYWORD, PORT
+	default: // HTTP, KEYWORD, PORT, API
 		plan.GracePeriod = types.Int64Null()
 		if api.Timeout > 0 {
 			plan.Timeout = types.Int64Value(int64(api.Timeout))

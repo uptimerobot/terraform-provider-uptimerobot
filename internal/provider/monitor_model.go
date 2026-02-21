@@ -69,6 +69,18 @@ type configTF struct {
 	SSLExpirationPeriodDays types.Set    `tfsdk:"ssl_expiration_period_days"`
 	DNSRecords              types.Object `tfsdk:"dns_records"`
 	IPVersion               types.String `tfsdk:"ip_version"`
+	APIAssertions           types.Object `tfsdk:"api_assertions"`
+}
+
+type apiAssertionsTF struct {
+	Logic  types.String `tfsdk:"logic"`
+	Checks types.List   `tfsdk:"checks"`
+}
+
+type apiAssertionCheckTF struct {
+	Property   types.String         `tfsdk:"property"`
+	Comparison types.String         `tfsdk:"comparison"`
+	Target     jsontypes.Normalized `tfsdk:"target"`
 }
 
 func alertContactObjectType() types.ObjectType {
@@ -102,12 +114,33 @@ func dnsRecordsObjectType() types.ObjectType {
 	}
 }
 
+func apiAssertionCheckObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"property":   types.StringType,
+			"comparison": types.StringType,
+			"target":     jsontypes.NormalizedType{},
+		},
+	}
+}
+
+func apiAssertionsObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"logic":  types.StringType,
+			"checks": types.ListType{ElemType: apiAssertionCheckObjectType()},
+		},
+	}
+}
+
 // configObjectType is a helper for describing the config object.
 func configObjectType() types.ObjectType {
 	return types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
 			"dns_records":                dnsRecordsObjectType(),
+			"ip_version":                 types.StringType,
+			"api_assertions":             apiAssertionsObjectType(),
 			"ip_version":                 types.StringType,
 		},
 	}
