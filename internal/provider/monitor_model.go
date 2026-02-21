@@ -141,7 +141,6 @@ func configObjectType() types.ObjectType {
 			"dns_records":                dnsRecordsObjectType(),
 			"ip_version":                 types.StringType,
 			"api_assertions":             apiAssertionsObjectType(),
-			"ip_version":                 types.StringType,
 		},
 	}
 }

@@ -82,7 +82,7 @@ func TestValidateCreateHighLevel_PortType_RejectsUnknownPort(t *testing.T) {
 		Port: types.Int64Unknown(),
 	}
 
-	ok := validateCreateHighLevel(plan, resp)
+	ok := validateCreateHighLevel(context.TODO(), plan, resp)
 
 	if ok {
 		t.Fatalf("expected ok=false for unknown port")
