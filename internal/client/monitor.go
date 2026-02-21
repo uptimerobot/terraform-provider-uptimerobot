@@ -224,6 +224,19 @@ func (c *Client) GetMonitor(ctx context.Context, id int64) (*Monitor, error) {
 	base := NewBaseCRUDOperations(c, "/monitors")
 	var monitor Monitor
 	if err := base.doGet(ctx, id, &monitor); err != nil {
+		// Some legacy monitors can intermittently fail on single-resource endpoint
+		// with 5xx while still being returned by list endpoint.
+		if status, ok := StatusCode(err); ok && status >= 500 {
+			monitors, listErr := c.GetMonitors(ctx)
+			if listErr == nil {
+				for i := range monitors {
+					if monitors[i].ID == id {
+						m := monitors[i]
+						return &m, nil
+					}
+				}
+			}
+		}
 		return nil, fmt.Errorf("failed to get monitor: %v", err)
 	}
 	return &monitor, nil
