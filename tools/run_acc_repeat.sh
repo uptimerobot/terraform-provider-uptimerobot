@@ -8,6 +8,7 @@ RUNS="${1:-6}"
 PKG="${ACC_TEST_PACKAGE:-./internal/provider}"
 PATTERN="${ACC_TEST_PATTERN:-^TestAcc}"
 TIMEOUT="${ACC_TEST_TIMEOUT:-120m}"
+TAGS="${ACC_TEST_TAGS:-acceptance}"
 ACC_GO_TEST_FLAGS="${ACC_GO_TEST_FLAGS:--parallel=1 -p=1}"
 
 : "${UPTIMEROBOT_API_KEY:?UPTIMEROBOT_API_KEY must be set}"
@@ -26,12 +27,15 @@ echo "  runs:      $RUNS"
 echo "  package:   $PKG"
 echo "  pattern:   $PATTERN"
 echo "  timeout:   $TIMEOUT"
+echo "  tags:      $TAGS"
 echo "  go flags:  $ACC_GO_TEST_FLAGS"
 echo "  out dir:   $OUT_DIR"
 echo "  gocache:   $GOCACHE"
 echo
 
 read -r -a GO_TEST_EXTRA_ARGS <<< "$ACC_GO_TEST_FLAGS"
+run_status_file="$OUT_DIR/run-status.tsv"
+: > "$run_status_file"
 
 for i in $(seq 1 "$RUNS"); do
   log_file="$OUT_DIR/run${i}.log"
@@ -42,9 +46,23 @@ for i in $(seq 1 "$RUNS"); do
   UPTIMEROBOT_API_KEY="$UPTIMEROBOT_API_KEY" \
   UPTIMEROBOT_TEST_ALERT_CONTACT_ID="$UPTIMEROBOT_TEST_ALERT_CONTACT_ID" \
   GOCACHE="$GOCACHE" \
-  go test "$PKG" -run "$PATTERN" -v -count=1 -timeout="$TIMEOUT" "${GO_TEST_EXTRA_ARGS[@]}" >"$log_file" 2>&1
+  go test "$PKG" -tags="$TAGS" -run "$PATTERN" -v -count=1 -timeout="$TIMEOUT" "${GO_TEST_EXTRA_ARGS[@]}" >"$log_file" 2>&1
   rc=$?
   set -e
+
+  tests_ran=0
+  if grep -Eq '^=== RUN[[:space:]]+TestAcc' "$log_file"; then
+    tests_ran=1
+  fi
+  if [ "$rc" -eq 0 ] && [ "$tests_ran" -eq 0 ]; then
+    rc=2
+    {
+      echo
+      echo "ERROR: No acceptance tests were executed."
+      echo "Check ACC_TEST_TAGS (current: '$TAGS') and ACC_TEST_PATTERN (current: '$PATTERN')."
+    } >>"$log_file"
+  fi
+  printf "%s\t%s\t%s\n" "$i" "$rc" "$tests_ran" >> "$run_status_file"
 
   echo "run=$i exit=$rc"
   tail -n 10 "$log_file" || true
@@ -68,13 +86,16 @@ cat "$OUT_DIR"/run*.log \
   echo "- Package: \`$PKG\`"
   echo "- Pattern: \`$PATTERN\`"
   echo "- Timeout: \`$TIMEOUT\`"
+  echo "- Tags: \`$TAGS\`"
   echo "- Go flags: \`$ACC_GO_TEST_FLAGS\`"
   echo "- Logs: \`$OUT_DIR/runN.log\`"
   echo
   echo "## Per-Run Status"
   for i in $(seq 1 "$RUNS"); do
     log_file="$OUT_DIR/run${i}.log"
-    if grep -q '^ok[[:space:]]' "$log_file"; then
+    rc="$(awk -v i="$i" '$1 == i { print $2 }' "$run_status_file")"
+    tests_ran="$(awk -v i="$i" '$1 == i { print $3 }' "$run_status_file")"
+    if [ "$rc" = "0" ]; then
       status="PASS"
     else
       status="FAIL"
@@ -83,7 +104,11 @@ cat "$OUT_DIR"/run*.log \
     if grep -q 'timeout waiting on reattach config' "$log_file"; then
       infra=" (provider reattach timeout)"
     fi
-    echo "- run $i: $status$infra"
+    if [ "$tests_ran" = "0" ]; then
+      echo "- run $i: $status (no acceptance tests executed)$infra"
+    else
+      echo "- run $i: $status$infra"
+    fi
   done
   echo
 

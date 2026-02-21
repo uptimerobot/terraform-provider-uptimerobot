@@ -40,6 +40,22 @@ jobs:
         with:
           version: 'latest'
 
+  unit:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Run Unit Tests
+        run: go test -v -cover ./... -short -timeout 20m
+
   documentation:
     timeout-minutes: 5
     runs-on: ubuntu-latest
@@ -113,7 +129,7 @@ jobs:
 
 
       - name: Test Provider
-        run: go test -v -cover ./internal/provider -parallel=1 -timeout 45m
+        run: go test -v -cover ./internal/provider -tags=acceptance -run '^TestAcc' -parallel=1 -timeout 45m
         env:
           TF_ACC: '1'
           UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
@@ -168,7 +184,7 @@ jobs:
           echo TF_ACC_TERRAFORM_PATH="$(which tofu)" >> $GITHUB_ENV
 
       - name: Test Provider
-        run: go test -v -cover ./internal/provider -parallel=1 -timeout 45m
+        run: go test -v -cover ./internal/provider -tags=acceptance -run '^TestAcc' -parallel=1 -timeout 45m
         env:
           TF_ACC: '1'
           UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
