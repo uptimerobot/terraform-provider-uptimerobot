@@ -89,3 +89,59 @@ func TestEqualComparable_UsesGroupID(t *testing.T) {
 		t.Fatalf("expected equalComparable mismatch for different GroupID")
 	}
 }
+
+func TestNormalizeAPIAssertions_SortsChecksForStableCompare(t *testing.T) {
+	t.Parallel()
+
+	in := &client.APIMonitorAssertions{
+		Logic: "and",
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "$.b", Comparison: "equals", Target: "x"},
+			{Property: "$.a", Comparison: "equals", Target: "x"},
+		},
+	}
+
+	n := normalizeAPIAssertions(in)
+	if n == nil {
+		t.Fatalf("expected non-nil normalized assertions")
+	}
+	if n.Logic != "AND" {
+		t.Fatalf("expected logic to be uppercased AND, got %q", n.Logic)
+	}
+	if len(n.Checks) != 2 {
+		t.Fatalf("expected 2 checks, got %d", len(n.Checks))
+	}
+	if n.Checks[0].Property != "$.a" {
+		t.Fatalf("expected first check to be sorted by property, got %q", n.Checks[0].Property)
+	}
+}
+
+func TestEqualComparable_UsesAPIAssertions(t *testing.T) {
+	t.Parallel()
+
+	want := normalizeAPIAssertions(&client.APIMonitorAssertions{
+		Logic: "AND",
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "$.status", Comparison: "equals", Target: "ok"},
+		},
+	})
+	gotSame := normalizeAPIAssertions(&client.APIMonitorAssertions{
+		Logic: "AND",
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "$.status", Comparison: "equals", Target: "ok"},
+		},
+	})
+	gotDiff := normalizeAPIAssertions(&client.APIMonitorAssertions{
+		Logic: "OR",
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "$.status", Comparison: "equals", Target: "ok"},
+		},
+	})
+
+	if !equalComparable(monComparable{APIAssertions: want}, monComparable{APIAssertions: gotSame}) {
+		t.Fatalf("expected equalComparable to match same api_assertions")
+	}
+	if equalComparable(monComparable{APIAssertions: want}, monComparable{APIAssertions: gotDiff}) {
+		t.Fatalf("expected equalComparable mismatch for different api_assertions")
+	}
+}

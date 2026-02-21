@@ -78,6 +78,57 @@ func TestCreateMonitorRequest_Config_JSON(t *testing.T) {
 	}
 }
 
+func TestCreateMonitorRequest_Config_APIAssertions_JSON(t *testing.T) {
+	req := CreateMonitorRequest{
+		Name:     "api-monitor",
+		URL:      "https://example.com/api/health",
+		Type:     MonitorTypeAPI,
+		Interval: 300,
+		Config: &MonitorConfig{
+			APIAssertions: &APIMonitorAssertions{
+				Logic: "AND",
+				Checks: []APIMonitorAssertionCheck{
+					{
+						Property:   "$.status",
+						Comparison: "equals",
+						Target:     "ok",
+					},
+					{
+						Property:   "$.count",
+						Comparison: "greater_than",
+						Target:     0,
+					},
+				},
+			},
+		},
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	cfg, ok := m["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected config object, got %#v", m["config"])
+	}
+	assertions, ok := cfg["apiAssertions"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected apiAssertions object, got %#v", cfg["apiAssertions"])
+	}
+	if got := assertions["logic"]; got != "AND" {
+		t.Fatalf("expected logic=AND, got %#v", got)
+	}
+	checks, ok := assertions["checks"].([]any)
+	if !ok || len(checks) != 2 {
+		t.Fatalf("expected 2 checks, got %#v", assertions["checks"])
+	}
+}
+
 func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	createReq := CreateMaintenanceWindowRequest{
 		Name:     "mw-create",
