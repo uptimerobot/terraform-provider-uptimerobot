@@ -53,7 +53,9 @@ func TestClient_DoMultipartRequest_SendsFieldsAndFiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected icon file part: %v", err)
 		}
-		defer f.Close()
+		defer func() {
+			_ = f.Close()
+		}()
 
 		body, err := io.ReadAll(f)
 		if err != nil {
@@ -134,7 +136,9 @@ func TestClient_UpdatePSPFiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected logo multipart file: %v", err)
 		}
-		defer logo.Close()
+		defer func() {
+			_ = logo.Close()
+		}()
 		if body, _ := io.ReadAll(logo); string(body) != "logo-content" {
 			t.Fatalf("unexpected logo contents")
 		}
@@ -143,7 +147,9 @@ func TestClient_UpdatePSPFiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected icon multipart file: %v", err)
 		}
-		defer icon.Close()
+		defer func() {
+			_ = icon.Close()
+		}()
 		if body, _ := io.ReadAll(icon); string(body) != "icon-content" {
 			t.Fatalf("unexpected icon contents")
 		}
