@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
@@ -314,6 +316,10 @@ func validateConfig(
 		)
 	}
 
+	if !cfg.IPVersion.IsNull() && !cfg.IPVersion.IsUnknown() {
+		validateConfigIPVersion(monitorType, data.URL, cfg.IPVersion, resp)
+	}
+
 	// Omitting the whole config block preserves/clears remote.
 	// If DNS config block is present but has no managed fields, warn.
 	if monitorType == MonitorTypeDNS &&
@@ -329,6 +335,87 @@ func validateConfig(
 		)
 	}
 
+}
+
+func validateConfigIPVersion(
+	monitorType string,
+	urlValue types.String,
+	ipVersion types.String,
+	resp *resource.ValidateConfigResponse,
+) {
+	if monitorType != MonitorTypeHTTP &&
+		monitorType != MonitorTypeKEYWORD &&
+		monitorType != MonitorTypePING &&
+		monitorType != MonitorTypePORT {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("ip_version"),
+			"ip_version only allowed for HTTP/KEYWORD/PING/PORT monitors",
+			"Set type = HTTP, KEYWORD, PING, or PORT to manage config.ip_version, or remove config.ip_version for this monitor type.",
+		)
+		return
+	}
+
+	validateIPVersionURLLiteralCompatibility(urlValue, ipVersion, resp)
+}
+
+func validateIPVersionURLLiteralCompatibility(urlValue, ipVersion types.String, resp *resource.ValidateConfigResponse) {
+	if urlValue.IsNull() || urlValue.IsUnknown() || ipVersion.IsNull() || ipVersion.IsUnknown() {
+		return
+	}
+
+	ipSelection := strings.TrimSpace(ipVersion.ValueString())
+	if ipSelection == "" {
+		return
+	}
+
+	rawURL := strings.TrimSpace(urlValue.ValueString())
+	if rawURL == "" {
+		return
+	}
+
+	literal := ipLiteralFromMonitorURL(rawURL)
+	if literal == nil {
+		return
+	}
+
+	if literal.To4() != nil && ipSelection == IPVersionIPv6Only {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("ip_version"),
+			"Incompatible ip_version for URL literal",
+			"Cannot use ipv6Only with an IPv4 address literal.",
+		)
+	}
+	if literal.To4() == nil && ipSelection == IPVersionIPv4Only {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("ip_version"),
+			"Incompatible ip_version for URL literal",
+			"Cannot use ipv4Only with an IPv6 address literal.",
+		)
+	}
+}
+
+func ipLiteralFromMonitorURL(raw string) net.IP {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+
+	if ip := net.ParseIP(strings.Trim(trimmed, "[]")); ip != nil {
+		return ip
+	}
+
+	if host, _, err := net.SplitHostPort(trimmed); err == nil {
+		if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
+			return ip
+		}
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" {
+		return nil
+	}
+
+	return net.ParseIP(parsed.Hostname())
 }
 
 func validateHeadersCasingDuplication(

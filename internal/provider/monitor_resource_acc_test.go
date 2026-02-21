@@ -1960,9 +1960,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_NameURL_HTMLNormalization(t *testing.T) {
-	if os.Getenv("TF_ACC") == "" {
-		t.Skip("TF_ACC not set")
-	}
+	testAccPreCheck(t)
 
 	resourceName := "uptimerobot_monitor.test"
 	name := fmt.Sprintf("A & B <C> %s", acctest.RandStringFromCharSet(6, acctest.CharSetAlphaNum))
@@ -2447,6 +2445,213 @@ resource "uptimerobot_monitor" "test" {
 			{
 				Config:      outOfRange,
 				ExpectError: regexp.MustCompile(`(?i)[\s\S]*between\s*0\s*and\s*365`),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_IPVersion_SetAndUpdate(t *testing.T) {
+	t.Parallel()
+
+	name := acctest.RandomWithPrefix("acc-ip-version")
+	url := testAccUniqueURL(name)
+	res := "uptimerobot_monitor.test"
+
+	cfgIPv4 := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+  }
+}
+`, name, url)
+
+	cfgIPv6 := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    ip_version = "ipv6Only"
+  }
+}
+`, name, url)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgIPv4,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv4Only"),
+				),
+			},
+			{
+				Config: cfgIPv6,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv6Only"),
+				),
+			},
+			{
+				Config:             cfgIPv6,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_IPVersion_AllowedForPingAndPort(t *testing.T) {
+	t.Parallel()
+
+	pingName := acctest.RandomWithPrefix("acc-ping-ipv")
+	portName := acctest.RandomWithPrefix("acc-port-ipv")
+	pingURL := testAccUniqueURL(pingName)
+	portURL := testAccUniqueURL(portName)
+
+	cfgInitial := fmt.Sprintf(`
+resource "uptimerobot_monitor" "ping" {
+  name     = "%s"
+  type     = "PING"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+  }
+}
+
+resource "uptimerobot_monitor" "port" {
+  name     = "%s"
+  type     = "PORT"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+  port     = 443
+
+  config = {
+    ip_version = "ipv6Only"
+  }
+}
+`, pingName, pingURL, portName, portURL)
+
+	cfgSwap := fmt.Sprintf(`
+resource "uptimerobot_monitor" "ping" {
+  name     = "%s"
+  type     = "PING"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    ip_version = "ipv6Only"
+  }
+}
+
+resource "uptimerobot_monitor" "port" {
+  name     = "%s"
+  type     = "PORT"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+  port     = 443
+
+  config = {
+    ip_version = "ipv4Only"
+  }
+}
+`, pingName, pingURL, portName, portURL)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgInitial,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.ping", "config.ip_version", "ipv4Only"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.port", "config.ip_version", "ipv6Only"),
+				),
+			},
+			{
+				Config: cfgSwap,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.ping", "config.ip_version", "ipv6Only"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.port", "config.ip_version", "ipv4Only"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_IPVersion_Validators(t *testing.T) {
+	t.Parallel()
+
+	name := acctest.RandomWithPrefix("acc-ip-version-validate")
+	httpURL := testAccUniqueURL(name)
+	dnsDomain := testAccUniqueDomain(name)
+
+	cfgInvalidForDNS := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "DNS"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    dns_records = {}
+    ip_version  = "ipv4Only"
+  }
+}
+`, name, dnsDomain)
+
+	cfgMismatchIPv4 := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "https://[2606:4700:4700::1111]/health"
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+  }
+}
+`, name)
+
+	cfgMismatchIPv6 := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    ip_version = "ipv6Only"
+  }
+}
+`, name, strings.Replace(httpURL, "example.com", "1.1.1.1", 1))
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      cfgInvalidForDNS,
+				ExpectError: regexp.MustCompile(`(?i)ip_version[\s\S]*only[\s\S]*HTTP/KEYWORD/PING/PORT`),
+			},
+			{
+				Config:      cfgMismatchIPv4,
+				ExpectError: regexp.MustCompile(`(?i)incompatible ip_version[\s\S]*ipv4[\s\S]*IPv6`),
+			},
+			{
+				Config:      cfgMismatchIPv6,
+				ExpectError: regexp.MustCompile(`(?i)incompatible ip_version[\s\S]*ipv6[\s\S]*IPv4`),
 			},
 		},
 	})

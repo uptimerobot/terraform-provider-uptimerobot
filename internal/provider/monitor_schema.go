@@ -37,6 +37,9 @@ const (
 	MonitorTypePORT      = "PORT"
 	MonitorTypeHEARTBEAT = "HEARTBEAT"
 	MonitorTypeDNS       = "DNS"
+
+	IPVersionIPv4Only = "ipv4Only"
+	IPVersionIPv6Only = "ipv6Only"
 )
 
 // NewMonitorResource is a helper function to simplify the provider implementation.
@@ -417,11 +420,13 @@ Advanced monitor configuration.
 - **Omit** the block → **preserve** remote values (no change). *(Exception: DNS on create requires ` + "`config`" + `.)*
 - ` + "`config = {}`" + ` (empty block) → treat as **managed but keep** current remote values.
 - ` + "`ssl_expiration_period_days = []`" + ` → **clear** days on the server; non-empty list sets exactly those days (max 10).
+- Removing ` + "`ip_version`" + ` from a managed ` + "`config`" + ` block clears remote ` + "`ipVersion`" + ` (reverts to API default dual-stack behavior).
 
 **Validation**
 - For ` + "`type = \"DNS\"`" + ` on create, ` + "`config`" + ` is required (use ` + "`config = {}`" + ` for defaults).
 - ` + "`dns_records`" + ` is only valid for DNS monitors.
 - ` + "`config.ssl_expiration_period_days`" + ` is only valid for DNS monitors.
+- ` + "`ip_version`" + ` is only valid for HTTP/KEYWORD/PING/PORT monitors.
 - Top-level ` + "`ssl_expiration_reminder`" + ` and ` + "`check_ssl_errors`" + ` are valid for HTTPS URLs on HTTP/KEYWORD monitors.
 - API v3 also documents ` + "`config.apiAssertions`" + ` / ` + "`config.udp`" + ` / ` + "`config.ipVersion`" + ` branches, but this provider currently supports monitor types HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS only.
 `,
@@ -467,6 +472,17 @@ Advanced monitor configuration.
 							"ds":     schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
 							"nsec":   schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
 							"nsec3":  schema.SetAttribute{ElementType: types.StringType, Optional: true, Computed: true, PlanModifiers: []planmodifier.Set{setplanmodifier.UseStateForUnknown()}},
+						},
+					},
+					"ip_version": schema.StringAttribute{
+						Description: "IP family selection for HTTP/KEYWORD/PING/PORT monitors. Use ipv4Only or ipv6Only.",
+						Optional:    true,
+						Computed:    true,
+						Validators: []validator.String{
+							stringvalidator.OneOf(IPVersionIPv4Only, IPVersionIPv6Only),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
 						},
 					},
 				},

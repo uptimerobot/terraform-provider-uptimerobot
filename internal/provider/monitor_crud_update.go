@@ -46,7 +46,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	updateReq, effMethod := buildUpdateRequest(ctx, plan, configOmitted, resp)
+	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, resp)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -132,6 +132,7 @@ func validateUpdateHighLevel(plan monitorResourceModel, resp *resource.UpdateRes
 func buildUpdateRequest(
 	ctx context.Context,
 	plan monitorResourceModel,
+	state monitorResourceModel,
 	configOmitted bool,
 	resp *resource.UpdateResponse,
 ) (*client.UpdateMonitorRequest, string) {
@@ -239,7 +240,7 @@ func buildUpdateRequest(
 	}
 
 	// Config
-	expandOrClearConfigOnUpdate(ctx, plan, configOmitted, req, resp)
+	expandOrClearConfigOnUpdate(ctx, plan, state.Config, configOmitted, req, resp)
 
 	return req, effMethod
 }
@@ -724,6 +725,7 @@ func applyUpdatedMonitorToState(
 func expandOrClearConfigOnUpdate(
 	ctx context.Context,
 	plan monitorResourceModel,
+	priorConfig types.Object,
 	configOmitted bool,
 	req *client.UpdateMonitorRequest,
 	resp *resource.UpdateResponse,
@@ -744,9 +746,84 @@ func expandOrClearConfigOnUpdate(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		// Send only if user actually set something or explicitly set empty sets to clear
+		// Send only if user actually set something or explicitly set empty sets to clear.
 		if touched {
 			req.Config = out
-		} // else {} - preserve and do nothing
+			return
+		}
+		clearIPVersion, d := shouldClearIPVersionOnUpdate(ctx, plan.Config, priorConfig)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if clearIPVersion {
+			cfg, d := configPayloadForIPVersionClear(ctx, priorConfig)
+			resp.Diagnostics.Append(d...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			req.Config = cfg
+		}
 	}
+}
+
+func configPayloadForIPVersionClear(
+	ctx context.Context,
+	priorConfig types.Object,
+) (*client.MonitorConfig, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if priorConfig.IsNull() || priorConfig.IsUnknown() {
+		return &client.MonitorConfig{}, diags
+	}
+
+	prev, _, d := expandConfigToAPI(ctx, priorConfig)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if prev == nil {
+		return &client.MonitorConfig{}, diags
+	}
+
+	prev.IPVersion = nil
+	return prev, diags
+}
+
+func shouldClearIPVersionOnUpdate(
+	ctx context.Context,
+	planConfig types.Object,
+	priorConfig types.Object,
+) (bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if planConfig.IsNull() || planConfig.IsUnknown() || priorConfig.IsNull() || priorConfig.IsUnknown() {
+		return false, diags
+	}
+
+	var planCfg, prevCfg configTF
+	diags.Append(planConfig.As(ctx, &planCfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+	diags.Append(priorConfig.As(ctx, &prevCfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+	if diags.HasError() {
+		return false, diags
+	}
+
+	if prevCfg.IPVersion.IsNull() || prevCfg.IPVersion.IsUnknown() {
+		return false, diags
+	}
+	if _, keep := normalizeIPVersionForAPI(prevCfg.IPVersion.ValueString()); !keep {
+		return false, diags
+	}
+
+	if planCfg.IPVersion.IsUnknown() {
+		return false, diags
+	}
+	if planCfg.IPVersion.IsNull() {
+		return true, diags
+	}
+	if _, keep := normalizeIPVersionForAPI(planCfg.IPVersion.ValueString()); !keep {
+		return true, diags
+	}
+
+	return false, diags
 }

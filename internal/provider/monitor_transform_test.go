@@ -32,6 +32,7 @@ func TestExpandConfigToAPI_DNSRecordsEmptyObjectMarksTouched(t *testing.T) {
 	cfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
 		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
 		"dns_records":                dnsRecordsNullObject(),
+		"ip_version":                 types.StringNull(),
 	})
 
 	out, touched, diags := expandConfigToAPI(ctx, cfg)
@@ -56,6 +57,7 @@ func TestFlattenConfigToState_NoAPIAndPrevNullDNS_StaysNull(t *testing.T) {
 	prev := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
 		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
 		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"ip_version":                 types.StringNull(),
 	})
 
 	stateObj, diags := flattenConfigToState(ctx, true, prev, nil)
@@ -82,6 +84,7 @@ func TestFlattenConfigToState_DNSFromAPI_PopulatesSets(t *testing.T) {
 	prev := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
 		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
 		"dns_records":                dnsRecordsNullObject(),
+		"ip_version":                 types.StringNull(),
 	})
 
 	a := []string{"1.1.1.1"}

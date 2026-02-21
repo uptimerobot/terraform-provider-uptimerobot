@@ -157,6 +157,7 @@ type AlertContact struct {
 type MonitorConfig struct {
 	SSLExpirationPeriodDays *[]int64    `json:"sslExpirationPeriodDays,omitempty"`
 	DNSRecords              *DNSRecords `json:"dnsRecords,omitempty"`
+	IPVersion               *string     `json:"ipVersion,omitempty"`
 }
 
 type DNSRecords struct {

@@ -201,3 +201,131 @@ func TestValidateURL_NonHTTPLike_AllowsBareHost(t *testing.T) {
 		t.Fatalf("expected no errors for bare host on PING, got: %v", resp.Diagnostics)
 	}
 }
+
+func TestValidateConfigIPVersion_RejectsUnsupportedTypes(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateConfigIPVersion(
+		MonitorTypeDNS,
+		types.StringValue("https://example.com"),
+		types.StringValue(IPVersionIPv4Only),
+		resp,
+	)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error for ip_version on DNS monitor, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfigIPVersion_AllowsPINGType(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateConfigIPVersion(
+		MonitorTypePING,
+		types.StringValue("example.com"),
+		types.StringValue(IPVersionIPv4Only),
+		resp,
+	)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for ip_version on PING monitor, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfigIPVersion_AllowsPORTType(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateConfigIPVersion(
+		MonitorTypePORT,
+		types.StringValue("example.com"),
+		types.StringValue(IPVersionIPv6Only),
+		resp,
+	)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for ip_version on PORT monitor, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfigIPVersion_RejectsIPv6OnlyWithIPv4Literal(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateConfigIPVersion(
+		MonitorTypeHTTP,
+		types.StringValue("https://1.2.3.4/health"),
+		types.StringValue(IPVersionIPv6Only),
+		resp,
+	)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error for ipv6Only with IPv4 literal, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfigIPVersion_RejectsIPv4OnlyWithIPv6Literal(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateConfigIPVersion(
+		MonitorTypeKEYWORD,
+		types.StringValue("https://[2001:db8::1]/status"),
+		types.StringValue(IPVersionIPv4Only),
+		resp,
+	)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error for ipv4Only with IPv6 literal, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfigIPVersion_AllowsHostnameWithEitherFamily(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateConfigIPVersion(
+		MonitorTypeHTTP,
+		types.StringValue("https://example.com/health"),
+		types.StringValue(IPVersionIPv6Only),
+		resp,
+	)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for hostname URL with ipv6Only, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfigIPVersion_RejectsIPv6OnlyWithIPv4LiteralOnPING(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateConfigIPVersion(
+		MonitorTypePING,
+		types.StringValue("1.2.3.4"),
+		types.StringValue(IPVersionIPv6Only),
+		resp,
+	)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error for ipv6Only with IPv4 literal on PING, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfigIPVersion_RejectsIPv4OnlyWithIPv6LiteralOnPORT(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateConfigIPVersion(
+		MonitorTypePORT,
+		types.StringValue("[2001:db8::1]"),
+		types.StringValue(IPVersionIPv4Only),
+		resp,
+	)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error for ipv4Only with IPv6 literal on PORT, got: %v", resp.Diagnostics)
+	}
+}
