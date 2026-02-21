@@ -98,6 +98,20 @@ resource "uptimerobot_monitor" "test" {
 `, name, url, tagsStr)
 }
 
+func testAccMonitorResourceConfigWithGroupID(name string, groupID int) string {
+	url := testAccUniqueURL(name)
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name      = %q
+  url       = "%s"
+  type      = "HTTP"
+  interval  = 300
+  timeout   = 30
+  group_id  = %d
+}
+`, name, url, groupID)
+}
+
 // nolint:unparam // kept for symmetry with other helpers & future reuse
 func testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name string, responseCodes []string) string {
 	url := testAccUniqueURL(name)
@@ -255,7 +269,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithSSLPeriod(name string, days []int) string {
-	url := testAccUniqueURL(name)
+	domain := testAccUniqueDomain(name)
 	cfg := ""
 	if days != nil {
 		if len(days) == 0 {
@@ -274,11 +288,11 @@ func testAccMonitorResourceConfigWithSSLPeriod(name string, days []int) string {
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
-  type     = "HTTP"
+  type     = "DNS"
   interval = 300
-  timeout  = 30%s
+%s
 }
-`, name, url, cfg)
+`, name, domain, cfg)
 }
 
 // ---------- MW helpers that embed STABLE (literal) date/time ----------
@@ -486,8 +500,9 @@ func testAccUniqueDomain(name string) string {
 // ---------------------- Acceptance tests ----------------------
 
 func TestAccMonitorResource(t *testing.T) {
-	name := "test-monitor"
-	url := testAccUniqueURL("test-monitor-base")
+	name := acctest.RandomWithPrefix("test-monitor")
+	updatedName := acctest.RandomWithPrefix("test-monitor-updated")
+	url := testAccUniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -506,9 +521,9 @@ func TestAccMonitorResource(t *testing.T) {
 			},
 			// Update testing
 			{
-				Config: testAccMonitorResourceConfigWithURL("test-monitor-updated", url),
+				Config: testAccMonitorResourceConfigWithURL(updatedName, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-updated"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", updatedName),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
 				),
 			},
@@ -517,7 +532,7 @@ func TestAccMonitorResource(t *testing.T) {
 				ResourceName:            "uptimerobot_monitor.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"timeout", "status"},
+				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name"},
 			},
 		},
 	})
@@ -525,6 +540,7 @@ func TestAccMonitorResource(t *testing.T) {
 
 func TestAccMonitorResource_AlertContacts(t *testing.T) {
 	id := mustAlertContactID(t)
+	name := acctest.RandomWithPrefix("test-monitor-alerts")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -533,15 +549,15 @@ func TestAccMonitorResource_AlertContacts(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Step 1: create with no contacts
 			{
-				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", nil),
+				Config: testAccMonitorResourceConfigWithAlertContactObjects(name, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", "test-monitor-alerts"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", name),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts"),
 				),
 			},
 			// Step 2: add one contact
 			{
-				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", []string{id}),
+				Config: testAccMonitorResourceConfigWithAlertContactObjects(name, []string{id}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts.#", "1"),
 					resource.TestCheckTypeSetElemNestedAttrs(
@@ -557,13 +573,13 @@ func TestAccMonitorResource_AlertContacts(t *testing.T) {
 			},
 			// Step 3: remove contacts (attribute omitted)
 			{
-				Config: testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", nil),
+				Config: testAccMonitorResourceConfigWithAlertContactObjects(name, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "assigned_alert_contacts"),
 				),
 			},
 			{
-				Config:             testAccMonitorResourceConfigWithAlertContactObjects("test-monitor-alerts", nil),
+				Config:             testAccMonitorResourceConfigWithAlertContactObjects(name, nil),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -573,7 +589,7 @@ func TestAccMonitorResource_AlertContacts(t *testing.T) {
 
 func TestAccMonitorResource_AlertContacts_ExplicitEmpty(t *testing.T) {
 	id := mustAlertContactID(t)
-	name := "test-monitor-contacts-empty"
+	name := acctest.RandomWithPrefix("test-monitor-contacts-empty")
 	url := testAccUniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
@@ -654,7 +670,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAccMonitorResource_AlertContacts_MissingThreshold(t *testing.T) {
 	id := mustAlertContactID(t)
-	name := "test-missing-threshold"
+	name := acctest.RandomWithPrefix("test-missing-threshold")
 	url := testAccUniqueURL(name)
 
 	cfg := testAccProviderConfig() + fmt.Sprintf(`
@@ -689,7 +705,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAccMonitorResource_AlertContacts_MissingRecurrence(t *testing.T) {
 	id := mustAlertContactID(t)
-	name := "test-missing-recurrence"
+	name := acctest.RandomWithPrefix("test-missing-recurrence")
 	url := testAccUniqueURL(name)
 
 	cfg := testAccProviderConfig() + fmt.Sprintf(`
@@ -725,7 +741,7 @@ resource "uptimerobot_monitor" "test" {
 // TestAccMonitorResource_Tags tests the specific case where tags
 // are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_Tags(t *testing.T) {
-	name := "test-monitor-tags"
+	name := acctest.RandomWithPrefix("test-monitor-tags")
 	url := testAccUniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
@@ -769,7 +785,7 @@ func TestAccMonitorResource_Tags(t *testing.T) {
 }
 
 func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
-	name := "test-monitor-headers"
+	name := acctest.RandomWithPrefix("test-monitor-headers")
 	url := testAccUniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
@@ -808,7 +824,7 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 				ResourceName:            "uptimerobot_monitor.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"timeout", "status", "custom_http_headers"},
+				ImportStateVerifyIgnore: []string{"timeout", "status", "custom_http_headers", "group_id"},
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
 				),
@@ -818,7 +834,7 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 }
 
 func TestAccMonitorResource_CustomHTTPHeaders_ContentTypeWithBody(t *testing.T) {
-	name := "test-monitor-headers-ct"
+	name := acctest.RandomWithPrefix("test-monitor-headers-ct")
 	url := fmt.Sprintf("%s/echo", testAccUniqueURL(name))
 
 	resource.Test(t, resource.TestCase{
@@ -893,7 +909,7 @@ resource "uptimerobot_monitor" "test" {
 // TestAccMonitorResource_MaintenanceWindows tests the specific case where maintenance window IDs
 // are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
-	sfx := "acc-mw"
+	sfx := acctest.RandomWithPrefix("acc-mw")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -989,7 +1005,7 @@ func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 
 // TestAccMonitorResource_PortMonitorValidation tests that PORT monitors require a port number.
 func TestAccMonitorResource_PortMonitorValidation(t *testing.T) {
-	name := "test-port-monitor"
+	name := acctest.RandomWithPrefix("test-port-monitor")
 	url := testAccUniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
@@ -1272,7 +1288,8 @@ resource "uptimerobot_monitor" "test" {
 
 // TestAccMonitorResource_InvalidMonitorType tests that invalid monitor types are rejected.
 func TestAccMonitorResource_InvalidMonitorType(t *testing.T) {
-	url := testAccUniqueURL("test-invalid-monitor")
+	name := acctest.RandomWithPrefix("test-invalid-monitor")
+	url := testAccUniqueURL(name)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1281,7 +1298,7 @@ func TestAccMonitorResource_InvalidMonitorType(t *testing.T) {
 			{
 				Config: testAccProviderConfig() + `
 resource "uptimerobot_monitor" "test" {
-    name         = "test-invalid-monitor"
+    name         = "` + name + `"
     url          = "` + url + `"
     type         = "INVALID_TYPE"
     interval     = 300
@@ -1295,7 +1312,8 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_HTTP_UsesTimeout(t *testing.T) {
-	url := testAccUniqueURL("acc-http")
+	name := acctest.RandomWithPrefix("acc-http")
+	url := testAccUniqueURL(name)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1303,13 +1321,13 @@ func TestAcc_Monitor_HTTP_UsesTimeout(t *testing.T) {
 			{
 				Config: fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "acc-http"
+  name     = %q
   type     = "HTTP"
   url      = "%s"
   interval = 300
   timeout  = 30
 }
-`, url),
+`, name, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "timeout", "30"),
@@ -1321,7 +1339,8 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_HTTP_DefaultTimeout_WhenOmitted(t *testing.T) {
-	url := testAccUniqueURL("acc-http-no-timeout")
+	name := acctest.RandomWithPrefix("acc-http-no-timeout")
+	url := testAccUniqueURL(name)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1329,13 +1348,13 @@ func TestAcc_Monitor_HTTP_DefaultTimeout_WhenOmitted(t *testing.T) {
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "acc-http-no-timeout"
+  name     = %q
   type     = "HTTP"
   url      = "%s"
   interval = 300
   // timeout omitted on purpose
 }
-`, url),
+`, name, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "HTTP"),
 					// Must be concretized by provider after apply
@@ -1430,32 +1449,28 @@ func TestAcc_Monitor_Heartbeat_Grace_Bounds_OK(t *testing.T) {
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
-			{ // min=0
+			{
+				// Create both boundaries in one apply to avoid update-timing flakes.
 				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "hb" {
+resource "uptimerobot_monitor" "hb_min" {
   name         = "%s-min"
   type         = "HEARTBEAT"
-  url          = "%s"
+  url          = "%s/min"
   interval     = 300
   grace_period = 0
 }
-`, baseName, baseURL),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "0"),
-				),
-			},
-			{ // max=86400
-				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "hb" {
+
+resource "uptimerobot_monitor" "hb_max" {
   name         = "%s-max"
   type         = "HEARTBEAT"
-  url          = "%s"
+  url          = "%s/max"
   interval     = 300
   grace_period = 86400
 }
-`, baseName, baseURL),
+`, baseName, baseURL, baseName, baseURL),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.hb", "grace_period", "86400"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.hb_min", "grace_period", "0"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.hb_max", "grace_period", "86400"),
 				),
 			},
 		},
@@ -1498,13 +1513,14 @@ resource "uptimerobot_monitor" "hb" {
 }
 
 func TestAcc_Monitor_HTTP_PostBody_RoundTrip(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-body")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// create with body
 			{
-				Config: testAccMonitorResourceConfigWithBody("acc-body", `jsonencode({foo="bar", n=1})`),
+				Config: testAccMonitorResourceConfigWithBody(name, `jsonencode({foo="bar", n=1})`),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "POST"),
 					// type should be computed to RAW_JSON
@@ -1515,7 +1531,7 @@ func TestAcc_Monitor_HTTP_PostBody_RoundTrip(t *testing.T) {
 			},
 			// update with different body (no diff loops)
 			{
-				Config: testAccMonitorResourceConfigWithBody("acc-body", `jsonencode({foo="baz", m=2})`),
+				Config: testAccMonitorResourceConfigWithBody(name, `jsonencode({foo="baz", m=2})`),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "post_value_type", "RAW_JSON"),
 					resource.TestCheckResourceAttrSet("uptimerobot_monitor.test", "post_value_data"),
@@ -1526,7 +1542,7 @@ func TestAcc_Monitor_HTTP_PostBody_RoundTrip(t *testing.T) {
 }
 
 func TestAcc_Monitor_HTTP_PostBody_ClearByRemoving(t *testing.T) {
-	name := "acc-body-clear"
+	name := acctest.RandomWithPrefix("acc-body-clear")
 	url := fmt.Sprintf("%s/echo", testAccUniqueURL(name))
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1562,7 +1578,8 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_HTTP_GetHead_NoBodyAllowed(t *testing.T) {
-	url := testAccUniqueURL("acc-get-body-error")
+	name := acctest.RandomWithPrefix("acc-get-body-error")
+	url := testAccUniqueURL(name)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1570,14 +1587,14 @@ func TestAcc_Monitor_HTTP_GetHead_NoBodyAllowed(t *testing.T) {
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name             = "acc-get-body-error"
+  name             = %q
   url              = "%s"
   type             = "HTTP"
   interval         = 300
   timeout          = 30
   http_method_type = "GET"
   post_value_data  = jsonencode({oops="nope"})
-}`, url),
+}`, name, url),
 				ExpectError: regexp.MustCompile(`Request body not allowed for GET/HEAD`),
 			},
 		},
@@ -1585,7 +1602,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_HTTP_PostKV_RoundTrip(t *testing.T) {
-	name := "acc-kv"
+	name := acctest.RandomWithPrefix("acc-kv")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1625,7 +1642,7 @@ func TestAcc_Monitor_HTTP_PostKV_RoundTrip(t *testing.T) {
 }
 
 func TestAcc_Monitor_HTTP_Post_NoBody_StablePlan(t *testing.T) {
-	name := "acc-post-nobody"
+	name := acctest.RandomWithPrefix("acc-post-nobody")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1652,7 +1669,7 @@ func TestAcc_Monitor_HTTP_Post_NoBody_StablePlan(t *testing.T) {
 }
 
 func TestAcc_Monitor_HTTP_MethodSwitch_ClearsBody(t *testing.T) {
-	name := "acc-method-switch"
+	name := acctest.RandomWithPrefix("acc-method-switch")
 	// Keep one URL across steps to avoid backend URL normalization drift.
 	url := fmt.Sprintf("%s/echo", testAccUniqueURL(name))
 	postNoBodyConfig := testAccProviderConfig() + fmt.Sprintf(`
@@ -1714,12 +1731,13 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_HTTP_DefaultMethod_GET(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-default-method")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccMonitorResourceConfig("acc-default-method"),
+				Config: testAccMonitorResourceConfig(name),
 				Check:  resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_method_type", "GET"),
 			},
 		},
@@ -1727,7 +1745,7 @@ func TestAcc_Monitor_HTTP_DefaultMethod_GET(t *testing.T) {
 }
 
 func TestAcc_Monitor_HTTP_Body_Switch_JSON_KV(t *testing.T) {
-	name := "acc-switch-json-kv"
+	name := acctest.RandomWithPrefix("acc-switch-json-kv")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1762,6 +1780,7 @@ func TestAcc_Monitor_HTTP_Body_Switch_JSON_KV(t *testing.T) {
 }
 
 func TestAcc_Monitor_CreatePlanOnly_NoExistingState(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-planonly-from-scratch")
 	// This specifically exercises ModifyPlan with a null state on first create.
 	// It should produce a non-empty plan and not panic / error.
 	resource.Test(t, resource.TestCase{
@@ -1769,7 +1788,7 @@ func TestAcc_Monitor_CreatePlanOnly_NoExistingState(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config:             testAccMonitorResourceConfig("acc-planonly-from-scratch"),
+				Config:             testAccMonitorResourceConfig(name),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: true,
 			},
@@ -1778,18 +1797,19 @@ func TestAcc_Monitor_CreatePlanOnly_NoExistingState(t *testing.T) {
 }
 
 func TestAcc_Monitor_CheckSSLErrors_DefaultFalse(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-sslerrs-default")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccMonitorResourceConfig("acc-sslerrs-default"),
+				Config: testAccMonitorResourceConfig(name),
 				Check:  resource.TestCheckResourceAttr("uptimerobot_monitor.test", "check_ssl_errors", "false"),
 			},
 			// idempotency
 			{
-				Config:             testAccMonitorResourceConfig("acc-sslerrs-default"),
+				Config:             testAccMonitorResourceConfig(name),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -1798,7 +1818,7 @@ func TestAcc_Monitor_CheckSSLErrors_DefaultFalse(t *testing.T) {
 }
 
 func TestAcc_Monitor_CheckSSLErrors_ExplicitTrue(t *testing.T) {
-	name := "acc-sslerrs-true"
+	name := acctest.RandomWithPrefix("acc-sslerrs-true")
 	url := testAccUniqueURL(name)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1836,8 +1856,28 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
+func TestAcc_Monitor_GroupID_SetAndPlanStable(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-group-id")
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccMonitorResourceConfigWithGroupID(name, 0),
+				Check:  resource.TestCheckResourceAttr("uptimerobot_monitor.test", "group_id", "0"),
+			},
+			{
+				Config:             testAccMonitorResourceConfigWithGroupID(name, 0),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
-	name := "acc-ssl-period"
+	name := acctest.RandomWithPrefix("acc-ssl-period")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1860,12 +1900,8 @@ func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
 					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days.*", "14"),
 				),
 			},
-			{ // remove config → attribute omitted
-				Config: testAccMonitorResourceConfig(name),
-				Check:  resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "config.ssl_expiration_period_days"),
-			},
-			{ // idempotent re-plan
-				Config:             testAccMonitorResourceConfig(name),
+			{ // remove config block from TF management
+				Config:             testAccMonitorResourceConfigWithSSLPeriod(name, nil),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -1874,7 +1910,10 @@ func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
 }
 
 func TestAcc_Monitor_Config_SSLExpirationPeriodDays_Invalid(t *testing.T) {
-	baseURL := testAccUniqueURL("acc-ssl-period")
+	baseName := acctest.RandomWithPrefix("acc-ssl-period")
+	baseDomain := testAccUniqueDomain(baseName)
+	invalidName := acctest.RandomWithPrefix("acc-ssl-period-invalid")
+	tooManyName := acctest.RandomWithPrefix("acc-ssl-period-too-many")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1882,16 +1921,15 @@ func TestAcc_Monitor_Config_SSLExpirationPeriodDays_Invalid(t *testing.T) {
 			{ // out of range
 				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "acc-ssl-period-invalid"
+  name     = %q
   url      = "%s"
-  type     = "HTTP"
+  type     = "DNS"
   interval = 300
-  timeout  = 30
   config = {
     ssl_expiration_period_days = [-1, 366]
   }
 }
-`, baseURL),
+`, invalidName, baseDomain),
 				ExpectError: regexp.MustCompile(
 					`(?s)` +
 						`Attribute config\.ssl_expiration_period_days\[Value\(-1\)\] value must be between[\s\S]*0 and 365, got: -1` +
@@ -1902,16 +1940,15 @@ resource "uptimerobot_monitor" "test" {
 			{ // > 10 items
 				Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "acc-ssl-period-too-many"
+  name     = %q
   url      = "%s"
-  type     = "HTTP"
+  type     = "DNS"
   interval = 300
-  timeout  = 30
   config = {
     ssl_expiration_period_days = [0,1,2,3,4,5,6,7,8,9,10]
   }
 }
-`, baseURL),
+`, tooManyName, baseDomain),
 				ExpectError: regexp.MustCompile(
 					`Attribute config\.ssl_expiration_period_days (?:set|value) must contain at most 10\s+elements(?:, got: \d+)?`,
 				),
@@ -1926,16 +1963,17 @@ func TestAcc_Monitor_NameURL_HTMLNormalization(t *testing.T) {
 	}
 
 	resourceName := "uptimerobot_monitor.test"
-	url := fmt.Sprintf("%s/health?a=1&b=2", testAccUniqueURL("acc-html-normalization"))
+	name := fmt.Sprintf("A & B <C> %s", acctest.RandStringFromCharSet(6, acctest.CharSetAlphaNum))
+	url := fmt.Sprintf("%s/health?a=1&b=2", testAccUniqueURL(name))
 
 	cfgPlain := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "A & B <C>"
+  name     = %q
   type     = "HTTP"
   url      = "%s"
   interval = 300
 }
-`, url)
+`, name, url)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1943,7 +1981,7 @@ resource "uptimerobot_monitor" "test" {
 			{
 				Config: cfgPlain,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(resourceName, "name", "A & B <C>"),
+					resource.TestCheckResourceAttr(resourceName, "name", name),
 					resource.TestCheckResourceAttr(resourceName, "url", url),
 				),
 			},
@@ -1951,6 +1989,9 @@ resource "uptimerobot_monitor" "test" {
 				ResourceName:      resourceName,
 				ImportState:       true,
 				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"group_id",
+				},
 			},
 			{Config: cfgPlain, PlanOnly: true, ExpectNonEmptyPlan: false},
 		},
@@ -1976,8 +2017,9 @@ func TestAcc_Monitor_Import_NameURL_HTMLNormalizationFromAPI(t *testing.T) {
 
 	// Create a monitor via API with intentionally escaped inputs to simulate
 	// out-of-band creation (UI, direct API usage, other tools).
-	rawURL := fmt.Sprintf("%s/health?a=1&amp;b=2", testAccUniqueURL("acc-import-html-normalization"))
-	rawName := "A &amp; B <C>"
+	suffix := acctest.RandStringFromCharSet(6, acctest.CharSetAlphaNum)
+	rawURL := fmt.Sprintf("%s/health?a=1&amp;b=2", testAccUniqueURL("acc-import-html-normalization-"+suffix))
+	rawName := fmt.Sprintf("A &amp; B <C> %s", suffix)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -2098,7 +2140,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAccMonitorResource_KeywordCaseType_Semantics(t *testing.T) {
-	name := "kct-semantics"
+	name := acctest.RandomWithPrefix("kct-semantics")
 	url := testAccUniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
@@ -2163,20 +2205,16 @@ func TestAccMonitorResource_KeywordCaseType_Semantics(t *testing.T) {
 // Config
 
 func TestAcc_Monitor_Config_SSLDays_Semantics(t *testing.T) {
-	t.Parallel()
-
 	name := acctest.RandomWithPrefix("acc-ssl-config")
 	res := "uptimerobot_monitor.test"
-	url := testAccUniqueURL(name)
+	domain := testAccUniqueDomain(name)
 
 	cfgSet := `
 resource "uptimerobot_monitor" "test" {
   name     = "` + name + `"
-  type     = "HTTP"
-  url      = "` + url + `"
+  type     = "DNS"
+  url      = "` + domain + `"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   config = {
     ssl_expiration_period_days = [3, 5, 30, 69]
@@ -2187,11 +2225,9 @@ resource "uptimerobot_monitor" "test" {
 	cfgPreserve := `
 resource "uptimerobot_monitor" "test" {
   name     = "` + name + `"
-  type     = "HTTP"
-  url      = "` + url + `"
+  type     = "DNS"
+  url      = "` + domain + `"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   config = {}
 }
@@ -2200,26 +2236,22 @@ resource "uptimerobot_monitor" "test" {
 	cfgClear := `
 resource "uptimerobot_monitor" "test" {
   name     = "` + name + `"
-  type     = "HTTP"
-  url      = "` + url + `"
+  type     = "DNS"
+  url      = "` + domain + `"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   config = {
     ssl_expiration_period_days = []
   }
 }
 `
-	// Omit block entirely -> preserve remote and keep state null
+	// Omit block entirely -> preserve remote values in state for DNS monitors
 	cfgOmit := `
 resource "uptimerobot_monitor" "test" {
   name     = "` + name + `"
-  type     = "HTTP"
-  url      = "` + url + `"
+  type     = "DNS"
+  url      = "` + domain + `"
   interval = 300
-
-  ssl_expiration_reminder = true
 }
 `
 
@@ -2257,11 +2289,11 @@ resource "uptimerobot_monitor" "test" {
 					resource.TestCheckResourceAttr(res, "config.ssl_expiration_period_days.#", "0"),
 				),
 			},
-			// Omit block: state should NOT have nested attrs at all
+			// Omit block: preserve remote values for DNS monitors
 			{
 				Config: cfgOmit,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckNoResourceAttr(res, "config.ssl_expiration_period_days.#"),
+					resource.TestCheckResourceAttr(res, "config.ssl_expiration_period_days.#", "0"),
 				),
 			},
 		},
@@ -2269,8 +2301,6 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_Config_DNSRecords_Manage(t *testing.T) {
-	t.Parallel()
-
 	name := acctest.RandomWithPrefix("acc-dns-config")
 	domain := testAccUniqueDomain(name)
 	res := "uptimerobot_monitor.test"
@@ -2346,8 +2376,6 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_Config_DNSRecords_ForbiddenOnHTTP(t *testing.T) {
-	t.Parallel()
-
 	name := acctest.RandomWithPrefix("acc-http-dns")
 	url := testAccUniqueURL(name)
 	cfg := fmt.Sprintf(`
@@ -2377,38 +2405,34 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_Config_SSLDays_Validators(t *testing.T) {
-	t.Parallel()
-
 	name := acctest.RandomWithPrefix("acc-ssl-validate")
-	url := testAccUniqueURL(name)
+	domain := testAccUniqueDomain(name)
 
 	tooMany := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "`+name+`"
-  type     = "HTTP"
+  type     = "DNS"
   url      = "%s"
   interval = 300
-  ssl_expiration_reminder = true
 
   config = {
     # 11 items (max 10)
     ssl_expiration_period_days = [0,1,2,3,4,5,6,7,8,9,10]
   }
 }
-`, url)
+`, domain)
 	outOfRange := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "`+name+`"
-  type     = "HTTP"
+  type     = "DNS"
   url      = "%s"
   interval = 300
-  ssl_expiration_reminder = true
 
   config = {
     ssl_expiration_period_days = [400]
   }
 }
-`, url)
+`, domain)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -2427,8 +2451,6 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_Config_DNSRecords_EmptyList_StaysEmpty(t *testing.T) {
-	t.Parallel()
-
 	name := acctest.RandomWithPrefix("acc-dns-empty")
 	domain := testAccUniqueDomain(name)
 	res := "uptimerobot_monitor.test"
@@ -2492,8 +2514,6 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_Config_DNSRecords_EmptyList_A_StaysEmpty(t *testing.T) {
-	t.Parallel()
-
 	name := acctest.RandomWithPrefix("acc-dns-empty-a")
 	domain := testAccUniqueDomain(name)
 	res := "uptimerobot_monitor.test"
@@ -2574,8 +2594,6 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_Config_DNSRecords_OmitConfig_Preserves(t *testing.T) {
-	t.Parallel()
-
 	name := acctest.RandomWithPrefix("acc-dns-omit-config")
 	domain := testAccUniqueDomain(name)
 	res := "uptimerobot_monitor.test"
@@ -2637,11 +2655,10 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
-func TestAcc_Monitor_Config_DNSRecords_ConfigWithoutRecords_Fails(t *testing.T) {
-	t.Parallel()
-
+func TestAcc_Monitor_Config_DNSRecords_ConfigWithoutRecords_AllowsEmptyConfig(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-dns-norecords")
 	domain := testAccUniqueDomain(name)
+	res := "uptimerobot_monitor.test"
 
 	cfgMissing := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
@@ -2660,8 +2677,40 @@ resource "uptimerobot_monitor" "test" {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config:      cfgMissing,
-				ExpectError: regexp.MustCompile(`config\.dns_records.*required.*DNS monitors`),
+				Config: cfgMissing,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "name", name),
+				),
+			},
+			{
+				Config:             cfgMissing,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_DNSRequiresConfigOnCreate(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-dns-requires-config")
+	domain := testAccUniqueDomain(name)
+
+	cfgMissingConfig := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "DNS"
+  url      = "%s"
+  interval = 300
+}
+`, name, domain)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      cfgMissingConfig,
+				ExpectError: regexp.MustCompile("config.*required.*DNS monitors.*create"),
 			},
 		},
 	})

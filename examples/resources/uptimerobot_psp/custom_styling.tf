@@ -12,10 +12,6 @@ resource "uptimerobot_psp" "branded_status" {
     uptimerobot_monitor.website.id,
   ]
 
-  # Custom branding
-  logo = "https://example.com/logo.png"
-  icon = "https://example.com/favicon.ico"
-
   # Custom styling
   custom_settings = {
     colors = {

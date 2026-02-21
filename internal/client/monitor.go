@@ -51,6 +51,7 @@ type CreateMonitorRequest struct {
 	ResponseTimeThreshold    int                   `json:"responseTimeThreshold,omitempty"`
 	RegionalData             string                `json:"regionalData,omitempty"`
 	Config                   *MonitorConfig        `json:"config,omitempty"`
+	GroupID                  *int                  `json:"groupId,omitempty"`
 }
 
 // UpdateMonitorRequest represents the request to update an existing monitor.
@@ -84,6 +85,7 @@ type UpdateMonitorRequest struct {
 	ResponseTimeThreshold    *int                   `json:"responseTimeThreshold,omitempty"`
 	RegionalData             *string                `json:"regionalData,omitempty"`
 	Config                   *MonitorConfig         `json:"config,omitempty"`
+	GroupID                  *int                   `json:"groupId,omitempty"`
 }
 
 // Monitor represents a monitor.
@@ -126,6 +128,7 @@ type Monitor struct {
 	LastDayUptimes           *UptimeStats        `json:"lastDayUptimes"`
 	CreateDateTime           string              `json:"createDateTime"`
 	APIKey                   string              `json:"apiKey"`
+	GroupID                  int64               `json:"groupId"`
 	RegionalData             interface{}         `json:"regionalData"`
 	ResponseTimeThreshold    int                 `json:"responseTimeThreshold"`
 	Config                   *MonitorConfig      `json:"config"`

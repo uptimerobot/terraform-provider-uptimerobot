@@ -33,6 +33,7 @@ type monitorResourceModel struct {
 	Name                     types.String         `tfsdk:"name"`
 	Status                   types.String         `tfsdk:"status"`
 	URL                      types.String         `tfsdk:"url"`
+	GroupID                  types.Int64          `tfsdk:"group_id"`
 	Tags                     types.Set            `tfsdk:"tags"`
 	AssignedAlertContacts    types.Set            `tfsdk:"assigned_alert_contacts"`
 	ResponseTimeThreshold    types.Int64          `tfsdk:"response_time_threshold"`

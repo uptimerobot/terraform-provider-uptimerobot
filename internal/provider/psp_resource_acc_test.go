@@ -138,8 +138,6 @@ func testAccPSPResourceConfigOptionalsSet(name string) string {
 resource "uptimerobot_psp" "test" {
   name = %q
 
-  icon    = "https://example.com/icon.png"
-  logo    = "https://example.com/logo.png"
   ga_code = "G-ABCDE12349"
 
   # Sensitive and not returned by the API. Provider should still not error.
@@ -153,7 +151,7 @@ func testAccPSPResourceConfigOptionalsOmitted(name string) string {
 resource "uptimerobot_psp" "test" {
   name = %q
 
-  # icon/logo/ga_code/password intentionally omitted for checking stability
+  # ga_code/password intentionally omitted for checking stability
 }
 `, name)
 }
@@ -177,6 +175,10 @@ resource "uptimerobot_psp" "test" {
 }
 
 func TestAccPSPResource(t *testing.T) {
+	nameCreate := randomName("test-psp")
+	nameUpdate := randomName("test-psp-updated")
+	nameNoMonitors := randomName("test-psp-nomon")
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -184,10 +186,10 @@ func TestAccPSPResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create + Read
 			{
-				Config: testAccPSPResourceConfigWithFeatures("test-psp"),
+				Config: testAccPSPResourceConfigWithFeatures(nameCreate),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// top-level
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", "test-psp"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", nameCreate),
 					// nested: page
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.page.layout", "logo_on_left"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.page.theme", "dark"),
@@ -205,9 +207,9 @@ func TestAccPSPResource(t *testing.T) {
 			},
 			// Update flags, strings
 			{
-				Config: testAccPSPResourceConfigWithFeaturesUpdated("test-psp-updated"),
+				Config: testAccPSPResourceConfigWithFeaturesUpdated(nameUpdate),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", "test-psp-updated"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", nameUpdate),
 					// updated page + colors
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.page.theme", "light"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "custom_settings.colors.link", "#778899"),
@@ -219,9 +221,9 @@ func TestAccPSPResource(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccPSPResourceConfigWithoutMonitors("test-psp-nomon"),
+				Config: testAccPSPResourceConfigWithoutMonitors(nameNoMonitors),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", "test-psp-nomon"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", nameNoMonitors),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "0"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitors_count", "0"),
 				),
@@ -238,6 +240,8 @@ func TestAccPSPResource(t *testing.T) {
 }
 
 func TestAccPSPResource_MonitorCountFollowsMonitorIDs(t *testing.T) {
+	name := randomName("test-psp-monitors")
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -245,7 +249,7 @@ func TestAccPSPResource_MonitorCountFollowsMonitorIDs(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Step 1: PSP with one monitor
 			{
-				Config: testAccPSPResourceConfigWithMonitor("test-psp-monitors"),
+				Config: testAccPSPResourceConfigWithMonitor(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// one monitor in the set
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "1"),
@@ -255,7 +259,7 @@ func TestAccPSPResource_MonitorCountFollowsMonitorIDs(t *testing.T) {
 			},
 			// Step 2: same PSP, no monitors
 			{
-				Config: testAccPSPResourceConfigWithoutMonitors("test-psp-monitors"),
+				Config: testAccPSPResourceConfigWithoutMonitors(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "0"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitors_count", "0"),
@@ -327,8 +331,6 @@ func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
 				Config: testAccPSPResourceConfigOptionalsSet(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon", "https://example.com/icon.png"),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo", "https://example.com/logo.png"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "ga_code", "G-ABCDE12349"),
 				),
 			},
@@ -336,8 +338,6 @@ func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
 				Config: testAccPSPResourceConfigOptionalsOmitted(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "icon", "https://example.com/icon.png"),
-					resource.TestCheckResourceAttr("uptimerobot_psp.test", "logo", "https://example.com/logo.png"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "ga_code", "G-ABCDE12349"),
 				),
 			},

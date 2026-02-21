@@ -3,7 +3,9 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -66,6 +68,10 @@ func isTempServerErr(err error) bool {
 	if err == nil {
 		return false
 	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
 	if code, ok := client.StatusCode(err); ok {
 		switch code {
 		case http.StatusInternalServerError,
@@ -82,10 +88,74 @@ func isTempServerErr(err error) bool {
 		strings.Contains(s, "status 502") ||
 		strings.Contains(s, "status 503") ||
 		strings.Contains(s, "status 504") ||
+		strings.Contains(s, "timeout") ||
+		strings.Contains(s, "tls handshake timeout") ||
 		strings.Contains(s, "internal server error") ||
 		strings.Contains(s, "bad gateway") ||
 		strings.Contains(s, "service unavailable") ||
 		strings.Contains(s, "gateway timeout")
+}
+
+// waitIntegrationSettled polls integration until expected name is visible in
+// repeated reads. This reduces stale read-after-write drift.
+func (r *integrationResource) waitIntegrationSettled(
+	ctx context.Context,
+	id int64,
+	expectedName string,
+	timeout time.Duration,
+) (*client.Integration, error) {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	if dl, ok := ctx.Deadline(); ok {
+		if rem := time.Until(dl); rem > 0 && rem < timeout {
+			timeout = rem
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var last *client.Integration
+	backoff := 500 * time.Millisecond
+	const maxBackoff = 3 * time.Second
+	const requiredConsecutiveMatches = 4
+	consecutiveMatches := 0
+
+	for {
+		integration, err := r.client.GetIntegration(ctx, id)
+		if err == nil {
+			last = integration
+			nameOK := expectedName == "" || integration.Name == expectedName
+			if nameOK {
+				consecutiveMatches++
+				if consecutiveMatches >= requiredConsecutiveMatches {
+					return integration, nil
+				}
+			} else {
+				consecutiveMatches = 0
+			}
+		} else {
+			consecutiveMatches = 0
+		}
+
+		select {
+		case <-ctx.Done():
+			if last != nil {
+				return last, fmt.Errorf("timeout waiting for integration to settle; last name=%q: %w", last.Name, ctx.Err())
+			}
+			return nil, fmt.Errorf("timeout waiting for integration to settle: %w", ctx.Err())
+		case <-time.After(backoff):
+		}
+
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+	}
 }
 
 // jsonEquivalentPlanModifier is a custom plan modifier that ignores JSON formatting differences.
@@ -506,7 +576,26 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 		Data: integrationData,
 	}
 
-	newIntegration, err := r.client.CreateIntegration(ctx, integration)
+	var newIntegration *client.Integration
+	backoffs := []time.Duration{
+		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 3 * time.Second, 5 * time.Second,
+	}
+	var err error
+	for i := 0; i < len(backoffs); i++ {
+		newIntegration, err = r.client.CreateIntegration(ctx, integration)
+		if err == nil {
+			break
+		}
+		if !isTempServerErr(err) || i == len(backoffs)-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			resp.Diagnostics.AddError("Create cancelled", ctx.Err().Error())
+			return
+		case <-time.After(backoffs[i]):
+		}
+	}
 	if err != nil {
 		if apiErr, ok := client.AsAPIError(err); ok && apiErr.StatusCode == http.StatusConflict {
 			msg := strings.TrimSpace(apiErr.Message)
@@ -617,6 +706,17 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
+	if !state.Name.IsNull() && !state.Name.IsUnknown() {
+		expectedName := state.Name.ValueString()
+		if expectedName != "" && integration.Name != expectedName {
+			if settled, err := r.waitIntegrationSettled(ctx, id, expectedName, 60*time.Second); err == nil && settled != nil {
+				integration = settled
+			} else if settled != nil {
+				integration = settled
+			}
+		}
+	}
+
 	// Map response body to schema and populate Computed attribute values
 	state.Name = types.StringValue(integration.Name)
 	state.Type = types.StringValue(TransformIntegrationTypeFromAPI(integration.Type))
@@ -693,20 +793,15 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.AutoResolve = types.BoolNull()
 
 	case "pagerduty":
-		// location from customValue2
-		if v := strings.TrimSpace(integration.CustomValue2); v != "" {
-			state.Location = types.StringValue(strings.ToLower(v)) // "us"/"eu"
+		if location, ok := pagerDutyLocationFromAPI(integration); ok {
+			state.Location = stickyStringPreferPrevOnMismatch(prev.Location, location, strings.ToLower)
 		} else {
 			state.Location = stickyString(prev.Location, "", strings.ToLower)
 		}
 
-		// autoResolve from customValue: "1"/"0", guard to include "true"/"false"
-		switch strings.ToLower(strings.TrimSpace(integration.CustomValue)) {
-		case "1", "true":
-			state.AutoResolve = types.BoolValue(true)
-		case "0", "false":
-			state.AutoResolve = types.BoolValue(false)
-		default:
+		if autoResolve, ok := pagerDutyAutoResolveFromAPI(integration); ok {
+			state.AutoResolve = stickyBool(prev.AutoResolve, autoResolve, false)
+		} else {
 			state.AutoResolve = stickyBool(prev.AutoResolve, false, false)
 		}
 
@@ -933,11 +1028,36 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		Data: integrationData,
 	}
 
-	_, err = r.client.UpdateIntegration(ctx, id, integration)
+	backoffs := []time.Duration{
+		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 3 * time.Second, 5 * time.Second,
+	}
+	for i := 0; i < len(backoffs); i++ {
+		_, err = r.client.UpdateIntegration(ctx, id, integration)
+		if err == nil {
+			break
+		}
+		if !isTempServerErr(err) || i == len(backoffs)-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			resp.Diagnostics.AddError("Update cancelled", ctx.Err().Error())
+			return
+		case <-time.After(backoffs[i]):
+		}
+	}
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating integration",
 			"Could not update integration, unexpected error: "+err.Error(),
+		)
+		return
+	}
+
+	if _, err := r.waitIntegrationSettled(ctx, id, plan.Name.ValueString(), 90*time.Second); err != nil {
+		resp.Diagnostics.AddError(
+			"Integration update did not settle in time",
+			err.Error(),
 		)
 		return
 	}
@@ -1004,6 +1124,26 @@ func stickyString(prev types.String, api string, norm func(string) string) types
 	return types.StringNull()
 }
 
+func stickyStringPreferPrevOnMismatch(prev types.String, api string, norm func(string) string) types.String {
+	api = strings.TrimSpace(api)
+	if norm != nil && api != "" {
+		api = norm(api)
+	}
+	if !prev.IsNull() && !prev.IsUnknown() {
+		prevVal := strings.TrimSpace(prev.ValueString())
+		if norm != nil && prevVal != "" {
+			prevVal = norm(prevVal)
+		}
+		if api == "" || (prevVal != "" && api != prevVal) {
+			return prev
+		}
+	}
+	if api != "" {
+		return types.StringValue(api)
+	}
+	return types.StringNull()
+}
+
 func stickyBool(prev types.Bool, api bool, emptyIsNull bool) types.Bool {
 	// If we have a known previous value, prefer it to avoid transient flips
 	if !prev.IsNull() && !prev.IsUnknown() {
@@ -1034,4 +1174,32 @@ func stickyEF(prev types.Int64, api string) types.Int64 {
 		return prev
 	}
 	return types.Int64Value(v)
+}
+
+func pagerDutyLocationFromAPI(integration *client.Integration) (string, bool) {
+	if integration == nil {
+		return "", false
+	}
+	if v := strings.TrimSpace(integration.CustomValue2); v != "" {
+		return strings.ToLower(v), true
+	}
+	if v := strings.TrimSpace(integration.Location); v != "" {
+		return strings.ToLower(v), true
+	}
+	return "", false
+}
+
+func pagerDutyAutoResolveFromAPI(integration *client.Integration) (bool, bool) {
+	if integration == nil {
+		return false, false
+	}
+	switch strings.ToLower(strings.TrimSpace(integration.CustomValue)) {
+	case "1", "true":
+		return true, true
+	case "0", "false":
+		return false, true
+	}
+
+	// Fallback to dedicated field when API returns it directly.
+	return integration.AutoResolve, true
 }

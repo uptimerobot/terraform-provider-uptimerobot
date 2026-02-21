@@ -161,6 +161,10 @@ func (r *monitorResource) buildCreateRequest(
 	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
 		req.RegionalData = plan.RegionalData.ValueString()
 	}
+	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
+		v := int(plan.GroupID.ValueInt64())
+		req.GroupID = &v
+	}
 
 	// Timeout and Grace period by type
 	r.applyTimeoutAndGrace(&plan, req)
@@ -205,6 +209,12 @@ func (r *monitorResource) buildCreateRequest(
 	r.applyFlagsFromPlan(&plan, req)
 	// Config
 	r.applyConfigFromPlan(ctx, plan.Config, req, resp)
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeDNS &&
+		!plan.Config.IsNull() && !plan.Config.IsUnknown() &&
+		req.Config == nil {
+		// DNS create requires config to be present; explicit empty object is valid.
+		req.Config = &client.MonitorConfig{}
+	}
 
 	return req, effMethod
 }
@@ -439,6 +449,11 @@ func (r *monitorResource) buildStateAfterCreate(
 	plan.Name = types.StringValue(unescapeHTML(api.Name))
 	plan.URL = types.StringValue(unescapeHTML(api.URL))
 	plan.Status = types.StringValue(api.Status)
+	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
+		plan.GroupID = types.Int64Value(api.GroupID)
+	} else {
+		plan.GroupID = types.Int64Null()
+	}
 
 	methodManaged := !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown()
 	actualMethod := strings.ToUpper(effMethod)

@@ -154,6 +154,84 @@ func preferPlannedTopLevelValues(plan *pspResourceModel, state *pspResourceModel
 	}
 }
 
+func preferPlannedCustomSettingsValues(plan *pspResourceModel, state *pspResourceModel) {
+	if plan == nil || state == nil || plan.CustomSettings == nil || state.CustomSettings == nil {
+		return
+	}
+
+	if plan.CustomSettings.Font != nil {
+		if state.CustomSettings.Font == nil {
+			state.CustomSettings.Font = &fontSettingsModel{}
+		}
+		if hasConfiguredString(plan.CustomSettings.Font.Family) {
+			state.CustomSettings.Font.Family = plan.CustomSettings.Font.Family
+		}
+	}
+
+	if plan.CustomSettings.Page != nil {
+		if state.CustomSettings.Page == nil {
+			state.CustomSettings.Page = &pageSettingsModel{}
+		}
+		if hasConfiguredString(plan.CustomSettings.Page.Layout) {
+			state.CustomSettings.Page.Layout = plan.CustomSettings.Page.Layout
+		}
+		if hasConfiguredString(plan.CustomSettings.Page.Theme) {
+			state.CustomSettings.Page.Theme = plan.CustomSettings.Page.Theme
+		}
+		if hasConfiguredString(plan.CustomSettings.Page.Density) {
+			state.CustomSettings.Page.Density = plan.CustomSettings.Page.Density
+		}
+	}
+
+	if plan.CustomSettings.Colors != nil {
+		if state.CustomSettings.Colors == nil {
+			state.CustomSettings.Colors = &colorSettingsModel{}
+		}
+		if hasConfiguredString(plan.CustomSettings.Colors.Main) {
+			state.CustomSettings.Colors.Main = plan.CustomSettings.Colors.Main
+		}
+		if hasConfiguredString(plan.CustomSettings.Colors.Text) {
+			state.CustomSettings.Colors.Text = plan.CustomSettings.Colors.Text
+		}
+		if hasConfiguredString(plan.CustomSettings.Colors.Link) {
+			state.CustomSettings.Colors.Link = plan.CustomSettings.Colors.Link
+		}
+	}
+
+	if plan.CustomSettings.Features != nil {
+		if state.CustomSettings.Features == nil {
+			state.CustomSettings.Features = &featureSettingsModel{}
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowBars) {
+			state.CustomSettings.Features.ShowBars = plan.CustomSettings.Features.ShowBars
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowUptimePercentage) {
+			state.CustomSettings.Features.ShowUptimePercentage = plan.CustomSettings.Features.ShowUptimePercentage
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.EnableFloatingStatus) {
+			state.CustomSettings.Features.EnableFloatingStatus = plan.CustomSettings.Features.EnableFloatingStatus
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowOverallUptime) {
+			state.CustomSettings.Features.ShowOverallUptime = plan.CustomSettings.Features.ShowOverallUptime
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowOutageUpdates) {
+			state.CustomSettings.Features.ShowOutageUpdates = plan.CustomSettings.Features.ShowOutageUpdates
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowOutageDetails) {
+			state.CustomSettings.Features.ShowOutageDetails = plan.CustomSettings.Features.ShowOutageDetails
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.EnableDetailsPage) {
+			state.CustomSettings.Features.EnableDetailsPage = plan.CustomSettings.Features.EnableDetailsPage
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowMonitorURL) {
+			state.CustomSettings.Features.ShowMonitorURL = plan.CustomSettings.Features.ShowMonitorURL
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.HidePausedMonitors) {
+			state.CustomSettings.Features.HidePausedMonitors = plan.CustomSettings.Features.HidePausedMonitors
+		}
+	}
+}
+
 func ensureKnownTopLevelOptionals(state *pspResourceModel) {
 	if state == nil {
 		return
@@ -539,9 +617,19 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				},
 			},
 			"icon": schema.StringAttribute{
-				Description: "Icon for the PSP",
-				Optional:    true,
-				Computed:    true,
+				Description: "Icon for the PSP. API accepts file uploads only; non-empty string values are not supported by this provider.",
+				MarkdownDescription: "Icon for the PSP.\n\n" +
+					"The API accepts this field only as a file upload via `multipart/form-data`.\n" +
+					"This provider currently does not upload files, so non-empty string values are rejected.\n" +
+					"Use `\"\"` only if you intentionally want to clear the icon.",
+				Optional: true,
+				Computed: true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^$`),
+						"icon supports only empty string in this provider; file upload via multipart/form-data is not implemented",
+					),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -555,9 +643,19 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				},
 			},
 			"logo": schema.StringAttribute{
-				Description: "Logo for the PSP",
-				Optional:    true,
-				Computed:    true,
+				Description: "Logo for the PSP. API accepts file uploads only; non-empty string values are not supported by this provider.",
+				MarkdownDescription: "Logo for the PSP.\n\n" +
+					"The API accepts this field only as a file upload via `multipart/form-data`.\n" +
+					"This provider currently does not upload files, so non-empty string values are rejected.\n" +
+					"Use `\"\"` only if you intentionally want to clear the logo.",
+				Optional: true,
+				Computed: true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^$`),
+						"logo supports only empty string in this provider; file upload via multipart/form-data is not implemented",
+					),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -981,7 +1079,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		newPSP.ID,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
-		60*time.Second,
+		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
 	} else if err != nil {
@@ -1010,6 +1108,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
 	pspToResourceData(ctx, pspForState, &updatedPlan)
+	updatedPlan.Name = plan.Name
 
 	if hasMonitorPlan {
 		updatedPlan.MonitorIDs = plan.MonitorIDs
@@ -1042,6 +1141,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		updatedPlan.CustomSettings = nil
 	}
 	maskCustomSettingsFromPlan(&plan, &updatedPlan)
+	preferPlannedCustomSettingsValues(&plan, &updatedPlan)
 	maskOptionalTopLevelNullsFromPlan(&plan, &updatedPlan)
 	preferPlannedTopLevelValues(&plan, &updatedPlan)
 	ensureKnownTopLevelOptionals(&updatedPlan)
@@ -1085,6 +1185,45 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	}
 
 	isImport := state.Name.IsNull()
+
+	expectedName := ""
+	if !state.Name.IsNull() && !state.Name.IsUnknown() {
+		expectedName = state.Name.ValueString()
+	}
+
+	var expectedMonitorIDs []int64
+	if !state.MonitorIDs.IsNull() && !state.MonitorIDs.IsUnknown() {
+		diags := state.MonitorIDs.ElementsAs(ctx, &expectedMonitorIDs, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	nameMismatch := expectedName != "" && psp.Name != expectedName
+	monitorsMismatch := false
+	if expectedMonitorIDs != nil {
+		missing, extra := diffMonitorIDs(expectedMonitorIDs, psp.MonitorIDs)
+		monitorsMismatch = len(missing) > 0 || len(extra) > 0
+	}
+
+	// PSP reads can be eventually consistent right after updates.
+	// If the API returns transient old values, re-poll briefly before accepting drift.
+	if !isImport && (nameMismatch || monitorsMismatch) {
+		if settled, err := waitPSPSettled(
+			ctx,
+			r.client,
+			id,
+			expectedName,
+			expectedMonitorIDs,
+			20*time.Second,
+		); err == nil && settled != nil {
+			psp = settled
+		} else if settled != nil {
+			// Keep the most recent snapshot even when we timed out waiting for exact match.
+			psp = settled
+		}
+	}
 
 	managedColors := state.CustomSettings != nil && state.CustomSettings.Colors != nil
 	managedFeatures := state.CustomSettings != nil && state.CustomSettings.Features != nil
@@ -1354,7 +1493,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		id,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
-		60*time.Second,
+		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
 	} else if err != nil {
@@ -1371,6 +1510,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 
 	var newState = plan
 	pspToResourceData(ctx, pspForState, &newState)
+	newState.Name = plan.Name
 
 	if hasMonitorPlan {
 		newState.MonitorIDs = plan.MonitorIDs
@@ -1379,6 +1519,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	maskCustomSettingsFromPlan(&plan, &newState)
+	preferPlannedCustomSettingsValues(&plan, &newState)
 	maskOptionalTopLevelNullsFromPlan(&plan, &newState)
 	preferPlannedTopLevelValues(&plan, &newState)
 	ensureKnownTopLevelOptionals(&newState)
@@ -1449,6 +1590,8 @@ func waitPSPSettled(
 	var last *client.PSP
 	backoff := 500 * time.Millisecond
 	const maxBackoff = 3 * time.Second
+	const requiredConsecutiveMatches = 3
+	consecutiveMatches := 0
 
 	for {
 		psp, err := c.GetPSP(ctx, id)
@@ -1464,8 +1607,15 @@ func waitPSPSettled(
 			}
 
 			if nameOK && monitorsOK {
-				return psp, nil
+				consecutiveMatches++
+				if consecutiveMatches >= requiredConsecutiveMatches {
+					return psp, nil
+				}
+			} else {
+				consecutiveMatches = 0
 			}
+		} else {
+			consecutiveMatches = 0
 		}
 
 		select {

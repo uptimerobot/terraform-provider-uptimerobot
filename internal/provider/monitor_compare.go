@@ -29,6 +29,7 @@ type monComparable struct {
 	CheckSSLErrors           *bool
 	ResponseTimeThreshold    *int
 	RegionalData             *string
+	GroupID                  *int
 
 	// Collections compared as sets and maps when present
 	SuccessCodes         []string
@@ -142,6 +143,10 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 		s := strings.ToLower(strings.TrimSpace(req.RegionalData))
 		c.RegionalData = &s
 	}
+	if req.GroupID != nil {
+		v := *req.GroupID
+		c.GroupID = &v
+	}
 
 	// Assert collections only when they are actually sent
 	if req.CustomHTTPHeaders != nil {
@@ -166,7 +171,12 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 		c.MaintenanceWindowIDs = ids
 	}
 	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
-		c.SSLExpirationPeriodDays = normalizeInt64Set(*req.Config.SSLExpirationPeriodDays)
+		days := *req.Config.SSLExpirationPeriodDays
+		if len(days) == 0 {
+			c.SSLExpirationPeriodDays = []int64{}
+		} else {
+			c.SSLExpirationPeriodDays = normalizeInt64Set(days)
+		}
 	}
 	if req.Config != nil && req.Config.DNSRecords != nil {
 		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
@@ -274,6 +284,10 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		s := strings.ToLower(strings.TrimSpace(*req.RegionalData))
 		c.RegionalData = &s
 	}
+	if req.GroupID != nil {
+		v := *req.GroupID
+		c.GroupID = &v
+	}
 
 	if req.SuccessHTTPResponseCodes != nil && len(*req.SuccessHTTPResponseCodes) > 0 {
 		c.SuccessCodes = normalizeStringSet(*req.SuccessHTTPResponseCodes)
@@ -292,7 +306,12 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		c.MaintenanceWindowIDs = ids
 	}
 	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
-		c.SSLExpirationPeriodDays = normalizeInt64Set(*req.Config.SSLExpirationPeriodDays)
+		days := *req.Config.SSLExpirationPeriodDays
+		if len(days) == 0 {
+			c.SSLExpirationPeriodDays = []int64{}
+		} else {
+			c.SSLExpirationPeriodDays = normalizeInt64Set(days)
+		}
 	}
 	if req.Config != nil && req.Config.DNSRecords != nil {
 		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
@@ -405,6 +424,10 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 			}
 		}
 	}
+	{
+		v := int(m.GroupID)
+		c.GroupID = &v
+	}
 
 	// Collections
 
@@ -441,7 +464,12 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 
 	if m.Config != nil {
 		if m.Config.SSLExpirationPeriodDays != nil {
-			c.SSLExpirationPeriodDays = normalizeInt64Set(*m.Config.SSLExpirationPeriodDays) // empty slice is ok
+			days := *m.Config.SSLExpirationPeriodDays
+			if len(days) == 0 {
+				c.SSLExpirationPeriodDays = []int64{}
+			} else {
+				c.SSLExpirationPeriodDays = normalizeInt64Set(days)
+			}
 		}
 		if dr := normalizeDNSRecords(m.Config.DNSRecords); dr != nil {
 			c.DNSRecords = dr
@@ -509,7 +537,7 @@ func normalizeDNSRecords(dr *client.DNSRecords) map[string][]string {
 
 func normalizeAlertContactIDsFromRequests(reqs []client.AlertContactRequest) []string {
 	if len(reqs) == 0 {
-		return nil
+		return []string{}
 	}
 	ids := make([]string, 0, len(reqs))
 	for _, ac := range reqs {
@@ -617,6 +645,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		return false
 	}
+	if want.GroupID != nil && (got.GroupID == nil || *want.GroupID != *got.GroupID) {
+		return false
+	}
 	if want.DNSRecords != nil && !equalDNSRecords(want.DNSRecords, got.DNSRecords) {
 		return false
 	}
@@ -696,6 +727,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	}
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		f = append(f, "regional_data")
+	}
+	if want.GroupID != nil && (got.GroupID == nil || *want.GroupID != *got.GroupID) {
+		f = append(f, "group_id")
 	}
 	if want.DNSRecords != nil && !equalDNSRecords(want.DNSRecords, got.DNSRecords) {
 		f = append(f, "config.dns_records")

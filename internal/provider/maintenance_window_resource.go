@@ -550,6 +550,47 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		}
 	}
 
+	// Refresh from API after update so state reflects actual persisted values.
+	latest, err := r.client.GetMaintenanceWindow(ctx, id)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error reading maintenance window after update",
+			"Could not read updated maintenance window, unexpected error: "+err.Error(),
+		)
+		return
+	}
+
+	plan.Name = types.StringValue(latest.Name)
+	plan.Interval = types.StringValue(latest.Interval)
+	plan.Time = types.StringValue(latest.Time)
+	plan.Duration = types.Int64Value(int64(latest.Duration))
+	plan.AutoAddMonitors = types.BoolValue(latest.AutoAddMonitors)
+
+	if latest.Status != "" {
+		plan.Status = types.StringValue(latest.Status)
+	}
+
+	if latest.Date != nil {
+		plan.Date = types.StringValue(*latest.Date)
+	} else {
+		plan.Date = types.StringNull()
+	}
+
+	if latest.Interval == intervalWeekly || latest.Interval == intervalMonthly {
+		if len(latest.Days) > 0 {
+			days, d := types.SetValueFrom(ctx, types.Int64Type, latest.Days)
+			resp.Diagnostics.Append(d...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			plan.Days = days
+		} else {
+			plan.Days = types.SetNull(types.Int64Type)
+		}
+	} else {
+		plan.Days = types.SetNull(types.Int64Type)
+	}
+
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -563,8 +604,10 @@ func waitMaintenanceWindowSettled(ctx context.Context, c *client.Client, id int6
 	wantInterval := strings.ToLower(expectedInterval)
 	var lastGot []int64
 	var lastInterval string
+	const requiredConsecutiveMatches = 3
+	consecutiveMatches := 0
 
-	for attempts := 0; attempts < 10; attempts++ {
+	for attempts := 0; attempts < 20; attempts++ {
 		mw, err := c.GetMaintenanceWindow(ctx, id)
 		if err != nil {
 			return err
@@ -573,7 +616,12 @@ func waitMaintenanceWindowSettled(ctx context.Context, c *client.Client, id int6
 		lastGot = normalizeDays(mw.Days)
 
 		if lastInterval == wantInterval && equalInt64Sets(want, lastGot) {
-			return nil
+			consecutiveMatches++
+			if consecutiveMatches >= requiredConsecutiveMatches {
+				return nil
+			}
+		} else {
+			consecutiveMatches = 0
 		}
 		select {
 		case <-ctx.Done():

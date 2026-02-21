@@ -62,15 +62,13 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	got := buildComparableFromAPI(initialUpdated)
 
 	updated := initialUpdated
-	settleTimeout := 60 * time.Second
+	settleTimeout := 120 * time.Second
 	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil || want.MaintenanceWindowIDs != nil {
-		settleTimeout = 180 * time.Second
+		settleTimeout = 240 * time.Second
 	}
 
-	needSettle := !equalComparable(want, got)
-	if want.DNSRecords != nil || want.MaintenanceWindowIDs != nil {
-		needSettle = true
-	}
+	// Always settle after update to avoid stale read-after-write API snapshots.
+	needSettle := true
 
 	if needSettle {
 		if updated, err = r.waitMonitorSettled(ctx, id, want, settleTimeout); err != nil {
@@ -230,6 +228,10 @@ func buildUpdateRequest(
 	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
 		v := plan.RegionalData.ValueString()
 		req.RegionalData = &v
+	}
+	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
+		v := int(plan.GroupID.ValueInt64())
+		req.GroupID = &v
 	}
 	if !plan.CheckSSLErrors.IsNull() && !plan.CheckSSLErrors.IsUnknown() {
 		v := plan.CheckSSLErrors.ValueBool()
@@ -556,6 +558,13 @@ func applyUpdatedMonitorToState(
 		}
 	} else {
 		out.RegionalData = types.StringNull()
+	}
+
+	// group_id set only if managed
+	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
+		out.GroupID = types.Int64Value(m.GroupID)
+	} else {
+		out.GroupID = types.Int64Null()
 	}
 
 	// tags
