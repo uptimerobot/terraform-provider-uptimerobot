@@ -2743,6 +2743,117 @@ resource "uptimerobot_monitor" "port" {
 	})
 }
 
+func TestAcc_Monitor_Config_IPVersion_AllowedForAPIAndUDP(t *testing.T) {
+	t.Parallel()
+
+	apiName := acctest.RandomWithPrefix("acc-api-ipv")
+	udpName := acctest.RandomWithPrefix("acc-udp-ipv")
+	apiURL := testAccUniqueURL(apiName)
+	udpHost := testAccUniqueDomain(udpName)
+
+	cfgInitial := fmt.Sprintf(`
+resource "uptimerobot_monitor" "api" {
+  name     = "%s"
+  type     = "API"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv4Only"
+
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.status"
+          comparison = "equals"
+          target     = jsonencode("ok")
+        }
+      ]
+    }
+  }
+}
+
+resource "uptimerobot_monitor" "udp" {
+  name     = "%s"
+  type     = "UDP"
+  url      = "%s"
+  interval = 300
+  port     = 53
+
+  config = {
+    ip_version = "ipv6Only"
+    udp = {
+      packet_loss_threshold = 0
+    }
+  }
+}
+`, apiName, apiURL, udpName, udpHost)
+
+	cfgSwap := fmt.Sprintf(`
+resource "uptimerobot_monitor" "api" {
+  name     = "%s"
+  type     = "API"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv6Only"
+
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.status"
+          comparison = "is_not_null"
+        }
+      ]
+    }
+  }
+}
+
+resource "uptimerobot_monitor" "udp" {
+  name     = "%s"
+  type     = "UDP"
+  url      = "%s"
+  interval = 300
+  port     = 53
+
+  config = {
+    ip_version = "ipv4Only"
+    udp = {
+      packet_loss_threshold = 0
+    }
+  }
+}
+`, apiName, apiURL, udpName, udpHost)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgInitial,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.api", "config.ip_version", "ipv4Only"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.udp", "config.ip_version", "ipv6Only"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.api", "config.api_assertions.checks.0.comparison", "equals"),
+				),
+			},
+			{
+				Config: cfgSwap,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.api", "config.ip_version", "ipv6Only"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.udp", "config.ip_version", "ipv4Only"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.api", "config.api_assertions.checks.0.comparison", "is_not_null"),
+				),
+			},
+		},
+	})
+}
+
 func TestAcc_Monitor_Config_IPVersion_Validators(t *testing.T) {
 	t.Parallel()
 

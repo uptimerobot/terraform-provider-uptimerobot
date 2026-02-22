@@ -201,6 +201,8 @@ resource "uptimerobot_monitor" "udp_service" {
   interval = 300
 
   config = {
+    ip_version = "ipv4Only"
+
     udp = {
       payload               = "ping"
       packet_loss_threshold = 50

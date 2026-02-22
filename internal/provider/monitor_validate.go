@@ -353,7 +353,8 @@ func validateConfig(
 			"DNS config has no managed fields",
 			"You added a config block for a DNS monitor, but set neither "+
 				"config.dns_records nor config.ssl_expiration_period_days. "+
-				"Omit the config block to preserve remote values, or set one of these fields to manage DNS config.",
+				"Omit the config block to preserve remote values, or set one of these fields to manage DNS config. "+
+				"If this is the initial create for a DNS monitor, config = {} is acceptable and this warning is informational.",
 		)
 	}
 
