@@ -223,7 +223,9 @@ func readApplyIdentity(state *monitorResourceModel, m *client.Monitor) {
 
 func readApplyPausedState(state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	if isImport {
-		state.IsPaused = types.BoolValue(isMonitorPausedStatus(m.Status))
+		// Keep is_paused unmanaged on import to avoid immediate drift
+		// (false -> null) when configuration omits it.
+		state.IsPaused = types.BoolNull()
 		return
 	}
 	if state.IsPaused.IsNull() || state.IsPaused.IsUnknown() {
