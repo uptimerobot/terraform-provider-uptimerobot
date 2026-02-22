@@ -16,7 +16,6 @@
   - `auth_type` validation now allows `NONE`, `HTTP_BASIC`, `DIGEST`, `BEARER`.
 - Monitor docs were updated accordingly, including `group_id` and config-branch notes for API v3.
 - Extended monitor URL validation and HTTP-like method handling to include API monitors.
-- Updated monitor docs/examples to cover API monitor assertions configuration.
 - Acceptance test execution strategy was adjusted:
   - Pull Requests now run a reduced acceptance matrix (`terraform latest`, `opentofu latest`) for faster feedback.
   - `main`/manual runs execute an extended acceptance matrix (4 lanes) for broader compatibility coverage.
@@ -29,6 +28,7 @@
 - Stabilized monitor/maintenance-window/PSP eventual-consistency waits by requiring consecutive matching reads before treating updates as settled.
 - Fixed monitor alert-contact settle comparison for explicit clears (`assigned_alert_contacts = []`).
 - Fixed monitor refresh drift after maintenance-window updates by stabilizing read snapshots against managed `maintenance_window_ids`.
+- Fixed maintenance window update/read stale-snapshot regressions (e.g. daily omit-days transition flipping back to weekly with residual days) by using settled snapshots and read-time stabilization.
 - Fixed PagerDuty integration refresh drift for `location` and `auto_resolve` by making read mapping resilient to stale replica responses.
 
 ### Tests/CI
