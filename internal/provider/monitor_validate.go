@@ -553,11 +553,13 @@ func validateConfigIPVersion(
 	if monitorType != MonitorTypeHTTP &&
 		monitorType != MonitorTypeKEYWORD &&
 		monitorType != MonitorTypePING &&
-		monitorType != MonitorTypePORT {
+		monitorType != MonitorTypePORT &&
+		monitorType != MonitorTypeAPI &&
+		monitorType != MonitorTypeUDP {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("config").AtName("ip_version"),
-			"ip_version only allowed for HTTP/KEYWORD/PING/PORT monitors",
-			"Set type = HTTP, KEYWORD, PING, or PORT to manage config.ip_version, or remove config.ip_version for this monitor type.",
+			"ip_version only allowed for HTTP/KEYWORD/PING/PORT/API/UDP monitors",
+			"Set type = HTTP, KEYWORD, PING, PORT, API, or UDP to manage config.ip_version, or remove config.ip_version for this monitor type.",
 		)
 		return
 	}

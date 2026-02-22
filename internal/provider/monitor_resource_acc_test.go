@@ -2796,7 +2796,7 @@ resource "uptimerobot_monitor" "test" {
 		Steps: []resource.TestStep{
 			{
 				Config:      cfgInvalidForDNS,
-				ExpectError: regexp.MustCompile(`(?i)ip_version[\s\S]*only[\s\S]*HTTP/KEYWORD/PING/PORT`),
+				ExpectError: regexp.MustCompile(`(?i)ip_version[\s\S]*only[\s\S]*HTTP/KEYWORD/PING/PORT/API/UDP`),
 			},
 			{
 				Config:      cfgMismatchIPv4,

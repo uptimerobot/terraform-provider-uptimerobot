@@ -211,6 +211,71 @@ resource "uptimerobot_monitor" "udp_service" {
 }
 ```
 
+### API Monitor with Assertions
+
+```terraform
+resource "uptimerobot_monitor" "api_assertions" {
+  name     = "API assertions"
+  type     = "API"
+  url      = "https://example.com/api/health"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    # API monitors can also force IP family now.
+    ip_version = "ipv4Only"
+
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.status"
+          comparison = "equals"
+          target     = jsonencode("ok")
+        },
+        {
+          property   = "$.count"
+          comparison = "greater_than"
+          target     = jsonencode(0)
+        },
+      ]
+    }
+  }
+}
+```
+
+### API Monitor with Null Checks
+
+```terraform
+resource "uptimerobot_monitor" "api_assertions_null_checks" {
+  name     = "API assertions null checks"
+  type     = "API"
+  url      = "https://example.com/api/status"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv6Only"
+
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.result.value"
+          comparison = "is_not_null"
+          # target must be omitted for is_null/is_not_null
+        },
+        {
+          property   = "$.result.error"
+          comparison = "is_null"
+          # target must be omitted for is_null/is_not_null
+        },
+      ]
+    }
+  }
+}
+```
+
 ### Alert Contacts Example
 
 ```terraform
@@ -522,7 +587,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - For `type = "API"` on create, set `config.api_assertions` with `logic` and 1-5 `checks`.
 - `dns_records` is only valid for DNS monitors.
 - `config.ssl_expiration_period_days` is only valid for DNS monitors.
-- `ip_version` is only valid for HTTP/KEYWORD/PING/PORT monitors.
+- `ip_version` is only valid for HTTP/KEYWORD/PING/PORT/API/UDP monitors.
 - `config.api_assertions` is only valid for API monitors.
 - `config.udp` is only valid for UDP monitors.
 - Top-level `ssl_expiration_reminder` and `check_ssl_errors` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors. (see [below for nested schema](#nestedatt--config))
@@ -580,7 +645,7 @@ Optional:
 
 - `api_assertions` (Attributes) API monitor assertion rules. Supported only for type=API. (see [below for nested schema](#nestedatt--config--api_assertions))
 - `dns_records` (Attributes) DNS record lists for DNS monitors. If present on non-DNS types, validation fails. (see [below for nested schema](#nestedatt--config--dns_records))
-- `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT monitors. Use ipv4Only or ipv6Only.
+- `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT/API/UDP monitors. Use ipv4Only or ipv6Only.
 - `ssl_expiration_period_days` (Set of Number) Reminder days before SSL expiry (0..365). Max 10 items.
 
 - Omit the attribute → **preserve** remote values.
@@ -606,7 +671,7 @@ Required:
 
 Optional:
 
-- `target` (String) Optional target value as JSON. Use jsonencode(...) for strings/numbers/booleans/null.
+- `target` (String) Optional target value as JSON. Use jsonencode(...) for strings/numbers/booleans/null. Omit target for is_null and is_not_null comparisons.
 
 
 

@@ -416,6 +416,38 @@ func TestValidateConfigIPVersion_AllowsPORTType(t *testing.T) {
 	}
 }
 
+func TestValidateConfigIPVersion_AllowsAPIType(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateConfigIPVersion(
+		MonitorTypeAPI,
+		types.StringValue("https://example.com/api/health"),
+		types.StringValue(IPVersionIPv6Only),
+		resp,
+	)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for ip_version on API monitor, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfigIPVersion_AllowsUDPType(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateConfigIPVersion(
+		MonitorTypeUDP,
+		types.StringValue("example.com"),
+		types.StringValue(IPVersionIPv4Only),
+		resp,
+	)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for ip_version on UDP monitor, got: %v", resp.Diagnostics)
+	}
+}
+
 func TestValidateConfigIPVersion_RejectsIPv6OnlyWithIPv4Literal(t *testing.T) {
 	t.Parallel()
 
