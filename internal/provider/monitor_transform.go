@@ -497,11 +497,15 @@ func flattenConfigToState(
 		}
 	}
 
+	keepEmptySentinel := !c.IPVersion.IsNull() && !c.IPVersion.IsUnknown() && strings.TrimSpace(c.IPVersion.ValueString()) == ""
 	c.IPVersion = types.StringNull()
 	if api != nil && api.IPVersion != nil {
 		if normalized, keep := normalizeIPVersionForAPI(*api.IPVersion); keep {
 			c.IPVersion = types.StringValue(normalized)
 		}
+	} else if keepEmptySentinel {
+		// Keep explicit empty-string intent stable in state as a "clear ip_version" sentinel.
+		c.IPVersion = types.StringValue("")
 	}
 
 	// API assertions

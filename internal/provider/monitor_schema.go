@@ -425,6 +425,7 @@ Advanced monitor configuration.
 - ` + "`config = {}`" + ` (empty block) → treat as **managed but keep** current remote values.
 - ` + "`ssl_expiration_period_days = []`" + ` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 - Removing ` + "`ip_version`" + ` from a managed ` + "`config`" + ` block clears remote ` + "`ipVersion`" + ` (reverts to API default dual-stack behavior).
+- Setting ` + "`ip_version = \"\"`" + ` also acts as an explicit clear/default signal.
 
 **Validation**
 - For ` + "`type = \"DNS\"`" + ` on create, ` + "`config`" + ` is required (use ` + "`config = {}`" + ` for defaults).
@@ -548,11 +549,11 @@ Advanced monitor configuration.
 						},
 					},
 					"ip_version": schema.StringAttribute{
-						Description: "IP family selection for HTTP/KEYWORD/PING/PORT/API/UDP monitors. Use ipv4Only or ipv6Only.",
+						Description: "IP family selection for HTTP/KEYWORD/PING/PORT/API/UDP monitors. Use ipv4Only or ipv6Only. Set empty string to clear and fall back to API default behavior.",
 						Optional:    true,
 						Computed:    true,
 						Validators: []validator.String{
-							stringvalidator.OneOf(IPVersionIPv4Only, IPVersionIPv6Only),
+							stringvalidator.OneOf("", IPVersionIPv4Only, IPVersionIPv6Only),
 						},
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.UseStateForUnknown(),

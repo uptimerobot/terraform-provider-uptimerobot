@@ -486,6 +486,8 @@ resource "uptimerobot_monitor" "api_assertions" {
   timeout  = 30
 
   config = {
+    ip_version = "ipv4Only"
+
     api_assertions = {
       logic = "AND"
       checks = [
@@ -504,6 +506,33 @@ resource "uptimerobot_monitor" "api_assertions" {
   }
 }
 
+# API monitor with null checks (target omitted for is_null/is_not_null)
+resource "uptimerobot_monitor" "api_assertions_null_checks" {
+  name     = "API assertions null checks"
+  type     = "API"
+  url      = "https://example.com/api/status"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv6Only"
+
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.result.value"
+          comparison = "is_not_null"
+        },
+        {
+          property   = "$.result.error"
+          comparison = "is_null"
+        },
+      ]
+    }
+  }
+}
+
 # UDP monitor with config.udp
 resource "uptimerobot_monitor" "udp_monitor" {
   name     = "UDP monitor"
@@ -513,6 +542,8 @@ resource "uptimerobot_monitor" "udp_monitor" {
   interval = 300
 
   config = {
+    ip_version = "ipv4Only"
+
     udp = {
       payload               = "ping"
       packet_loss_threshold = 50
@@ -583,6 +614,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `config = {}` (empty block) → treat as **managed but keep** current remote values.
 - `ssl_expiration_period_days = []` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 - Removing `ip_version` from a managed `config` block clears remote `ipVersion` (reverts to API default dual-stack behavior).
+- Setting `ip_version = ""` also acts as an explicit clear/default signal.
 
 **Validation**
 - For `type = "DNS"` on create, `config` is required (use `config = {}` for defaults).
@@ -647,7 +679,7 @@ Optional:
 
 - `api_assertions` (Attributes) API monitor assertion rules. Supported only for type=API. (see [below for nested schema](#nestedatt--config--api_assertions))
 - `dns_records` (Attributes) DNS record lists for DNS monitors. If present on non-DNS types, validation fails. (see [below for nested schema](#nestedatt--config--dns_records))
-- `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT/API/UDP monitors. Use ipv4Only or ipv6Only.
+- `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT/API/UDP monitors. Use ipv4Only or ipv6Only. Set empty string to clear and fall back to API default behavior.
 - `ssl_expiration_period_days` (Set of Number) Reminder days before SSL expiry (0..365). Max 10 items.
 
 - Omit the attribute → **preserve** remote values.
