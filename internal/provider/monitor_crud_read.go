@@ -55,6 +55,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	readApplyHTTPBody(&state)
 	readApplyKeywordAndPort(&state, monitor, isImport)
 	readApplyIdentity(&state, monitor)
+	readApplyPausedState(&state, monitor, isImport)
 	readApplyRegionalData(&state, monitor, isImport)
 	readApplyTagsHeadersAC(ctx, resp, &state, monitor, isImport)
 	readApplySuccessCodes(ctx, resp, &state, monitor)
@@ -218,6 +219,20 @@ func readApplyIdentity(state *monitorResourceModel, m *client.Monitor) {
 	state.URL = types.StringValue(unescapeHTML(m.URL))
 	state.ID = types.StringValue(strconv.FormatInt(m.ID, 10))
 	state.Status = types.StringValue(m.Status)
+}
+
+func readApplyPausedState(state *monitorResourceModel, m *client.Monitor, isImport bool) {
+	if isImport {
+		// Keep is_paused unmanaged on import to avoid immediate drift
+		// (false -> null) when configuration omits it.
+		state.IsPaused = types.BoolNull()
+		return
+	}
+	if state.IsPaused.IsNull() || state.IsPaused.IsUnknown() {
+		state.IsPaused = types.BoolNull()
+		return
+	}
+	state.IsPaused = types.BoolValue(isMonitorPausedStatus(m.Status))
 }
 
 func readApplyRegionalData(state *monitorResourceModel, m *client.Monitor, isImport bool) {

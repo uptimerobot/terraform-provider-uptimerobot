@@ -42,6 +42,19 @@ resource "uptimerobot_monitor" "website" {
 }
 ```
 
+### Pause or Start a Monitor
+
+```terraform
+resource "uptimerobot_monitor" "start_stop" {
+  name      = "Start Stop Monitor"
+  type      = "HTTP"
+  url       = "https://example.com/health"
+  interval  = 300
+  timeout   = 30
+  is_paused = true
+}
+```
+
 ### HTTP Monitor with Keyword Checking
 
 ```terraform
@@ -633,6 +646,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `http_method_type` (String) The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS)
 - `http_password` (String, Sensitive) The password for HTTP authentication
 - `http_username` (String) The username for HTTP authentication
+- `is_paused` (Boolean) Controls monitor run state. Set true to pause, false to start. Omit to preserve remote state (unmanaged).
 - `keyword_case_type` (String) Case sensitivity for keyword. One of: CaseSensitive, CaseInsensitive. Omit to leave server as-is.
 - `keyword_type` (String) The type of keyword check (ALERT_EXISTS, ALERT_NOT_EXISTS)
 - `keyword_value` (String) The keyword to search for

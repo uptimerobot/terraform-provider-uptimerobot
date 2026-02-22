@@ -31,6 +31,7 @@ type monitorResourceModel struct {
 	MaintenanceWindowIDs     types.Set            `tfsdk:"maintenance_window_ids"`
 	ID                       types.String         `tfsdk:"id"`
 	Name                     types.String         `tfsdk:"name"`
+	IsPaused                 types.Bool           `tfsdk:"is_paused"`
 	Status                   types.String         `tfsdk:"status"`
 	URL                      types.String         `tfsdk:"url"`
 	GroupID                  types.Int64          `tfsdk:"group_id"`

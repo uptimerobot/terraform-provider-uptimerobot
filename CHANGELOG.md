@@ -4,6 +4,7 @@
 - Monitor `group_id` support (`groupId` in API) for create, update, read/import, and state comparison/wait logic.
 - Added `type = "API"` monitor support in `uptimerobot_monitor`.
 - Added `config.api_assertions` support with create/update/read transforms and API payload mapping to `config.apiAssertions`.
+- Added monitor run-state management via `is_paused` in `uptimerobot_monitor`, backed by API v3 monitor `pause`/`start` endpoints.
 
 ### Changed
 - Monitor schema constraints were aligned to API v3 for currently supported monitor types:
@@ -36,6 +37,7 @@
 - Added unit tests for PagerDuty integration read parsing/sticky behavior (`location`/`auto_resolve`).
 - Added a dedicated CI `unit` job that runs only non-acceptance tests; acceptance jobs now run only `TestAcc*`.
 - Consolidated monitor unit tests into thematic files with explicit section separators to reduce test-file fragmentation.
+- Added acceptance coverage for monitor pause/start management via `is_paused`.
 - Added acceptance coverage for API monitor assertions round-trip and API-specific validation cases.
 - Added unit coverage for API assertions config transform/compare/marshal behavior.
 - Added client unit tests for multipart requests and PSP file upload operations.
