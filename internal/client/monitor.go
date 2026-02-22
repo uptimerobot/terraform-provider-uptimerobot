@@ -303,6 +303,36 @@ func (c *Client) ResetMonitor(ctx context.Context, id int64) error {
 	return err
 }
 
+// PauseMonitor pauses a monitor by ID.
+func (c *Client) PauseMonitor(ctx context.Context, id int64) (*Monitor, error) {
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/monitors/%d/pause", id), map[string]any{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to pause monitor: %v", err)
+	}
+
+	var monitor Monitor
+	if err := json.Unmarshal(resp, &monitor); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal paused monitor response: %v", err)
+	}
+
+	return &monitor, nil
+}
+
+// StartMonitor starts a monitor by ID.
+func (c *Client) StartMonitor(ctx context.Context, id int64) (*Monitor, error) {
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/monitors/%d/start", id), map[string]any{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start monitor: %v", err)
+	}
+
+	var monitor Monitor
+	if err := json.Unmarshal(resp, &monitor); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal started monitor response: %v", err)
+	}
+
+	return &monitor, nil
+}
+
 // FindExistingMonitorByNameAndURL searches for a monitor with matching name and URL.
 func (c *Client) FindExistingMonitorByNameAndURL(ctx context.Context, name, url string) (*Monitor, error) {
 	monitors, err := c.GetMonitors(ctx)

@@ -87,6 +87,23 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
+	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
+		wantPaused := plan.IsPaused.ValueBool()
+		if updated == nil || isMonitorPausedStatus(updated.Status) != wantPaused {
+			updatedAfterStateChange, stateErr := r.ensureMonitorPausedState(ctx, id, wantPaused)
+			if stateErr != nil {
+				resp.Diagnostics.AddError(
+					"Error setting monitor paused state",
+					"Could not set monitor paused state after update: "+stateErr.Error(),
+				)
+				return
+			}
+			if updatedAfterStateChange != nil {
+				updated = updatedAfterStateChange
+			}
+		}
+	}
+
 	newState := applyUpdatedMonitorToState(ctx, plan, state, updated, effMethod, configSent, resp)
 	if resp.Diagnostics.HasError() {
 		return
@@ -503,6 +520,11 @@ func applyUpdatedMonitorToState(
 	out.Name = types.StringValue(unescapeHTML(m.Name))
 	out.URL = types.StringValue(unescapeHTML(m.URL))
 	out.Status = prev.Status
+	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
+		out.IsPaused = types.BoolValue(isMonitorPausedStatus(m.Status))
+	} else {
+		out.IsPaused = types.BoolNull()
+	}
 
 	methodManaged := !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown()
 

@@ -292,6 +292,10 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					stringvalidator.LengthAtMost(250),
 				},
 			},
+			"is_paused": schema.BoolAttribute{
+				Description: "Controls monitor run state. Set true to pause, false to start. Omit to preserve remote state (unmanaged).",
+				Optional:    true,
+			},
 			// Status may change its values quickly due to changes on the API side.
 			// On create after operation it should be a known value.
 			// On update use state's value.

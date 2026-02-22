@@ -56,6 +56,22 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 	}
 
+	// Optionally control run state via start/pause endpoints.
+	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
+		wantPaused := plan.IsPaused.ValueBool()
+		apiAfterStateChange, stateErr := r.ensureMonitorPausedState(ctx, created.ID, wantPaused)
+		if stateErr != nil {
+			resp.Diagnostics.AddError(
+				"Error setting monitor paused state",
+				"Could not set monitor paused state after create: "+stateErr.Error(),
+			)
+			return
+		}
+		if apiAfterStateChange != nil {
+			api = apiAfterStateChange
+		}
+	}
+
 	// Build final state from API response
 	final := r.buildStateAfterCreate(ctx, plan, api, effMethod, resp)
 	if resp.Diagnostics.HasError() {
@@ -506,6 +522,11 @@ func (r *monitorResource) buildStateAfterCreate(
 	plan.Name = types.StringValue(unescapeHTML(api.Name))
 	plan.URL = types.StringValue(unescapeHTML(api.URL))
 	plan.Status = types.StringValue(api.Status)
+	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
+		plan.IsPaused = types.BoolValue(isMonitorPausedStatus(api.Status))
+	} else {
+		plan.IsPaused = types.BoolNull()
+	}
 	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
 		plan.GroupID = types.Int64Value(api.GroupID)
 	} else {

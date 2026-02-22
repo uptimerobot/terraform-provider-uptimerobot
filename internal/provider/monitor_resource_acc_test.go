@@ -76,6 +76,24 @@ resource "uptimerobot_monitor" "test" {
 `, name, url)
 }
 
+func testAccMonitorResourceConfigWithPause(name string, isPaused *bool) string {
+	url := testAccUniqueURL(name)
+	pause := ""
+	if isPaused != nil {
+		pause = fmt.Sprintf("\n  is_paused = %t", *isPaused)
+	}
+
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30%s
+}
+`, name, url, pause)
+}
+
 func testAccMonitorResourceConfigWithTags(name string, tags []string) string {
 	url := testAccUniqueURL(name)
 	tagsStr := ""
@@ -564,6 +582,38 @@ func TestAccMonitorResource(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name"},
+			},
+		},
+	})
+}
+
+func TestAccMonitorResource_IsPaused_StartStop(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-monitor-start-stop")
+	paused := true
+	started := false
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccMonitorResourceConfigWithPause(name, &paused),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "is_paused", "true"),
+				),
+			},
+			{
+				Config: testAccMonitorResourceConfigWithPause(name, &started),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "is_paused", "false"),
+				),
+			},
+			{
+				Config: testAccMonitorResourceConfigWithPause(name, nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "is_paused"),
+				),
 			},
 		},
 	})

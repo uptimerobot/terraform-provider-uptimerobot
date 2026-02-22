@@ -149,3 +149,73 @@ func TestClient_GetMonitor_FallbackListRequestFailureReturnsExplicitError(t *tes
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestClient_PauseMonitor_SendsPauseEndpoint(t *testing.T) {
+	t.Parallel()
+
+	var called bool
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			called = true
+			if req.Method != http.MethodPost {
+				t.Fatalf("expected POST, got %s", req.Method)
+			}
+			if req.URL.Path != "/monitors/123/pause" {
+				t.Fatalf("unexpected path %q", req.URL.Path)
+			}
+			if req.Header.Get("Content-Type") != "application/json" {
+				t.Fatalf("expected application/json content type, got %q", req.Header.Get("Content-Type"))
+			}
+			return jsonResponse(http.StatusOK, `{"id":123,"friendlyName":"paused-monitor","type":"HTTP","url":"https://example.com","interval":300,"status":"PAUSED"}`), nil
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	m, err := c.PauseMonitor(context.Background(), 123)
+	if err != nil {
+		t.Fatalf("PauseMonitor returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected pause endpoint to be called")
+	}
+	if m == nil || m.ID != 123 || m.Status != "PAUSED" {
+		t.Fatalf("unexpected monitor: %#v", m)
+	}
+}
+
+func TestClient_StartMonitor_SendsStartEndpoint(t *testing.T) {
+	t.Parallel()
+
+	var called bool
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			called = true
+			if req.Method != http.MethodPost {
+				t.Fatalf("expected POST, got %s", req.Method)
+			}
+			if req.URL.Path != "/monitors/123/start" {
+				t.Fatalf("unexpected path %q", req.URL.Path)
+			}
+			if req.Header.Get("Content-Type") != "application/json" {
+				t.Fatalf("expected application/json content type, got %q", req.Header.Get("Content-Type"))
+			}
+			return jsonResponse(http.StatusOK, `{"id":123,"friendlyName":"started-monitor","type":"HTTP","url":"https://example.com","interval":300,"status":"STARTED"}`), nil
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	m, err := c.StartMonitor(context.Background(), 123)
+	if err != nil {
+		t.Fatalf("StartMonitor returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected start endpoint to be called")
+	}
+	if m == nil || m.ID != 123 || m.Status != "STARTED" {
+		t.Fatalf("unexpected monitor: %#v", m)
+	}
+}
