@@ -38,6 +38,7 @@ const (
 	MonitorTypeHEARTBEAT = "HEARTBEAT"
 	MonitorTypeDNS       = "DNS"
 	MonitorTypeAPI       = "API"
+	MonitorTypeUDP       = "UDP"
 
 	IPVersionIPv4Only = "ipv4Only"
 	IPVersionIPv6Only = "ipv6Only"
@@ -94,7 +95,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
-				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API)",
+				Description: "Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API, UDP)",
 				Required:    true,
 				Validators: []validator.String{
 					stringvalidator.OneOf(
@@ -105,6 +106,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 						MonitorTypeHEARTBEAT,
 						MonitorTypeDNS,
 						MonitorTypeAPI,
+						MonitorTypeUDP,
 					),
 				},
 				PlanModifiers: []planmodifier.String{
@@ -423,14 +425,16 @@ Advanced monitor configuration.
 - ` + "`config = {}`" + ` (empty block) → treat as **managed but keep** current remote values.
 - ` + "`ssl_expiration_period_days = []`" + ` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 - Removing ` + "`ip_version`" + ` from a managed ` + "`config`" + ` block clears remote ` + "`ipVersion`" + ` (reverts to API default dual-stack behavior).
+- Setting ` + "`ip_version = \"\"`" + ` also acts as an explicit clear/default signal.
 
 **Validation**
 - For ` + "`type = \"DNS\"`" + ` on create, ` + "`config`" + ` is required (use ` + "`config = {}`" + ` for defaults).
 - For ` + "`type = \"API\"`" + ` on create, set ` + "`config.api_assertions`" + ` with ` + "`logic`" + ` and 1-5 ` + "`checks`" + `.
 - ` + "`dns_records`" + ` is only valid for DNS monitors.
 - ` + "`config.ssl_expiration_period_days`" + ` is only valid for DNS monitors.
-- ` + "`ip_version`" + ` is only valid for HTTP/KEYWORD/PING/PORT monitors.
+- ` + "`ip_version`" + ` is only valid for HTTP/KEYWORD/PING/PORT/API monitors.
 - ` + "`config.api_assertions`" + ` is only valid for API monitors.
+- ` + "`config.udp`" + ` is only valid for UDP monitors.
 - Top-level ` + "`ssl_expiration_reminder`" + ` and ` + "`check_ssl_errors`" + ` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors.
 `,
 
@@ -512,7 +516,7 @@ Advanced monitor configuration.
 											},
 										},
 										"target": schema.StringAttribute{
-											Description: "Optional target value as JSON. Use jsonencode(...) for strings/numbers/booleans/null.",
+											Description: "Optional target value as JSON. Use jsonencode(...) for strings/numbers/booleans/null. Omit target for is_null and is_not_null comparisons.",
 											Optional:    true,
 											CustomType:  jsontypes.NormalizedType{},
 										},
@@ -521,12 +525,35 @@ Advanced monitor configuration.
 							},
 						},
 					},
+					"udp": schema.SingleNestedAttribute{
+						Description: "UDP monitor configuration. Supported only for type=UDP.",
+						Optional:    true,
+						Computed:    true,
+						Attributes: map[string]schema.Attribute{
+							"payload": schema.StringAttribute{
+								Description: "Optional UDP payload to send.",
+								Optional:    true,
+								Computed:    true,
+								PlanModifiers: []planmodifier.String{
+									stringplanmodifier.UseStateForUnknown(),
+								},
+							},
+							"packet_loss_threshold": schema.Int64Attribute{
+								Description: "Packet loss threshold percentage.",
+								Optional:    true,
+								Computed:    true,
+								PlanModifiers: []planmodifier.Int64{
+									int64planmodifier.UseStateForUnknown(),
+								},
+							},
+						},
+					},
 					"ip_version": schema.StringAttribute{
-						Description: "IP family selection for HTTP/KEYWORD/PING/PORT monitors. Use ipv4Only or ipv6Only.",
+						Description: "IP family selection for HTTP/KEYWORD/PING/PORT/API monitors. Use ipv4Only or ipv6Only. Set empty string to clear and fall back to API default behavior.",
 						Optional:    true,
 						Computed:    true,
 						Validators: []validator.String{
-							stringvalidator.OneOf(IPVersionIPv4Only, IPVersionIPv6Only),
+							stringvalidator.OneOf("", IPVersionIPv4Only, IPVersionIPv6Only),
 						},
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.UseStateForUnknown(),
@@ -680,15 +707,18 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 			if cfg.APIAssertions.IsUnknown() {
 				_ = resp.Plan.SetAttribute(ctx, path.Root("config").AtName("api_assertions"), types.ObjectNull(apiAssertionsObjectType().AttrTypes))
 			}
+			if cfg.UDP.IsUnknown() {
+				_ = resp.Plan.SetAttribute(ctx, path.Root("config").AtName("udp"), types.ObjectNull(udpObjectType().AttrTypes))
+			}
 		}
 	}
 
-	if (planType == MonitorTypeDNS || planType == MonitorTypeAPI) && req.State.Raw.IsNull() &&
+	if (planType == MonitorTypeDNS || planType == MonitorTypeAPI || planType == MonitorTypeUDP) && req.State.Raw.IsNull() &&
 		(plan.Config.IsNull() || plan.Config.IsUnknown()) {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("config"),
-			"`config` is required for DNS/API monitors on create",
-			"For DNS use `config = {}` or set DNS fields. For API set `config.api_assertions` with logic and checks.",
+			"`config` is required for DNS/API/UDP monitors on create",
+			"For DNS use `config = {}` or set DNS fields. For API set `config.api_assertions` with logic and checks. For UDP set `config.udp.packet_loss_threshold`.",
 		)
 	}
 

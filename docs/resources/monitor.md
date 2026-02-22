@@ -190,6 +190,94 @@ resource "uptimerobot_monitor" "gateway_ping" {
 }
 ```
 
+### UDP Monitor
+
+```terraform
+resource "uptimerobot_monitor" "udp_service" {
+  name     = "UDP Service Check"
+  type     = "UDP"
+  url      = "dns.google"
+  port     = 53
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+
+    udp = {
+      payload               = "ping"
+      packet_loss_threshold = 50
+    }
+  }
+
+  tags = ["udp", "network", "critical"]
+}
+```
+
+### API Monitor with Assertions
+
+```terraform
+resource "uptimerobot_monitor" "api_assertions" {
+  name     = "API assertions"
+  type     = "API"
+  url      = "https://example.com/api/health"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    # API monitors can also force IP family now.
+    ip_version = "ipv4Only"
+
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.status"
+          comparison = "equals"
+          target     = jsonencode("ok")
+        },
+        {
+          property   = "$.count"
+          comparison = "greater_than"
+          target     = jsonencode(0)
+        },
+      ]
+    }
+  }
+}
+```
+
+### API Monitor with Null Checks
+
+```terraform
+resource "uptimerobot_monitor" "api_assertions_null_checks" {
+  name     = "API assertions null checks"
+  type     = "API"
+  url      = "https://example.com/api/status"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv6Only"
+
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.result.value"
+          comparison = "is_not_null"
+          # target must be omitted for is_null/is_not_null
+        },
+        {
+          property   = "$.result.error"
+          comparison = "is_null"
+          # target must be omitted for is_null/is_not_null
+        },
+      ]
+    }
+  }
+}
+```
+
 ### Alert Contacts Example
 
 ```terraform
@@ -398,6 +486,8 @@ resource "uptimerobot_monitor" "api_assertions" {
   timeout  = 30
 
   config = {
+    ip_version = "ipv4Only"
+
     api_assertions = {
       logic = "AND"
       checks = [
@@ -415,6 +505,51 @@ resource "uptimerobot_monitor" "api_assertions" {
     }
   }
 }
+
+# API monitor with null checks (target omitted for is_null/is_not_null)
+resource "uptimerobot_monitor" "api_assertions_null_checks" {
+  name     = "API assertions null checks"
+  type     = "API"
+  url      = "https://example.com/api/status"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv6Only"
+
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.result.value"
+          comparison = "is_not_null"
+        },
+        {
+          property   = "$.result.error"
+          comparison = "is_null"
+        },
+      ]
+    }
+  }
+}
+
+# UDP monitor with config.udp
+resource "uptimerobot_monitor" "udp_monitor" {
+  name     = "UDP monitor"
+  type     = "UDP"
+  url      = "example.com"
+  port     = 53
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+
+    udp = {
+      payload               = "ping"
+      packet_loss_threshold = 50
+    }
+  }
+}
 ```
 
 ## Monitor Types
@@ -425,6 +560,8 @@ resource "uptimerobot_monitor" "api_assertions" {
 - `PORT` — Port monitoring
 - `HEARTBEAT` — Heartbeat monitoring
 - `DNS` — DNS record monitoring
+- `API` — API assertions monitoring
+- `UDP` — UDP packet monitoring
 
 ## Intervals
 
@@ -457,7 +594,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 
 - `interval` (Number) Interval for the monitoring check (in seconds)
 - `name` (String) Tip: Write names as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
-- `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API)
+- `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API, UDP)
 - `url` (String) Tip: Write url as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
 
 ### Optional
@@ -477,14 +614,16 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `config = {}` (empty block) → treat as **managed but keep** current remote values.
 - `ssl_expiration_period_days = []` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 - Removing `ip_version` from a managed `config` block clears remote `ipVersion` (reverts to API default dual-stack behavior).
+- Setting `ip_version = ""` also acts as an explicit clear/default signal.
 
 **Validation**
 - For `type = "DNS"` on create, `config` is required (use `config = {}` for defaults).
 - For `type = "API"` on create, set `config.api_assertions` with `logic` and 1-5 `checks`.
 - `dns_records` is only valid for DNS monitors.
 - `config.ssl_expiration_period_days` is only valid for DNS monitors.
-- `ip_version` is only valid for HTTP/KEYWORD/PING/PORT monitors.
+- `ip_version` is only valid for HTTP/KEYWORD/PING/PORT/API monitors.
 - `config.api_assertions` is only valid for API monitors.
+- `config.udp` is only valid for UDP monitors.
 - Top-level `ssl_expiration_reminder` and `check_ssl_errors` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors. (see [below for nested schema](#nestedatt--config))
 - `custom_http_headers` (Map of String) Custom HTTP headers as key:value. **Keys are case-insensitive.** The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. Tip: add keys in lower-case (e.g., `"content-type" = "application/json"`).
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
@@ -540,12 +679,13 @@ Optional:
 
 - `api_assertions` (Attributes) API monitor assertion rules. Supported only for type=API. (see [below for nested schema](#nestedatt--config--api_assertions))
 - `dns_records` (Attributes) DNS record lists for DNS monitors. If present on non-DNS types, validation fails. (see [below for nested schema](#nestedatt--config--dns_records))
-- `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT monitors. Use ipv4Only or ipv6Only.
+- `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT/API monitors. Use ipv4Only or ipv6Only. Set empty string to clear and fall back to API default behavior.
 - `ssl_expiration_period_days` (Set of Number) Reminder days before SSL expiry (0..365). Max 10 items.
 
 - Omit the attribute → **preserve** remote values.
 - Empty set `[]` → **clear** values on server.
 Supported when `type = "DNS"`.
+- `udp` (Attributes) UDP monitor configuration. Supported only for type=UDP. (see [below for nested schema](#nestedatt--config--udp))
 
 <a id="nestedatt--config--api_assertions"></a>
 ### Nested Schema for `config.api_assertions`
@@ -565,7 +705,7 @@ Required:
 
 Optional:
 
-- `target` (String) Optional target value as JSON. Use jsonencode(...) for strings/numbers/booleans/null.
+- `target` (String) Optional target value as JSON. Use jsonencode(...) for strings/numbers/booleans/null. Omit target for is_null and is_not_null comparisons.
 
 
 
@@ -588,3 +728,12 @@ Optional:
 - `spf` (Set of String)
 - `srv` (Set of String)
 - `txt` (Set of String)
+
+
+<a id="nestedatt--config--udp"></a>
+### Nested Schema for `config.udp`
+
+Optional:
+
+- `packet_loss_threshold` (Number) Packet loss threshold percentage.
+- `payload` (String) Optional UDP payload to send.

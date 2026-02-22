@@ -99,6 +99,7 @@ func TestExpandConfigToAPI_IPVersionIPv4OnlyIsSent(t *testing.T) {
 		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringValue(IPVersionIPv4Only),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 
 	out, touched, diags := expandConfigToAPI(ctx, cfg)
@@ -116,6 +117,33 @@ func TestExpandConfigToAPI_IPVersionIPv4OnlyIsSent(t *testing.T) {
 	}
 }
 
+func TestExpandConfigToAPI_IPVersionEmptyStringIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	cfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"ip_version":                 types.StringValue(""),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+	})
+
+	out, touched, diags := expandConfigToAPI(ctx, cfg)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if touched {
+		t.Fatalf("expected touched=false for empty-string ip_version")
+	}
+	if out == nil {
+		t.Fatalf("expected non-nil config payload")
+	}
+	if out.IPVersion != nil {
+		t.Fatalf("expected api ipVersion to stay omitted for empty-string sentinel")
+	}
+}
+
 func TestFlattenConfigToState_IPVersionIPv6OnlyRoundTrips(t *testing.T) {
 	t.Parallel()
 
@@ -125,6 +153,7 @@ func TestFlattenConfigToState_IPVersionIPv6OnlyRoundTrips(t *testing.T) {
 		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringNull(),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 
 	ipVersion := IPVersionIPv6Only
@@ -155,6 +184,7 @@ func TestFlattenConfigToState_IPVersionInvalidFromAPIBecomesNull(t *testing.T) {
 		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringNull(),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 
 	invalid := "invalidValue"
@@ -173,6 +203,35 @@ func TestFlattenConfigToState_IPVersionInvalidFromAPIBecomesNull(t *testing.T) {
 	}
 }
 
+func TestFlattenConfigToState_IPVersionEmptyStringSentinelIsPreservedWhenAPIOmits(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	prev := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"ip_version":                 types.StringValue(""),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+	})
+
+	stateObj, diags := flattenConfigToState(ctx, true, prev, &client.MonitorConfig{})
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+
+	var cfg configTF
+	if d := stateObj.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); d.HasError() {
+		t.Fatalf("unexpected object decode diagnostics: %+v", d)
+	}
+	if cfg.IPVersion.IsNull() || cfg.IPVersion.IsUnknown() {
+		t.Fatalf("expected empty-string ip_version sentinel to remain in state")
+	}
+	if cfg.IPVersion.ValueString() != "" {
+		t.Fatalf("expected ip_version sentinel to be empty string, got %q", cfg.IPVersion.ValueString())
+	}
+}
+
 // -----------------------------------------------------------------------------
 // Update Helpers: ip_version clear semantics
 // -----------------------------------------------------------------------------
@@ -185,12 +244,14 @@ func TestShouldClearIPVersionOnUpdate_TransitionToUnset(t *testing.T) {
 		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringNull(),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 	prevCfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
 		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
 		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringValue(IPVersionIPv4Only),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 
 	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), planCfg, prevCfg)
@@ -210,12 +271,14 @@ func TestShouldClearIPVersionOnUpdate_NoTransition(t *testing.T) {
 		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringValue(IPVersionIPv6Only),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 	prevCfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
 		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
 		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringValue(IPVersionIPv4Only),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
 	})
 
 	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), planCfg, prevCfg)
@@ -224,6 +287,33 @@ func TestShouldClearIPVersionOnUpdate_NoTransition(t *testing.T) {
 	}
 	if clearIPVersion {
 		t.Fatalf("expected clearIPVersion=false when ip_version is still set")
+	}
+}
+
+func TestShouldClearIPVersionOnUpdate_TransitionToEmptyString(t *testing.T) {
+	t.Parallel()
+
+	planCfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"ip_version":                 types.StringValue(""),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+	})
+	prevCfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"ip_version":                 types.StringValue(IPVersionIPv4Only),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+	})
+
+	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), planCfg, prevCfg)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if !clearIPVersion {
+		t.Fatalf("expected clearIPVersion=true on transition from set to empty-string sentinel")
 	}
 }
 
@@ -238,6 +328,7 @@ func TestConfigPayloadForIPVersionClear_PreservesOtherFields(t *testing.T) {
 		"dns_records":    types.ObjectNull(dnsRecordsObjectType().AttrTypes),
 		"api_assertions": types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":     types.StringValue(IPVersionIPv4Only),
+		"udp":            types.ObjectNull(udpObjectType().AttrTypes),
 	})
 
 	cfg, diags := configPayloadForIPVersionClear(context.Background(), prevCfg)

@@ -103,11 +103,11 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 func validateUpdateHighLevel(plan monitorResourceModel, resp *resource.UpdateResponse) bool {
 	t := plan.Type.ValueString()
 
-	// PORT requires port to be set
-	if t == MonitorTypePORT && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
+	// PORT/UDP requires port to be set
+	if (t == MonitorTypePORT || t == MonitorTypeUDP) && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
 		resp.Diagnostics.AddError(
-			"Port required for PORT monitor",
-			"Port must be specified and known for PORT monitor type",
+			"Port required for PORT/UDP monitor",
+			"Port must be specified and known for PORT and UDP monitor types",
 		)
 		return false
 	}

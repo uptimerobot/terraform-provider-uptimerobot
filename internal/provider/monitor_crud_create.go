@@ -70,10 +70,10 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 func validateCreateHighLevel(ctx context.Context, plan monitorResourceModel, resp *resource.CreateResponse) bool {
 	t := strings.ToUpper(plan.Type.ValueString())
 
-	if t == MonitorTypePORT && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
+	if (t == MonitorTypePORT || t == MonitorTypeUDP) && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
 		resp.Diagnostics.AddError(
-			"Port required for PORT monitor",
-			"Port must be specified and known for PORT monitor type.",
+			"Port required for PORT/UDP monitor",
+			"Port must be specified and known for PORT and UDP monitor types.",
 		)
 		return false
 	}
@@ -119,6 +119,40 @@ func validateCreateHighLevel(ctx context.Context, plan monitorResourceModel, res
 			resp.Diagnostics.AddError(
 				"api_assertions required for API monitor",
 				"Set config.api_assertions with logic and checks.",
+			)
+			return false
+		}
+	}
+
+	if t == MonitorTypeUDP {
+		if plan.Config.IsNull() || plan.Config.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"Config required for UDP monitor",
+				"UDP monitors require config.udp.packet_loss_threshold on create.",
+			)
+			return false
+		}
+		var cfg configTF
+		resp.Diagnostics.Append(plan.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return false
+		}
+		if cfg.UDP.IsNull() || cfg.UDP.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"udp required for UDP monitor",
+				"Set config.udp.packet_loss_threshold for UDP monitors.",
+			)
+			return false
+		}
+		var udp udpTF
+		resp.Diagnostics.Append(cfg.UDP.As(ctx, &udp, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return false
+		}
+		if udp.PacketLossThreshold.IsNull() || udp.PacketLossThreshold.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"packet_loss_threshold required for UDP monitor",
+				"Set config.udp.packet_loss_threshold for UDP monitors.",
 			)
 			return false
 		}

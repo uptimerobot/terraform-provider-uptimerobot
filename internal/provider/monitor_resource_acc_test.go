@@ -1054,7 +1054,7 @@ resource "uptimerobot_monitor" "test" {
 	timeout 	 = 30
 }
 `, name, url),
-				ExpectError: regexp.MustCompile("Port required for PORT monitor"),
+				ExpectError: regexp.MustCompile("Port required for PORT/UDP monitor"),
 			},
 			// Test that PORT monitor with port succeeds
 			{
@@ -1193,8 +1193,10 @@ func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
 func TestAccMonitorResource_NewMonitorTypes(t *testing.T) {
 	hbName := acctest.RandomWithPrefix("acc-hb-newtypes")
 	dnsName := acctest.RandomWithPrefix("acc-dns-newtypes")
+	udpName := acctest.RandomWithPrefix("acc-udp-newtypes")
 	hbURL := testAccUniqueURL(hbName)
 	dnsDomain := testAccUniqueDomain(dnsName)
+	udpDomain := testAccUniqueDomain(udpName)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1234,6 +1236,31 @@ resource "uptimerobot_monitor" "test" {
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", dnsName),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "DNS"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", dnsDomain),
+				),
+			},
+			// Test UDP monitor
+			{
+				Config: testAccProviderConfig() + `
+resource "uptimerobot_monitor" "test" {
+    name         = "` + udpName + `"
+    url          = "` + udpDomain + `"
+    type         = "UDP"
+    interval     = 300
+    port         = 53
+    config = {
+      udp = {
+        payload = "ping"
+        packet_loss_threshold = 50
+      }
+    }
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", udpName),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", "UDP"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", udpDomain),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "port", "53"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "config.udp.packet_loss_threshold", "50"),
 				),
 			},
 		},
@@ -1433,7 +1460,7 @@ resource "uptimerobot_monitor" "test" {
 	timeout 	 = 30
 }
 `,
-				ExpectError: regexp.MustCompile(`(?s)value must be one of:.*HTTP.*KEYWORD.*PING.*PORT.*HEARTBEAT.*DNS`),
+				ExpectError: regexp.MustCompile(`(?s)value must be one of:.*HTTP.*KEYWORD.*PING.*PORT.*HEARTBEAT.*DNS.*API.*UDP`),
 			},
 		},
 	})
@@ -2716,6 +2743,67 @@ resource "uptimerobot_monitor" "port" {
 	})
 }
 
+func TestAcc_Monitor_Config_IPVersion_AllowedForAPIAndUDP(t *testing.T) {
+	t.Parallel()
+
+	apiName := acctest.RandomWithPrefix("acc-api-ipv")
+	dnsName := acctest.RandomWithPrefix("acc-dns-ipv")
+	apiURL := testAccUniqueURL(apiName)
+	dnsDomain := testAccUniqueDomain(dnsName)
+
+	cfgAPIAllowed := fmt.Sprintf(`
+resource "uptimerobot_monitor" "api" {
+  name     = "%s"
+  type     = "API"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv4Only"
+    api_assertions = {
+      logic = "AND"
+      checks = [{
+        property   = "$.status"
+        comparison = "is_not_null"
+      }]
+    }
+  }
+}
+`, apiName, apiURL)
+
+	cfgUnsupportedRejected := fmt.Sprintf(`
+resource "uptimerobot_monitor" "dns" {
+  name     = "%s"
+  type     = "DNS"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+    dns_records = {}
+  }
+}
+`, dnsName, dnsDomain)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      cfgUnsupportedRejected,
+				ExpectError: regexp.MustCompile(`(?i)ip_version[\s\S]*only[\s\S]*HTTP/KEYWORD/PING/PORT/API`),
+			},
+			{
+				Config: cfgAPIAllowed,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.api", "config.ip_version", "ipv4Only"),
+				),
+			},
+		},
+	})
+}
+
 func TestAcc_Monitor_Config_IPVersion_Validators(t *testing.T) {
 	t.Parallel()
 
@@ -2769,7 +2857,7 @@ resource "uptimerobot_monitor" "test" {
 		Steps: []resource.TestStep{
 			{
 				Config:      cfgInvalidForDNS,
-				ExpectError: regexp.MustCompile(`(?i)ip_version[\s\S]*only[\s\S]*HTTP/KEYWORD/PING/PORT`),
+				ExpectError: regexp.MustCompile(`(?i)ip_version[\s\S]*only[\s\S]*HTTP/KEYWORD/PING/PORT/API`),
 			},
 			{
 				Config:      cfgMismatchIPv4,
@@ -3043,7 +3131,7 @@ resource "uptimerobot_monitor" "test" {
 		Steps: []resource.TestStep{
 			{
 				Config:      cfgMissingConfig,
-				ExpectError: regexp.MustCompile("config.*required.*DNS monitors.*create"),
+				ExpectError: regexp.MustCompile("config.*required.*DNS/API/UDP monitors.*create"),
 			},
 		},
 	})

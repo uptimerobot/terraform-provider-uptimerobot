@@ -70,11 +70,17 @@ type configTF struct {
 	DNSRecords              types.Object `tfsdk:"dns_records"`
 	IPVersion               types.String `tfsdk:"ip_version"`
 	APIAssertions           types.Object `tfsdk:"api_assertions"`
+	UDP                     types.Object `tfsdk:"udp"`
 }
 
 type apiAssertionsTF struct {
 	Logic  types.String `tfsdk:"logic"`
 	Checks types.List   `tfsdk:"checks"`
+}
+
+type udpTF struct {
+	Payload             types.String `tfsdk:"payload"`
+	PacketLossThreshold types.Int64  `tfsdk:"packet_loss_threshold"`
 }
 
 type apiAssertionCheckTF struct {
@@ -133,6 +139,15 @@ func apiAssertionsObjectType() types.ObjectType {
 	}
 }
 
+func udpObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"payload":               types.StringType,
+			"packet_loss_threshold": types.Int64Type,
+		},
+	}
+}
+
 // configObjectType is a helper for describing the config object.
 func configObjectType() types.ObjectType {
 	return types.ObjectType{
@@ -141,6 +156,7 @@ func configObjectType() types.ObjectType {
 			"dns_records":                dnsRecordsObjectType(),
 			"ip_version":                 types.StringType,
 			"api_assertions":             apiAssertionsObjectType(),
+			"udp":                        udpObjectType(),
 		},
 	}
 }

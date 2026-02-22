@@ -290,6 +290,7 @@ func TestUpgradeFromV4_Config_WithSSLDays(t *testing.T) {
 	require.Contains(t, attrs, "dns_records", "missing dns_records")
 	require.Contains(t, attrs, "ip_version", "missing ip_version")
 	require.Contains(t, attrs, "api_assertions", "missing api_assertions")
+	require.Contains(t, attrs, "udp", "missing udp")
 
 	// ssl_expiration_period_days should preserve values
 	sslDays, ok := attrs["ssl_expiration_period_days"].(types.Set)
@@ -309,6 +310,10 @@ func TestUpgradeFromV4_Config_WithSSLDays(t *testing.T) {
 	apiAssertions, ok := attrs["api_assertions"].(types.Object)
 	require.True(t, ok, "api_assertions should be types.Object")
 	require.True(t, apiAssertions.IsNull(), "api_assertions should be null")
+
+	udp, ok := attrs["udp"].(types.Object)
+	require.True(t, ok, "udp should be types.Object")
+	require.True(t, udp.IsNull(), "udp should be null")
 }
 
 func TestUpgradeFromV3_Config_WithSSLDays(t *testing.T) {
@@ -339,6 +344,7 @@ func TestUpgradeFromV3_Config_WithSSLDays(t *testing.T) {
 	require.Contains(t, attrs, "dns_records", "missing dns_records")
 	require.Contains(t, attrs, "ip_version", "missing ip_version")
 	require.Contains(t, attrs, "api_assertions", "missing api_assertions")
+	require.Contains(t, attrs, "udp", "missing udp")
 
 	// ssl_expiration_period_days should preserve values
 	sslDays, ok := attrs["ssl_expiration_period_days"].(types.Set)
@@ -358,4 +364,8 @@ func TestUpgradeFromV3_Config_WithSSLDays(t *testing.T) {
 	apiAssertions, ok := attrs["api_assertions"].(types.Object)
 	require.True(t, ok, "api_assertions should be types.Object")
 	require.True(t, apiAssertions.IsNull(), "api_assertions should be null")
+
+	udp, ok := attrs["udp"].(types.Object)
+	require.True(t, ok, "udp should be types.Object")
+	require.True(t, udp.IsNull(), "udp should be null")
 }

@@ -31,6 +31,18 @@ description: |-
 
 {{tffile "examples/resources/uptimerobot_monitor/ping.tf"}}
 
+### UDP Monitor
+
+{{tffile "examples/resources/uptimerobot_monitor/udp.tf"}}
+
+### API Monitor with Assertions
+
+{{tffile "examples/resources/uptimerobot_monitor/api_assertions.tf"}}
+
+### API Monitor with Null Checks
+
+{{tffile "examples/resources/uptimerobot_monitor/api_assertions_null_checks.tf"}}
+
 ### Alert Contacts Example
 
 {{tffile "examples/resources/uptimerobot_monitor/alert_contacts.tf"}}
@@ -51,6 +63,8 @@ description: |-
 - `PORT` — Port monitoring
 - `HEARTBEAT` — Heartbeat monitoring
 - `DNS` — DNS record monitoring
+- `API` — API assertions monitoring
+- `UDP` — UDP packet monitoring
 
 ## Intervals
 

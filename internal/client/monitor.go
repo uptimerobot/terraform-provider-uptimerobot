@@ -19,6 +19,7 @@ const (
 	MonitorTypeHeartbeat MonitorType = "HEARTBEAT"
 	MonitorTypeDNS       MonitorType = "DNS"
 	MonitorTypeAPI       MonitorType = "API"
+	MonitorTypeUDP       MonitorType = "UDP"
 )
 
 // CreateMonitorRequest represents the request to create a new monitor.
@@ -159,7 +160,13 @@ type MonitorConfig struct {
 	SSLExpirationPeriodDays *[]int64              `json:"sslExpirationPeriodDays,omitempty"`
 	DNSRecords              *DNSRecords           `json:"dnsRecords,omitempty"`
 	APIAssertions           *APIMonitorAssertions `json:"apiAssertions,omitempty"`
+	UDP                     *UDPMonitorConfig     `json:"udp,omitempty"`
 	IPVersion               *string               `json:"ipVersion,omitempty"`
+}
+
+type UDPMonitorConfig struct {
+	Payload             *string `json:"payload,omitempty"`
+	PacketLossThreshold *int64  `json:"packetLossThreshold,omitempty"`
 }
 
 type APIMonitorAssertions struct {
