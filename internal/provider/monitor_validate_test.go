@@ -422,7 +422,7 @@ func TestValidateConfigIPVersion_AllowsAPIType(t *testing.T) {
 	resp := &resource.ValidateConfigResponse{}
 	validateConfigIPVersion(
 		MonitorTypeAPI,
-		types.StringValue("https://example.com/api/health"),
+		types.StringValue("https://example.com/api"),
 		types.StringValue(IPVersionIPv6Only),
 		resp,
 	)
@@ -432,19 +432,19 @@ func TestValidateConfigIPVersion_AllowsAPIType(t *testing.T) {
 	}
 }
 
-func TestValidateConfigIPVersion_AllowsUDPType(t *testing.T) {
+func TestValidateConfigIPVersion_RejectsUnsupportedType(t *testing.T) {
 	t.Parallel()
 
 	resp := &resource.ValidateConfigResponse{}
 	validateConfigIPVersion(
-		MonitorTypeUDP,
-		types.StringValue("example.com"),
+		"UDP",
+		types.StringValue("1.1.1.1"),
 		types.StringValue(IPVersionIPv4Only),
 		resp,
 	)
 
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("expected no errors for ip_version on UDP monitor, got: %v", resp.Diagnostics)
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error for ip_version on UDP monitor, got: %v", resp.Diagnostics)
 	}
 }
 

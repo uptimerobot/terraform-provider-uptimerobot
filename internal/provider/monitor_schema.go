@@ -432,7 +432,7 @@ Advanced monitor configuration.
 - For ` + "`type = \"API\"`" + ` on create, set ` + "`config.api_assertions`" + ` with ` + "`logic`" + ` and 1-5 ` + "`checks`" + `.
 - ` + "`dns_records`" + ` is only valid for DNS monitors.
 - ` + "`config.ssl_expiration_period_days`" + ` is only valid for DNS monitors.
-- ` + "`ip_version`" + ` is only valid for HTTP/KEYWORD/PING/PORT/API/UDP monitors.
+- ` + "`ip_version`" + ` is only valid for HTTP/KEYWORD/PING/PORT/API monitors.
 - ` + "`config.api_assertions`" + ` is only valid for API monitors.
 - ` + "`config.udp`" + ` is only valid for UDP monitors.
 - Top-level ` + "`ssl_expiration_reminder`" + ` and ` + "`check_ssl_errors`" + ` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors.
@@ -549,7 +549,7 @@ Advanced monitor configuration.
 						},
 					},
 					"ip_version": schema.StringAttribute{
-						Description: "IP family selection for HTTP/KEYWORD/PING/PORT/API/UDP monitors. Use ipv4Only or ipv6Only. Set empty string to clear and fall back to API default behavior.",
+						Description: "IP family selection for HTTP/KEYWORD/PING/PORT/API monitors. Use ipv4Only or ipv6Only. Set empty string to clear and fall back to API default behavior.",
 						Optional:    true,
 						Computed:    true,
 						Validators: []validator.String{
