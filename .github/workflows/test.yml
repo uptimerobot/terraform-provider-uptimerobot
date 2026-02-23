@@ -123,9 +123,9 @@ jobs:
       - name: Configure OpenTofu Environment
         if: matrix.app == 'opentofu'
         run: |
-          echo TF_ACC_PROVIDER_HOST="registry.opentofu.org" >> $GITHUB_ENV
-          echo TF_ACC_PROVIDER_NAMESPACE="hashicorp" >> $GITHUB_ENV
-          echo TF_ACC_TERRAFORM_PATH="$(which tofu)" >> $GITHUB_ENV
+          echo TF_ACC_PROVIDER_HOST="registry.opentofu.org" >> "$GITHUB_ENV"
+          echo TF_ACC_PROVIDER_NAMESPACE="uptimerobot" >> "$GITHUB_ENV"
+          echo TF_ACC_TERRAFORM_PATH="$(which tofu)" >> "$GITHUB_ENV"
 
 
       - name: Test Provider
@@ -179,9 +179,9 @@ jobs:
       - name: Configure OpenTofu Environment
         if: matrix.app == 'opentofu'
         run: |
-          echo TF_ACC_PROVIDER_HOST="registry.opentofu.org" >> $GITHUB_ENV
-          echo TF_ACC_PROVIDER_NAMESPACE="hashicorp" >> $GITHUB_ENV
-          echo TF_ACC_TERRAFORM_PATH="$(which tofu)" >> $GITHUB_ENV
+          echo TF_ACC_PROVIDER_HOST="registry.opentofu.org" >> "$GITHUB_ENV"
+          echo TF_ACC_PROVIDER_NAMESPACE="uptimerobot" >> "$GITHUB_ENV"
+          echo TF_ACC_TERRAFORM_PATH="$(which tofu)" >> "$GITHUB_ENV"
 
       - name: Test Provider
         run: go test -v -cover ./internal/provider -tags=acceptance -run '^TestAcc' -parallel=1 -timeout 45m

@@ -368,6 +368,88 @@ func TestValidateCreateHighLevel_UDPType_AllowsUDPConfig(t *testing.T) {
 	}
 }
 
+func TestValidateConfig_API_AllowsUnknownAPIAssertionsAtPlanTime(t *testing.T) {
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions":             types.ObjectUnknown(apiAssertionsObjectType().AttrTypes),
+			"ip_version":                 types.StringNull(),
+			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		}),
+	}
+
+	validateConfig(context.TODO(), MonitorTypeAPI, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for unknown api_assertions, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfig_API_AllowsUnknownAPIAssertionFieldsAtPlanTime(t *testing.T) {
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions": types.ObjectValueMust(apiAssertionsObjectType().AttrTypes, map[string]attr.Value{
+				"logic":  types.StringUnknown(),
+				"checks": types.ListUnknown(apiAssertionCheckObjectType()),
+			}),
+			"ip_version": types.StringNull(),
+			"udp":        types.ObjectNull(udpObjectType().AttrTypes),
+		}),
+	}
+
+	validateConfig(context.TODO(), MonitorTypeAPI, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for unknown api_assertions fields, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfig_UDP_AllowsUnknownUDPConfigAtPlanTime(t *testing.T) {
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"ip_version":                 types.StringNull(),
+			"udp":                        types.ObjectUnknown(udpObjectType().AttrTypes),
+		}),
+	}
+
+	validateConfig(context.TODO(), MonitorTypeUDP, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for unknown udp config, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfig_UDP_AllowsUnknownPacketLossThresholdAtPlanTime(t *testing.T) {
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"ip_version":                 types.StringNull(),
+			"udp": types.ObjectValueMust(udpObjectType().AttrTypes, map[string]attr.Value{
+				"payload":               types.StringNull(),
+				"packet_loss_threshold": types.Int64Unknown(),
+			}),
+		}),
+	}
+
+	validateConfig(context.TODO(), MonitorTypeUDP, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for unknown udp.packet_loss_threshold, got: %v", resp.Diagnostics)
+	}
+}
+
 func TestValidateConfigIPVersion_RejectsUnsupportedTypes(t *testing.T) {
 	t.Parallel()
 

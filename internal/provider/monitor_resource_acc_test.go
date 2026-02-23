@@ -581,7 +581,7 @@ func TestAccMonitorResource(t *testing.T) {
 				ResourceName:            "uptimerobot_monitor.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name"},
+				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name", "is_paused"},
 			},
 		},
 	})
@@ -905,7 +905,7 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 				ResourceName:            "uptimerobot_monitor.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"timeout", "status", "custom_http_headers", "group_id"},
+				ImportStateVerifyIgnore: []string{"timeout", "status", "custom_http_headers", "group_id", "is_paused"},
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
 				),
@@ -2194,6 +2194,7 @@ resource "uptimerobot_monitor" "test" {
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
 					"group_id",
+					"is_paused",
 				},
 			},
 			{Config: cfgPlain, PlanOnly: true, ExpectNonEmptyPlan: false},

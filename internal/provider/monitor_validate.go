@@ -56,7 +56,7 @@ func (r *monitorResource) ValidateConfig(
 	validateGracePeriodAndTimeout(ctx, t, &data, resp)
 	validateMethodVsBody(ctx, &data, resp)
 	validateAssignedAlertContacts(ctx, &data, resp)
-	validateConfig(ctx, t, req, &data, resp)
+	validateConfig(ctx, t, &data, resp)
 	validateHeadersCasingDuplication(ctx, &data, resp)
 	validatePortMonitor(ctx, t, &data, resp)
 	validateKeywordMonitor(ctx, t, &data, resp)
@@ -237,12 +237,16 @@ func validateAssignedAlertContacts(
 func validateConfig(
 	ctx context.Context,
 	monitorType string,
-	req resource.ValidateConfigRequest,
 	data *monitorResourceModel,
 	resp *resource.ValidateConfigResponse,
 ) {
 	var cfg configTF
-	_ = req.Config.GetAttribute(ctx, path.Root("config"), &cfg)
+	if !data.Config.IsNull() && !data.Config.IsUnknown() {
+		resp.Diagnostics.Append(data.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
 
 	// Check that user set any SSL related settings
 	sslRemTouched := !data.SSLExpirationReminder.IsNull() &&
@@ -359,7 +363,10 @@ func validateConfig(
 	}
 
 	if monitorType == MonitorTypeAPI && !data.Config.IsNull() && !data.Config.IsUnknown() {
-		if cfg.APIAssertions.IsNull() || cfg.APIAssertions.IsUnknown() {
+		if cfg.APIAssertions.IsUnknown() {
+			return
+		}
+		if cfg.APIAssertions.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("config").AtName("api_assertions"),
 				"API monitor requires api_assertions",
@@ -374,7 +381,11 @@ func validateConfig(
 			return
 		}
 
-		if assertions.Logic.IsNull() || assertions.Logic.IsUnknown() {
+		if assertions.Logic.IsUnknown() || assertions.Checks.IsUnknown() {
+			return
+		}
+
+		if assertions.Logic.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("config").AtName("api_assertions").AtName("logic"),
 				"Missing API assertions logic",
@@ -382,7 +393,7 @@ func validateConfig(
 			)
 		}
 
-		if assertions.Checks.IsNull() || assertions.Checks.IsUnknown() {
+		if assertions.Checks.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("config").AtName("api_assertions").AtName("checks"),
 				"Missing API assertions checks",
@@ -407,14 +418,17 @@ func validateConfig(
 
 		for i, check := range checks {
 			checkPath := path.Root("config").AtName("api_assertions").AtName("checks").AtListIndex(i)
-			if check.Property.IsNull() || check.Property.IsUnknown() || strings.TrimSpace(check.Property.ValueString()) == "" {
+			if check.Property.IsUnknown() || check.Comparison.IsUnknown() || check.Target.IsUnknown() {
+				continue
+			}
+			if check.Property.IsNull() || strings.TrimSpace(check.Property.ValueString()) == "" {
 				resp.Diagnostics.AddAttributeError(
 					checkPath.AtName("property"),
 					"Missing assertion property",
 					"Each check.property must be a non-empty JSONPath expression.",
 				)
 			}
-			if !check.Property.IsNull() && !check.Property.IsUnknown() && !strings.HasPrefix(strings.TrimSpace(check.Property.ValueString()), "$") {
+			if !check.Property.IsNull() && !strings.HasPrefix(strings.TrimSpace(check.Property.ValueString()), "$") {
 				resp.Diagnostics.AddAttributeError(
 					checkPath.AtName("property"),
 					"Invalid assertion property",
@@ -520,7 +534,10 @@ func validateConfig(
 	}
 
 	if monitorType == MonitorTypeUDP && !data.Config.IsNull() && !data.Config.IsUnknown() {
-		if cfg.UDP.IsNull() || cfg.UDP.IsUnknown() {
+		if cfg.UDP.IsUnknown() {
+			return
+		}
+		if cfg.UDP.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("config").AtName("udp"),
 				"UDP monitor requires udp config",
@@ -535,7 +552,10 @@ func validateConfig(
 			return
 		}
 
-		if udp.PacketLossThreshold.IsNull() || udp.PacketLossThreshold.IsUnknown() {
+		if udp.PacketLossThreshold.IsUnknown() {
+			return
+		}
+		if udp.PacketLossThreshold.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("config").AtName("udp").AtName("packet_loss_threshold"),
 				"Missing packet_loss_threshold",

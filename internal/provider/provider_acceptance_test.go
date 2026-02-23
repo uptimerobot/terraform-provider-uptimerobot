@@ -38,14 +38,6 @@ func testAccPreCheck(t *testing.T) {
 
 func testAccProviderConfig() string {
 	return fmt.Sprintf(`
-terraform {
-  required_providers {
-    uptimerobot = {
-      source = "hashicorp/uptimerobot"
-    }
-  }
-}
-
 provider "uptimerobot" {
   api_key = "%s"
 }
