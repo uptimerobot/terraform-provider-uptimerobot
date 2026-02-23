@@ -18,6 +18,8 @@ const (
 	MonitorTypePort      MonitorType = "PORT"
 	MonitorTypeHeartbeat MonitorType = "HEARTBEAT"
 	MonitorTypeDNS       MonitorType = "DNS"
+	MonitorTypeAPI       MonitorType = "API"
+	MonitorTypeUDP       MonitorType = "UDP"
 )
 
 // CreateMonitorRequest represents the request to create a new monitor.
@@ -51,6 +53,7 @@ type CreateMonitorRequest struct {
 	ResponseTimeThreshold    int                   `json:"responseTimeThreshold,omitempty"`
 	RegionalData             string                `json:"regionalData,omitempty"`
 	Config                   *MonitorConfig        `json:"config,omitempty"`
+	GroupID                  *int                  `json:"groupId,omitempty"`
 }
 
 // UpdateMonitorRequest represents the request to update an existing monitor.
@@ -84,6 +87,7 @@ type UpdateMonitorRequest struct {
 	ResponseTimeThreshold    *int                   `json:"responseTimeThreshold,omitempty"`
 	RegionalData             *string                `json:"regionalData,omitempty"`
 	Config                   *MonitorConfig         `json:"config,omitempty"`
+	GroupID                  *int                   `json:"groupId,omitempty"`
 }
 
 // Monitor represents a monitor.
@@ -126,6 +130,7 @@ type Monitor struct {
 	LastDayUptimes           *UptimeStats        `json:"lastDayUptimes"`
 	CreateDateTime           string              `json:"createDateTime"`
 	APIKey                   string              `json:"apiKey"`
+	GroupID                  int64               `json:"groupId"`
 	RegionalData             interface{}         `json:"regionalData"`
 	ResponseTimeThreshold    int                 `json:"responseTimeThreshold"`
 	Config                   *MonitorConfig      `json:"config"`
@@ -152,8 +157,27 @@ type AlertContact struct {
 }
 
 type MonitorConfig struct {
-	SSLExpirationPeriodDays *[]int64    `json:"sslExpirationPeriodDays,omitempty"`
-	DNSRecords              *DNSRecords `json:"dnsRecords,omitempty"`
+	SSLExpirationPeriodDays *[]int64              `json:"sslExpirationPeriodDays,omitempty"`
+	DNSRecords              *DNSRecords           `json:"dnsRecords,omitempty"`
+	APIAssertions           *APIMonitorAssertions `json:"apiAssertions,omitempty"`
+	UDP                     *UDPMonitorConfig     `json:"udp,omitempty"`
+	IPVersion               *string               `json:"ipVersion,omitempty"`
+}
+
+type UDPMonitorConfig struct {
+	Payload             *string `json:"payload,omitempty"`
+	PacketLossThreshold *int64  `json:"packetLossThreshold,omitempty"`
+}
+
+type APIMonitorAssertions struct {
+	Logic  string                     `json:"logic,omitempty"`
+	Checks []APIMonitorAssertionCheck `json:"checks,omitempty"`
+}
+
+type APIMonitorAssertionCheck struct {
+	Property   string      `json:"property"`
+	Comparison string      `json:"comparison"`
+	Target     interface{} `json:"target,omitempty"`
 }
 
 type DNSRecords struct {
@@ -207,6 +231,30 @@ func (c *Client) GetMonitor(ctx context.Context, id int64) (*Monitor, error) {
 	base := NewBaseCRUDOperations(c, "/monitors")
 	var monitor Monitor
 	if err := base.doGet(ctx, id, &monitor); err != nil {
+		// Some legacy monitors can intermittently fail on single-resource endpoint
+		// with 5xx while still being returned by list endpoint.
+		if status, ok := StatusCode(err); ok && status >= 500 {
+			monitors, listErr := c.GetMonitors(ctx)
+			if listErr == nil {
+				for i := range monitors {
+					if monitors[i].ID == id {
+						m := monitors[i]
+						return &m, nil
+					}
+				}
+				return nil, fmt.Errorf(
+					"failed to get monitor: %v (fallback /monitors list succeeded but monitor id %d was not found among %d listed monitors)",
+					err,
+					id,
+					len(monitors),
+				)
+			}
+			return nil, fmt.Errorf(
+				"failed to get monitor: %v (fallback /monitors list request also failed: %v)",
+				err,
+				listErr,
+			)
+		}
 		return nil, fmt.Errorf("failed to get monitor: %v", err)
 	}
 	return &monitor, nil
@@ -253,6 +301,36 @@ func (c *Client) WaitMonitorDeleted(ctx context.Context, id int64, timeout time.
 func (c *Client) ResetMonitor(ctx context.Context, id int64) error {
 	_, err := c.doRequest(ctx, "POST", fmt.Sprintf("/monitors/%d/reset", id), nil)
 	return err
+}
+
+// PauseMonitor pauses a monitor by ID.
+func (c *Client) PauseMonitor(ctx context.Context, id int64) (*Monitor, error) {
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/monitors/%d/pause", id), map[string]any{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to pause monitor: %v", err)
+	}
+
+	var monitor Monitor
+	if err := json.Unmarshal(resp, &monitor); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal paused monitor response: %v", err)
+	}
+
+	return &monitor, nil
+}
+
+// StartMonitor starts a monitor by ID.
+func (c *Client) StartMonitor(ctx context.Context, id int64) (*Monitor, error) {
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/monitors/%d/start", id), map[string]any{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start monitor: %v", err)
+	}
+
+	var monitor Monitor
+	if err := json.Unmarshal(resp, &monitor); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal started monitor response: %v", err)
+	}
+
+	return &monitor, nil
 }
 
 // FindExistingMonitorByNameAndURL searches for a monitor with matching name and URL.

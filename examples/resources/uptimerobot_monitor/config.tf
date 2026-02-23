@@ -1,11 +1,9 @@
 # Set specific days for SSL expiration period days
 resource "uptimerobot_monitor" "set_days" {
-  name     = "HTTP set days"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "DNS set days"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   config = {
     ssl_expiration_period_days = [3, 5, 30, 69] # max 10 items in range 0..365
@@ -14,12 +12,10 @@ resource "uptimerobot_monitor" "set_days" {
 
 # Preserve remote values but manage the block. Nothing will be sent
 resource "uptimerobot_monitor" "preserve" {
-  name     = "HTTP preserve"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "DNS preserve"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   # Empty block present - provider will read current remote values into state
   # but does NOT update the server
@@ -28,12 +24,10 @@ resource "uptimerobot_monitor" "preserve" {
 
 # Clear days on server - send an explicit empty list
 resource "uptimerobot_monitor" "clear" {
-  name     = "HTTP clear"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "DNS clear"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   config = {
     ssl_expiration_period_days = [] # empty list means clear on server
@@ -42,12 +36,10 @@ resource "uptimerobot_monitor" "clear" {
 
 # UI-managed SSL days. Ignore drift if management is preferred via dashboard
 resource "uptimerobot_monitor" "ui_driven_ssl" {
-  name     = "UI-driven SSL days"
-  type     = "HTTP"
-  url      = "https://example.com"
+  name     = "UI-driven DNS SSL days"
+  type     = "DNS"
+  url      = "example.com"
   interval = 300
-
-  ssl_expiration_reminder = true
 
   lifecycle {
     ignore_changes = [config]
@@ -56,6 +48,58 @@ resource "uptimerobot_monitor" "ui_driven_ssl" {
   # Optional to keep an empty block so Terraform will mirror current remote values
   # into state without changing them
   config = {}
+}
+
+# HTTP monitor with forced IPv4
+resource "uptimerobot_monitor" "ipv4_only" {
+  name     = "HTTP IPv4 only"
+  type     = "HTTP"
+  url      = "https://example.com/health"
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+  }
+}
+
+# KEYWORD monitor with forced IPv6
+resource "uptimerobot_monitor" "ipv6_only_keyword" {
+  name              = "Keyword IPv6 only"
+  type              = "KEYWORD"
+  url               = "https://example.com/status"
+  interval          = 300
+  keyword_type      = "ALERT_EXISTS"
+  keyword_case_type = "CaseInsensitive"
+  keyword_value     = "ok"
+
+  config = {
+    ip_version = "ipv6Only"
+  }
+}
+
+# PING monitor with forced IPv4
+resource "uptimerobot_monitor" "ipv4_only_ping" {
+  name     = "Ping IPv4 only"
+  type     = "PING"
+  url      = "example.com"
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+  }
+}
+
+# PORT monitor with forced IPv6
+resource "uptimerobot_monitor" "ipv6_only_port" {
+  name     = "Port IPv6 only"
+  type     = "PORT"
+  url      = "example.com"
+  port     = 443
+  interval = 300
+
+  config = {
+    ip_version = "ipv6Only"
+  }
 }
 
 # DNS monitor - manage DNS record lists. Only for type=DNS.
@@ -75,16 +119,14 @@ resource "uptimerobot_monitor" "dns_records" {
   }
 }
 
-# DNS on CREATE — API requires config.dns_records, which may be empty
+# DNS on CREATE - config is required, even when using defaults
 resource "uptimerobot_monitor" "dns" {
   name     = "example.org DNS (create)"
   type     = "DNS"
   url      = "example.org"
   interval = 300
 
-  config = {
-    dns_records = {} # required for DNS on create
-  }
+  config = {}
 }
 
 # DNS on UPDATE - to preserve server values, omit the config block entirely
@@ -95,4 +137,78 @@ resource "uptimerobot_monitor" "dns_preserve" {
   interval = 300
 
   # No config block - provider will preserves server-side DNS records
+}
+
+# API monitor with assertions
+resource "uptimerobot_monitor" "api_assertions" {
+  name     = "API assertions"
+  type     = "API"
+  url      = "https://example.com/api/health"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv4Only"
+
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.status"
+          comparison = "equals"
+          target     = jsonencode("ok")
+        },
+        {
+          property   = "$.count"
+          comparison = "greater_than"
+          target     = jsonencode(0)
+        },
+      ]
+    }
+  }
+}
+
+# API monitor with null checks (target omitted for is_null/is_not_null)
+resource "uptimerobot_monitor" "api_assertions_null_checks" {
+  name     = "API assertions null checks"
+  type     = "API"
+  url      = "https://example.com/api/status"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv6Only"
+
+    api_assertions = {
+      logic = "AND"
+      checks = [
+        {
+          property   = "$.result.value"
+          comparison = "is_not_null"
+        },
+        {
+          property   = "$.result.error"
+          comparison = "is_null"
+        },
+      ]
+    }
+  }
+}
+
+# UDP monitor with config.udp
+resource "uptimerobot_monitor" "udp_monitor" {
+  name     = "UDP monitor"
+  type     = "UDP"
+  url      = "example.com"
+  port     = 53
+  interval = 300
+
+  config = {
+    ip_version = "ipv4Only"
+
+    udp = {
+      payload               = "ping"
+      packet_loss_threshold = 50
+    }
+  }
 }

@@ -116,12 +116,6 @@ func maskOptionalTopLevelNullsFromPlan(plan *pspResourceModel, state *pspResourc
 	if plan.Password.IsNull() {
 		state.Password = types.StringNull()
 	}
-	if plan.Icon.IsNull() {
-		state.Icon = types.StringNull()
-	}
-	if plan.Logo.IsNull() {
-		state.Logo = types.StringNull()
-	}
 	if plan.CustomDomain.IsNull() {
 		state.CustomDomain = types.StringNull()
 	}
@@ -151,6 +145,84 @@ func preferPlannedTopLevelValues(plan *pspResourceModel, state *pspResourceModel
 	}
 	if !plan.PinnedAnnouncementID.IsNull() && !plan.PinnedAnnouncementID.IsUnknown() {
 		state.PinnedAnnouncementID = plan.PinnedAnnouncementID
+	}
+}
+
+func preferPlannedCustomSettingsValues(plan *pspResourceModel, state *pspResourceModel) {
+	if plan == nil || state == nil || plan.CustomSettings == nil || state.CustomSettings == nil {
+		return
+	}
+
+	if plan.CustomSettings.Font != nil {
+		if state.CustomSettings.Font == nil {
+			state.CustomSettings.Font = &fontSettingsModel{}
+		}
+		if hasConfiguredString(plan.CustomSettings.Font.Family) {
+			state.CustomSettings.Font.Family = plan.CustomSettings.Font.Family
+		}
+	}
+
+	if plan.CustomSettings.Page != nil {
+		if state.CustomSettings.Page == nil {
+			state.CustomSettings.Page = &pageSettingsModel{}
+		}
+		if hasConfiguredString(plan.CustomSettings.Page.Layout) {
+			state.CustomSettings.Page.Layout = plan.CustomSettings.Page.Layout
+		}
+		if hasConfiguredString(plan.CustomSettings.Page.Theme) {
+			state.CustomSettings.Page.Theme = plan.CustomSettings.Page.Theme
+		}
+		if hasConfiguredString(plan.CustomSettings.Page.Density) {
+			state.CustomSettings.Page.Density = plan.CustomSettings.Page.Density
+		}
+	}
+
+	if plan.CustomSettings.Colors != nil {
+		if state.CustomSettings.Colors == nil {
+			state.CustomSettings.Colors = &colorSettingsModel{}
+		}
+		if hasConfiguredString(plan.CustomSettings.Colors.Main) {
+			state.CustomSettings.Colors.Main = plan.CustomSettings.Colors.Main
+		}
+		if hasConfiguredString(plan.CustomSettings.Colors.Text) {
+			state.CustomSettings.Colors.Text = plan.CustomSettings.Colors.Text
+		}
+		if hasConfiguredString(plan.CustomSettings.Colors.Link) {
+			state.CustomSettings.Colors.Link = plan.CustomSettings.Colors.Link
+		}
+	}
+
+	if plan.CustomSettings.Features != nil {
+		if state.CustomSettings.Features == nil {
+			state.CustomSettings.Features = &featureSettingsModel{}
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowBars) {
+			state.CustomSettings.Features.ShowBars = plan.CustomSettings.Features.ShowBars
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowUptimePercentage) {
+			state.CustomSettings.Features.ShowUptimePercentage = plan.CustomSettings.Features.ShowUptimePercentage
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.EnableFloatingStatus) {
+			state.CustomSettings.Features.EnableFloatingStatus = plan.CustomSettings.Features.EnableFloatingStatus
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowOverallUptime) {
+			state.CustomSettings.Features.ShowOverallUptime = plan.CustomSettings.Features.ShowOverallUptime
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowOutageUpdates) {
+			state.CustomSettings.Features.ShowOutageUpdates = plan.CustomSettings.Features.ShowOutageUpdates
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowOutageDetails) {
+			state.CustomSettings.Features.ShowOutageDetails = plan.CustomSettings.Features.ShowOutageDetails
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.EnableDetailsPage) {
+			state.CustomSettings.Features.EnableDetailsPage = plan.CustomSettings.Features.EnableDetailsPage
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.ShowMonitorURL) {
+			state.CustomSettings.Features.ShowMonitorURL = plan.CustomSettings.Features.ShowMonitorURL
+		}
+		if hasConfiguredBool(plan.CustomSettings.Features.HidePausedMonitors) {
+			state.CustomSettings.Features.HidePausedMonitors = plan.CustomSettings.Features.HidePausedMonitors
+		}
 	}
 }
 
@@ -539,9 +611,13 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				},
 			},
 			"icon": schema.StringAttribute{
-				Description: "Icon for the PSP",
-				Optional:    true,
-				Computed:    true,
+				Description: "Local filesystem path to icon image file to upload via multipart/form-data.",
+				MarkdownDescription: "Local filesystem path to icon image file to upload via multipart/form-data.\n\n" +
+					"This field accepts only local filesystem paths. If you need a remote file, download it first " +
+					"(for example in CI) and then pass the downloaded file path.\n\n" +
+					"Set to an empty string (`\"\"`) to clear the existing icon.",
+				Optional: true,
+				Computed: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -555,9 +631,13 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				},
 			},
 			"logo": schema.StringAttribute{
-				Description: "Logo for the PSP",
-				Optional:    true,
-				Computed:    true,
+				Description: "Local filesystem path to logo image file to upload via multipart/form-data.",
+				MarkdownDescription: "Local filesystem path to logo image file to upload via multipart/form-data.\n\n" +
+					"This field accepts only local filesystem paths. If you need a remote file, download it first " +
+					"(for example in CI) and then pass the downloaded file path.\n\n" +
+					"Set to an empty string (`\"\"`) to clear the existing logo.",
+				Optional: true,
+				Computed: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -813,14 +893,6 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		psp.GACode = plan.GACode.ValueStringPointer()
 	}
 
-	if !plan.Icon.IsNull() && !plan.Icon.IsUnknown() {
-		psp.Icon = plan.Icon.ValueStringPointer()
-	}
-
-	if !plan.Logo.IsNull() && !plan.Logo.IsUnknown() {
-		psp.Logo = plan.Logo.ValueStringPointer()
-	}
-
 	// According to the API DTO, we should only include customSettings if needed
 	// The API expects customSettings.page, customSettings.colors, and customSettings.features to be objects, not null
 
@@ -969,6 +1041,30 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
+	var logoPath, iconPath *string
+	if hasConfiguredString(plan.Logo) {
+		if value := strings.TrimSpace(plan.Logo.ValueString()); value != "" {
+			logoPath = &value
+		}
+	}
+	if hasConfiguredString(plan.Icon) {
+		if value := strings.TrimSpace(plan.Icon.ValueString()); value != "" {
+			iconPath = &value
+		}
+	}
+
+	if logoPath != nil || iconPath != nil {
+		pspWithFiles, err := r.client.UpdatePSPFiles(ctx, newPSP.ID, logoPath, iconPath, false, false)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error uploading PSP files",
+				"Could not upload PSP logo/icon files, unexpected error: "+err.Error(),
+			)
+			return
+		}
+		newPSP = pspWithFiles
+	}
+
 	managedColors := plan.CustomSettings != nil && plan.CustomSettings.Colors != nil
 	managedFeatures := plan.CustomSettings != nil && plan.CustomSettings.Features != nil
 	managedFont := plan.CustomSettings != nil && plan.CustomSettings.Font != nil
@@ -981,7 +1077,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		newPSP.ID,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
-		60*time.Second,
+		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
 	} else if err != nil {
@@ -1010,6 +1106,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
 	pspToResourceData(ctx, pspForState, &updatedPlan)
+	updatedPlan.Name = plan.Name
 
 	if hasMonitorPlan {
 		updatedPlan.MonitorIDs = plan.MonitorIDs
@@ -1042,6 +1139,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		updatedPlan.CustomSettings = nil
 	}
 	maskCustomSettingsFromPlan(&plan, &updatedPlan)
+	preferPlannedCustomSettingsValues(&plan, &updatedPlan)
 	maskOptionalTopLevelNullsFromPlan(&plan, &updatedPlan)
 	preferPlannedTopLevelValues(&plan, &updatedPlan)
 	ensureKnownTopLevelOptionals(&updatedPlan)
@@ -1086,6 +1184,45 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 
 	isImport := state.Name.IsNull()
 
+	expectedName := ""
+	if !state.Name.IsNull() && !state.Name.IsUnknown() {
+		expectedName = state.Name.ValueString()
+	}
+
+	var expectedMonitorIDs []int64
+	if !state.MonitorIDs.IsNull() && !state.MonitorIDs.IsUnknown() {
+		diags := state.MonitorIDs.ElementsAs(ctx, &expectedMonitorIDs, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	nameMismatch := expectedName != "" && psp.Name != expectedName
+	monitorsMismatch := false
+	if expectedMonitorIDs != nil {
+		missing, extra := diffMonitorIDs(expectedMonitorIDs, psp.MonitorIDs)
+		monitorsMismatch = len(missing) > 0 || len(extra) > 0
+	}
+
+	// PSP reads can be eventually consistent right after updates.
+	// If the API returns transient old values, re-poll briefly before accepting drift.
+	if !isImport && (nameMismatch || monitorsMismatch) {
+		if settled, err := waitPSPSettled(
+			ctx,
+			r.client,
+			id,
+			expectedName,
+			expectedMonitorIDs,
+			20*time.Second,
+		); err == nil && settled != nil {
+			psp = settled
+		} else if settled != nil {
+			// Keep the most recent snapshot even when we timed out waiting for exact match.
+			psp = settled
+		}
+	}
+
 	managedColors := state.CustomSettings != nil && state.CustomSettings.Colors != nil
 	managedFeatures := state.CustomSettings != nil && state.CustomSettings.Features != nil
 	managedFont := state.CustomSettings != nil && state.CustomSettings.Font != nil
@@ -1094,6 +1231,10 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	updatedState := state
 
 	pspToResourceData(ctx, psp, &updatedState)
+	if !isImport {
+		updatedState.Icon = state.Icon
+		updatedState.Logo = state.Logo
+	}
 
 	if len(psp.MonitorIDs) > 0 {
 		setVal, d := types.SetValueFrom(ctx, types.Int64Type, psp.MonitorIDs)
@@ -1207,18 +1348,6 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		psp.Status = &status
 	}
 
-	if !plan.Icon.IsNull() && !plan.Icon.IsUnknown() &&
-		(state.Icon.IsNull() || state.Icon.IsUnknown() || plan.Icon.ValueString() != state.Icon.ValueString()) {
-		icon := plan.Icon.ValueString()
-		psp.Icon = &icon
-	}
-
-	if !plan.Logo.IsNull() && !plan.Logo.IsUnknown() &&
-		(state.Logo.IsNull() || state.Logo.IsUnknown() || plan.Logo.ValueString() != state.Logo.ValueString()) {
-		logo := plan.Logo.ValueString()
-		psp.Logo = &logo
-	}
-
 	if hasMonitorPlan {
 		psp.MonitorIDs = &requestedMonitorIDs
 	}
@@ -1226,6 +1355,36 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	if !plan.PinnedAnnouncementID.IsNull() && !plan.PinnedAnnouncementID.IsUnknown() &&
 		(state.PinnedAnnouncementID.IsNull() || state.PinnedAnnouncementID.IsUnknown() || plan.PinnedAnnouncementID.ValueInt64() != state.PinnedAnnouncementID.ValueInt64()) {
 		psp.PinnedAnnouncementID = plan.PinnedAnnouncementID.ValueInt64Pointer()
+	}
+
+	var uploadLogoPath, uploadIconPath *string
+	if hasConfiguredString(plan.Logo) &&
+		(state.Logo.IsNull() || state.Logo.IsUnknown() || strings.TrimSpace(plan.Logo.ValueString()) != strings.TrimSpace(state.Logo.ValueString())) {
+		if value := strings.TrimSpace(plan.Logo.ValueString()); value != "" {
+			uploadLogoPath = &value
+		}
+	}
+	if hasConfiguredString(plan.Icon) &&
+		(state.Icon.IsNull() || state.Icon.IsUnknown() || strings.TrimSpace(plan.Icon.ValueString()) != strings.TrimSpace(state.Icon.ValueString())) {
+		if value := strings.TrimSpace(plan.Icon.ValueString()); value != "" {
+			uploadIconPath = &value
+		}
+	}
+
+	clearLogo := hasConfiguredString(plan.Logo) &&
+		strings.TrimSpace(plan.Logo.ValueString()) == "" &&
+		!state.Logo.IsNull() && !state.Logo.IsUnknown() &&
+		strings.TrimSpace(state.Logo.ValueString()) != ""
+	clearIcon := hasConfiguredString(plan.Icon) &&
+		strings.TrimSpace(plan.Icon.ValueString()) == "" &&
+		!state.Icon.IsNull() && !state.Icon.IsUnknown() &&
+		strings.TrimSpace(state.Icon.ValueString()) != ""
+
+	if uploadLogoPath != nil {
+		clearLogo = false
+	}
+	if uploadIconPath != nil {
+		clearIcon = false
 	}
 
 	// Handle CustomSettings only when at least one value is configured in plan.
@@ -1347,6 +1506,18 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
+	if uploadLogoPath != nil || uploadIconPath != nil || clearLogo || clearIcon {
+		pspWithFiles, err := r.client.UpdatePSPFiles(ctx, id, uploadLogoPath, uploadIconPath, clearLogo, clearIcon)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error uploading PSP files",
+				"Could not upload/clear PSP logo/icon files, unexpected error: "+err.Error(),
+			)
+			return
+		}
+		updatedPSP = pspWithFiles
+	}
+
 	pspForState := updatedPSP
 	if settled, err := waitPSPSettled(
 		ctx,
@@ -1354,7 +1525,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		id,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
-		60*time.Second,
+		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
 	} else if err != nil {
@@ -1371,6 +1542,13 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 
 	var newState = plan
 	pspToResourceData(ctx, pspForState, &newState)
+	newState.Name = plan.Name
+	if plan.Icon.IsNull() {
+		newState.Icon = state.Icon
+	}
+	if plan.Logo.IsNull() {
+		newState.Logo = state.Logo
+	}
 
 	if hasMonitorPlan {
 		newState.MonitorIDs = plan.MonitorIDs
@@ -1379,6 +1557,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	maskCustomSettingsFromPlan(&plan, &newState)
+	preferPlannedCustomSettingsValues(&plan, &newState)
 	maskOptionalTopLevelNullsFromPlan(&plan, &newState)
 	preferPlannedTopLevelValues(&plan, &newState)
 	ensureKnownTopLevelOptionals(&newState)
@@ -1449,6 +1628,8 @@ func waitPSPSettled(
 	var last *client.PSP
 	backoff := 500 * time.Millisecond
 	const maxBackoff = 3 * time.Second
+	const requiredConsecutiveMatches = 3
+	consecutiveMatches := 0
 
 	for {
 		psp, err := c.GetPSP(ctx, id)
@@ -1464,8 +1645,15 @@ func waitPSPSettled(
 			}
 
 			if nameOK && monitorsOK {
-				return psp, nil
+				consecutiveMatches++
+				if consecutiveMatches >= requiredConsecutiveMatches {
+					return psp, nil
+				}
+			} else {
+				consecutiveMatches = 0
 			}
+		} else {
+			consecutiveMatches = 0
 		}
 
 		select {
@@ -1532,17 +1720,8 @@ func pspToResourceData(_ context.Context, psp *client.PSP, plan *pspResourceMode
 		plan.GACode = types.StringNull()
 	}
 
-	if psp.Icon != nil {
-		plan.Icon = types.StringValue(*psp.Icon)
-	} else {
-		plan.Icon = types.StringNull()
-	}
-
-	if psp.Logo != nil {
-		plan.Logo = types.StringValue(*psp.Logo)
-	} else {
-		plan.Logo = types.StringNull()
-	}
+	plan.Icon = types.StringNull()
+	plan.Logo = types.StringNull()
 
 	if psp.PinnedAnnouncementID != nil {
 		plan.PinnedAnnouncementID = types.Int64Value(*psp.PinnedAnnouncementID)

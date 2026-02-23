@@ -428,6 +428,8 @@ func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 
+	mw = r.stabilizeMaintenanceWindowReadSnapshot(ctx, id, state, mw)
+
 	// Map response body to schema
 	state.Name = types.StringValue(mw.Name)
 	state.Interval = types.StringValue(mw.Interval)
@@ -543,11 +545,57 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
+	var settled *client.MaintenanceWindow
 	if shouldWait {
-		if err := waitMaintenanceWindowSettled(ctx, r.client, id, iv, expectedDays); err != nil {
+		settled, err = waitMaintenanceWindowSettled(ctx, r.client, id, iv, expectedDays)
+		if err != nil {
 			resp.Diagnostics.AddError("Maintenance window did not settle", err.Error())
 			return
 		}
+	}
+
+	latest := settled
+	if latest == nil {
+		// Refresh from API after update so state reflects actual persisted values.
+		latest, err = r.client.GetMaintenanceWindow(ctx, id)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error reading maintenance window after update",
+				"Could not read updated maintenance window, unexpected error: "+err.Error(),
+			)
+			return
+		}
+	}
+
+	plan.Name = types.StringValue(latest.Name)
+	plan.Interval = types.StringValue(latest.Interval)
+	plan.Time = types.StringValue(latest.Time)
+	plan.Duration = types.Int64Value(int64(latest.Duration))
+	plan.AutoAddMonitors = types.BoolValue(latest.AutoAddMonitors)
+
+	if latest.Status != "" {
+		plan.Status = types.StringValue(latest.Status)
+	}
+
+	if latest.Date != nil {
+		plan.Date = types.StringValue(*latest.Date)
+	} else {
+		plan.Date = types.StringNull()
+	}
+
+	if latest.Interval == intervalWeekly || latest.Interval == intervalMonthly {
+		if len(latest.Days) > 0 {
+			days, d := types.SetValueFrom(ctx, types.Int64Type, latest.Days)
+			resp.Diagnostics.Append(d...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			plan.Days = days
+		} else {
+			plan.Days = types.SetNull(types.Int64Type)
+		}
+	} else {
+		plan.Days = types.SetNull(types.Int64Type)
 	}
 
 	// Set state to fully populated data
@@ -558,30 +606,87 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	}
 }
 
-func waitMaintenanceWindowSettled(ctx context.Context, c *client.Client, id int64, expectedInterval string, expectedDays []int64) error {
+func waitMaintenanceWindowSettled(ctx context.Context, c *client.Client, id int64, expectedInterval string, expectedDays []int64) (*client.MaintenanceWindow, error) {
 	want := normalizeDays(expectedDays)
 	wantInterval := strings.ToLower(expectedInterval)
 	var lastGot []int64
 	var lastInterval string
+	var lastMW *client.MaintenanceWindow
+	const requiredConsecutiveMatches = 3
+	consecutiveMatches := 0
 
-	for attempts := 0; attempts < 10; attempts++ {
+	for attempts := 0; attempts < 20; attempts++ {
 		mw, err := c.GetMaintenanceWindow(ctx, id)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		lastMW = mw
 		lastInterval = strings.ToLower(mw.Interval)
 		lastGot = normalizeDays(mw.Days)
 
 		if lastInterval == wantInterval && equalInt64Sets(want, lastGot) {
-			return nil
+			consecutiveMatches++
+			if consecutiveMatches >= requiredConsecutiveMatches {
+				return mw, nil
+			}
+		} else {
+			consecutiveMatches = 0
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return lastMW, ctx.Err()
 		case <-time.After(3 * time.Second):
 		}
 	}
-	return fmt.Errorf("maintenance window did not settle: want interval=%s days=%v got interval=%s days=%v", wantInterval, want, lastInterval, lastGot)
+	return lastMW, fmt.Errorf("maintenance window did not settle: want interval=%s days=%v got interval=%s days=%v", wantInterval, want, lastInterval, lastGot)
+}
+
+func (r *maintenanceWindowResource) stabilizeMaintenanceWindowReadSnapshot(
+	ctx context.Context,
+	id int64,
+	state maintenanceWindowResourceModel,
+	got *client.MaintenanceWindow,
+) *client.MaintenanceWindow {
+	if got == nil {
+		return got
+	}
+
+	if state.Interval.IsNull() || state.Interval.IsUnknown() {
+		return got
+	}
+
+	wantInterval := strings.ToLower(strings.TrimSpace(state.Interval.ValueString()))
+	if wantInterval == "" {
+		return got
+	}
+
+	var wantDays []int64
+	switch wantInterval {
+	case intervalWeekly, intervalMonthly:
+		if !state.Days.IsNull() && !state.Days.IsUnknown() {
+			var days []int64
+			if diags := state.Days.ElementsAs(ctx, &days, false); !diags.HasError() {
+				wantDays = normalizeDays(days)
+			}
+		}
+	default:
+		wantDays = nil
+	}
+
+	gotInterval := strings.ToLower(strings.TrimSpace(got.Interval))
+	gotDays := normalizeDays(got.Days)
+	if gotInterval == wantInterval && equalInt64Sets(wantDays, gotDays) {
+		return got
+	}
+
+	settled, err := waitMaintenanceWindowSettled(ctx, r.client, id, wantInterval, wantDays)
+	if err == nil && settled != nil {
+		return settled
+	}
+	if settled != nil {
+		return settled
+	}
+	return got
 }
 
 func normalizeDays(days []int64) []int64 {

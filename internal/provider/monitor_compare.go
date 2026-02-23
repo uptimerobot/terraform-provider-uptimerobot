@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"html"
 	"sort"
 	"strings"
@@ -29,6 +30,7 @@ type monComparable struct {
 	CheckSSLErrors           *bool
 	ResponseTimeThreshold    *int
 	RegionalData             *string
+	GroupID                  *int
 
 	// Collections compared as sets and maps when present
 	SuccessCodes         []string
@@ -39,7 +41,27 @@ type monComparable struct {
 	// Config children which we manage
 	SSLExpirationPeriodDays []int64
 	DNSRecords              map[string][]string
+	IPVersion               *string
+	ExpectIPVersionUnset    bool
+	APIAssertions           *apiAssertionsComparable
+	UDPConfig               *udpComparable
 	AssignedAlertContacts   []string
+}
+
+type apiAssertionsComparable struct {
+	Logic  string
+	Checks []apiAssertionCheckComparable
+}
+
+type apiAssertionCheckComparable struct {
+	Property   string
+	Comparison string
+	TargetJSON string
+}
+
+type udpComparable struct {
+	Payload             *string
+	PacketLossThreshold *int64
 }
 
 func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
@@ -142,6 +164,10 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 		s := strings.ToLower(strings.TrimSpace(req.RegionalData))
 		c.RegionalData = &s
 	}
+	if req.GroupID != nil {
+		v := *req.GroupID
+		c.GroupID = &v
+	}
 
 	// Assert collections only when they are actually sent
 	if req.CustomHTTPHeaders != nil {
@@ -166,12 +192,31 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 		c.MaintenanceWindowIDs = ids
 	}
 	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
-		c.SSLExpirationPeriodDays = normalizeInt64Set(*req.Config.SSLExpirationPeriodDays)
+		days := *req.Config.SSLExpirationPeriodDays
+		if len(days) == 0 {
+			c.SSLExpirationPeriodDays = []int64{}
+		} else {
+			c.SSLExpirationPeriodDays = normalizeInt64Set(days)
+		}
 	}
 	if req.Config != nil && req.Config.DNSRecords != nil {
 		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
 			c.DNSRecords = dr
 		}
+	}
+	if req.Config != nil && req.Config.IPVersion != nil {
+		if normalized, keep := normalizeIPVersionForAPI(*req.Config.IPVersion); keep {
+			c.IPVersion = &normalized
+		}
+	}
+	if req.Config != nil && req.Config.IPVersion == nil {
+		c.ExpectIPVersionUnset = true
+	}
+	if req.Config != nil && req.Config.APIAssertions != nil {
+		c.APIAssertions = normalizeAPIAssertions(req.Config.APIAssertions)
+	}
+	if req.Config != nil && req.Config.UDP != nil {
+		c.UDPConfig = normalizeUDPConfig(req.Config.UDP)
 	}
 	return c
 }
@@ -274,6 +319,10 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		s := strings.ToLower(strings.TrimSpace(*req.RegionalData))
 		c.RegionalData = &s
 	}
+	if req.GroupID != nil {
+		v := *req.GroupID
+		c.GroupID = &v
+	}
 
 	if req.SuccessHTTPResponseCodes != nil && len(*req.SuccessHTTPResponseCodes) > 0 {
 		c.SuccessCodes = normalizeStringSet(*req.SuccessHTTPResponseCodes)
@@ -292,12 +341,31 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		c.MaintenanceWindowIDs = ids
 	}
 	if req.Config != nil && req.Config.SSLExpirationPeriodDays != nil {
-		c.SSLExpirationPeriodDays = normalizeInt64Set(*req.Config.SSLExpirationPeriodDays)
+		days := *req.Config.SSLExpirationPeriodDays
+		if len(days) == 0 {
+			c.SSLExpirationPeriodDays = []int64{}
+		} else {
+			c.SSLExpirationPeriodDays = normalizeInt64Set(days)
+		}
 	}
 	if req.Config != nil && req.Config.DNSRecords != nil {
 		if dr := normalizeDNSRecords(req.Config.DNSRecords); dr != nil {
 			c.DNSRecords = dr
 		}
+	}
+	if req.Config != nil && req.Config.IPVersion != nil {
+		if normalized, keep := normalizeIPVersionForAPI(*req.Config.IPVersion); keep {
+			c.IPVersion = &normalized
+		}
+	}
+	if req.Config != nil && req.Config.IPVersion == nil {
+		c.ExpectIPVersionUnset = true
+	}
+	if req.Config != nil && req.Config.APIAssertions != nil {
+		c.APIAssertions = normalizeAPIAssertions(req.Config.APIAssertions)
+	}
+	if req.Config != nil && req.Config.UDP != nil {
+		c.UDPConfig = normalizeUDPConfig(req.Config.UDP)
 	}
 	if req.AssignedAlertContacts != nil {
 		c.AssignedAlertContacts = normalizeAlertContactIDsFromRequestsPtr(req.AssignedAlertContacts)
@@ -405,6 +473,10 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 			}
 		}
 	}
+	{
+		v := int(m.GroupID)
+		c.GroupID = &v
+	}
 
 	// Collections
 
@@ -441,10 +513,26 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 
 	if m.Config != nil {
 		if m.Config.SSLExpirationPeriodDays != nil {
-			c.SSLExpirationPeriodDays = normalizeInt64Set(*m.Config.SSLExpirationPeriodDays) // empty slice is ok
+			days := *m.Config.SSLExpirationPeriodDays
+			if len(days) == 0 {
+				c.SSLExpirationPeriodDays = []int64{}
+			} else {
+				c.SSLExpirationPeriodDays = normalizeInt64Set(days)
+			}
 		}
 		if dr := normalizeDNSRecords(m.Config.DNSRecords); dr != nil {
 			c.DNSRecords = dr
+		}
+		if m.Config.IPVersion != nil {
+			if normalized, keep := normalizeIPVersionForAPI(*m.Config.IPVersion); keep {
+				c.IPVersion = &normalized
+			}
+		}
+		if m.Config.APIAssertions != nil {
+			c.APIAssertions = normalizeAPIAssertions(m.Config.APIAssertions)
+		}
+		if m.Config.UDP != nil {
+			c.UDPConfig = normalizeUDPConfig(m.Config.UDP)
 		}
 	}
 	c.AssignedAlertContacts = normalizeAlertContactIDs(m.AssignedAlertContacts)
@@ -509,7 +597,7 @@ func normalizeDNSRecords(dr *client.DNSRecords) map[string][]string {
 
 func normalizeAlertContactIDsFromRequests(reqs []client.AlertContactRequest) []string {
 	if len(reqs) == 0 {
-		return nil
+		return []string{}
 	}
 	ids := make([]string, 0, len(reqs))
 	for _, ac := range reqs {
@@ -617,7 +705,22 @@ func equalComparable(want, got monComparable) bool {
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		return false
 	}
+	if want.GroupID != nil && (got.GroupID == nil || *want.GroupID != *got.GroupID) {
+		return false
+	}
 	if want.DNSRecords != nil && !equalDNSRecords(want.DNSRecords, got.DNSRecords) {
+		return false
+	}
+	if want.IPVersion != nil && (got.IPVersion == nil || *want.IPVersion != *got.IPVersion) {
+		return false
+	}
+	if want.ExpectIPVersionUnset && got.IPVersion != nil {
+		return false
+	}
+	if want.APIAssertions != nil && !equalAPIAssertions(want.APIAssertions, got.APIAssertions) {
+		return false
+	}
+	if want.UDPConfig != nil && !equalUDPConfig(want.UDPConfig, got.UDPConfig) {
 		return false
 	}
 
@@ -697,8 +800,23 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		f = append(f, "regional_data")
 	}
+	if want.GroupID != nil && (got.GroupID == nil || *want.GroupID != *got.GroupID) {
+		f = append(f, "group_id")
+	}
 	if want.DNSRecords != nil && !equalDNSRecords(want.DNSRecords, got.DNSRecords) {
 		f = append(f, "config.dns_records")
+	}
+	if want.IPVersion != nil && (got.IPVersion == nil || *want.IPVersion != *got.IPVersion) {
+		f = append(f, "config.ip_version")
+	}
+	if want.ExpectIPVersionUnset && got.IPVersion != nil {
+		f = append(f, "config.ip_version")
+	}
+	if want.APIAssertions != nil && !equalAPIAssertions(want.APIAssertions, got.APIAssertions) {
+		f = append(f, "config.api_assertions")
+	}
+	if want.UDPConfig != nil && !equalUDPConfig(want.UDPConfig, got.UDPConfig) {
+		f = append(f, "config.udp")
 	}
 	if want.KeywordCaseType != nil && (got.KeywordCaseType == nil || *want.KeywordCaseType != *got.KeywordCaseType) {
 		f = append(f, "keyword_case_type")
@@ -721,6 +839,111 @@ func equalStringSet(a, b []string) bool {
 			return false
 		}
 	}
+	return true
+}
+
+func normalizeAPIAssertions(in *client.APIMonitorAssertions) *apiAssertionsComparable {
+	if in == nil {
+		return nil
+	}
+	out := &apiAssertionsComparable{
+		Logic: strings.ToUpper(strings.TrimSpace(in.Logic)),
+	}
+	if len(in.Checks) == 0 {
+		out.Checks = []apiAssertionCheckComparable{}
+		return out
+	}
+
+	checks := make([]apiAssertionCheckComparable, 0, len(in.Checks))
+	for _, c := range in.Checks {
+		targetJSON := ""
+		if c.Target != nil {
+			if b, err := json.Marshal(c.Target); err == nil {
+				targetJSON = string(b)
+			}
+		}
+		checks = append(checks, apiAssertionCheckComparable{
+			Property:   strings.TrimSpace(c.Property),
+			Comparison: strings.ToLower(strings.TrimSpace(c.Comparison)),
+			TargetJSON: targetJSON,
+		})
+	}
+	sort.Slice(checks, func(i, j int) bool {
+		if checks[i].Property != checks[j].Property {
+			return checks[i].Property < checks[j].Property
+		}
+		if checks[i].Comparison != checks[j].Comparison {
+			return checks[i].Comparison < checks[j].Comparison
+		}
+		return checks[i].TargetJSON < checks[j].TargetJSON
+	})
+	out.Checks = checks
+	return out
+}
+
+func normalizeUDPConfig(in *client.UDPMonitorConfig) *udpComparable {
+	if in == nil {
+		return nil
+	}
+	out := &udpComparable{}
+	if in.Payload != nil {
+		v := strings.TrimSpace(*in.Payload)
+		out.Payload = &v
+	}
+	if in.PacketLossThreshold != nil {
+		v := *in.PacketLossThreshold
+		out.PacketLossThreshold = &v
+	}
+	return out
+}
+
+func equalAPIAssertions(want, got *apiAssertionsComparable) bool {
+	if want == nil {
+		return true
+	}
+	if got == nil {
+		return false
+	}
+	if want.Logic != got.Logic {
+		return false
+	}
+	if len(want.Checks) != len(got.Checks) {
+		return false
+	}
+	for i := range want.Checks {
+		if want.Checks[i] != got.Checks[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalUDPConfig(want, got *udpComparable) bool {
+	if want == nil {
+		return true
+	}
+	if got == nil {
+		return false
+	}
+
+	switch {
+	case want.Payload == nil && got.Payload != nil:
+		return false
+	case want.Payload != nil && got.Payload == nil:
+		return false
+	case want.Payload != nil && got.Payload != nil && *want.Payload != *got.Payload:
+		return false
+	}
+
+	switch {
+	case want.PacketLossThreshold == nil && got.PacketLossThreshold != nil:
+		return false
+	case want.PacketLossThreshold != nil && got.PacketLossThreshold == nil:
+		return false
+	case want.PacketLossThreshold != nil && got.PacketLossThreshold != nil && *want.PacketLossThreshold != *got.PacketLossThreshold:
+		return false
+	}
+
 	return true
 }
 

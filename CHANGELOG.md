@@ -1,5 +1,48 @@
 ## Unreleased
 
+### Added
+- Monitor `group_id` support (`groupId` in API) for create, update, read/import, and state comparison/wait logic.
+- Added `type = "API"` monitor support in `uptimerobot_monitor`.
+- Added `config.api_assertions` support with create/update/read transforms and API payload mapping to `config.apiAssertions`.
+- Added monitor run-state management via `is_paused` in `uptimerobot_monitor`, backed by API v3 monitor `pause`/`start` endpoints.
+
+### Changed
+- Monitor schema constraints were aligned to API v3 for currently supported monitor types:
+  - `interval` minimum is now `30`.
+  - `name` max length is now `250`.
+  - `http_username` and `http_password` max length is now `255`.
+  - `response_time_threshold` range is now `0..60000`.
+  - `port` range now allows `0..65535` (type-specific validation still applies).
+  - `auth_type` validation now allows `NONE`, `HTTP_BASIC`, `DIGEST`, `BEARER`.
+- Monitor docs were updated accordingly, including `group_id` and config-branch notes for API v3.
+- Extended monitor URL validation and HTTP-like method handling to include API monitors.
+- Acceptance test execution strategy was adjusted:
+  - Pull Requests now run a reduced acceptance matrix (`terraform latest`, `opentofu latest`) for faster feedback.
+  - `main`/manual runs execute an extended acceptance matrix (4 lanes) for broader compatibility coverage.
+- `uptimerobot_psp` now uploads `logo` and `icon` via multipart/form-data using local filesystem paths in `logo` and `icon` attributes. Set empty string to clear.
+- PSP docs/examples were updated to use local file-path uploads for branding images.
+
+### Fixed
+- DNS config validation warning now correctly treats both `config.dns_records` and `config.ssl_expiration_period_days` as managed DNS config fields.
+- Stopped sending JSON string values for PSP `logo`/`icon` writes, aligning provider behavior with API v3 binary-file validation.
+- Stabilized monitor/maintenance-window/PSP eventual-consistency waits by requiring consecutive matching reads before treating updates as settled.
+- Fixed monitor alert-contact settle comparison for explicit clears (`assigned_alert_contacts = []`).
+- Fixed monitor refresh drift after maintenance-window updates by stabilizing read snapshots against managed `maintenance_window_ids`.
+- Fixed maintenance window update/read stale-snapshot regressions (e.g. daily omit-days transition flipping back to weekly with residual days) by using settled snapshots and read-time stabilization.
+- Fixed PagerDuty integration refresh drift for `location` and `auto_resolve` by making read mapping resilient to stale replica responses.
+
+### Tests/CI
+- Acceptance tests now use unique randomized names in key monitor/PSP/maintenance-window cases to reduce cross-test collisions.
+- Removed acceptance `t.Parallel()` usage for account-shared monitor config scenarios to improve deterministic results.
+- Added unit tests for PagerDuty integration read parsing/sticky behavior (`location`/`auto_resolve`).
+- Added a dedicated CI `unit` job that runs only non-acceptance tests; acceptance jobs now run only `TestAcc*`.
+- Consolidated monitor unit tests into thematic files with explicit section separators to reduce test-file fragmentation.
+- Added acceptance coverage for monitor pause/start management via `is_paused`.
+- Added acceptance coverage for API monitor assertions round-trip and API-specific validation cases.
+- Added unit coverage for API assertions config transform/compare/marshal behavior.
+- Added client unit tests for multipart requests and PSP file upload operations.
+- Updated PSP acceptance coverage to exercise image upload via local file paths.
+
 ## 1.3.9 — 2025-12-24
 
 ### Fixed

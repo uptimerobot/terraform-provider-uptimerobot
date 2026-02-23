@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -23,7 +24,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	if !validateCreateHighLevel(plan, resp) {
+	if !validateCreateHighLevel(ctx, plan, resp) {
 		return
 	}
 
@@ -44,7 +45,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	plan.ID = types.StringValue(strconv.FormatInt(created.ID, 10))
 	want := wantFromCreateReq(createReq)
 	settleTimeout := 60 * time.Second
-	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil {
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.APIAssertions != nil || want.AssignedAlertContacts != nil {
 		settleTimeout = 180 * time.Second
 	}
 	api, err := r.waitMonitorSettled(ctx, created.ID, want, settleTimeout)
@@ -52,6 +53,22 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 		resp.Diagnostics.AddWarning("Create settled slowly", "Backend took longer to reflect changes; proceeding.")
 		if api == nil {
 			api = created
+		}
+	}
+
+	// Optionally control run state via start/pause endpoints.
+	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
+		wantPaused := plan.IsPaused.ValueBool()
+		apiAfterStateChange, stateErr := r.ensureMonitorPausedState(ctx, created.ID, wantPaused)
+		if stateErr != nil {
+			resp.Diagnostics.AddError(
+				"Error setting monitor paused state",
+				"Could not set monitor paused state after create: "+stateErr.Error(),
+			)
+			return
+		}
+		if apiAfterStateChange != nil {
+			api = apiAfterStateChange
 		}
 	}
 
@@ -66,13 +83,13 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 
 // High level validate create plan
 
-func validateCreateHighLevel(plan monitorResourceModel, resp *resource.CreateResponse) bool {
+func validateCreateHighLevel(ctx context.Context, plan monitorResourceModel, resp *resource.CreateResponse) bool {
 	t := strings.ToUpper(plan.Type.ValueString())
 
-	if t == MonitorTypePORT && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
+	if (t == MonitorTypePORT || t == MonitorTypeUDP) && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
 		resp.Diagnostics.AddError(
-			"Port required for PORT monitor",
-			"Port must be specified and known for PORT monitor type.",
+			"Port required for PORT/UDP monitor",
+			"Port must be specified and known for PORT and UDP monitor types.",
 		)
 		return false
 	}
@@ -96,6 +113,62 @@ func validateCreateHighLevel(plan monitorResourceModel, resp *resource.CreateRes
 			resp.Diagnostics.AddError(
 				"KeywordValue required for KEYWORD monitor",
 				"KeywordValue must be specified and known for KEYWORD monitor type.",
+			)
+			return false
+		}
+	}
+
+	if t == MonitorTypeAPI {
+		if plan.Config.IsNull() || plan.Config.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"Config required for API monitor",
+				"API monitors require config.api_assertions on create.",
+			)
+			return false
+		}
+		var cfg configTF
+		resp.Diagnostics.Append(plan.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return false
+		}
+		if cfg.APIAssertions.IsNull() || cfg.APIAssertions.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"api_assertions required for API monitor",
+				"Set config.api_assertions with logic and checks.",
+			)
+			return false
+		}
+	}
+
+	if t == MonitorTypeUDP {
+		if plan.Config.IsNull() || plan.Config.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"Config required for UDP monitor",
+				"UDP monitors require config.udp.packet_loss_threshold on create.",
+			)
+			return false
+		}
+		var cfg configTF
+		resp.Diagnostics.Append(plan.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return false
+		}
+		if cfg.UDP.IsNull() || cfg.UDP.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"udp required for UDP monitor",
+				"Set config.udp.packet_loss_threshold for UDP monitors.",
+			)
+			return false
+		}
+		var udp udpTF
+		resp.Diagnostics.Append(cfg.UDP.As(ctx, &udp, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return false
+		}
+		if udp.PacketLossThreshold.IsNull() || udp.PacketLossThreshold.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"packet_loss_threshold required for UDP monitor",
+				"Set config.udp.packet_loss_threshold for UDP monitors.",
 			)
 			return false
 		}
@@ -161,6 +234,10 @@ func (r *monitorResource) buildCreateRequest(
 	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
 		req.RegionalData = plan.RegionalData.ValueString()
 	}
+	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
+		v := int(plan.GroupID.ValueInt64())
+		req.GroupID = &v
+	}
 
 	// Timeout and Grace period by type
 	r.applyTimeoutAndGrace(&plan, req)
@@ -205,6 +282,12 @@ func (r *monitorResource) buildCreateRequest(
 	r.applyFlagsFromPlan(&plan, req)
 	// Config
 	r.applyConfigFromPlan(ctx, plan.Config, req, resp)
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeDNS &&
+		!plan.Config.IsNull() && !plan.Config.IsUnknown() &&
+		req.Config == nil {
+		// DNS create requires config to be present; explicit empty object is valid.
+		req.Config = &client.MonitorConfig{}
+	}
 
 	return req, effMethod
 }
@@ -230,7 +313,7 @@ func (r *monitorResource) applyTimeoutAndGrace(plan *monitorResourceModel, req *
 	case MonitorTypePING:
 		req.GracePeriod = &zero
 		req.Timeout = &zero
-	default: // HTTP, KEYWORD, PORT
+	default: // HTTP, KEYWORD, PORT, API
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
 			req.Timeout = &v
@@ -439,6 +522,16 @@ func (r *monitorResource) buildStateAfterCreate(
 	plan.Name = types.StringValue(unescapeHTML(api.Name))
 	plan.URL = types.StringValue(unescapeHTML(api.URL))
 	plan.Status = types.StringValue(api.Status)
+	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
+		plan.IsPaused = types.BoolValue(isMonitorPausedStatus(api.Status))
+	} else {
+		plan.IsPaused = types.BoolNull()
+	}
+	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
+		plan.GroupID = types.Int64Value(api.GroupID)
+	} else {
+		plan.GroupID = types.Int64Null()
+	}
 
 	methodManaged := !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown()
 	actualMethod := strings.ToUpper(effMethod)
@@ -455,9 +548,9 @@ func (r *monitorResource) buildStateAfterCreate(
 		plan.CustomHTTPHeaders = types.MapNull(types.StringType)
 	}
 
-	// Method presence in state only for HTTP or KEYWORD
+	// Method presence in state only for HTTP/KEYWORD/API
 	switch strings.ToUpper(plan.Type.ValueString()) {
-	case MonitorTypeHTTP, MonitorTypeKEYWORD:
+	case MonitorTypeHTTP, MonitorTypeKEYWORD, MonitorTypeAPI:
 		if methodForState != "" {
 			plan.HTTPMethodType = types.StringValue(methodForState)
 		} else {
@@ -486,9 +579,17 @@ func (r *monitorResource) buildStateAfterCreate(
 		plan.Timeout = types.Int64Null()
 		plan.GracePeriod = types.Int64Value(int64(api.GracePeriod))
 	case MonitorTypeDNS, MonitorTypePING:
-		plan.Timeout = types.Int64Null()
-		plan.GracePeriod = types.Int64Null()
-	default: // HTTP, KEYWORD, PORT
+		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+			plan.Timeout = types.Int64Value(plan.Timeout.ValueInt64())
+		} else {
+			plan.Timeout = types.Int64Null()
+		}
+		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
+			plan.GracePeriod = types.Int64Value(plan.GracePeriod.ValueInt64())
+		} else {
+			plan.GracePeriod = types.Int64Null()
+		}
+	default: // HTTP, KEYWORD, PORT, API
 		plan.GracePeriod = types.Int64Null()
 		if api.Timeout > 0 {
 			plan.Timeout = types.Int64Value(int64(api.Timeout))

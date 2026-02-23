@@ -15,6 +15,10 @@ description: |-
 
 {{tffile "examples/resources/uptimerobot_monitor/basic.tf"}}
 
+### Pause or Start a Monitor
+
+{{tffile "examples/resources/uptimerobot_monitor/start_stop.tf"}}
+
 ### HTTP Monitor with Keyword Checking
 
 {{tffile "examples/resources/uptimerobot_monitor/keyword.tf"}}
@@ -30,6 +34,18 @@ description: |-
 ### Ping Monitor
 
 {{tffile "examples/resources/uptimerobot_monitor/ping.tf"}}
+
+### UDP Monitor
+
+{{tffile "examples/resources/uptimerobot_monitor/udp.tf"}}
+
+### API Monitor with Assertions
+
+{{tffile "examples/resources/uptimerobot_monitor/api_assertions.tf"}}
+
+### API Monitor with Null Checks
+
+{{tffile "examples/resources/uptimerobot_monitor/api_assertions_null_checks.tf"}}
 
 ### Alert Contacts Example
 
@@ -51,6 +67,8 @@ description: |-
 - `PORT` — Port monitoring
 - `HEARTBEAT` — Heartbeat monitoring
 - `DNS` — DNS record monitoring
+- `API` — API assertions monitoring
+- `UDP` — UDP packet monitoring
 
 ## Intervals
 
@@ -61,5 +79,19 @@ Common monitoring intervals:
 - `900` - Every 15 minutes
 - `1800` - Every 30 minutes
 - `3600` - Every hour
+
+## Import
+
+Import by monitor ID:
+
+```bash
+terraform import uptimerobot_monitor.example 800123456
+```
+
+If your monitor resource uses `for_each`, import with the keyed address:
+
+```bash
+terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
+```
 
 {{ .SchemaMarkdown | trimspace }}

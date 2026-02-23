@@ -46,7 +46,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	updateReq, effMethod := buildUpdateRequest(ctx, plan, configOmitted, resp)
+	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, resp)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -62,15 +62,17 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	got := buildComparableFromAPI(initialUpdated)
 
 	updated := initialUpdated
-	settleTimeout := 60 * time.Second
-	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.AssignedAlertContacts != nil || want.MaintenanceWindowIDs != nil {
-		settleTimeout = 180 * time.Second
+	settleTimeout := 120 * time.Second
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD ||
+		want.DNSRecords != nil ||
+		want.APIAssertions != nil ||
+		want.AssignedAlertContacts != nil ||
+		want.MaintenanceWindowIDs != nil {
+		settleTimeout = 240 * time.Second
 	}
 
-	needSettle := !equalComparable(want, got)
-	if want.DNSRecords != nil || want.MaintenanceWindowIDs != nil {
-		needSettle = true
-	}
+	// Always settle after update to avoid stale read-after-write API snapshots.
+	needSettle := true
 
 	if needSettle {
 		if updated, err = r.waitMonitorSettled(ctx, id, want, settleTimeout); err != nil {
@@ -82,6 +84,23 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 				fmt.Sprintf("%v\nStill differing fields: %v", err, fieldsStillDifferent(want, got)),
 			)
 			return
+		}
+	}
+
+	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
+		wantPaused := plan.IsPaused.ValueBool()
+		if updated == nil || isMonitorPausedStatus(updated.Status) != wantPaused {
+			updatedAfterStateChange, stateErr := r.ensureMonitorPausedState(ctx, id, wantPaused)
+			if stateErr != nil {
+				resp.Diagnostics.AddError(
+					"Error setting monitor paused state",
+					"Could not set monitor paused state after update: "+stateErr.Error(),
+				)
+				return
+			}
+			if updatedAfterStateChange != nil {
+				updated = updatedAfterStateChange
+			}
 		}
 	}
 
@@ -101,11 +120,11 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 func validateUpdateHighLevel(plan monitorResourceModel, resp *resource.UpdateResponse) bool {
 	t := plan.Type.ValueString()
 
-	// PORT requires port to be set
-	if t == MonitorTypePORT && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
+	// PORT/UDP requires port to be set
+	if (t == MonitorTypePORT || t == MonitorTypeUDP) && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
 		resp.Diagnostics.AddError(
-			"Port required for PORT monitor",
-			"Port must be specified and known for PORT monitor type",
+			"Port required for PORT/UDP monitor",
+			"Port must be specified and known for PORT and UDP monitor types",
 		)
 		return false
 	}
@@ -134,6 +153,7 @@ func validateUpdateHighLevel(plan monitorResourceModel, resp *resource.UpdateRes
 func buildUpdateRequest(
 	ctx context.Context,
 	plan monitorResourceModel,
+	state monitorResourceModel,
 	configOmitted bool,
 	resp *resource.UpdateResponse,
 ) (*client.UpdateMonitorRequest, string) {
@@ -231,13 +251,17 @@ func buildUpdateRequest(
 		v := plan.RegionalData.ValueString()
 		req.RegionalData = &v
 	}
+	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
+		v := int(plan.GroupID.ValueInt64())
+		req.GroupID = &v
+	}
 	if !plan.CheckSSLErrors.IsNull() && !plan.CheckSSLErrors.IsUnknown() {
 		v := plan.CheckSSLErrors.ValueBool()
 		req.CheckSSLErrors = &v
 	}
 
 	// Config
-	expandOrClearConfigOnUpdate(ctx, plan, configOmitted, req, resp)
+	expandOrClearConfigOnUpdate(ctx, plan, state.Config, configOmitted, req, resp)
 
 	return req, effMethod
 }
@@ -264,7 +288,7 @@ func setTimeoutAndGraceOnUpdate(_ context.Context, plan monitorResourceModel, re
 		req.GracePeriod = &zero
 		req.Timeout = &zero
 
-	default: // HTTP, KEYWORD, PORT
+	default: // HTTP, KEYWORD, PORT, API
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
 			req.Timeout = &v
@@ -496,6 +520,11 @@ func applyUpdatedMonitorToState(
 	out.Name = types.StringValue(unescapeHTML(m.Name))
 	out.URL = types.StringValue(unescapeHTML(m.URL))
 	out.Status = prev.Status
+	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
+		out.IsPaused = types.BoolValue(isMonitorPausedStatus(m.Status))
+	} else {
+		out.IsPaused = types.BoolNull()
+	}
 
 	methodManaged := !plan.HTTPMethodType.IsNull() && !plan.HTTPMethodType.IsUnknown()
 
@@ -556,6 +585,13 @@ func applyUpdatedMonitorToState(
 		}
 	} else {
 		out.RegionalData = types.StringNull()
+	}
+
+	// group_id set only if managed
+	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
+		out.GroupID = types.Int64Value(m.GroupID)
+	} else {
+		out.GroupID = types.Int64Null()
 	}
 
 	// tags
@@ -634,9 +670,17 @@ func applyUpdatedMonitorToState(
 		out.Timeout = types.Int64Null()
 		out.GracePeriod = types.Int64Value(int64(m.GracePeriod))
 	case MonitorTypeDNS, MonitorTypePING:
-		out.Timeout = types.Int64Null()
-		out.GracePeriod = types.Int64Null()
-	default:
+		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+			out.Timeout = types.Int64Value(plan.Timeout.ValueInt64())
+		} else {
+			out.Timeout = types.Int64Null()
+		}
+		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
+			out.GracePeriod = types.Int64Value(plan.GracePeriod.ValueInt64())
+		} else {
+			out.GracePeriod = types.Int64Null()
+		}
+	default: // HTTP, KEYWORD, PORT, API
 		out.GracePeriod = types.Int64Null()
 		if m.Timeout > 0 {
 			out.Timeout = types.Int64Value(int64(m.Timeout))
@@ -673,14 +717,14 @@ func applyUpdatedMonitorToState(
 	// Config in state
 	haveBlockConfig := !plan.Config.IsNull() && !plan.Config.IsUnknown()
 	switch {
-	case !configSent && strings.ToUpper(plan.Type.ValueString()) != MonitorTypeDNS:
-		out.Config = types.ObjectNull(configObjectType().AttrTypes)
 	case haveBlockConfig:
 		cfgState, d := flattenConfigToState(ctx, haveBlockConfig, plan.Config, m.Config)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {
 			out.Config = cfgState
 		}
+	case !configSent && strings.ToUpper(plan.Type.ValueString()) != MonitorTypeDNS:
+		out.Config = types.ObjectNull(configObjectType().AttrTypes)
 	default:
 		out.Config = types.ObjectNull(configObjectType().AttrTypes)
 	}
@@ -715,6 +759,7 @@ func applyUpdatedMonitorToState(
 func expandOrClearConfigOnUpdate(
 	ctx context.Context,
 	plan monitorResourceModel,
+	priorConfig types.Object,
 	configOmitted bool,
 	req *client.UpdateMonitorRequest,
 	resp *resource.UpdateResponse,
@@ -735,9 +780,84 @@ func expandOrClearConfigOnUpdate(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		// Send only if user actually set something or explicitly set empty sets to clear
+		// Send only if user actually set something or explicitly set empty sets to clear.
 		if touched {
 			req.Config = out
-		} // else {} - preserve and do nothing
+			return
+		}
+		clearIPVersion, d := shouldClearIPVersionOnUpdate(ctx, plan.Config, priorConfig)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if clearIPVersion {
+			cfg, d := configPayloadForIPVersionClear(ctx, priorConfig)
+			resp.Diagnostics.Append(d...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			req.Config = cfg
+		}
 	}
+}
+
+func configPayloadForIPVersionClear(
+	ctx context.Context,
+	priorConfig types.Object,
+) (*client.MonitorConfig, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if priorConfig.IsNull() || priorConfig.IsUnknown() {
+		return &client.MonitorConfig{}, diags
+	}
+
+	prev, _, d := expandConfigToAPI(ctx, priorConfig)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if prev == nil {
+		return &client.MonitorConfig{}, diags
+	}
+
+	prev.IPVersion = nil
+	return prev, diags
+}
+
+func shouldClearIPVersionOnUpdate(
+	ctx context.Context,
+	planConfig types.Object,
+	priorConfig types.Object,
+) (bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if planConfig.IsNull() || planConfig.IsUnknown() || priorConfig.IsNull() || priorConfig.IsUnknown() {
+		return false, diags
+	}
+
+	var planCfg, prevCfg configTF
+	diags.Append(planConfig.As(ctx, &planCfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+	diags.Append(priorConfig.As(ctx, &prevCfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+	if diags.HasError() {
+		return false, diags
+	}
+
+	if prevCfg.IPVersion.IsNull() || prevCfg.IPVersion.IsUnknown() {
+		return false, diags
+	}
+	if _, keep := normalizeIPVersionForAPI(prevCfg.IPVersion.ValueString()); !keep {
+		return false, diags
+	}
+
+	if planCfg.IPVersion.IsUnknown() {
+		return false, diags
+	}
+	if planCfg.IPVersion.IsNull() {
+		return true, diags
+	}
+	if _, keep := normalizeIPVersionForAPI(planCfg.IPVersion.ValueString()); !keep {
+		return true, diags
+	}
+
+	return false, diags
 }

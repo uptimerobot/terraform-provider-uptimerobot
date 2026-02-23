@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -44,6 +45,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 
 	isImport := readIsImport(state)
+	monitor = r.stabilizeMonitorReadSnapshot(ctx, id, state, monitor, isImport)
 
 	state.Type = types.StringValue(monitor.Type)
 	state.Interval = types.Int64Value(int64(monitor.Interval))
@@ -53,6 +55,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	readApplyHTTPBody(&state)
 	readApplyKeywordAndPort(&state, monitor, isImport)
 	readApplyIdentity(&state, monitor)
+	readApplyPausedState(&state, monitor, isImport)
 	readApplyRegionalData(&state, monitor, isImport)
 	readApplyTagsHeadersAC(ctx, resp, &state, monitor, isImport)
 	readApplySuccessCodes(ctx, resp, &state, monitor)
@@ -77,10 +80,12 @@ func readApplyTypeTiming(state *monitorResourceModel, m *client.Monitor) {
 		state.Timeout = types.Int64Null()
 		state.GracePeriod = types.Int64Value(int64(m.GracePeriod))
 	case MonitorTypeDNS, MonitorTypePING:
-		if state.Timeout.IsNull() {
+		if state.Timeout.IsNull() || state.Timeout.IsUnknown() {
 			state.Timeout = types.Int64Null()
 		}
-		state.GracePeriod = types.Int64Null()
+		if state.GracePeriod.IsNull() || state.GracePeriod.IsUnknown() {
+			state.GracePeriod = types.Int64Null()
+		}
 	default:
 		state.GracePeriod = types.Int64Null()
 		state.Timeout = types.Int64Value(int64(m.Timeout))
@@ -119,11 +124,18 @@ func readApplyOptionalDefaults(state *monitorResourceModel, m *client.Monitor, i
 		} else {
 			state.ResponseTimeThreshold = types.Int64Null()
 		}
+		state.GroupID = types.Int64Value(m.GroupID)
 	} else if state.ResponseTimeThreshold.IsNull() || state.ResponseTimeThreshold.IsUnknown() {
 		if m.ResponseTimeThreshold > 0 {
 			state.ResponseTimeThreshold = types.Int64Value(int64(m.ResponseTimeThreshold))
 		} else {
 			state.ResponseTimeThreshold = types.Int64Null()
+		}
+	}
+
+	if !isImport {
+		if !state.GroupID.IsNull() && !state.GroupID.IsUnknown() {
+			state.GroupID = types.Int64Value(m.GroupID)
 		}
 	}
 }
@@ -211,6 +223,20 @@ func readApplyIdentity(state *monitorResourceModel, m *client.Monitor) {
 	state.Status = types.StringValue(m.Status)
 }
 
+func readApplyPausedState(state *monitorResourceModel, m *client.Monitor, isImport bool) {
+	if isImport {
+		// Keep is_paused unmanaged on import to avoid immediate drift
+		// (false -> null) when configuration omits it.
+		state.IsPaused = types.BoolNull()
+		return
+	}
+	if state.IsPaused.IsNull() || state.IsPaused.IsUnknown() {
+		state.IsPaused = types.BoolNull()
+		return
+	}
+	state.IsPaused = types.BoolValue(isMonitorPausedStatus(m.Status))
+}
+
 func readApplyRegionalData(state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	if isImport {
 		if m.RegionalData != nil {
@@ -242,7 +268,7 @@ func isDefaultRegion(region string) bool {
 func readApplyTagsHeadersAC(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	state.Tags = tagsReadSet(state.Tags, m.Tags, isImport)
 
-	if isImport || state.CustomHTTPHeaders.IsNull() {
+	if isImport {
 		if headers := headersFromAPIForState(m.CustomHTTPHeaders); len(headers) > 0 {
 			v, d := attrFromMap(ctx, headers)
 			resp.Diagnostics.Append(d...)
@@ -250,6 +276,10 @@ func readApplyTagsHeadersAC(ctx context.Context, resp *resource.ReadResponse, st
 		} else {
 			state.CustomHTTPHeaders = types.MapNull(types.StringType)
 		}
+	} else if state.CustomHTTPHeaders.IsNull() || state.CustomHTTPHeaders.IsUnknown() {
+		// Keeping cleared and unmanaged headers as null on normal reads.
+		// This avoids stale API replicas repopulating headers right after clear.
+		state.CustomHTTPHeaders = types.MapNull(types.StringType)
 	}
 
 	acSet, d := alertContactsFromAPI(ctx, m.AssignedAlertContacts)
@@ -259,6 +289,110 @@ func readApplyTagsHeadersAC(ctx context.Context, resp *resource.ReadResponse, st
 	} else {
 		state.AssignedAlertContacts = acSet
 	}
+}
+
+func (r *monitorResource) stabilizeMonitorReadSnapshot(
+	ctx context.Context,
+	id int64,
+	state monitorResourceModel,
+	monitor *client.Monitor,
+	isImport bool,
+) *client.Monitor {
+	if isImport || monitor == nil {
+		return monitor
+	}
+
+	expectedName := ""
+	if !state.Name.IsNull() && !state.Name.IsUnknown() {
+		expectedName = unescapeHTML(state.Name.ValueString())
+	}
+	expectedURL := ""
+	if !state.URL.IsNull() && !state.URL.IsUnknown() {
+		expectedURL = unescapeHTML(state.URL.ValueString())
+	}
+
+	var expectedMWIDs []int64
+	if !state.MaintenanceWindowIDs.IsNull() && !state.MaintenanceWindowIDs.IsUnknown() {
+		var ids []int64
+		if diags := state.MaintenanceWindowIDs.ElementsAs(ctx, &ids, false); !diags.HasError() {
+			expectedMWIDs = normalizeInt64Set(ids)
+		}
+	}
+
+	var expectedDNSRecords map[string][]string
+	var expectedSSLDays []int64
+	var expectedAPIAssertions *apiAssertionsComparable
+	if !state.Config.IsNull() && !state.Config.IsUnknown() {
+		if cfg, touched, diags := expandConfigToAPI(ctx, state.Config); touched && !diags.HasError() && cfg != nil {
+			if cfg.DNSRecords != nil {
+				expectedDNSRecords = normalizeDNSRecords(cfg.DNSRecords)
+			}
+			if cfg.SSLExpirationPeriodDays != nil {
+				days := *cfg.SSLExpirationPeriodDays
+				if len(days) == 0 {
+					expectedSSLDays = []int64{}
+				} else {
+					expectedSSLDays = normalizeInt64Set(days)
+				}
+			}
+			if cfg.APIAssertions != nil {
+				expectedAPIAssertions = normalizeAPIAssertions(cfg.APIAssertions)
+			}
+		}
+	}
+
+	if expectedName == "" && expectedURL == "" && expectedMWIDs == nil && expectedDNSRecords == nil && expectedSSLDays == nil && expectedAPIAssertions == nil {
+		return monitor
+	}
+
+	nameMatches := expectedName == "" || unescapeHTML(monitor.Name) == expectedName
+	urlMatches := expectedURL == "" || unescapeHTML(monitor.URL) == expectedURL
+	mwMatches := true
+	cfgMatches := true
+	if expectedMWIDs != nil || expectedDNSRecords != nil || expectedSSLDays != nil || expectedAPIAssertions != nil {
+		got := buildComparableFromAPI(monitor)
+		mwMatches = equalInt64Set(expectedMWIDs, got.MaintenanceWindowIDs)
+		if expectedDNSRecords != nil {
+			cfgMatches = cfgMatches && equalDNSRecords(expectedDNSRecords, got.DNSRecords)
+		}
+		if expectedSSLDays != nil {
+			cfgMatches = cfgMatches && equalInt64Set(expectedSSLDays, got.SSLExpirationPeriodDays)
+		}
+		if expectedAPIAssertions != nil {
+			cfgMatches = cfgMatches && equalAPIAssertions(expectedAPIAssertions, got.APIAssertions)
+		}
+	}
+	if nameMatches && urlMatches && mwMatches && cfgMatches {
+		return monitor
+	}
+
+	want := monComparable{}
+	if expectedName != "" {
+		want.Name = &expectedName
+	}
+	if expectedURL != "" {
+		want.URL = &expectedURL
+	}
+	if expectedMWIDs != nil {
+		want.MaintenanceWindowIDs = expectedMWIDs
+	}
+	if expectedDNSRecords != nil {
+		want.DNSRecords = expectedDNSRecords
+	}
+	if expectedSSLDays != nil {
+		want.SSLExpirationPeriodDays = expectedSSLDays
+	}
+	if expectedAPIAssertions != nil {
+		want.APIAssertions = expectedAPIAssertions
+	}
+
+	if settled, err := r.waitMonitorSettled(ctx, id, want, 60*time.Second); err == nil && settled != nil {
+		return settled
+	} else if settled != nil {
+		return settled
+	}
+
+	return monitor
 }
 
 func readApplySuccessCodes(ctx context.Context, _ *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor) {
@@ -328,9 +462,6 @@ func readApplyConfig(ctx context.Context, resp *resource.ReadResponse, state *mo
 
 	haveBlockConfig := !state.Config.IsNull() && !state.Config.IsUnknown()
 	switch {
-	case haveBlockConfig && m.Config == nil:
-		// User removed the block or API returns nil config. Clear it to avoid the drift.
-		state.Config = types.ObjectNull(configObjectType().AttrTypes)
 	case haveBlockConfig:
 		cfgState, d := flattenConfigToState(ctx, haveBlockConfig, state.Config, m.Config)
 		resp.Diagnostics.Append(d...)

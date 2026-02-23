@@ -31,8 +31,10 @@ type monitorResourceModel struct {
 	MaintenanceWindowIDs     types.Set            `tfsdk:"maintenance_window_ids"`
 	ID                       types.String         `tfsdk:"id"`
 	Name                     types.String         `tfsdk:"name"`
+	IsPaused                 types.Bool           `tfsdk:"is_paused"`
 	Status                   types.String         `tfsdk:"status"`
 	URL                      types.String         `tfsdk:"url"`
+	GroupID                  types.Int64          `tfsdk:"group_id"`
 	Tags                     types.Set            `tfsdk:"tags"`
 	AssignedAlertContacts    types.Set            `tfsdk:"assigned_alert_contacts"`
 	ResponseTimeThreshold    types.Int64          `tfsdk:"response_time_threshold"`
@@ -67,6 +69,25 @@ type dnsRecordsModel struct {
 type configTF struct {
 	SSLExpirationPeriodDays types.Set    `tfsdk:"ssl_expiration_period_days"`
 	DNSRecords              types.Object `tfsdk:"dns_records"`
+	IPVersion               types.String `tfsdk:"ip_version"`
+	APIAssertions           types.Object `tfsdk:"api_assertions"`
+	UDP                     types.Object `tfsdk:"udp"`
+}
+
+type apiAssertionsTF struct {
+	Logic  types.String `tfsdk:"logic"`
+	Checks types.List   `tfsdk:"checks"`
+}
+
+type udpTF struct {
+	Payload             types.String `tfsdk:"payload"`
+	PacketLossThreshold types.Int64  `tfsdk:"packet_loss_threshold"`
+}
+
+type apiAssertionCheckTF struct {
+	Property   types.String         `tfsdk:"property"`
+	Comparison types.String         `tfsdk:"comparison"`
+	Target     jsontypes.Normalized `tfsdk:"target"`
 }
 
 func alertContactObjectType() types.ObjectType {
@@ -100,12 +121,43 @@ func dnsRecordsObjectType() types.ObjectType {
 	}
 }
 
+func apiAssertionCheckObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"property":   types.StringType,
+			"comparison": types.StringType,
+			"target":     jsontypes.NormalizedType{},
+		},
+	}
+}
+
+func apiAssertionsObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"logic":  types.StringType,
+			"checks": types.ListType{ElemType: apiAssertionCheckObjectType()},
+		},
+	}
+}
+
+func udpObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"payload":               types.StringType,
+			"packet_loss_threshold": types.Int64Type,
+		},
+	}
+}
+
 // configObjectType is a helper for describing the config object.
 func configObjectType() types.ObjectType {
 	return types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
 			"dns_records":                dnsRecordsObjectType(),
+			"ip_version":                 types.StringType,
+			"api_assertions":             apiAssertionsObjectType(),
+			"udp":                        udpObjectType(),
 		},
 	}
 }

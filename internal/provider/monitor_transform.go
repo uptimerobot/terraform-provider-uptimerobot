@@ -2,10 +2,12 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -231,6 +233,87 @@ func expandConfigToAPI(
 		}
 	}
 
+	if !c.IPVersion.IsUnknown() && !c.IPVersion.IsNull() {
+		if normalized, keep := normalizeIPVersionForAPI(c.IPVersion.ValueString()); keep {
+			out.IPVersion = &normalized
+			touched = true
+		}
+	}
+
+	// api_assertions
+	if !c.APIAssertions.IsUnknown() && !c.APIAssertions.IsNull() {
+		var tf apiAssertionsTF
+		diags.Append(c.APIAssertions.As(ctx, &tf, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if diags.HasError() {
+			return nil, false, diags
+		}
+
+		assertions := &client.APIMonitorAssertions{}
+		if !tf.Logic.IsUnknown() && !tf.Logic.IsNull() {
+			assertions.Logic = strings.TrimSpace(tf.Logic.ValueString())
+		}
+
+		if !tf.Checks.IsUnknown() && !tf.Checks.IsNull() {
+			var checks []apiAssertionCheckTF
+			diags.Append(tf.Checks.ElementsAs(ctx, &checks, false)...)
+			if diags.HasError() {
+				return nil, false, diags
+			}
+
+			outChecks := make([]client.APIMonitorAssertionCheck, 0, len(checks))
+			for _, check := range checks {
+				item := client.APIMonitorAssertionCheck{
+					Property:   strings.TrimSpace(stringOrEmpty(check.Property)),
+					Comparison: strings.TrimSpace(stringOrEmpty(check.Comparison)),
+				}
+				if !check.Target.IsNull() && !check.Target.IsUnknown() && strings.TrimSpace(check.Target.ValueString()) != "" {
+					var target interface{}
+					if err := json.Unmarshal([]byte(check.Target.ValueString()), &target); err != nil {
+						diags.AddError(
+							"Invalid API assertion target",
+							fmt.Sprintf("api_assertions.checks.target must contain valid JSON: %v", err),
+						)
+						return nil, false, diags
+					}
+					item.Target = target
+				}
+				outChecks = append(outChecks, item)
+			}
+			assertions.Checks = outChecks
+		}
+
+		out.APIAssertions = assertions
+		touched = true
+	}
+
+	// udp
+	if !c.UDP.IsUnknown() && !c.UDP.IsNull() {
+		var tf udpTF
+		diags.Append(c.UDP.As(ctx, &tf, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if diags.HasError() {
+			return nil, false, diags
+		}
+
+		udp := &client.UDPMonitorConfig{}
+		fieldTouched := false
+		if !tf.Payload.IsUnknown() && !tf.Payload.IsNull() {
+			v := strings.TrimSpace(tf.Payload.ValueString())
+			udp.Payload = &v
+			fieldTouched = true
+		}
+		if !tf.PacketLossThreshold.IsUnknown() && !tf.PacketLossThreshold.IsNull() {
+			v := tf.PacketLossThreshold.ValueInt64()
+			udp.PacketLossThreshold = &v
+			fieldTouched = true
+		}
+		if fieldTouched {
+			out.UDP = udp
+		} else {
+			out.UDP = &client.UDPMonitorConfig{}
+		}
+		touched = true
+	}
+
 	return out, touched, diags
 }
 
@@ -414,7 +497,123 @@ func flattenConfigToState(
 		}
 	}
 
+	keepEmptySentinel := !c.IPVersion.IsNull() && !c.IPVersion.IsUnknown() && strings.TrimSpace(c.IPVersion.ValueString()) == ""
+	c.IPVersion = types.StringNull()
+	if api != nil && api.IPVersion != nil {
+		if normalized, keep := normalizeIPVersionForAPI(*api.IPVersion); keep {
+			c.IPVersion = types.StringValue(normalized)
+		}
+	} else if keepEmptySentinel {
+		// Keep explicit empty-string intent stable in state as a "clear ip_version" sentinel.
+		c.IPVersion = types.StringValue("")
+	}
+
+	// API assertions
+	prevAPIAssertions := types.ObjectNull(apiAssertionsObjectType().AttrTypes)
+	if !c.APIAssertions.IsNull() && !c.APIAssertions.IsUnknown() {
+		prevAPIAssertions = c.APIAssertions
+	}
+	if api != nil && api.APIAssertions != nil {
+		apiAssertionsObj, d := apiAssertionsFromAPI(ctx, api.APIAssertions)
+		diags.Append(d...)
+		if !diags.HasError() {
+			c.APIAssertions = apiAssertionsObj
+		}
+	} else {
+		c.APIAssertions = prevAPIAssertions
+	}
+
+	// UDP config
+	prevUDP := types.ObjectNull(udpObjectType().AttrTypes)
+	if !c.UDP.IsNull() && !c.UDP.IsUnknown() {
+		prevUDP = c.UDP
+	}
+	if api != nil && api.UDP != nil {
+		udpObj, d := udpFromAPI(ctx, api.UDP)
+		diags.Append(d...)
+		if !diags.HasError() {
+			c.UDP = udpObj
+		}
+	} else {
+		c.UDP = prevUDP
+	}
+
 	return types.ObjectValueFrom(ctx, configObjectType().AttrTypes, c)
+}
+
+func udpFromAPI(ctx context.Context, in *client.UDPMonitorConfig) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if in == nil {
+		return types.ObjectNull(udpObjectType().AttrTypes), diags
+	}
+
+	payload := types.StringNull()
+	if in.Payload != nil {
+		payload = types.StringValue(*in.Payload)
+	}
+	packetLoss := types.Int64Null()
+	if in.PacketLossThreshold != nil {
+		packetLoss = types.Int64Value(*in.PacketLossThreshold)
+	}
+
+	out, d := types.ObjectValueFrom(ctx, udpObjectType().AttrTypes, udpTF{
+		Payload:             payload,
+		PacketLossThreshold: packetLoss,
+	})
+	diags.Append(d...)
+	return out, diags
+}
+
+func apiAssertionsFromAPI(ctx context.Context, in *client.APIMonitorAssertions) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if in == nil {
+		return types.ObjectNull(apiAssertionsObjectType().AttrTypes), diags
+	}
+
+	logic := types.StringNull()
+	if s := strings.TrimSpace(in.Logic); s != "" {
+		logic = types.StringValue(s)
+	}
+
+	var checksValue types.List
+	if in.Checks == nil {
+		checksValue = types.ListNull(apiAssertionCheckObjectType())
+	} else if len(in.Checks) == 0 {
+		checksValue = types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{})
+	} else {
+		tfChecks := make([]apiAssertionCheckTF, 0, len(in.Checks))
+		for _, check := range in.Checks {
+			target := jsontypes.NewNormalizedNull()
+			if check.Target != nil {
+				b, err := json.Marshal(check.Target)
+				if err != nil {
+					diags.AddError("Invalid API assertion target from API", err.Error())
+					return types.ObjectNull(apiAssertionsObjectType().AttrTypes), diags
+				}
+				target = jsontypes.NewNormalizedValue(string(b))
+			}
+			tfChecks = append(tfChecks, apiAssertionCheckTF{
+				Property:   types.StringValue(check.Property),
+				Comparison: types.StringValue(check.Comparison),
+				Target:     target,
+			})
+		}
+
+		lv, d := types.ListValueFrom(ctx, apiAssertionCheckObjectType(), tfChecks)
+		diags.Append(d...)
+		if diags.HasError() {
+			return types.ObjectNull(apiAssertionsObjectType().AttrTypes), diags
+		}
+		checksValue = lv
+	}
+
+	out, d := types.ObjectValueFrom(ctx, apiAssertionsObjectType().AttrTypes, apiAssertionsTF{
+		Logic:  logic,
+		Checks: checksValue,
+	})
+	diags.Append(d...)
+	return out, diags
 }
 
 func setInt64sRespectingShape(prev types.Set, api []int64) types.Set {
@@ -427,6 +626,21 @@ func setInt64sRespectingShape(prev types.Set, api []int64) types.Set {
 		elems = append(elems, types.Int64Value(v))
 	}
 	return types.SetValueMust(types.Int64Type, elems)
+}
+
+// normalizeIPVersionForAPI returns a canonical provider value and whether it should be sent/stored.
+func normalizeIPVersionForAPI(in string) (string, bool) {
+	v := strings.TrimSpace(in)
+	switch strings.ToLower(v) {
+	case "":
+		return "", false
+	case strings.ToLower(IPVersionIPv4Only):
+		return IPVersionIPv4Only, true
+	case strings.ToLower(IPVersionIPv6Only):
+		return IPVersionIPv6Only, true
+	default:
+		return "", false
+	}
 }
 
 // setStringsRespectingShape keeps empty-set vs null consistent with user's intent.
@@ -524,10 +738,27 @@ func mapFromAttr(ctx context.Context, attr types.Map) (map[string]string, diag.D
 	if attr.IsNull() || attr.IsUnknown() {
 		return nil, nil
 	}
-	var m map[string]string
+
+	// Decode into framework string values so unknown/sensitive values
+	// from interpolations can be handled without conversion panics.
+	var raw map[string]types.String
 	var diags diag.Diagnostics
-	diags.Append(attr.ElementsAs(ctx, &m, false)...)
-	return m, diags
+	diags.Append(attr.ElementsAs(ctx, &raw, false)...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if v.IsUnknown() || v.IsNull() {
+			continue
+		}
+		out[k] = v.ValueString()
+	}
+	if len(out) == 0 {
+		return nil, diags
+	}
+	return out, diags
 }
 
 func attrFromMap(ctx context.Context, m map[string]string) (types.Map, diag.Diagnostics) {

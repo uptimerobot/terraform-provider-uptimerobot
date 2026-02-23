@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -10,6 +12,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
@@ -52,7 +56,7 @@ func (r *monitorResource) ValidateConfig(
 	validateGracePeriodAndTimeout(ctx, t, &data, resp)
 	validateMethodVsBody(ctx, &data, resp)
 	validateAssignedAlertContacts(ctx, &data, resp)
-	validateConfig(ctx, t, req, &data, resp)
+	validateConfig(ctx, t, &data, resp)
 	validateHeadersCasingDuplication(ctx, &data, resp)
 	validatePortMonitor(ctx, t, &data, resp)
 	validateKeywordMonitor(ctx, t, &data, resp)
@@ -97,13 +101,13 @@ func validateURL(
 	}
 
 	switch monitorType {
-	case MonitorTypeHTTP, MonitorTypeKEYWORD:
+	case MonitorTypeHTTP, MonitorTypeKEYWORD, MonitorTypeAPI:
 		u, err := url.Parse(raw)
 		if err != nil || u.Scheme == "" || u.Host == "" {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("url"),
 				"Invalid URL",
-				"When type is HTTP or KEYWORD, url must be a valid http(s) URL (e.g., https://example.com/health).",
+				"When type is HTTP, KEYWORD, or API, url must be a valid http(s) URL (e.g., https://example.com/health).",
 			)
 			return
 		}
@@ -112,7 +116,7 @@ func validateURL(
 			resp.Diagnostics.AddAttributeError(
 				path.Root("url"),
 				"Invalid URL scheme",
-				"When type is HTTP or KEYWORD, url must start with http:// or https://.",
+				"When type is HTTP, KEYWORD, or API, url must start with http:// or https://.",
 			)
 		}
 	}
@@ -233,12 +237,16 @@ func validateAssignedAlertContacts(
 func validateConfig(
 	ctx context.Context,
 	monitorType string,
-	req resource.ValidateConfigRequest,
 	data *monitorResourceModel,
 	resp *resource.ValidateConfigResponse,
 ) {
 	var cfg configTF
-	_ = req.Config.GetAttribute(ctx, path.Root("config"), &cfg)
+	if !data.Config.IsNull() && !data.Config.IsUnknown() {
+		resp.Diagnostics.Append(data.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
 
 	// Check that user set any SSL related settings
 	sslRemTouched := !data.SSLExpirationReminder.IsNull() &&
@@ -252,36 +260,58 @@ func validateConfig(
 		!data.CheckSSLErrors.IsUnknown() &&
 		data.CheckSSLErrors.ValueBool()
 
-	sslTouched := sslRemTouched || sslDaysTouched || sslCheckErrTouched
+	sslHTTPFlagsTouched := sslRemTouched || sslCheckErrTouched
 
-	// Only HTTP/KEYWORD may use SSL settings
-	if sslTouched && monitorType != MonitorTypeHTTP && monitorType != MonitorTypeKEYWORD {
+	apiAssertionsTouched := !cfg.APIAssertions.IsNull() && !cfg.APIAssertions.IsUnknown()
+	udpTouched := !cfg.UDP.IsNull() && !cfg.UDP.IsUnknown()
+
+	// ssl_expiration_period_days is accepted by API only in DNS monitor config.
+	if sslDaysTouched && monitorType != MonitorTypeDNS {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("ssl_expiration_period_days"),
+			"SSL reminder days not allowed for this monitor type",
+			"ssl_expiration_period_days is only supported for DNS monitors.",
+		)
+	}
+
+	// api_assertions is accepted only for API monitors.
+	if apiAssertionsTouched && monitorType != MonitorTypeAPI {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("api_assertions"),
+			"api_assertions only allowed for API monitors",
+			"Set type = API or remove config.api_assertions.",
+		)
+	}
+
+	if udpTouched && monitorType != MonitorTypeUDP {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("udp"),
+			"udp only allowed for UDP monitors",
+			"Set type = UDP or remove config.udp.",
+		)
+	}
+
+	// Top-level SSL flags apply only to HTTP/KEYWORD/API monitors.
+	if sslHTTPFlagsTouched && monitorType != MonitorTypeHTTP && monitorType != MonitorTypeKEYWORD && monitorType != MonitorTypeAPI {
 		if sslRemTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("ssl_expiration_reminder"),
 				"SSL reminder not allowed for this monitor type",
-				"ssl_expiration_reminder is only supported for HTTP/KEYWORD monitors.",
-			)
-		}
-		if sslDaysTouched {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("config").AtName("ssl_expiration_period_days"),
-				"SSL reminder days not allowed for this monitor type",
-				"ssl_expiration_period_days is only supported for HTTP/KEYWORD monitors.",
+				"ssl_expiration_reminder is only supported for HTTP/KEYWORD/API monitors.",
 			)
 		}
 		if sslCheckErrTouched {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("check_ssl_errors"),
 				"Check SSL errors not allowed for this monitor type",
-				"check_ssl_errors is only supported for HTTP/KEYWORD monitors.",
+				"check_ssl_errors is only supported for HTTP/KEYWORD/API monitors.",
 			)
 		}
 		return
 	}
 
-	// If type is HTTP/KEYWORD but URL is not HTTPS, block SSL settings
-	if sslTouched && (monitorType == MonitorTypeHTTP || monitorType == MonitorTypeKEYWORD) &&
+	// For HTTP/KEYWORD/API monitors, top-level SSL flags require HTTPS URL.
+	if sslHTTPFlagsTouched && (monitorType == MonitorTypeHTTP || monitorType == MonitorTypeKEYWORD || monitorType == MonitorTypeAPI) &&
 		!data.URL.IsNull() && !data.URL.IsUnknown() &&
 		!strings.HasPrefix(strings.ToLower(data.URL.ValueString()), "https://") {
 
@@ -290,13 +320,6 @@ func validateConfig(
 				path.Root("ssl_expiration_reminder"),
 				"SSL reminders require an HTTPS URL",
 				"Set an https:// URL or remove ssl_expiration_reminder.",
-			)
-		}
-		if sslDaysTouched {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("config").AtName("ssl_expiration_period_days"),
-				"SSL reminders require an HTTPS URL",
-				"Set an https:// URL or remove ssl_expiration_period_days.",
 			)
 		}
 		if sslCheckErrTouched {
@@ -319,19 +342,309 @@ func validateConfig(
 		)
 	}
 
-	// Omitting the whole config block preserves/clears remote, but if you include it for DNS,
-	// you typically want to manage dns_records explicitly.
+	if !cfg.IPVersion.IsNull() && !cfg.IPVersion.IsUnknown() {
+		validateConfigIPVersion(monitorType, data.URL, cfg.IPVersion, resp)
+	}
+
+	// Omitting the whole config block preserves/clears remote.
+	// If DNS config block is present but has no managed fields, warn.
 	if monitorType == MonitorTypeDNS &&
 		!data.Config.IsNull() && !data.Config.IsUnknown() &&
-		(cfg.DNSRecords.IsNull() || cfg.DNSRecords.IsUnknown()) {
+		(cfg.DNSRecords.IsNull() || cfg.DNSRecords.IsUnknown()) &&
+		(cfg.SSLExpirationPeriodDays.IsNull() || cfg.SSLExpirationPeriodDays.IsUnknown()) {
 		resp.Diagnostics.AddAttributeWarning(
 			path.Root("config"),
-			"DNS config provided without dns_records",
-			"You added a config block for a DNS monitor but omitted dns_records. "+
-				"Omit the config block to preserve/clear remote values, or set config.dns_records to manage records explicitly.",
+			"DNS config has no managed fields",
+			"You added a config block for a DNS monitor, but set neither "+
+				"config.dns_records nor config.ssl_expiration_period_days. "+
+				"Omit the config block to preserve remote values, or set one of these fields to manage DNS config. "+
+				"If this is the initial create for a DNS monitor, config = {} is acceptable and this warning is informational.",
 		)
 	}
 
+	if monitorType == MonitorTypeAPI && !data.Config.IsNull() && !data.Config.IsUnknown() {
+		if cfg.APIAssertions.IsUnknown() {
+			return
+		}
+		if cfg.APIAssertions.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("api_assertions"),
+				"API monitor requires api_assertions",
+				"Set config.api_assertions with logic and checks.",
+			)
+			return
+		}
+
+		var assertions apiAssertionsTF
+		resp.Diagnostics.Append(cfg.APIAssertions.As(ctx, &assertions, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		if assertions.Logic.IsUnknown() || assertions.Checks.IsUnknown() {
+			return
+		}
+
+		if assertions.Logic.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("api_assertions").AtName("logic"),
+				"Missing API assertions logic",
+				"Set logic to AND or OR.",
+			)
+		}
+
+		if assertions.Checks.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("api_assertions").AtName("checks"),
+				"Missing API assertions checks",
+				"Set 1 to 5 checks in config.api_assertions.checks.",
+			)
+			return
+		}
+
+		var checks []apiAssertionCheckTF
+		resp.Diagnostics.Append(assertions.Checks.ElementsAs(ctx, &checks, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if len(checks) < 1 || len(checks) > 5 {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("api_assertions").AtName("checks"),
+				"Invalid number of checks",
+				"API assertions checks must contain 1 to 5 items.",
+			)
+			return
+		}
+
+		for i, check := range checks {
+			checkPath := path.Root("config").AtName("api_assertions").AtName("checks").AtListIndex(i)
+			if check.Property.IsUnknown() || check.Comparison.IsUnknown() || check.Target.IsUnknown() {
+				continue
+			}
+			if check.Property.IsNull() || strings.TrimSpace(check.Property.ValueString()) == "" {
+				resp.Diagnostics.AddAttributeError(
+					checkPath.AtName("property"),
+					"Missing assertion property",
+					"Each check.property must be a non-empty JSONPath expression.",
+				)
+			}
+			if !check.Property.IsNull() && !strings.HasPrefix(strings.TrimSpace(check.Property.ValueString()), "$") {
+				resp.Diagnostics.AddAttributeError(
+					checkPath.AtName("property"),
+					"Invalid assertion property",
+					"check.property must start with '$' (JSONPath syntax).",
+				)
+			}
+
+			comparison := strings.TrimSpace(strings.ToLower(stringOrEmpty(check.Comparison)))
+			switch comparison {
+			case "equals", "not_equals", "contains", "not_contains", "greater_than", "less_than", "is_null", "is_not_null":
+			default:
+				resp.Diagnostics.AddAttributeError(
+					checkPath.AtName("comparison"),
+					"Invalid assertion comparison",
+					"Allowed values: equals, not_equals, contains, not_contains, greater_than, less_than, is_null, is_not_null.",
+				)
+				continue
+			}
+
+			hasTarget := !check.Target.IsNull() && !check.Target.IsUnknown() && strings.TrimSpace(check.Target.ValueString()) != ""
+			var target interface{}
+			if hasTarget {
+				if err := json.Unmarshal([]byte(check.Target.ValueString()), &target); err != nil {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Invalid JSON target",
+						"target must be valid JSON. Use jsonencode(...) for strings, numbers, booleans, or null.",
+					)
+					continue
+				}
+			}
+
+			switch comparison {
+			case "is_null", "is_not_null":
+				if hasTarget && target != nil {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Target is not allowed",
+						"is_null and is_not_null comparisons must not define target.",
+					)
+				}
+			case "greater_than", "less_than":
+				if !hasTarget {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Missing numeric target",
+						"greater_than and less_than require numeric target.",
+					)
+					continue
+				}
+				if _, ok := target.(float64); !ok {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Invalid numeric target",
+						"greater_than and less_than require a number target.",
+					)
+				}
+			case "contains", "not_contains":
+				if !hasTarget {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Missing string target",
+						"contains and not_contains require a non-empty string target.",
+					)
+					continue
+				}
+				s, ok := target.(string)
+				if !ok || strings.TrimSpace(s) == "" {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Invalid string target",
+						"contains and not_contains require a non-empty string target.",
+					)
+				}
+			case "equals", "not_equals":
+				if !hasTarget {
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Missing target",
+						"equals and not_equals require string, number, or boolean target.",
+					)
+					continue
+				}
+				switch v := target.(type) {
+				case string:
+					if strings.TrimSpace(v) == "" {
+						resp.Diagnostics.AddAttributeError(
+							checkPath.AtName("target"),
+							"Invalid string target",
+							"equals and not_equals do not allow empty string target.",
+						)
+					}
+				case float64, bool:
+				default:
+					resp.Diagnostics.AddAttributeError(
+						checkPath.AtName("target"),
+						"Invalid target type",
+						"equals and not_equals require string, number, or boolean target.",
+					)
+				}
+			}
+		}
+	}
+
+	if monitorType == MonitorTypeUDP && !data.Config.IsNull() && !data.Config.IsUnknown() {
+		if cfg.UDP.IsUnknown() {
+			return
+		}
+		if cfg.UDP.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("udp"),
+				"UDP monitor requires udp config",
+				"Set config.udp.packet_loss_threshold for UDP monitors.",
+			)
+			return
+		}
+
+		var udp udpTF
+		resp.Diagnostics.Append(cfg.UDP.As(ctx, &udp, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		if udp.PacketLossThreshold.IsUnknown() {
+			return
+		}
+		if udp.PacketLossThreshold.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("config").AtName("udp").AtName("packet_loss_threshold"),
+				"Missing packet_loss_threshold",
+				"UDP monitors require config.udp.packet_loss_threshold.",
+			)
+		}
+	}
+}
+
+func validateConfigIPVersion(
+	monitorType string,
+	urlValue types.String,
+	ipVersion types.String,
+	resp *resource.ValidateConfigResponse,
+) {
+	if monitorType != MonitorTypeHTTP &&
+		monitorType != MonitorTypeKEYWORD &&
+		monitorType != MonitorTypePING &&
+		monitorType != MonitorTypePORT &&
+		monitorType != MonitorTypeAPI {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("ip_version"),
+			"ip_version only allowed for HTTP/KEYWORD/PING/PORT/API monitors",
+			"Set type = HTTP, KEYWORD, PING, PORT, or API to manage config.ip_version, or remove config.ip_version for this monitor type.",
+		)
+		return
+	}
+
+	validateIPVersionURLLiteralCompatibility(urlValue, ipVersion, resp)
+}
+
+func validateIPVersionURLLiteralCompatibility(urlValue, ipVersion types.String, resp *resource.ValidateConfigResponse) {
+	if urlValue.IsNull() || urlValue.IsUnknown() || ipVersion.IsNull() || ipVersion.IsUnknown() {
+		return
+	}
+
+	ipSelection := strings.TrimSpace(ipVersion.ValueString())
+	if ipSelection == "" {
+		return
+	}
+
+	rawURL := strings.TrimSpace(urlValue.ValueString())
+	if rawURL == "" {
+		return
+	}
+
+	literal := ipLiteralFromMonitorURL(rawURL)
+	if literal == nil {
+		return
+	}
+
+	if literal.To4() != nil && ipSelection == IPVersionIPv6Only {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("ip_version"),
+			"Incompatible ip_version for URL literal",
+			"Cannot use ipv6Only with an IPv4 address literal.",
+		)
+	}
+	if literal.To4() == nil && ipSelection == IPVersionIPv4Only {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("ip_version"),
+			"Incompatible ip_version for URL literal",
+			"Cannot use ipv4Only with an IPv6 address literal.",
+		)
+	}
+}
+
+func ipLiteralFromMonitorURL(raw string) net.IP {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+
+	if ip := net.ParseIP(strings.Trim(trimmed, "[]")); ip != nil {
+		return ip
+	}
+
+	if host, _, err := net.SplitHostPort(trimmed); err == nil {
+		if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
+			return ip
+		}
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" {
+		return nil
+	}
+
+	return net.ParseIP(parsed.Hostname())
 }
 
 func validateHeadersCasingDuplication(
@@ -366,20 +679,20 @@ func validatePortMonitor(
 	data *monitorResourceModel,
 	resp *resource.ValidateConfigResponse,
 ) {
-	if !data.Port.IsNull() && !data.Port.IsUnknown() && monitorType != MonitorTypePORT {
+	if !data.Port.IsNull() && !data.Port.IsUnknown() && monitorType != MonitorTypePORT && monitorType != MonitorTypeUDP {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("port"),
-			"port not allowed for non-PORT monitor",
-			"When type is not PORT, omit port.",
+			"port not allowed for this monitor type",
+			"When type is not PORT or UDP, omit port.",
 		)
 		return
 	}
 
-	if monitorType == MonitorTypePORT && data.Port.IsNull() {
+	if (monitorType == MonitorTypePORT || monitorType == MonitorTypeUDP) && data.Port.IsNull() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("port"),
-			"Port required for PORT monitor",
-			"When type is PORT, you must set port.",
+			"Port required for PORT/UDP monitor",
+			"When type is PORT or UDP, you must set port.",
 		)
 	}
 }
@@ -391,21 +704,21 @@ func validateKeywordMonitor(
 	resp *resource.ValidateConfigResponse,
 ) {
 	if monitorType != MonitorTypeKEYWORD {
-		if !data.KeywordValue.IsNull() {
+		if !data.KeywordValue.IsNull() && !data.KeywordValue.IsUnknown() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("keyword_value"),
 				"keyword_value only allowed for KEYWORD monitors",
 				"Set type = KEYWORD to manage keyword_value, or remove keyword_value from non-KEYWORD monitors.",
 			)
 		}
-		if !data.KeywordType.IsNull() {
+		if !data.KeywordType.IsNull() && !data.KeywordType.IsUnknown() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("keyword_type"),
 				"keyword_type only allowed for KEYWORD monitors",
 				"Set type = KEYWORD to manage keyword_type, or remove keyword_type from non-KEYWORD monitors.",
 			)
 		}
-		if !data.KeywordCaseType.IsNull() {
+		if !data.KeywordCaseType.IsNull() && !data.KeywordCaseType.IsUnknown() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("keyword_case_type"),
 				"keyword_case_type only allowed for KEYWORD monitors",
@@ -423,7 +736,7 @@ func validateKeywordMonitor(
 		)
 	}
 
-	if data.KeywordCaseType.IsNull() || data.KeywordCaseType.IsUnknown() {
+	if data.KeywordCaseType.IsNull() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("keyword_case_type"),
 			"KeywordCaseType required for KEYWORD monitor",
@@ -431,13 +744,13 @@ func validateKeywordMonitor(
 		)
 	}
 
-	if data.KeywordValue.IsNull() || data.KeywordValue.IsUnknown() {
+	if data.KeywordValue.IsNull() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("keyword_value"),
 			"KeywordValue required for KEYWORD monitor",
 			"KEYWORD monitors require keyword_value.",
 		)
-	} else if len(data.KeywordValue.ValueString()) > 500 {
+	} else if !data.KeywordValue.IsUnknown() && len(data.KeywordValue.ValueString()) > 500 {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("keyword_value"),
 			"keyword_value too long",

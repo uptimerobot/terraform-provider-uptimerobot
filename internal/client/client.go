@@ -8,8 +8,13 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
+	"net/textproto"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -267,6 +272,131 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		lastErr = errors.New("request failed after retries")
 	}
 	return nil, lastErr
+}
+
+func (c *Client) doMultipartRequest(
+	ctx context.Context,
+	method, path string,
+	fields map[string]string,
+	files map[string]string,
+) ([]byte, error) {
+	var reqBody bytes.Buffer
+	writer := multipart.NewWriter(&reqBody)
+
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			_ = writer.Close()
+			return nil, fmt.Errorf("write multipart field %q: %w", key, err)
+		}
+	}
+
+	for fieldName, filePath := range files {
+		cleanPath := strings.TrimSpace(filePath)
+		if cleanPath == "" {
+			continue
+		}
+
+		file, err := os.Open(cleanPath)
+		if err != nil {
+			_ = writer.Close()
+			return nil, fmt.Errorf("open file for field %q (%q): %w", fieldName, cleanPath, err)
+		}
+
+		filename := filepath.Base(cleanPath)
+		contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename)))
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+
+		header := make(textproto.MIMEHeader)
+		header.Set(
+			"Content-Disposition",
+			fmt.Sprintf(`form-data; name=%q; filename=%q`, fieldName, filename),
+		)
+		header.Set("Content-Type", contentType)
+
+		part, err := writer.CreatePart(header)
+		if err != nil {
+			_ = file.Close()
+			_ = writer.Close()
+			return nil, fmt.Errorf("create multipart file field %q: %w", fieldName, err)
+		}
+
+		if _, err := io.Copy(part, file); err != nil {
+			_ = file.Close()
+			_ = writer.Close()
+			return nil, fmt.Errorf("copy file for field %q: %w", fieldName, err)
+		}
+
+		if err := file.Close(); err != nil {
+			_ = writer.Close()
+			return nil, fmt.Errorf("close file for field %q: %w", fieldName, err)
+		}
+	}
+
+	contentType := writer.FormDataContentType()
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, &reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if c.userAgent != "" {
+		req.Header.Set("User-Agent", c.userAgent)
+	}
+	for k, v := range c.extraHeaders {
+		if req.Header.Get(k) == "" {
+			req.Header.Set(k, v)
+		}
+	}
+
+	loggedFiles := make(map[string]string, len(files))
+	for k, v := range files {
+		loggedFiles[k] = filepath.Base(v)
+	}
+
+	tflog.Debug(ctx, "uptimerobot multipart request", map[string]any{
+		"method":  method,
+		"url":     c.baseURL + path,
+		"headers": redactHeaders(req.Header),
+		"fields":  fields,
+		"files":   loggedFiles,
+	})
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("multipart request failed: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read multipart response body failed: %w", err)
+	}
+
+	tflog.Debug(ctx, "uptimerobot multipart response", map[string]any{
+		"method":         method,
+		"url":            c.baseURL + path,
+		"status":         resp.StatusCode,
+		"request_id":     resp.Header.Get("X-Request-Id"),
+		"rate_remaining": resp.Header.Get("X-RateLimit-Remaining"),
+		"headers":        resp.Header,
+		"body":           sanitizeJSON(respBody, 4096),
+	})
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, newAPIError(resp.StatusCode, respBody)
+	}
+
+	return respBody, nil
 }
 
 func isIdempotent(method string) bool {

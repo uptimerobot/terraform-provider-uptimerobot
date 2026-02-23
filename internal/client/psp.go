@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -247,6 +248,58 @@ func (c *Client) UpdatePSP(ctx context.Context, id int64, req *UpdatePSPRequest)
 	if err := base.doUpdate(ctx, id, req, &psp); err != nil {
 		return nil, err
 	}
+	return &psp, nil
+}
+
+// UpdatePSPFiles updates PSP icon/logo via multipart/form-data.
+// Use clearLogo/clearIcon to remove existing files.
+func (c *Client) UpdatePSPFiles(
+	ctx context.Context,
+	id int64,
+	logoPath, iconPath *string,
+	clearLogo, clearIcon bool,
+) (*PSP, error) {
+	fields := map[string]string{}
+	files := map[string]string{}
+
+	if clearLogo {
+		fields["logo"] = ""
+	}
+	if clearIcon {
+		fields["icon"] = ""
+	}
+
+	if logoPath != nil {
+		if path := strings.TrimSpace(*logoPath); path != "" {
+			files["logo"] = path
+		}
+	}
+	if iconPath != nil {
+		if path := strings.TrimSpace(*iconPath); path != "" {
+			files["icon"] = path
+		}
+	}
+
+	if len(fields) == 0 && len(files) == 0 {
+		return nil, fmt.Errorf("no multipart logo/icon changes to apply")
+	}
+
+	resp, err := c.doMultipartRequest(
+		ctx,
+		http.MethodPatch,
+		fmt.Sprintf("/psps/%d", id),
+		fields,
+		files,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var psp PSP
+	if err := json.Unmarshal(resp, &psp); err != nil {
+		return nil, err
+	}
+
 	return &psp, nil
 }
 

@@ -1,6 +1,14 @@
 package provider
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+)
+
+// -----------------------------------------------------------------------------
+// HTML Normalization
+// -----------------------------------------------------------------------------
 
 func Test_unescapeHTML(t *testing.T) {
 	t.Parallel()
@@ -32,5 +40,108 @@ func Test_unescapeHTML(t *testing.T) {
 				t.Fatalf("unescapeHTML(unescapeHTML(%q)) = %q, want %q", tc.in, got2, got)
 			}
 		})
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Group ID Comparison
+// -----------------------------------------------------------------------------
+
+func TestWantFromCreateReq_IncludesGroupIDWhenSet(t *testing.T) {
+	t.Parallel()
+
+	groupID := 42
+	req := &client.CreateMonitorRequest{
+		Type:    client.MonitorTypeHTTP,
+		GroupID: &groupID,
+	}
+
+	want := wantFromCreateReq(req)
+	if want.GroupID == nil {
+		t.Fatalf("expected comparable GroupID to be set")
+	}
+	if *want.GroupID != groupID {
+		t.Fatalf("expected GroupID=%d, got %d", groupID, *want.GroupID)
+	}
+}
+
+func TestBuildComparableFromAPI_UsesGroupID(t *testing.T) {
+	t.Parallel()
+
+	got := buildComparableFromAPI(&client.Monitor{GroupID: 7})
+	if got.GroupID == nil {
+		t.Fatalf("expected API comparable GroupID to be set")
+	}
+	if *got.GroupID != 7 {
+		t.Fatalf("expected GroupID=7, got %d", *got.GroupID)
+	}
+}
+
+func TestEqualComparable_UsesGroupID(t *testing.T) {
+	t.Parallel()
+
+	g1 := 1
+	g2 := 2
+	if !equalComparable(monComparable{GroupID: &g1}, monComparable{GroupID: &g1}) {
+		t.Fatalf("expected equalComparable to match same GroupID")
+	}
+	if equalComparable(monComparable{GroupID: &g1}, monComparable{GroupID: &g2}) {
+		t.Fatalf("expected equalComparable mismatch for different GroupID")
+	}
+}
+
+func TestNormalizeAPIAssertions_SortsChecksForStableCompare(t *testing.T) {
+	t.Parallel()
+
+	in := &client.APIMonitorAssertions{
+		Logic: "and",
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "$.b", Comparison: "equals", Target: "x"},
+			{Property: "$.a", Comparison: "equals", Target: "x"},
+		},
+	}
+
+	n := normalizeAPIAssertions(in)
+	if n == nil {
+		t.Fatalf("expected non-nil normalized assertions")
+	}
+	if n.Logic != "AND" {
+		t.Fatalf("expected logic to be uppercased AND, got %q", n.Logic)
+	}
+	if len(n.Checks) != 2 {
+		t.Fatalf("expected 2 checks, got %d", len(n.Checks))
+	}
+	if n.Checks[0].Property != "$.a" {
+		t.Fatalf("expected first check to be sorted by property, got %q", n.Checks[0].Property)
+	}
+}
+
+func TestEqualComparable_UsesAPIAssertions(t *testing.T) {
+	t.Parallel()
+
+	want := normalizeAPIAssertions(&client.APIMonitorAssertions{
+		Logic: "AND",
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "$.status", Comparison: "equals", Target: "ok"},
+		},
+	})
+	gotSame := normalizeAPIAssertions(&client.APIMonitorAssertions{
+		Logic: "AND",
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "$.status", Comparison: "equals", Target: "ok"},
+		},
+	})
+	gotDiff := normalizeAPIAssertions(&client.APIMonitorAssertions{
+		Logic: "OR",
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "$.status", Comparison: "equals", Target: "ok"},
+		},
+	})
+
+	if !equalComparable(monComparable{APIAssertions: want}, monComparable{APIAssertions: gotSame}) {
+		t.Fatalf("expected equalComparable to match same api_assertions")
+	}
+	if equalComparable(monComparable{APIAssertions: want}, monComparable{APIAssertions: gotDiff}) {
+		t.Fatalf("expected equalComparable mismatch for different api_assertions")
 	}
 }

@@ -40,6 +40,22 @@ jobs:
         with:
           version: 'latest'
 
+  unit:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Run Unit Tests
+        run: go test -v -cover ./... -short -timeout 20m
+
   documentation:
     timeout-minutes: 5
     runs-on: ubuntu-latest
@@ -64,12 +80,11 @@ jobs:
       - name: Validate Documentation
         run: git diff --compact-summary --exit-code || (echo -e "\nDocumentation is out of sync. Run 'go generate ./...' to update and commit the changes." && exit 1)
 
-  acceptance:
+  acceptance-pr:
     if: >
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.actor != 'dependabot[bot]' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+      github.event_name == 'pull_request' &&
+      github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 45
     runs-on: ubuntu-latest
     strategy:
@@ -79,14 +94,8 @@ jobs:
         include:
           - app: terraform
             version: 'latest'
-          - app: terraform
-            version: '1.13.x'
           - app: opentofu
             version: 'latest'
-          - app: opentofu
-            version: 'v1.9.x'
-          - app: opentofu
-            version: 'v1.8.x'
 
     steps:
       - name: Checkout Code
@@ -114,14 +123,68 @@ jobs:
       - name: Configure OpenTofu Environment
         if: matrix.app == 'opentofu'
         run: |
-          echo TF_ACC_PROVIDER_HOST="registry.opentofu.org" >> $GITHUB_ENV
-          echo TF_ACC_PROVIDER_NAMESPACE="hashicorp" >> $GITHUB_ENV
-          echo TF_ACC_TERRAFORM_PATH="$(which tofu)" >> $GITHUB_ENV
+          echo TF_ACC_PROVIDER_HOST="registry.opentofu.org" >> "$GITHUB_ENV"
+          echo TF_ACC_PROVIDER_NAMESPACE="uptimerobot" >> "$GITHUB_ENV"
+          echo TF_ACC_TERRAFORM_PATH="$(which tofu)" >> "$GITHUB_ENV"
 
 
       - name: Test Provider
-        run: go test -v -cover ./internal/provider -parallel=1 -timeout 45m
+        run: go test -v -cover ./internal/provider -tags=acceptance -run '^TestAcc' -parallel=1 -timeout 45m
         env:
           TF_ACC: '1'
           UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
         if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
+
+  acceptance-main:
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - app: terraform
+            version: 'latest'
+          - app: terraform
+            version: '1.13.x'
+          - app: opentofu
+            version: 'latest'
+          - app: opentofu
+            version: 'v1.9.x'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Setup Terraform
+        if: matrix.app == 'terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ matrix.version }}
+          terraform_wrapper: false
+
+      - name: Setup OpenTofu
+        if: matrix.app == 'opentofu'
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ matrix.version }}
+          tofu_wrapper: false
+
+      - name: Configure OpenTofu Environment
+        if: matrix.app == 'opentofu'
+        run: |
+          echo TF_ACC_PROVIDER_HOST="registry.opentofu.org" >> "$GITHUB_ENV"
+          echo TF_ACC_PROVIDER_NAMESPACE="uptimerobot" >> "$GITHUB_ENV"
+          echo TF_ACC_TERRAFORM_PATH="$(which tofu)" >> "$GITHUB_ENV"
+
+      - name: Test Provider
+        run: go test -v -cover ./internal/provider -tags=acceptance -run '^TestAcc' -parallel=1 -timeout 45m
+        env:
+          TF_ACC: '1'
+          UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}

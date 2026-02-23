@@ -33,6 +33,18 @@ func (r *monitorResource) waitMonitorSettled(
 	var last *client.Monitor
 	backoff := 500 * time.Millisecond
 	const maxBackoff = 3 * time.Second
+	requiredConsecutiveMatches := 3
+	if want.AssignedAlertContacts != nil ||
+		want.SSLExpirationPeriodDays != nil ||
+		want.MaintenanceWindowIDs != nil {
+		// Alert contacts, MW assignment changes, and SSL config clears are more eventually-consistent.
+		requiredConsecutiveMatches = 5
+	}
+	if want.DNSRecords != nil || want.Headers != nil || want.APIAssertions != nil {
+		// DNS records, API assertions, and headers can lag longer across API replicas.
+		requiredConsecutiveMatches = 7
+	}
+	consecutiveMatches := 0
 
 	for attempt := 0; ; attempt++ {
 		m, err := r.client.GetMonitor(ctx, id)
@@ -40,8 +52,15 @@ func (r *monitorResource) waitMonitorSettled(
 			last = m
 			got := buildComparableFromAPI(m)
 			if equalComparable(want, got) {
-				return m, nil
+				consecutiveMatches++
+				if consecutiveMatches >= requiredConsecutiveMatches {
+					return m, nil
+				}
+			} else {
+				consecutiveMatches = 0
 			}
+		} else {
+			consecutiveMatches = 0
 		}
 
 		wait := backoff
@@ -50,10 +69,6 @@ func (r *monitorResource) waitMonitorSettled(
 		}
 		select {
 		case <-ctx.Done():
-			// One last equality check before failing
-			if last != nil && equalComparable(want, buildComparableFromAPI(last)) {
-				return last, nil
-			}
 			var got monComparable
 			if last != nil {
 				got = buildComparableFromAPI(last)

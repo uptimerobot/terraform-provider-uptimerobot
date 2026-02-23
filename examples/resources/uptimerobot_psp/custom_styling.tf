@@ -12,10 +12,9 @@ resource "uptimerobot_psp" "branded_status" {
     uptimerobot_monitor.website.id,
   ]
 
-  # Custom branding
-  logo = "https://example.com/logo.png"
-  icon = "https://example.com/favicon.ico"
-
+  # Custom branding files (multipart upload)
+  logo = "${path.module}/assets/logo.png"
+  icon = "${path.module}/assets/icon.png"
   # Custom styling
   custom_settings = {
     colors = {
@@ -30,8 +29,8 @@ resource "uptimerobot_psp" "branded_status" {
 
     page = {
       theme   = "light"
-      layout  = "default"
-      density = "comfortable"
+      layout  = "logo_on_left"
+      density = "normal"
     }
 
     features = {
