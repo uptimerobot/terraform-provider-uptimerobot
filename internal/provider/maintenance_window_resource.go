@@ -345,7 +345,7 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 	}
 
 	// Create maintenance window
-	newMW, err := r.client.CreateMaintenanceWindow(ctx, mw)
+	newMW, err := r.createMaintenanceWindowWithRetry(ctx, mw)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating maintenance window",
@@ -394,6 +394,46 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 	if resp.Diagnostics.HasError() {
 		return
 	}
+}
+
+func shouldRetryCreateMaintenanceWindow(err error, attempt, maxAttempts int) bool {
+	if err == nil {
+		return false
+	}
+	return isTempServerErr(err) && attempt < maxAttempts-1
+}
+
+func (r *maintenanceWindowResource) createMaintenanceWindowWithRetry(
+	ctx context.Context,
+	mw *client.CreateMaintenanceWindowRequest,
+) (*client.MaintenanceWindow, error) {
+	backoffs := []time.Duration{
+		500 * time.Millisecond,
+		1 * time.Second,
+		2 * time.Second,
+		3 * time.Second,
+	}
+	maxAttempts := len(backoffs) + 1
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		newMW, err := r.client.CreateMaintenanceWindow(ctx, mw)
+		if err == nil {
+			return newMW, nil
+		}
+		lastErr = err
+		if !shouldRetryCreateMaintenanceWindow(err, attempt, maxAttempts) {
+			return nil, err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoffs[attempt]):
+		}
+	}
+
+	return nil, lastErr
 }
 
 func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
