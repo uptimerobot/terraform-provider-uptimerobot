@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 1.4.0 — 2026-02-23
+
 ### Added
 - Monitor `group_id` support (`groupId` in API) for create, update, read/import, and state comparison/wait logic.
 - Added `type = "API"` monitor support in `uptimerobot_monitor`.
@@ -30,6 +32,7 @@
 - Fixed monitor refresh drift after maintenance-window updates by stabilizing read snapshots against managed `maintenance_window_ids`.
 - Fixed maintenance window update/read stale-snapshot regressions (e.g. daily omit-days transition flipping back to weekly with residual days) by using settled snapshots and read-time stabilization.
 - Fixed PagerDuty integration refresh drift for `location` and `auto_resolve` by making read mapping resilient to stale replica responses.
+- Fixed `uptimerobot_monitor` inconsistent-result-after-apply when `config = {}` is managed for non-DNS monitors and API returns `config: null` (provider now preserves managed config block shape on read/update).
 
 ### Tests/CI
 - Acceptance tests now use unique randomized names in key monitor/PSP/maintenance-window cases to reduce cross-test collisions.
