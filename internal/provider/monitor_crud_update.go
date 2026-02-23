@@ -670,8 +670,16 @@ func applyUpdatedMonitorToState(
 		out.Timeout = types.Int64Null()
 		out.GracePeriod = types.Int64Value(int64(m.GracePeriod))
 	case MonitorTypeDNS, MonitorTypePING:
-		out.Timeout = types.Int64Null()
-		out.GracePeriod = types.Int64Null()
+		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+			out.Timeout = types.Int64Value(plan.Timeout.ValueInt64())
+		} else {
+			out.Timeout = types.Int64Null()
+		}
+		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
+			out.GracePeriod = types.Int64Value(plan.GracePeriod.ValueInt64())
+		} else {
+			out.GracePeriod = types.Int64Null()
+		}
 	default: // HTTP, KEYWORD, PORT, API
 		out.GracePeriod = types.Int64Null()
 		if m.Timeout > 0 {
@@ -709,14 +717,14 @@ func applyUpdatedMonitorToState(
 	// Config in state
 	haveBlockConfig := !plan.Config.IsNull() && !plan.Config.IsUnknown()
 	switch {
-	case !configSent && strings.ToUpper(plan.Type.ValueString()) != MonitorTypeDNS:
-		out.Config = types.ObjectNull(configObjectType().AttrTypes)
 	case haveBlockConfig:
 		cfgState, d := flattenConfigToState(ctx, haveBlockConfig, plan.Config, m.Config)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {
 			out.Config = cfgState
 		}
+	case !configSent && strings.ToUpper(plan.Type.ValueString()) != MonitorTypeDNS:
+		out.Config = types.ObjectNull(configObjectType().AttrTypes)
 	default:
 		out.Config = types.ObjectNull(configObjectType().AttrTypes)
 	}

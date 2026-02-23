@@ -579,8 +579,16 @@ func (r *monitorResource) buildStateAfterCreate(
 		plan.Timeout = types.Int64Null()
 		plan.GracePeriod = types.Int64Value(int64(api.GracePeriod))
 	case MonitorTypeDNS, MonitorTypePING:
-		plan.Timeout = types.Int64Null()
-		plan.GracePeriod = types.Int64Null()
+		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
+			plan.Timeout = types.Int64Value(plan.Timeout.ValueInt64())
+		} else {
+			plan.Timeout = types.Int64Null()
+		}
+		if !plan.GracePeriod.IsNull() && !plan.GracePeriod.IsUnknown() {
+			plan.GracePeriod = types.Int64Value(plan.GracePeriod.ValueInt64())
+		} else {
+			plan.GracePeriod = types.Int64Null()
+		}
 	default: // HTTP, KEYWORD, PORT, API
 		plan.GracePeriod = types.Int64Null()
 		if api.Timeout > 0 {

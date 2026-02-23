@@ -80,10 +80,12 @@ func readApplyTypeTiming(state *monitorResourceModel, m *client.Monitor) {
 		state.Timeout = types.Int64Null()
 		state.GracePeriod = types.Int64Value(int64(m.GracePeriod))
 	case MonitorTypeDNS, MonitorTypePING:
-		if state.Timeout.IsNull() {
+		if state.Timeout.IsNull() || state.Timeout.IsUnknown() {
 			state.Timeout = types.Int64Null()
 		}
-		state.GracePeriod = types.Int64Null()
+		if state.GracePeriod.IsNull() || state.GracePeriod.IsUnknown() {
+			state.GracePeriod = types.Int64Null()
+		}
 	default:
 		state.GracePeriod = types.Int64Null()
 		state.Timeout = types.Int64Value(int64(m.Timeout))
@@ -460,9 +462,6 @@ func readApplyConfig(ctx context.Context, resp *resource.ReadResponse, state *mo
 
 	haveBlockConfig := !state.Config.IsNull() && !state.Config.IsUnknown()
 	switch {
-	case haveBlockConfig && m.Config == nil:
-		// User removed the block or API returns nil config. Clear it to avoid the drift.
-		state.Config = types.ObjectNull(configObjectType().AttrTypes)
 	case haveBlockConfig:
 		cfgState, d := flattenConfigToState(ctx, haveBlockConfig, state.Config, m.Config)
 		resp.Diagnostics.Append(d...)

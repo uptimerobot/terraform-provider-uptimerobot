@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -80,6 +81,90 @@ func TestFlattenConfigToState_NoAPIAndPrevNullDNS_StaysNull(t *testing.T) {
 	}
 	if !cfg.DNSRecords.IsNull() {
 		t.Fatalf("expected dns_records to stay null when unmanaged and API omits it")
+	}
+}
+
+func TestReadApplyConfig_ManagedEmptyBlock_APINil_PreservesBlock(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := &monitorResourceModel{
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"ip_version":                 types.StringNull(),
+			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		}),
+	}
+	m := &client.Monitor{
+		Config: nil,
+	}
+	resp := &resource.ReadResponse{}
+
+	readApplyConfig(ctx, resp, state, m, false)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+	if state.Config.IsNull() || state.Config.IsUnknown() {
+		t.Fatalf("expected managed empty config block to stay non-null, got %#v", state.Config)
+	}
+
+	var cfg configTF
+	if d := state.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); d.HasError() {
+		t.Fatalf("unexpected object decode diagnostics: %+v", d)
+	}
+	if !cfg.SSLExpirationPeriodDays.IsNull() {
+		t.Fatalf("expected ssl_expiration_period_days to remain null")
+	}
+	if !cfg.DNSRecords.IsNull() {
+		t.Fatalf("expected dns_records to remain null")
+	}
+}
+
+func TestApplyUpdatedMonitorToState_ManagedEmptyConfig_NotSent_Preserved(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	plan := monitorResourceModel{
+		Type: types.StringValue(MonitorTypeHTTP),
+		Name: types.StringValue("My Website"),
+		URL:  types.StringValue("https://example.com"),
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"ip_version":                 types.StringNull(),
+			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		}),
+	}
+	prev := monitorResourceModel{}
+	m := &client.Monitor{
+		Name:    "My Website",
+		URL:     "https://example.com",
+		Type:    MonitorTypeHTTP,
+		Timeout: 30,
+		Config:  nil,
+	}
+	resp := &resource.UpdateResponse{}
+
+	out := applyUpdatedMonitorToState(ctx, plan, prev, m, "GET", false, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+	if out.Config.IsNull() || out.Config.IsUnknown() {
+		t.Fatalf("expected managed empty config block to stay non-null, got %#v", out.Config)
+	}
+
+	var cfg configTF
+	if d := out.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); d.HasError() {
+		t.Fatalf("unexpected object decode diagnostics: %+v", d)
+	}
+	if !cfg.SSLExpirationPeriodDays.IsNull() {
+		t.Fatalf("expected ssl_expiration_period_days to remain null")
+	}
+	if !cfg.DNSRecords.IsNull() {
+		t.Fatalf("expected dns_records to remain null")
 	}
 }
 
@@ -300,6 +385,46 @@ func TestExpandConfigToAPI_UDPTouched(t *testing.T) {
 	}
 	if out.UDP.PacketLossThreshold == nil || *out.UDP.PacketLossThreshold != 50 {
 		t.Fatalf("expected packetLossThreshold=50, got %#v", out.UDP.PacketLossThreshold)
+	}
+}
+
+func TestReadApplyTypeTiming_DNS_PreservesConfiguredTimeoutAndGrace(t *testing.T) {
+	t.Parallel()
+
+	state := &monitorResourceModel{
+		Type:        types.StringValue(MonitorTypeDNS),
+		Timeout:     types.Int64Value(30),
+		GracePeriod: types.Int64Value(15),
+	}
+	m := &client.Monitor{Timeout: 0, GracePeriod: 0}
+
+	readApplyTypeTiming(state, m)
+
+	if state.Timeout.IsNull() || state.Timeout.ValueInt64() != 30 {
+		t.Fatalf("expected timeout to stay 30, got %#v", state.Timeout)
+	}
+	if state.GracePeriod.IsNull() || state.GracePeriod.ValueInt64() != 15 {
+		t.Fatalf("expected grace_period to stay 15, got %#v", state.GracePeriod)
+	}
+}
+
+func TestReadApplyTypeTiming_DNS_NullWhenUnmanaged(t *testing.T) {
+	t.Parallel()
+
+	state := &monitorResourceModel{
+		Type:        types.StringValue(MonitorTypeDNS),
+		Timeout:     types.Int64Null(),
+		GracePeriod: types.Int64Null(),
+	}
+	m := &client.Monitor{Timeout: 0, GracePeriod: 0}
+
+	readApplyTypeTiming(state, m)
+
+	if !state.Timeout.IsNull() {
+		t.Fatalf("expected timeout null when unmanaged, got %#v", state.Timeout)
+	}
+	if !state.GracePeriod.IsNull() {
+		t.Fatalf("expected grace_period null when unmanaged, got %#v", state.GracePeriod)
 	}
 }
 
