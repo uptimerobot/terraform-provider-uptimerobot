@@ -37,11 +37,69 @@ func testAccPreCheck(t *testing.T) {
 }
 
 func testAccProviderConfig() string {
-	return fmt.Sprintf(`
+	if !testAccNeedsExplicitProviderSource() {
+		return fmt.Sprintf(`
 provider "uptimerobot" {
   api_key = "%s"
 }
 `, os.Getenv("UPTIMEROBOT_API_KEY"))
+	}
+
+	source := testAccProviderSource()
+	version, hasVersion := testAccProviderVersion()
+
+	requiredProvider := fmt.Sprintf(`
+    uptimerobot = {
+      source = "%s"
+    }`, source)
+	if hasVersion {
+		requiredProvider = fmt.Sprintf(`
+    uptimerobot = {
+      source  = "%s"
+      version = "%s"
+    }`, source, version)
+	}
+
+	return fmt.Sprintf(`
+terraform {
+  required_providers {
+%s
+  }
+}
+
+provider "uptimerobot" {
+  api_key = "%s"
+}
+`, requiredProvider, os.Getenv("UPTIMEROBOT_API_KEY"))
+}
+
+func testAccNeedsExplicitProviderSource() bool {
+	return os.Getenv("TF_ACC_PROVIDER_HOST") != "" ||
+		os.Getenv("TF_ACC_PROVIDER_NAMESPACE") != "" ||
+		os.Getenv("TF_ACC_PROVIDER_VERSION") != ""
+}
+
+func testAccProviderSource() string {
+	namespace := os.Getenv("TF_ACC_PROVIDER_NAMESPACE")
+	if namespace == "" {
+		namespace = "uptimerobot"
+	}
+
+	host := os.Getenv("TF_ACC_PROVIDER_HOST")
+	if host == "" {
+		return fmt.Sprintf("%s/uptimerobot", namespace)
+	}
+
+	return fmt.Sprintf("%s/%s/uptimerobot", host, namespace)
+}
+
+func testAccProviderVersion() (string, bool) {
+	version := os.Getenv("TF_ACC_PROVIDER_VERSION")
+	if version == "" {
+		return "", false
+	}
+
+	return version, true
 }
 
 // CheckDestroy functions for each resource type.
