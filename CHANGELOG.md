@@ -5,6 +5,7 @@
 ### Added
 - Monitor `group_id` support (`groupId` in API) for create, update, read/import, and state comparison/wait logic.
 - Added `type = "API"` monitor support in `uptimerobot_monitor`.
+- Added `type = "UDP"` monitor support in `uptimerobot_monitor`, including `config.udp` (`packet_loss_threshold`, optional `payload`) handling.
 - Added `config.api_assertions` support with create/update/read transforms and API payload mapping to `config.apiAssertions`.
 - Added monitor run-state management via `is_paused` in `uptimerobot_monitor`, backed by API v3 monitor `pause`/`start` endpoints.
 
