@@ -450,6 +450,100 @@ func TestValidateConfig_UDP_AllowsUnknownPacketLossThresholdAtPlanTime(t *testin
 	}
 }
 
+func TestValidateGracePeriodAndTimeout_PING_AllowsTimeout(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{
+		Timeout:     types.Int64Value(30),
+		GracePeriod: types.Int64Null(),
+	}
+
+	validateGracePeriodAndTimeout(context.TODO(), MonitorTypePING, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for timeout on PING monitor, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfig_SSLDays_AllowsHTTP(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetValueMust(types.Int64Type, []attr.Value{
+				types.Int64Value(7),
+				types.Int64Value(30),
+			}),
+			"dns_records":    types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions": types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"ip_version":     types.StringNull(),
+			"udp":            types.ObjectNull(udpObjectType().AttrTypes),
+		}),
+	}
+
+	validateConfig(context.TODO(), MonitorTypeHTTP, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for ssl_expiration_period_days on HTTP monitor, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfig_SSLDays_AllowsAPI(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	check := types.ObjectValueMust(apiAssertionCheckObjectType().AttrTypes, map[string]attr.Value{
+		"property":   types.StringValue("$.status"),
+		"comparison": types.StringValue("equals"),
+		"target":     jsontypes.NewNormalizedValue(`"ok"`),
+	})
+	data := &monitorResourceModel{
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetValueMust(types.Int64Type, []attr.Value{
+				types.Int64Value(14),
+			}),
+			"dns_records": types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions": types.ObjectValueMust(apiAssertionsObjectType().AttrTypes, map[string]attr.Value{
+				"logic":  types.StringValue("AND"),
+				"checks": types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{check}),
+			}),
+			"ip_version": types.StringNull(),
+			"udp":        types.ObjectNull(udpObjectType().AttrTypes),
+		}),
+	}
+
+	validateConfig(context.TODO(), MonitorTypeAPI, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for ssl_expiration_period_days on API monitor, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfig_SSLDays_RejectsDNS(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetValueMust(types.Int64Type, []attr.Value{
+				types.Int64Value(7),
+			}),
+			"dns_records":    types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions": types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"ip_version":     types.StringNull(),
+			"udp":            types.ObjectNull(udpObjectType().AttrTypes),
+		}),
+	}
+
+	validateConfig(context.TODO(), MonitorTypeDNS, data, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected validation error for ssl_expiration_period_days on DNS monitor")
+	}
+}
+
 func TestValidateConfigIPVersion_RejectsUnsupportedTypes(t *testing.T) {
 	t.Parallel()
 
