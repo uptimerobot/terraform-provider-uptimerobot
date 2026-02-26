@@ -2500,11 +2500,11 @@ resource "uptimerobot_monitor" "test" {
 					resource.TestCheckResourceAttr(res, "config.ssl_expiration_period_days.#", "0"),
 				),
 			},
-			// Omit block: config becomes unmanaged on non-DNS monitors
+			// Omit block: preserve previously known remote SSL days
 			{
 				Config: cfgOmit,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckNoResourceAttr(res, "config.ssl_expiration_period_days"),
+					resource.TestCheckResourceAttr(res, "config.ssl_expiration_period_days.#", "0"),
 				),
 			},
 		},

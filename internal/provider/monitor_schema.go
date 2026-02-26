@@ -589,14 +589,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		}
 	}
 
-	// If user omitted config on a not DNS monitors, drop it from the plan so it can be cleared from state
-	var rawConfig basetypes.ObjectValue
-	_ = req.Config.GetAttribute(ctx, path.Root("config"), &rawConfig)
 	planType := strings.ToUpper(firstNonEmpty(stringOrEmpty(plan.Type), stringOrEmpty(state.Type)))
-	if (rawConfig.IsNull() || rawConfig.IsUnknown()) && planType != "DNS" {
-		plan.Config = types.ObjectNull(configObjectType().AttrTypes)
-		_ = resp.Plan.SetAttribute(ctx, path.Root("config"), plan.Config)
-	}
 
 	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
 		var acs []alertContactTF
@@ -644,7 +637,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 			if plan.Timeout.IsUnknown() || plan.Timeout.IsNull() {
 				resp.Plan.SetAttribute(ctx, path.Root("timeout"), types.Int64Null())
 			}
-		case "DNS", "PING":
+		case "DNS":
 			// Only null if user didn’t set a value. Otherwise leave it as is.
 			if plan.Timeout.IsUnknown() {
 				resp.Plan.SetAttribute(ctx, path.Root("timeout"), types.Int64Null())
