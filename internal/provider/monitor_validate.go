@@ -154,7 +154,7 @@ func validateGracePeriodAndTimeout(
 			resp.Diagnostics.AddAttributeWarning(
 				path.Root("timeout"),
 				"timeout is ignored for DNS monitors",
-				"The UptimeRobot API does not use timeout for DNS monitors."+
+				"The UptimeRobot API does not use timeout for DNS monitors. "+
 					"The provider will omit it when calling the API. You can remove it from the config.",
 			)
 		}

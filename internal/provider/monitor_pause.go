@@ -37,8 +37,12 @@ func (r *monitorResource) ensureMonitorPausedState(
 
 	settled, waitErr := r.waitMonitorPauseState(ctx, id, wantPaused, 90*time.Second)
 	if waitErr != nil {
-		if settled != nil && isMonitorPausedStatus(settled.Status) == wantPaused {
-			return settled, nil
+		if settled != nil {
+			if isMonitorPausedStatus(settled.Status) == wantPaused {
+				return settled, nil
+			}
+			// Prefer the polled settle result over the initial pause/start response.
+			return settled, waitErr
 		}
 		if m != nil && isMonitorPausedStatus(m.Status) == wantPaused {
 			return m, nil
@@ -73,7 +77,7 @@ func (r *monitorResource) waitMonitorPauseState(
 	var last *client.Monitor
 	backoff := 500 * time.Millisecond
 	const maxBackoff = 3 * time.Second
-	requiredConsecutiveMatches := 3
+	requiredConsecutiveMatches := 5
 	consecutiveMatches := 0
 
 	for attempt := 0; ; attempt++ {
