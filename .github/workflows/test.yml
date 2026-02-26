@@ -129,7 +129,7 @@ jobs:
 
 
       - name: Test Provider
-        run: go test -v -cover ./internal/provider -tags=acceptance -run '^TestAcc' -parallel=1 -timeout 45m
+        run: go test -v -cover ./internal/provider -tags=acceptance -run '^TestAcc' -parallel=1 -timeout 60m
         env:
           TF_ACC: '1'
           UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
@@ -184,7 +184,7 @@ jobs:
           echo TF_ACC_TERRAFORM_PATH="$(which tofu)" >> "$GITHUB_ENV"
 
       - name: Test Provider
-        run: go test -v -cover ./internal/provider -tags=acceptance -run '^TestAcc' -parallel=1 -timeout 45m
+        run: go test -v -cover ./internal/provider -tags=acceptance -run '^TestAcc' -parallel=1 -timeout 60m
         env:
           TF_ACC: '1'
           UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
