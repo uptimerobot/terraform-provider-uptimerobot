@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"strconv"
@@ -22,6 +23,83 @@ import (
 // reattach.
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
 	"uptimerobot": providerserver.NewProtocol6WithError(New("test")()),
+}
+
+func TestMain(m *testing.M) {
+	// TestMain runs before default flag parsing,
+	// due to this - parse once so -test.timeout is available.
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
+	softTimeout, enabled, err := acceptanceSoftTimeout()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid TF_ACC_SOFT_TIMEOUT: %v\n", err)
+		os.Exit(2)
+	}
+
+	done := make(chan struct{})
+	if enabled {
+		go func() {
+			timer := time.NewTimer(softTimeout)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+				fmt.Fprintf(
+					os.Stderr,
+					"ERROR: acceptance test timeout reached after %s\n",
+					softTimeout,
+				)
+				fmt.Fprintln(
+					os.Stderr,
+					"Run stopped early to avoid a panic. For full goroutine traceback, rerun with TF_ACC_SOFT_TIMEOUT=0.",
+				)
+				fmt.Fprintln(os.Stderr, "Tip: rerun with TF_LOG=DEBUG and a narrower -run filter to isolate the hanging step.")
+				os.Exit(1)
+			case <-done:
+			}
+		}()
+	}
+
+	code := m.Run()
+	close(done)
+	os.Exit(code)
+}
+
+func acceptanceSoftTimeout() (time.Duration, bool, error) {
+	// TF_ACC_SOFT_TIMEOUT=0 for disabling
+	// TF_ACC_SOFT_TIMEOUT=30m for setting exact duration
+	// default behavior - it will use setted value in test.timeout
+	if raw := os.Getenv("TF_ACC_SOFT_TIMEOUT"); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return 0, false, err
+		}
+		if d <= 0 {
+			return 0, false, nil
+		}
+		return d, true, nil
+	}
+
+	tf := flag.Lookup("test.timeout")
+	if tf == nil {
+		return 0, false, nil
+	}
+
+	d, err := time.ParseDuration(tf.Value.String())
+	if err != nil || d <= 0 {
+		return 0, false, nil
+	}
+
+	soft := d - time.Minute
+	if soft < time.Minute {
+		soft = d / 2
+	}
+	if soft <= 0 {
+		return 0, false, nil
+	}
+
+	return soft, true, nil
 }
 
 func testAccPreCheck(t *testing.T) {
