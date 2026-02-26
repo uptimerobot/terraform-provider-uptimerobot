@@ -1577,6 +1577,14 @@ func TestAcc_Monitor_DNS_IgnoreTimeoutAndGrace_And_PING_UsesTimeout(t *testing.T
 	dnsDomain := testAccUniqueDomain(dnsName)
 	pingName := "acc-ping"
 	pingURL := testAccUniqueURL(pingName)
+	pingConfig := testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "ping" {
+  name     = %q
+  type     = "PING"
+  url      = %q
+  interval = 300
+}
+	`, pingName, pingURL)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1603,19 +1611,18 @@ resource "uptimerobot_monitor" "dns" {
 			},
 			{
 				// PING defaults timeout to 30 and never uses grace_period
-				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "ping" {
-  name     = %q
-  type     = "PING"
-  url      = %q
-  interval = 300
-}
-	`, pingName, pingURL),
+				Config: pingConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.ping", "type", "PING"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.ping", "timeout", "30"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.ping", "grace_period"),
 				),
+			},
+			{
+				// Ensure no drift after default timeout is materialized by API.
+				Config:             pingConfig,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
@@ -2878,13 +2885,13 @@ resource "uptimerobot_monitor" "port" {
 	})
 }
 
-func TestAcc_Monitor_Config_IPVersion_AllowedForAPIAndUDP(t *testing.T) {
+func TestAcc_Monitor_Config_IPVersion_AllowsAPI_RejectsUDP(t *testing.T) {
 	t.Parallel()
 
 	apiName := acctest.RandomWithPrefix("acc-api-ipv")
-	dnsName := acctest.RandomWithPrefix("acc-dns-ipv")
+	udpName := acctest.RandomWithPrefix("acc-udp-ipv")
 	apiURL := testAccUniqueURL(apiName)
-	dnsDomain := testAccUniqueDomain(dnsName)
+	udpURL := testAccUniqueURL(udpName)
 
 	cfgAPIAllowed := fmt.Sprintf(`
 resource "uptimerobot_monitor" "api" {
@@ -2908,18 +2915,21 @@ resource "uptimerobot_monitor" "api" {
 `, apiName, apiURL)
 
 	cfgUnsupportedRejected := fmt.Sprintf(`
-resource "uptimerobot_monitor" "dns" {
+resource "uptimerobot_monitor" "udp" {
   name     = "%s"
-  type     = "DNS"
+  type     = "UDP"
   url      = "%s"
+  port     = 53
   interval = 300
 
   config = {
     ip_version = "ipv4Only"
-    dns_records = {}
+    udp = {
+      packet_loss_threshold = 100
+    }
   }
 }
-`, dnsName, dnsDomain)
+`, udpName, udpURL)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
