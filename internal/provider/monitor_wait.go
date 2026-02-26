@@ -72,6 +72,11 @@ func (r *monitorResource) waitMonitorSettled(
 			var got monComparable
 			if last != nil {
 				got = buildComparableFromAPI(last)
+				// If the latest read already matches what we wanted, treat settle as success.
+				// This avoids false failures when the consecutive-match window is interrupted by transient read errors.
+				if equalComparable(want, got) {
+					return last, nil
+				}
 			}
 			diff := fieldsStillDifferent(want, got)
 			if len(diff) > 0 {

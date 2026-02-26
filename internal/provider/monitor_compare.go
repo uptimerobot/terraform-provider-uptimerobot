@@ -646,6 +646,45 @@ func equalDNSRecords(want, got map[string][]string) bool {
 	return true
 }
 
+func comparableMonitorType(want, got monComparable) string {
+	if want.Type != nil {
+		return strings.ToUpper(strings.TrimSpace(*want.Type))
+	}
+	if got.Type != nil {
+		return strings.ToUpper(strings.TrimSpace(*got.Type))
+	}
+	return ""
+}
+
+func isHTTPMethodCapableType(t string) bool {
+	switch strings.ToUpper(strings.TrimSpace(t)) {
+	case MonitorTypeHTTP, MonitorTypeKEYWORD, MonitorTypeAPI:
+		return true
+	default:
+		return false
+	}
+}
+
+func equalComparableHTTPMethod(wantMethod string, gotMethod *string, monitorType string) bool {
+	wantNorm := strings.ToUpper(strings.TrimSpace(wantMethod))
+	gotNorm := ""
+	if gotMethod != nil {
+		gotNorm = strings.ToUpper(strings.TrimSpace(*gotMethod))
+	}
+
+	// API may omit default HTTP method; treat empty as GET for HTTP-like monitor types.
+	if isHTTPMethodCapableType(monitorType) {
+		if wantNorm == "" {
+			wantNorm = "GET"
+		}
+		if gotNorm == "" {
+			gotNorm = "GET"
+		}
+	}
+
+	return wantNorm == gotNorm
+}
+
 func equalComparable(want, got monComparable) bool {
 	// Only compare fields that are asserted in want, meaning that we receieve from got what we want
 	if want.Type != nil && (got.Type == nil || *want.Type != *got.Type) {
@@ -666,8 +705,11 @@ func equalComparable(want, got monComparable) bool {
 	if want.GracePeriod != nil && (got.GracePeriod == nil || *want.GracePeriod != *got.GracePeriod) {
 		return false
 	}
-	if want.HTTPMethodType != nil && (got.HTTPMethodType == nil || *want.HTTPMethodType != *got.HTTPMethodType) {
-		return false
+	if want.HTTPMethodType != nil {
+		monitorType := comparableMonitorType(want, got)
+		if !equalComparableHTTPMethod(*want.HTTPMethodType, got.HTTPMethodType, monitorType) {
+			return false
+		}
 	}
 	if want.HTTPUsername != nil && (got.HTTPUsername == nil || *want.HTTPUsername != *got.HTTPUsername) {
 		return false
@@ -752,6 +794,9 @@ func equalComparable(want, got monComparable) bool {
 func fieldsStillDifferent(want, got monComparable) []string {
 	var f []string
 
+	if want.Type != nil && (got.Type == nil || *want.Type != *got.Type) {
+		f = append(f, "type")
+	}
 	if want.Name != nil && (got.Name == nil || *want.Name != *got.Name) {
 		f = append(f, "name")
 	}
@@ -766,6 +811,27 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	}
 	if want.GracePeriod != nil && (got.GracePeriod == nil || *want.GracePeriod != *got.GracePeriod) {
 		f = append(f, "grace_period")
+	}
+	if want.HTTPMethodType != nil {
+		monitorType := comparableMonitorType(want, got)
+		if !equalComparableHTTPMethod(*want.HTTPMethodType, got.HTTPMethodType, monitorType) {
+			f = append(f, "http_method_type")
+		}
+	}
+	if want.HTTPUsername != nil && (got.HTTPUsername == nil || *want.HTTPUsername != *got.HTTPUsername) {
+		f = append(f, "http_username")
+	}
+	if want.HTTPAuthType != nil && (got.HTTPAuthType == nil || *want.HTTPAuthType != *got.HTTPAuthType) {
+		f = append(f, "auth_type")
+	}
+	if want.Port != nil && (got.Port == nil || *want.Port != *got.Port) {
+		f = append(f, "port")
+	}
+	if want.KeywordValue != nil && (got.KeywordValue == nil || *want.KeywordValue != *got.KeywordValue) {
+		f = append(f, "keyword_value")
+	}
+	if want.KeywordType != nil && (got.KeywordType == nil || *want.KeywordType != *got.KeywordType) {
+		f = append(f, "keyword_type")
 	}
 	if want.SuccessCodes != nil && !equalStringSet(want.SuccessCodes, got.SuccessCodes) {
 		f = append(f, "success_http_response_codes")
