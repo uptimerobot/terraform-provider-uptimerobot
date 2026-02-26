@@ -147,25 +147,25 @@ func validateGracePeriodAndTimeout(
 			)
 		}
 
-	case MonitorTypeDNS, MonitorTypePING:
+	case MonitorTypeDNS:
 
 		// do not require a timeout
 		if !data.Timeout.IsNull() && !data.Timeout.IsUnknown() {
 			resp.Diagnostics.AddAttributeWarning(
 				path.Root("timeout"),
-				"timeout is ignored for DNS/PING monitors",
-				"The UptimeRobot API does not use timeout for DNS or PING monitors."+
+				"timeout is ignored for DNS monitors",
+				"The UptimeRobot API does not use timeout for DNS monitors."+
 					"The provider will omit it when calling the API. You can remove it from the config.",
 			)
 		}
 		if !data.GracePeriod.IsNull() && !data.GracePeriod.IsUnknown() {
 			resp.Diagnostics.AddAttributeWarning(
 				path.Root("grace_period"),
-				"grace_period is ignored for DNS/PING monitors",
-				"The API does not use grace_period for DNS/PING. The provider will omit it.",
+				"grace_period is ignored for DNS monitors",
+				"The API does not use grace_period for DNS. The provider will omit it.",
 			)
 		}
-	default: // HTTP, KEYWORD, PORT
+	default: // HTTP, KEYWORD, PING, PORT, API, UDP
 
 		if !data.GracePeriod.IsNull() && !data.GracePeriod.IsUnknown() {
 			resp.Diagnostics.AddAttributeError(
@@ -265,12 +265,12 @@ func validateConfig(
 	apiAssertionsTouched := !cfg.APIAssertions.IsNull() && !cfg.APIAssertions.IsUnknown()
 	udpTouched := !cfg.UDP.IsNull() && !cfg.UDP.IsUnknown()
 
-	// ssl_expiration_period_days is accepted by API only in DNS monitor config.
-	if sslDaysTouched && monitorType != MonitorTypeDNS {
+	// ssl_expiration_period_days is accepted by API on HTTP/KEYWORD/API monitor configs.
+	if sslDaysTouched && monitorType != MonitorTypeHTTP && monitorType != MonitorTypeKEYWORD && monitorType != MonitorTypeAPI {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("config").AtName("ssl_expiration_period_days"),
 			"SSL reminder days not allowed for this monitor type",
-			"ssl_expiration_period_days is only supported for DNS monitors.",
+			"ssl_expiration_period_days is only supported for HTTP, KEYWORD, and API monitors.",
 		)
 	}
 
@@ -350,14 +350,13 @@ func validateConfig(
 	// If DNS config block is present but has no managed fields, warn.
 	if monitorType == MonitorTypeDNS &&
 		!data.Config.IsNull() && !data.Config.IsUnknown() &&
-		(cfg.DNSRecords.IsNull() || cfg.DNSRecords.IsUnknown()) &&
-		(cfg.SSLExpirationPeriodDays.IsNull() || cfg.SSLExpirationPeriodDays.IsUnknown()) {
+		(cfg.DNSRecords.IsNull() || cfg.DNSRecords.IsUnknown()) {
 		resp.Diagnostics.AddAttributeWarning(
 			path.Root("config"),
 			"DNS config has no managed fields",
 			"You added a config block for a DNS monitor, but set neither "+
-				"config.dns_records nor config.ssl_expiration_period_days. "+
-				"Omit the config block to preserve remote values, or set one of these fields to manage DNS config. "+
+				"config.dns_records. "+
+				"Omit the config block to preserve remote values, or set config.dns_records to manage DNS config. "+
 				"If this is the initial create for a DNS monitor, config = {} is acceptable and this warning is informational.",
 		)
 	}

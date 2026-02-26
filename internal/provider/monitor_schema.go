@@ -197,7 +197,7 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used.",
+				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS. If omitted, default value 30 is used.",
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.Int64{
@@ -435,7 +435,7 @@ Advanced monitor configuration.
 - For ` + "`type = \"DNS\"`" + ` on create, ` + "`config`" + ` is required (use ` + "`config = {}`" + ` for defaults).
 - For ` + "`type = \"API\"`" + ` on create, set ` + "`config.api_assertions`" + ` with ` + "`logic`" + ` and 1-5 ` + "`checks`" + `.
 - ` + "`dns_records`" + ` is only valid for DNS monitors.
-- ` + "`config.ssl_expiration_period_days`" + ` is only valid for DNS monitors.
+- ` + "`config.ssl_expiration_period_days`" + ` is only valid for HTTP/KEYWORD/API monitors.
 - ` + "`ip_version`" + ` is only valid for HTTP/KEYWORD/PING/PORT/API monitors.
 - ` + "`config.api_assertions`" + ` is only valid for API monitors.
 - ` + "`config.udp`" + ` is only valid for UDP monitors.
@@ -449,11 +449,11 @@ Advanced monitor configuration.
 				},
 				Attributes: map[string]schema.Attribute{
 					"ssl_expiration_period_days": schema.SetAttribute{
-						Description: "Custom reminder days before SSL expiry (0..365). Max 10 items. Supported for DNS monitor config.",
+						Description: "Custom reminder days before SSL expiry (0..365). Max 10 items. Supported for HTTP/KEYWORD/API monitor config.",
 						MarkdownDescription: "Reminder days before SSL expiry (0..365). Max 10 items.\n\n" +
 							"- Omit the attribute → **preserve** remote values.\n" +
 							"- Empty set `[]` → **clear** values on server.\n" +
-							"Supported when `type = \"DNS\"`.",
+							"Supported when `type = \"HTTP\"`, `\"KEYWORD\"`, or `\"API\"`.",
 						Optional:    true,
 						Computed:    true,
 						ElementType: types.Int64Type,

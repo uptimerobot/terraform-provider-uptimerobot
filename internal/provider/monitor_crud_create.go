@@ -310,10 +310,7 @@ func (r *monitorResource) applyTimeoutAndGrace(plan *monitorResourceModel, req *
 		req.GracePeriod = &zero
 		req.Timeout = &zero
 
-	case MonitorTypePING:
-		req.GracePeriod = &zero
-		req.Timeout = &zero
-	default: // HTTP, KEYWORD, PORT, API
+	default: // HTTP, KEYWORD, PING, PORT, API, UDP
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
 			req.Timeout = &v
@@ -578,7 +575,7 @@ func (r *monitorResource) buildStateAfterCreate(
 	case MonitorTypeHEARTBEAT:
 		plan.Timeout = types.Int64Null()
 		plan.GracePeriod = types.Int64Value(int64(api.GracePeriod))
-	case MonitorTypeDNS, MonitorTypePING:
+	case MonitorTypeDNS:
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			plan.Timeout = types.Int64Value(plan.Timeout.ValueInt64())
 		} else {
@@ -589,7 +586,7 @@ func (r *monitorResource) buildStateAfterCreate(
 		} else {
 			plan.GracePeriod = types.Int64Null()
 		}
-	default: // HTTP, KEYWORD, PORT, API
+	default: // HTTP, KEYWORD, PING, PORT, API, UDP
 		plan.GracePeriod = types.Int64Null()
 		if api.Timeout > 0 {
 			plan.Timeout = types.Int64Value(int64(api.Timeout))

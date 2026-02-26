@@ -78,10 +78,10 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 			v := *req.GracePeriod
 			c.GracePeriod = &v
 		}
-	case MonitorTypeDNS, MonitorTypePING:
-		// DO NOT assert timeout and grace_period for DNS and PING backend ignores them
+	case MonitorTypeDNS:
+		// DO NOT assert timeout and grace_period for DNS backend ignores them
 
-	default: // HTTP, KEYWORD, PORT
+	default: // HTTP, KEYWORD, PING, PORT, API, UDP
 		if req.Timeout != nil {
 			v := *req.Timeout
 			c.Timeout = &v
@@ -235,10 +235,10 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 			v := *req.GracePeriod
 			c.GracePeriod = &v
 		}
-	case MonitorTypeDNS, MonitorTypePING:
-		// DO NOT assert timeout and grace_period for DNS and PING backend ignores them
+	case MonitorTypeDNS:
+		// DO NOT assert timeout and grace_period for DNS backend ignores them
 
-	default: // HTTP, KEYWORD, PORT
+	default: // HTTP, KEYWORD, PING, PORT, API, UDP
 		if req.Timeout != nil {
 			v := *req.Timeout
 			c.Timeout = &v

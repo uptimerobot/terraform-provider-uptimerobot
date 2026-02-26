@@ -235,7 +235,7 @@ func priorSchemaV1() *schema.Schema {
 				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2xx"), types.StringValue("3xx")})),
 			},
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used",
+				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS. If omitted, default value 30 is used",
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.Int64{
@@ -522,7 +522,7 @@ func priorSchemaV2() *schema.Schema {
 				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2xx"), types.StringValue("3xx")})),
 			},
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used",
+				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS. If omitted, default value 30 is used",
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.Int64{
@@ -816,7 +816,7 @@ func priorSchemaV3() *schema.Schema {
 				})),
 			},
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used.",
+				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS. If omitted, default value 30 is used.",
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.Int64{
@@ -1147,7 +1147,7 @@ func priorSchemaV4() *schema.Schema {
 			},
 
 			"timeout": schema.Int64Attribute{
-				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used.",
+				Description: "Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS. If omitted, default value 30 is used.",
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.Int64{

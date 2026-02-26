@@ -79,7 +79,7 @@ func readApplyTypeTiming(state *monitorResourceModel, m *client.Monitor) {
 	case MonitorTypeHEARTBEAT:
 		state.Timeout = types.Int64Null()
 		state.GracePeriod = types.Int64Value(int64(m.GracePeriod))
-	case MonitorTypeDNS, MonitorTypePING:
+	case MonitorTypeDNS:
 		if state.Timeout.IsNull() || state.Timeout.IsUnknown() {
 			state.Timeout = types.Int64Null()
 		}
