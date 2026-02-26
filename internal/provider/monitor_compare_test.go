@@ -145,3 +145,56 @@ func TestEqualComparable_UsesAPIAssertions(t *testing.T) {
 		t.Fatalf("expected equalComparable mismatch for different api_assertions")
 	}
 }
+
+func TestEqualComparable_HTTPMethod_EmptyAPIEqualsDefaultGET(t *testing.T) {
+	t.Parallel()
+
+	typ := MonitorTypeHTTP
+	get := "GET"
+	post := "POST"
+
+	if !equalComparable(
+		monComparable{Type: &typ, HTTPMethodType: &get},
+		monComparable{Type: &typ, HTTPMethodType: nil},
+	) {
+		t.Fatalf("expected empty API method to be treated as default GET for HTTP monitors")
+	}
+
+	if equalComparable(
+		monComparable{Type: &typ, HTTPMethodType: &post},
+		monComparable{Type: &typ, HTTPMethodType: nil},
+	) {
+		t.Fatalf("expected POST to differ from empty API method")
+	}
+}
+
+func TestFieldsStillDifferent_IncludesHTTPMethodTypeAndType(t *testing.T) {
+	t.Parallel()
+
+	wantType := MonitorTypeKEYWORD
+	gotType := MonitorTypeHTTP
+	post := "POST"
+
+	diff := fieldsStillDifferent(
+		monComparable{Type: &wantType, HTTPMethodType: &post},
+		monComparable{Type: &gotType, HTTPMethodType: nil},
+	)
+
+	hasType := false
+	hasMethod := false
+	for _, f := range diff {
+		if f == "type" {
+			hasType = true
+		}
+		if f == "http_method_type" {
+			hasMethod = true
+		}
+	}
+
+	if !hasType {
+		t.Fatalf("expected diff to include type, got: %v", diff)
+	}
+	if !hasMethod {
+		t.Fatalf("expected diff to include http_method_type, got: %v", diff)
+	}
+}

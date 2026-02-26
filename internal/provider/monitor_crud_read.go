@@ -79,7 +79,7 @@ func readApplyTypeTiming(state *monitorResourceModel, m *client.Monitor) {
 	case MonitorTypeHEARTBEAT:
 		state.Timeout = types.Int64Null()
 		state.GracePeriod = types.Int64Value(int64(m.GracePeriod))
-	case MonitorTypeDNS, MonitorTypePING:
+	case MonitorTypeDNS:
 		if state.Timeout.IsNull() || state.Timeout.IsUnknown() {
 			state.Timeout = types.Int64Null()
 		}
@@ -302,6 +302,19 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 		return monitor
 	}
 
+	var expectedPaused *bool
+	if !state.IsPaused.IsNull() && !state.IsPaused.IsUnknown() {
+		v := state.IsPaused.ValueBool()
+		expectedPaused = &v
+	}
+	if expectedPaused != nil && isMonitorPausedStatus(monitor.Status) != *expectedPaused {
+		if settled, err := r.waitMonitorPauseState(ctx, id, *expectedPaused, 60*time.Second); err == nil && settled != nil {
+			monitor = settled
+		} else if settled != nil && isMonitorPausedStatus(settled.Status) == *expectedPaused {
+			monitor = settled
+		}
+	}
+
 	expectedName := ""
 	if !state.Name.IsNull() && !state.Name.IsUnknown() {
 		expectedName = unescapeHTML(state.Name.ValueString())
@@ -341,12 +354,13 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 		}
 	}
 
-	if expectedName == "" && expectedURL == "" && expectedMWIDs == nil && expectedDNSRecords == nil && expectedSSLDays == nil && expectedAPIAssertions == nil {
+	if expectedName == "" && expectedURL == "" && expectedMWIDs == nil && expectedDNSRecords == nil && expectedSSLDays == nil && expectedAPIAssertions == nil && expectedPaused == nil {
 		return monitor
 	}
 
 	nameMatches := expectedName == "" || unescapeHTML(monitor.Name) == expectedName
 	urlMatches := expectedURL == "" || unescapeHTML(monitor.URL) == expectedURL
+	pausedMatches := expectedPaused == nil || isMonitorPausedStatus(monitor.Status) == *expectedPaused
 	mwMatches := true
 	cfgMatches := true
 	if expectedMWIDs != nil || expectedDNSRecords != nil || expectedSSLDays != nil || expectedAPIAssertions != nil {
@@ -362,7 +376,7 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 			cfgMatches = cfgMatches && equalAPIAssertions(expectedAPIAssertions, got.APIAssertions)
 		}
 	}
-	if nameMatches && urlMatches && mwMatches && cfgMatches {
+	if nameMatches && urlMatches && pausedMatches && mwMatches && cfgMatches {
 		return monitor
 	}
 

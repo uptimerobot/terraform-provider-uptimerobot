@@ -633,7 +633,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - For `type = "DNS"` on create, `config` is required (use `config = {}` for defaults).
 - For `type = "API"` on create, set `config.api_assertions` with `logic` and 1-5 `checks`.
 - `dns_records` is only valid for DNS monitors.
-- `config.ssl_expiration_period_days` is only valid for DNS monitors.
+- `config.ssl_expiration_period_days` is only valid for HTTP/KEYWORD/API monitors.
 - `ip_version` is only valid for HTTP/KEYWORD/PING/PORT/API monitors.
 - `config.api_assertions` is only valid for API monitors.
 - `config.udp` is only valid for UDP monitors.
@@ -660,7 +660,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
 - `success_http_response_codes` (Set of String) The expected HTTP response codes. If not set API applies defaults.
 - `tags` (Set of String) Tags for the monitor. Must be lowercase. Duplicates are removed by set semantics.
-- `timeout` (Number) Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS/PING. If omitted, default value 30 is used.
+- `timeout` (Number) Timeout for the check (in seconds). Not applicable for HEARTBEAT; ignored for DNS. If omitted, default value 30 is used.
 
 ### Read-Only
 
@@ -698,7 +698,7 @@ Optional:
 
 - Omit the attribute → **preserve** remote values.
 - Empty set `[]` → **clear** values on server.
-Supported when `type = "DNS"`.
+Supported when `type = "HTTP"`, `"KEYWORD"`, or `"API"`.
 - `udp` (Attributes) UDP monitor configuration. Supported only for type=UDP. (see [below for nested schema](#nestedatt--config--udp))
 
 <a id="nestedatt--config--api_assertions"></a>

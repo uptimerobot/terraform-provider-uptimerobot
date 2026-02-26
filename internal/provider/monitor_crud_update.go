@@ -284,11 +284,7 @@ func setTimeoutAndGraceOnUpdate(_ context.Context, plan monitorResourceModel, re
 		req.GracePeriod = &zero
 		req.Timeout = &zero
 
-	case MonitorTypePING:
-		req.GracePeriod = &zero
-		req.Timeout = &zero
-
-	default: // HTTP, KEYWORD, PORT, API
+	default: // HTTP, KEYWORD, PING, PORT, API, UDP
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			v := int(plan.Timeout.ValueInt64())
 			req.Timeout = &v
@@ -669,7 +665,7 @@ func applyUpdatedMonitorToState(
 	case MonitorTypeHEARTBEAT:
 		out.Timeout = types.Int64Null()
 		out.GracePeriod = types.Int64Value(int64(m.GracePeriod))
-	case MonitorTypeDNS, MonitorTypePING:
+	case MonitorTypeDNS:
 		if !plan.Timeout.IsNull() && !plan.Timeout.IsUnknown() {
 			out.Timeout = types.Int64Value(plan.Timeout.ValueInt64())
 		} else {
@@ -680,7 +676,7 @@ func applyUpdatedMonitorToState(
 		} else {
 			out.GracePeriod = types.Int64Null()
 		}
-	default: // HTTP, KEYWORD, PORT, API
+	default: // HTTP, KEYWORD, PING, PORT, API, UDP
 		out.GracePeriod = types.Int64Null()
 		if m.Timeout > 0 {
 			out.Timeout = types.Int64Value(int64(m.Timeout))

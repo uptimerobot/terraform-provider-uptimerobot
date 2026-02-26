@@ -289,7 +289,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithSSLPeriod(name string, days []int) string {
-	domain := testAccUniqueDomain(name)
+	url := testAccUniqueURL(name)
 	cfg := ""
 	if days != nil {
 		if len(days) == 0 {
@@ -308,11 +308,12 @@ func testAccMonitorResourceConfigWithSSLPeriod(name string, days []int) string {
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
-  type     = "DNS"
+  type     = "HTTP"
   interval = 300
+  timeout  = 30
 %s
 }
-`, name, domain, cfg)
+`, name, url, cfg)
 }
 
 func testAccMonitorResourceConfigWithAPIAssertions(name, logic, comparison, targetExpr string) string {
@@ -1571,11 +1572,19 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
-func TestAcc_Monitor_DNS_And_PING_IgnoreTimeoutAndGrace(t *testing.T) {
+func TestAcc_Monitor_DNS_IgnoreTimeoutAndGrace_And_PING_UsesTimeout(t *testing.T) {
 	dnsName := "acc-dns"
 	dnsDomain := testAccUniqueDomain(dnsName)
 	pingName := "acc-ping"
 	pingURL := testAccUniqueURL(pingName)
+	pingConfig := testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "ping" {
+  name     = %q
+  type     = "PING"
+  url      = %q
+  interval = 300
+}
+	`, pingName, pingURL)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -1601,20 +1610,19 @@ resource "uptimerobot_monitor" "dns" {
 				),
 			},
 			{
-				// PING with neither timeout nor grace_period
-				Config: testAccProviderConfig() + fmt.Sprintf(`
-resource "uptimerobot_monitor" "ping" {
-  name     = %q
-  type     = "PING"
-  url      = %q
-  interval = 300
-}
-`, pingName, pingURL),
+				// PING defaults timeout to 30 and never uses grace_period
+				Config: pingConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.ping", "type", "PING"),
-					resource.TestCheckNoResourceAttr("uptimerobot_monitor.ping", "timeout"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.ping", "timeout", "30"),
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.ping", "grace_period"),
 				),
+			},
+			{
+				// Ensure no drift after default timeout is materialized by API.
+				Config:             pingConfig,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
@@ -2116,7 +2124,7 @@ func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
 
 func TestAcc_Monitor_Config_SSLExpirationPeriodDays_Invalid(t *testing.T) {
 	baseName := acctest.RandomWithPrefix("acc-ssl-period")
-	baseDomain := testAccUniqueDomain(baseName)
+	baseURL := testAccUniqueURL(baseName)
 	invalidName := acctest.RandomWithPrefix("acc-ssl-period-invalid")
 	tooManyName := acctest.RandomWithPrefix("acc-ssl-period-too-many")
 	resource.Test(t, resource.TestCase{
@@ -2128,13 +2136,14 @@ func TestAcc_Monitor_Config_SSLExpirationPeriodDays_Invalid(t *testing.T) {
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
-  type     = "DNS"
+  type     = "HTTP"
   interval = 300
+  timeout  = 30
   config = {
     ssl_expiration_period_days = [-1, 366]
   }
 }
-`, invalidName, baseDomain),
+`, invalidName, baseURL),
 				ExpectError: regexp.MustCompile(
 					`(?s)` +
 						`Attribute config\.ssl_expiration_period_days\[Value\(-1\)\] value must be between[\s\S]*0 and 365, got: -1` +
@@ -2147,13 +2156,14 @@ resource "uptimerobot_monitor" "test" {
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
-  type     = "DNS"
+  type     = "HTTP"
   interval = 300
+  timeout  = 30
   config = {
     ssl_expiration_period_days = [0,1,2,3,4,5,6,7,8,9,10]
   }
 }
-`, tooManyName, baseDomain),
+`, tooManyName, baseURL),
 				ExpectError: regexp.MustCompile(
 					`Attribute config\.ssl_expiration_period_days (?:set|value) must contain at most 10\s+elements(?:, got: \d+)?`,
 				),
@@ -2411,14 +2421,15 @@ func TestAccMonitorResource_KeywordCaseType_Semantics(t *testing.T) {
 func TestAcc_Monitor_Config_SSLDays_Semantics(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-ssl-config")
 	res := "uptimerobot_monitor.test"
-	domain := testAccUniqueDomain(name)
+	url := testAccUniqueURL(name)
 
 	cfgSet := `
 resource "uptimerobot_monitor" "test" {
   name     = "` + name + `"
-  type     = "DNS"
-  url      = "` + domain + `"
+  type     = "HTTP"
+  url      = "` + url + `"
   interval = 300
+  timeout  = 30
 
   config = {
     ssl_expiration_period_days = [3, 5, 30, 69]
@@ -2429,9 +2440,10 @@ resource "uptimerobot_monitor" "test" {
 	cfgPreserve := `
 resource "uptimerobot_monitor" "test" {
   name     = "` + name + `"
-  type     = "DNS"
-  url      = "` + domain + `"
+  type     = "HTTP"
+  url      = "` + url + `"
   interval = 300
+  timeout  = 30
 
   config = {}
 }
@@ -2440,22 +2452,24 @@ resource "uptimerobot_monitor" "test" {
 	cfgClear := `
 resource "uptimerobot_monitor" "test" {
   name     = "` + name + `"
-  type     = "DNS"
-  url      = "` + domain + `"
+  type     = "HTTP"
+  url      = "` + url + `"
   interval = 300
+  timeout  = 30
 
   config = {
     ssl_expiration_period_days = []
   }
 }
 `
-	// Omit block entirely -> preserve remote values in state for DNS monitors
+	// Omit block entirely -> config is unmanaged for non-DNS types
 	cfgOmit := `
 resource "uptimerobot_monitor" "test" {
   name     = "` + name + `"
-  type     = "DNS"
-  url      = "` + domain + `"
+  type     = "HTTP"
+  url      = "` + url + `"
   interval = 300
+  timeout  = 30
 }
 `
 
@@ -2493,7 +2507,7 @@ resource "uptimerobot_monitor" "test" {
 					resource.TestCheckResourceAttr(res, "config.ssl_expiration_period_days.#", "0"),
 				),
 			},
-			// Omit block: preserve remote values for DNS monitors
+			// Omit block: preserve previously known remote SSL days
 			{
 				Config: cfgOmit,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -2610,33 +2624,35 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_SSLDays_Validators(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-ssl-validate")
-	domain := testAccUniqueDomain(name)
+	url := testAccUniqueURL(name)
 
 	tooMany := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "`+name+`"
-  type     = "DNS"
+  type     = "HTTP"
   url      = "%s"
   interval = 300
+  timeout  = 30
 
   config = {
     # 11 items (max 10)
     ssl_expiration_period_days = [0,1,2,3,4,5,6,7,8,9,10]
   }
 }
-`, domain)
+`, url)
 	outOfRange := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "`+name+`"
-  type     = "DNS"
+  type     = "HTTP"
   url      = "%s"
   interval = 300
+  timeout  = 30
 
   config = {
     ssl_expiration_period_days = [400]
   }
 }
-`, domain)
+`, url)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -2694,6 +2710,81 @@ resource "uptimerobot_monitor" "test" {
 			{
 				Config: cfgIPv4,
 				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv4Only"),
+				),
+			},
+			{
+				Config: cfgIPv6,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv6Only"),
+				),
+			},
+			{
+				Config:             cfgIPv6,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_IPVersion_SetAndUpdate_API(t *testing.T) {
+	t.Parallel()
+
+	name := acctest.RandomWithPrefix("acc-api-ip-version")
+	url := testAccUniqueURL(name)
+	res := "uptimerobot_monitor.test"
+
+	cfgIPv4 := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "API"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv4Only"
+    api_assertions = {
+      logic = "AND"
+      checks = [{
+        property   = "$.status"
+        comparison = "is_not_null"
+      }]
+    }
+  }
+}
+`, name, url)
+
+	cfgIPv6 := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "API"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv6Only"
+    api_assertions = {
+      logic = "AND"
+      checks = [{
+        property   = "$.status"
+        comparison = "is_not_null"
+      }]
+    }
+  }
+}
+`, name, url)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgIPv4,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "type", "API"),
 					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv4Only"),
 				),
 			},
@@ -2794,13 +2885,13 @@ resource "uptimerobot_monitor" "port" {
 	})
 }
 
-func TestAcc_Monitor_Config_IPVersion_AllowedForAPIAndUDP(t *testing.T) {
+func TestAcc_Monitor_Config_IPVersion_AllowsAPI_RejectsUDP(t *testing.T) {
 	t.Parallel()
 
 	apiName := acctest.RandomWithPrefix("acc-api-ipv")
-	dnsName := acctest.RandomWithPrefix("acc-dns-ipv")
+	udpName := acctest.RandomWithPrefix("acc-udp-ipv")
 	apiURL := testAccUniqueURL(apiName)
-	dnsDomain := testAccUniqueDomain(dnsName)
+	udpURL := testAccUniqueURL(udpName)
 
 	cfgAPIAllowed := fmt.Sprintf(`
 resource "uptimerobot_monitor" "api" {
@@ -2824,18 +2915,21 @@ resource "uptimerobot_monitor" "api" {
 `, apiName, apiURL)
 
 	cfgUnsupportedRejected := fmt.Sprintf(`
-resource "uptimerobot_monitor" "dns" {
+resource "uptimerobot_monitor" "udp" {
   name     = "%s"
-  type     = "DNS"
+  type     = "UDP"
   url      = "%s"
+  port     = 53
   interval = 300
 
   config = {
     ip_version = "ipv4Only"
-    dns_records = {}
+    udp = {
+      packet_loss_threshold = 100
+    }
   }
 }
-`, dnsName, dnsDomain)
+`, udpName, udpURL)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },

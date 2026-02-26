@@ -1,5 +1,27 @@
 ## Unreleased
 
+## 1.4.1 — 2026-02-26
+
+### Changed
+- Aligned `uptimerobot_monitor` timing semantics with current API v3 behavior:
+  - `timeout` is now treated as ignored only for `type = "DNS"` (not `PING`).
+  - `grace_period` remains heartbeat-only; for DNS it is warning-only and omitted from API writes.
+- Aligned monitor SSL config semantics with current API v3:
+  - `config.ssl_expiration_period_days` is now supported for `HTTP`/`KEYWORD`/`API` monitors.
+  - `config.ssl_expiration_period_days` is now rejected for `DNS` monitors.
+- Updated monitor schema/docs text to reflect current type-specific support for timeout and SSL-days config.
+
+### Fixed
+- Fixed PING monitor timeout handling in create/update/read/compare paths so provider state matches API behavior and avoids false drift.
+- Corrected DNS config warning text/logic to refer to DNS-managed fields only.
+
+### Tests/CI
+- Added/updated monitor validation tests for:
+  - `PING` timeout acceptance.
+  - `config.ssl_expiration_period_days` allow-list (`HTTP`/`API`) and reject-list (`DNS`).
+- Updated acceptance tests for SSL-days semantics under HTTP monitors.
+- Added acceptance regression coverage for API monitor `config.ip_version` set/update behavior.
+
 ## 1.4.0 — 2026-02-23
 
 ### Added
