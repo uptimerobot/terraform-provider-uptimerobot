@@ -70,7 +70,7 @@ jobs:
           go-version-file: 'go.mod'
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
 
@@ -108,7 +108,7 @@ jobs:
 
       - name: Setup Terraform
         if: matrix.app == 'terraform'
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ matrix.version }}
           terraform_wrapper: false
@@ -164,7 +164,7 @@ jobs:
 
       - name: Setup Terraform
         if: matrix.app == 'terraform'
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ matrix.version }}
           terraform_wrapper: false
