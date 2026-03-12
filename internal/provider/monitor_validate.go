@@ -106,6 +106,16 @@ func validateURL(
 		return
 	}
 
+	if monitorType == MonitorTypeHEARTBEAT {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("url"),
+			"url must not be set for HEARTBEAT monitors",
+			"HEARTBEAT monitors use a server-generated URL. Remove url from the configuration; "+
+				"the generated URL is available as a read-only attribute after creation.",
+		)
+		return
+	}
+
 	raw := strings.TrimSpace(data.URL.ValueString())
 
 	switch monitorType {
