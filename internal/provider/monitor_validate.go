@@ -94,7 +94,7 @@ func validateURL(
 	if data.URL.IsUnknown() {
 		return
 	}
-	if data.URL.IsNull() {
+	if data.URL.IsNull() || strings.TrimSpace(data.URL.ValueString()) == "" {
 		if monitorType != MonitorTypeHEARTBEAT {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("url"),
@@ -107,9 +107,6 @@ func validateURL(
 	}
 
 	raw := strings.TrimSpace(data.URL.ValueString())
-	if raw == "" {
-		return
-	}
 
 	switch monitorType {
 	case MonitorTypeHTTP, MonitorTypeKEYWORD, MonitorTypeAPI:
