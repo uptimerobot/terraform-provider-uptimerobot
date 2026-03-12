@@ -186,9 +186,11 @@ func (r *monitorResource) buildCreateRequest(
 ) (*client.CreateMonitorRequest, string) {
 	req := &client.CreateMonitorRequest{
 		Type:     client.MonitorType(plan.Type.ValueString()),
-		URL:      unescapeHTML(plan.URL.ValueString()),
 		Name:     unescapeHTML(plan.Name.ValueString()),
 		Interval: int(plan.Interval.ValueInt64()),
+	}
+	if !plan.URL.IsNull() && !plan.URL.IsUnknown() {
+		req.URL = unescapeHTML(plan.URL.ValueString())
 	}
 
 	if !plan.AuthType.IsNull() && !plan.AuthType.IsUnknown() {
