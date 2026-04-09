@@ -50,7 +50,7 @@ tidy:
 # Install development dependencies
 .PHONY: deps
 deps:
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 # Run all pre-commit checks
 .PHONY: pre-commit
