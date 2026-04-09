@@ -1,5 +1,11 @@
 ## Unreleased
 
+## 1.4.2 — 2026-04-09
+
+### Fixed
+- Fixed `uptimerobot_monitor` heartbeat URL handling so `type = "HEARTBEAT"` uses the server-generated URL consistently.
+- Stopped sending the computed heartbeat URL back on update, preventing drift and preserving the API-generated heartbeat endpoint behavior.
+
 ## 1.4.1 — 2026-02-26
 
 ### Changed
