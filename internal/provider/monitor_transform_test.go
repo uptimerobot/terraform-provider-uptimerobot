@@ -168,6 +168,37 @@ func TestApplyUpdatedMonitorToState_ManagedEmptyConfig_NotSent_Preserved(t *test
 	}
 }
 
+func TestBuildUpdateRequest_HeartbeatOmitsServerGeneratedURL(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	plan := monitorResourceModel{
+		Type:        types.StringValue(MonitorTypeHEARTBEAT),
+		Name:        types.StringValue("heartbeat"),
+		URL:         types.StringValue("https://heartbeat.uptimerobot.com/m123"),
+		Interval:    types.Int64Value(300),
+		GracePeriod: types.Int64Value(120),
+	}
+	resp := &resource.UpdateResponse{}
+
+	req, _ := buildUpdateRequest(ctx, plan, monitorResourceModel{}, true, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+	if req == nil {
+		t.Fatal("expected non-nil update request")
+	}
+	if req.URL != "" {
+		t.Fatalf("expected heartbeat update to omit server-generated url, got %q", req.URL)
+	}
+	if req.GracePeriod == nil || *req.GracePeriod != 120 {
+		t.Fatalf("expected grace_period=120, got %#v", req.GracePeriod)
+	}
+	if req.Timeout != nil {
+		t.Fatalf("expected timeout to be omitted for heartbeat, got %#v", req.Timeout)
+	}
+}
+
 func TestFlattenConfigToState_DNSFromAPI_PopulatesSets(t *testing.T) {
 	t.Parallel()
 
