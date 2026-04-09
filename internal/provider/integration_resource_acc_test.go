@@ -5,8 +5,8 @@ package provider
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -49,7 +49,7 @@ provider "uptimerobot" {
 // Helpers
 
 func randomName(prefix string) string {
-	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano()%1e9)
+	return acctest.RandomWithPrefix(prefix)
 }
 
 func testAccOptionalEnv(key string) (string, bool) {
@@ -94,6 +94,11 @@ func TestAccIntegrationResource(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "name", name2),
 					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "value", value),
 				),
+			},
+			{
+				Config:             cfgUpdate,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 			{
 				ResourceName:            "uptimerobot_integration.webhook",
@@ -161,6 +166,11 @@ resource "uptimerobot_integration" "test" {
 				// If the JSON plan modifier works, there should be no changes
 				// (i.e., implicit "expect empty plan")
 			},
+			{
+				Config:             cfg2,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
 		},
 	})
 }
@@ -213,6 +223,11 @@ resource "uptimerobot_integration" "test" {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "custom_value", ""),
 				),
+			},
+			{
+				Config:             cfgClear,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
@@ -269,6 +284,11 @@ resource "uptimerobot_integration" "test" {
 					resource.TestCheckResourceAttr(resourceName, "auto_resolve", "false"),
 				),
 			},
+			{
+				Config:             cfg2,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
 		},
 	})
 }
@@ -321,6 +341,81 @@ resource "uptimerobot_integration" "test" {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "priority", "Normal"),
 				),
+			},
+			{
+				Config:             cfg2,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Integration_Webhook_DuplicateConflict(t *testing.T) {
+	suffix := acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum)
+	namePrimary := randomName("acc-webhook-dup-primary")
+	nameDuplicate := randomName("acc-webhook-dup-duplicate")
+	value := fmt.Sprintf("https://httpbin.org/anything?dup=%s", suffix)
+
+	cfgSingle := fmt.Sprintf(`
+%s
+resource "uptimerobot_integration" "primary" {
+  name                     = %q
+  type                     = "webhook"
+  value                    = %q
+  enable_notifications_for = 1
+  ssl_expiration_reminder  = true
+  send_as_json             = true
+  send_as_query_string     = false
+  send_as_post_parameters  = false
+}
+`, testAccIntegrationProviderConfig(), namePrimary, value)
+
+	cfgDuplicate := fmt.Sprintf(`
+%s
+resource "uptimerobot_integration" "primary" {
+  name                     = %q
+  type                     = "webhook"
+  value                    = %q
+  enable_notifications_for = 1
+  ssl_expiration_reminder  = true
+  send_as_json             = true
+  send_as_query_string     = false
+  send_as_post_parameters  = false
+}
+
+resource "uptimerobot_integration" "duplicate" {
+  name                     = %q
+  type                     = "webhook"
+  value                    = %q
+  enable_notifications_for = 1
+  ssl_expiration_reminder  = true
+  send_as_json             = true
+  send_as_query_string     = false
+  send_as_post_parameters  = false
+}
+`, testAccIntegrationProviderConfig(), namePrimary, value, nameDuplicate, value)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { testAccIntegrationPreCheck(t) },
+		CheckDestroy:             testAccCheckIntegrationDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgSingle,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_integration.primary", "name", namePrimary),
+					resource.TestCheckResourceAttr("uptimerobot_integration.primary", "type", "webhook"),
+				),
+			},
+			{
+				Config:      cfgDuplicate,
+				ExpectError: regexp.MustCompile(`(?i)integration already exists|already exists|status code 409`),
+			},
+			{
+				Config:             cfgSingle,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
