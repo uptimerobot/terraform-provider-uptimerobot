@@ -301,3 +301,68 @@ resource "uptimerobot_maintenance_window" "mw" {
 		},
 	})
 }
+
+func TestAccMaintenanceWindow_IntervalTransitions_StableRead(t *testing.T) {
+	name := acctest.RandomWithPrefix("mw-interval-transitions")
+	cfgWeekly := testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_maintenance_window" "mw" {
+  name     = "%s"
+  interval = "weekly"
+  time     = "05:00:00"
+  duration = 40
+  days     = [2,6]
+}
+`, name)
+	cfgMonthly := testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_maintenance_window" "mw" {
+  name     = "%s"
+  interval = "monthly"
+  time     = "05:00:00"
+  duration = 40
+  days     = [-1, 15]
+}
+`, name)
+	cfgDaily := testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_maintenance_window" "mw" {
+  name     = "%s"
+  interval = "daily"
+  time     = "05:00:00"
+  duration = 40
+}
+`, name)
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgWeekly,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.mw", "interval", "weekly"),
+					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.mw", "days.#", "2"),
+				),
+			},
+			{
+				Config: cfgMonthly,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.mw", "interval", "monthly"),
+					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.mw", "days.#", "2"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_maintenance_window.mw", "days.*", "-1"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_maintenance_window.mw", "days.*", "15"),
+				),
+			},
+			{
+				Config: cfgDaily,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_maintenance_window.mw", "interval", "daily"),
+					resource.TestCheckNoResourceAttr("uptimerobot_maintenance_window.mw", "days"),
+				),
+			},
+			{
+				Config:             cfgDaily,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}

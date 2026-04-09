@@ -1626,6 +1626,60 @@ resource "uptimerobot_monitor" "dns" {
 	})
 }
 
+func TestAcc_Monitor_PING_CustomTimeout_SetAndUpdate(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-ping-timeout")
+	url := testAccUniqueURL(name)
+	res := "uptimerobot_monitor.test"
+
+	cfg10 := testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "PING"
+  url      = "%s"
+  interval = 300
+  timeout  = 10
+}
+`, name, url)
+
+	cfg45 := testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "PING"
+  url      = "%s"
+  interval = 300
+  timeout  = 45
+}
+`, name, url)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: cfg10,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "type", "PING"),
+					resource.TestCheckResourceAttr(res, "timeout", "10"),
+					resource.TestCheckNoResourceAttr(res, "grace_period"),
+				),
+			},
+			{
+				Config: cfg45,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "timeout", "45"),
+					resource.TestCheckNoResourceAttr(res, "grace_period"),
+				),
+			},
+			{
+				Config:             cfg45,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 func TestAcc_Monitor_Heartbeat_UsesGrace(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-heartbeat")
 	resource.Test(t, resource.TestCase{
@@ -2661,8 +2715,6 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_Config_IPVersion_SetAndUpdate(t *testing.T) {
-	t.Parallel()
-
 	name := acctest.RandomWithPrefix("acc-ip-version")
 	url := testAccUniqueURL(name)
 	res := "uptimerobot_monitor.test"
@@ -2719,8 +2771,6 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_Config_IPVersion_SetAndUpdate_API(t *testing.T) {
-	t.Parallel()
-
 	name := acctest.RandomWithPrefix("acc-api-ip-version")
 	url := testAccUniqueURL(name)
 	res := "uptimerobot_monitor.test"
@@ -2794,8 +2844,6 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_Config_IPVersion_AllowedForPingAndPort(t *testing.T) {
-	t.Parallel()
-
 	pingName := acctest.RandomWithPrefix("acc-ping-ipv")
 	portName := acctest.RandomWithPrefix("acc-port-ipv")
 	pingURL := testAccUniqueURL(pingName)
@@ -2876,8 +2924,6 @@ resource "uptimerobot_monitor" "port" {
 }
 
 func TestAcc_Monitor_Config_IPVersion_AllowsAPI_RejectsUDP(t *testing.T) {
-	t.Parallel()
-
 	apiName := acctest.RandomWithPrefix("acc-api-ipv")
 	udpName := acctest.RandomWithPrefix("acc-udp-ipv")
 	apiURL := testAccUniqueURL(apiName)
@@ -2915,6 +2961,7 @@ resource "uptimerobot_monitor" "udp" {
   config = {
     ip_version = "ipv4Only"
     udp = {
+      payload               = "ping"
       packet_loss_threshold = 100
     }
   }
@@ -2940,8 +2987,6 @@ resource "uptimerobot_monitor" "udp" {
 }
 
 func TestAcc_Monitor_Config_IPVersion_Validators(t *testing.T) {
-	t.Parallel()
-
 	name := acctest.RandomWithPrefix("acc-ip-version-validate")
 	httpURL := testAccUniqueURL(name)
 	dnsDomain := testAccUniqueDomain(name)
