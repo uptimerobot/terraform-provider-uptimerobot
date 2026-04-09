@@ -22,10 +22,22 @@ resource "uptimerobot_monitor" "test" {
   timeout     = 30
 }
 
+# Test Heartbeat Monitor Resource
+resource "uptimerobot_monitor" "heartbeat" {
+  name         = "Test Heartbeat"
+  type         = "HEARTBEAT"
+  interval     = 300
+  grace_period = 300
+}
+
 # Test PSP Resource
 resource "uptimerobot_psp" "test" {
   name     = "Test PSP"
   type     = "public"
   sort     = "name-asc"
   monitors = [uptimerobot_monitor.test.id]
+}
+
+output "heartbeat_url" {
+  value = uptimerobot_monitor.heartbeat.url
 }

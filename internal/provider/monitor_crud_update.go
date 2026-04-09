@@ -163,8 +163,8 @@ func buildUpdateRequest(
 		Name:     unescapeHTML(plan.Name.ValueString()),
 	}
 
-	// URL is optional on update and should be send only if managed
-	if !plan.URL.IsNull() && !plan.URL.IsUnknown() {
+	// HEARTBEAT URLs are server-generated and must never be echoed back on update.
+	if strings.ToUpper(plan.Type.ValueString()) != MonitorTypeHEARTBEAT && !plan.URL.IsNull() && !plan.URL.IsUnknown() {
 		req.URL = unescapeHTML(plan.URL.ValueString())
 	}
 
