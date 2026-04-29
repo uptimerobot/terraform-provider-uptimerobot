@@ -177,17 +177,24 @@ func TestWebhookStateKeepsPreviousValuesWhenAPIOmitsConfig(t *testing.T) {
 	t.Parallel()
 
 	prevBool := types.BoolValue(true)
-	gotBool := webhookBoolState(types.BoolValue(false), false, prevBool, false)
+	gotBool := webhookBoolState(types.BoolValue(false), false, prevBool, nil)
 	if gotBool.IsNull() || !gotBool.ValueBool() {
 		t.Fatalf("expected previous webhook bool value to be preserved")
 	}
 
-	gotTopLevelBool := webhookBoolState(types.BoolValue(false), false, types.BoolNull(), true)
+	topLevelTrue := true
+	gotTopLevelBool := webhookBoolState(types.BoolValue(false), false, types.BoolNull(), &topLevelTrue)
 	if gotTopLevelBool.IsNull() || !gotTopLevelBool.ValueBool() {
 		t.Fatalf("expected top-level webhook bool value to be used")
 	}
 
-	gotKnownFalse := webhookBoolState(types.BoolValue(false), true, prevBool, true)
+	topLevelFalse := false
+	gotTopLevelFalse := webhookBoolState(types.BoolValue(true), false, prevBool, &topLevelFalse)
+	if gotTopLevelFalse.IsNull() || gotTopLevelFalse.ValueBool() {
+		t.Fatalf("expected explicit false from top-level webhook field to win")
+	}
+
+	gotKnownFalse := webhookBoolState(types.BoolValue(false), true, prevBool, &topLevelTrue)
 	if gotKnownFalse.IsNull() || gotKnownFalse.ValueBool() {
 		t.Fatalf("expected explicit false from webhook config to win")
 	}

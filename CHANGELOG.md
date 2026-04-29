@@ -3,6 +3,7 @@
 ## 1.4.3 — 2026-04-29
 
 ### Fixed
+
 - Preserved server-generated heartbeat monitor URLs by omitting heartbeat `url` values from provider create/update requests.
 - Fixed webhook integration refresh to parse `postValue` whether the API returns it as a JSON object or a JSON-encoded string.
 - Preserved webhook send options and post value during refresh when the API omits webhook config fields, preventing false `send_as_json` drift.

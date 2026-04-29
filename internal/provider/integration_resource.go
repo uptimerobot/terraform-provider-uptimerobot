@@ -344,12 +344,12 @@ func normalizeWebhookPostValueString(value string) (types.String, bool, error) {
 	return types.StringValue(value), true, nil
 }
 
-func webhookBoolState(parsed types.Bool, known bool, prev types.Bool, topLevel bool) types.Bool {
+func webhookBoolState(parsed types.Bool, known bool, prev types.Bool, topLevel *bool) types.Bool {
 	if known {
 		return parsed
 	}
-	if topLevel {
-		return types.BoolValue(true)
+	if topLevel != nil {
+		return types.BoolValue(*topLevel)
 	}
 	if !prev.IsNull() && !prev.IsUnknown() {
 		return prev
@@ -875,7 +875,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		// Set webhook-specific fields from parsed config
 		state.SendAsJSON = webhookBoolState(webhookFields.SendAsJSON, webhookFields.SendAsJSONKnown, prev.SendAsJSON, integration.SendAsJSON)
 		state.SendAsQueryString = webhookBoolState(webhookFields.SendAsQueryString, webhookFields.SendAsQueryKnown, prev.SendAsQueryString, integration.SendAsQueryString)
-		state.SendAsPostParameters = webhookBoolState(webhookFields.SendAsPostParameters, webhookFields.SendAsPostKnown, prev.SendAsPostParameters, false)
+		state.SendAsPostParameters = webhookBoolState(webhookFields.SendAsPostParameters, webhookFields.SendAsPostKnown, prev.SendAsPostParameters, integration.SendAsPostParameters)
 		postValue, err := webhookPostValueState(webhookFields.PostValue, webhookFields.PostValueKnown, prev.PostValue, integration.PostValue)
 		if err != nil {
 			resp.Diagnostics.AddError(
