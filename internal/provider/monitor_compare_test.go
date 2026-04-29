@@ -198,3 +198,48 @@ func TestFieldsStillDifferent_IncludesHTTPMethodTypeAndType(t *testing.T) {
 		t.Fatalf("expected diff to include http_method_type, got: %v", diff)
 	}
 }
+
+func TestEqualComparable_ResponseTimeThresholdMissingEchoIsAccepted(t *testing.T) {
+	t.Parallel()
+
+	wantThreshold := 3000
+	gotThreshold := 5000
+
+	if !equalComparable(
+		monComparable{ResponseTimeThreshold: &wantThreshold},
+		monComparable{},
+	) {
+		t.Fatalf("expected missing API response_time_threshold echo to be accepted")
+	}
+
+	if equalComparable(
+		monComparable{ResponseTimeThreshold: &wantThreshold},
+		monComparable{ResponseTimeThreshold: &gotThreshold},
+	) {
+		t.Fatalf("expected mismatched response_time_threshold echo to differ")
+	}
+
+	diff := fieldsStillDifferent(
+		monComparable{ResponseTimeThreshold: &wantThreshold},
+		monComparable{},
+	)
+	for _, field := range diff {
+		if field == "response_time_threshold" {
+			t.Fatalf("did not expect missing response_time_threshold echo to be reported as a diff")
+		}
+	}
+
+	diff = fieldsStillDifferent(
+		monComparable{ResponseTimeThreshold: &wantThreshold},
+		monComparable{ResponseTimeThreshold: &gotThreshold},
+	)
+	found := false
+	for _, field := range diff {
+		if field == "response_time_threshold" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected mismatched response_time_threshold echo to be reported as a diff")
+	}
+}

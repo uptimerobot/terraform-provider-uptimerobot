@@ -131,3 +131,73 @@ func TestStickyStringPreferPrevOnMismatch(t *testing.T) {
 		t.Fatalf("expected api value when previous is null, got=%q", got.ValueString())
 	}
 }
+
+func TestParseWebhookStateFields_PostValueString(t *testing.T) {
+	t.Parallel()
+
+	fields, err := parseWebhookStateFields(`{"postValue":"{\"b\":\"x\",\"a\":1}","sendJSON":"1","sendQuery":"0","sendPost":"0"}`)
+	if err != nil {
+		t.Fatalf("parseWebhookStateFields returned error: %v", err)
+	}
+
+	if fields.PostValue.IsNull() || fields.PostValue.ValueString() != `{"a":1,"b":"x"}` {
+		t.Fatalf("expected normalized post_value, got %q", fields.PostValue.ValueString())
+	}
+	if !fields.PostValueKnown {
+		t.Fatalf("expected postValue to be marked known")
+	}
+	if !fields.SendAsJSON.ValueBool() || !fields.SendAsJSONKnown {
+		t.Fatalf("expected send_as_json to be true and known")
+	}
+	if fields.SendAsQueryString.ValueBool() || !fields.SendAsQueryKnown {
+		t.Fatalf("expected send_as_query_string to be false and known")
+	}
+	if fields.SendAsPostParameters.ValueBool() || !fields.SendAsPostKnown {
+		t.Fatalf("expected send_as_post_parameters to be false and known")
+	}
+}
+
+func TestParseWebhookStateFields_PostValueObject(t *testing.T) {
+	t.Parallel()
+
+	fields, err := parseWebhookStateFields(`{"postValue":{"b":"x","a":1},"sendJSON":true,"sendQuery":false,"sendPost":0}`)
+	if err != nil {
+		t.Fatalf("parseWebhookStateFields returned error: %v", err)
+	}
+
+	if fields.PostValue.IsNull() || fields.PostValue.ValueString() != `{"a":1,"b":"x"}` {
+		t.Fatalf("expected normalized post_value, got %q", fields.PostValue.ValueString())
+	}
+	if !fields.SendAsJSON.ValueBool() {
+		t.Fatalf("expected send_as_json to be true")
+	}
+}
+
+func TestWebhookStateKeepsPreviousValuesWhenAPIOmitsConfig(t *testing.T) {
+	t.Parallel()
+
+	prevBool := types.BoolValue(true)
+	gotBool := webhookBoolState(types.BoolValue(false), false, prevBool, false)
+	if gotBool.IsNull() || !gotBool.ValueBool() {
+		t.Fatalf("expected previous webhook bool value to be preserved")
+	}
+
+	gotTopLevelBool := webhookBoolState(types.BoolValue(false), false, types.BoolNull(), true)
+	if gotTopLevelBool.IsNull() || !gotTopLevelBool.ValueBool() {
+		t.Fatalf("expected top-level webhook bool value to be used")
+	}
+
+	gotKnownFalse := webhookBoolState(types.BoolValue(false), true, prevBool, true)
+	if gotKnownFalse.IsNull() || gotKnownFalse.ValueBool() {
+		t.Fatalf("expected explicit false from webhook config to win")
+	}
+
+	prevPostValue := types.StringValue(`{"message":"existing"}`)
+	gotPostValue, err := webhookPostValueState(types.StringNull(), false, prevPostValue, "")
+	if err != nil {
+		t.Fatalf("webhookPostValueState returned error: %v", err)
+	}
+	if gotPostValue.IsNull() || gotPostValue.ValueString() != prevPostValue.ValueString() {
+		t.Fatalf("expected previous post_value to be preserved, got %q", gotPostValue.ValueString())
+	}
+}
