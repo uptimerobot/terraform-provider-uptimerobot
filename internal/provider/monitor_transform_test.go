@@ -168,6 +168,37 @@ func TestApplyUpdatedMonitorToState_ManagedEmptyConfig_NotSent_Preserved(t *test
 	}
 }
 
+func TestBuildCreateRequest_HeartbeatOmitsURL(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	plan := monitorResourceModel{
+		Type:        types.StringValue(MonitorTypeHEARTBEAT),
+		Name:        types.StringValue("heartbeat"),
+		URL:         types.StringValue("client-provided-hash"),
+		Interval:    types.Int64Value(300),
+		GracePeriod: types.Int64Value(120),
+	}
+	resp := &resource.CreateResponse{}
+
+	req, _ := (&monitorResource{}).buildCreateRequest(ctx, plan, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+	if req == nil {
+		t.Fatal("expected non-nil create request")
+	}
+	if req.URL != "" {
+		t.Fatalf("expected heartbeat create to omit url, got %q", req.URL)
+	}
+	if req.GracePeriod == nil || *req.GracePeriod != 120 {
+		t.Fatalf("expected grace_period=120, got %#v", req.GracePeriod)
+	}
+	if req.Timeout != nil {
+		t.Fatalf("expected timeout to be omitted for heartbeat, got %#v", req.Timeout)
+	}
+}
+
 func TestBuildUpdateRequest_HeartbeatOmitsServerGeneratedURL(t *testing.T) {
 	t.Parallel()
 
