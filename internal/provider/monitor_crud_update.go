@@ -52,7 +52,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 	configSent := updateReq.Config != nil
 
-	initialUpdated, err := r.client.UpdateMonitor(ctx, id, updateReq)
+	initialUpdated, err := r.updateMonitorWithRetry(ctx, id, updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating monitor", "Could not update monitor: "+err.Error())
 		return
@@ -116,6 +116,41 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 }
 
 // Helpers
+
+func (r *monitorResource) updateMonitorWithRetry(ctx context.Context, id int64, req *client.UpdateMonitorRequest) (*client.Monitor, error) {
+	backoffs := []time.Duration{
+		500 * time.Millisecond,
+		1 * time.Second,
+		2 * time.Second,
+		3 * time.Second,
+		5 * time.Second,
+	}
+	maxAttempts := len(backoffs) + 1
+
+	var updated *client.Monitor
+	var err error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		updated, err = r.client.UpdateMonitor(ctx, id, req)
+		if err == nil {
+			return updated, nil
+		}
+		if !shouldRetryUpdateMonitor(err, attempt, maxAttempts) {
+			return nil, err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoffs[attempt]):
+		}
+	}
+
+	return nil, err
+}
+
+func shouldRetryUpdateMonitor(err error, attempt, maxAttempts int) bool {
+	return err != nil && isTempServerErr(err) && attempt < maxAttempts-1
+}
 
 func validateUpdateHighLevel(plan monitorResourceModel, resp *resource.UpdateResponse) bool {
 	t := plan.Type.ValueString()
