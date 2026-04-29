@@ -42,6 +42,45 @@ func TestValidateNoHTMLEntities_AllowsLiteralAmpersandToken(t *testing.T) {
 	}
 }
 
+func TestValidateURL_HeartbeatOmittedURL(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{URL: types.StringNull()}
+
+	validateURL(context.TODO(), MonitorTypeHEARTBEAT, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for omitted heartbeat url, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateURL_HeartbeatRejectsEmptyURL(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{URL: types.StringValue("")}
+
+	validateURL(context.TODO(), MonitorTypeHEARTBEAT, data, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error for explicitly empty heartbeat url")
+	}
+}
+
+func TestValidateURL_HeartbeatRejectsNonEmptyURL(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{URL: types.StringValue("https://heartbeat.uptimerobot.com/m123-token")}
+
+	validateURL(context.TODO(), MonitorTypeHEARTBEAT, data, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error for configured heartbeat url")
+	}
+}
+
 func TestValidatePortMonitor_PortType_AllowsUnknownPort(t *testing.T) {
 	resp := &resource.ValidateConfigResponse{}
 	data := &monitorResourceModel{Port: types.Int64Unknown()}
