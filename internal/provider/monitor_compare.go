@@ -741,7 +741,7 @@ func equalComparable(want, got monComparable) bool {
 	if want.CheckSSLErrors != nil && (got.CheckSSLErrors == nil || *want.CheckSSLErrors != *got.CheckSSLErrors) {
 		return false
 	}
-	if want.ResponseTimeThreshold != nil && (got.ResponseTimeThreshold == nil || *want.ResponseTimeThreshold != *got.ResponseTimeThreshold) {
+	if want.ResponseTimeThreshold != nil && got.ResponseTimeThreshold != nil && *want.ResponseTimeThreshold != *got.ResponseTimeThreshold {
 		return false
 	}
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
@@ -860,7 +860,7 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	if want.CheckSSLErrors != nil && (got.CheckSSLErrors == nil || *want.CheckSSLErrors != *got.CheckSSLErrors) {
 		f = append(f, "check_ssl_errors")
 	}
-	if want.ResponseTimeThreshold != nil && (got.ResponseTimeThreshold == nil || *want.ResponseTimeThreshold != *got.ResponseTimeThreshold) {
+	if want.ResponseTimeThreshold != nil && got.ResponseTimeThreshold != nil && *want.ResponseTimeThreshold != *got.ResponseTimeThreshold {
 		f = append(f, "response_time_threshold")
 	}
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {

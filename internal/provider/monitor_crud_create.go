@@ -189,7 +189,8 @@ func (r *monitorResource) buildCreateRequest(
 		Name:     unescapeHTML(plan.Name.ValueString()),
 		Interval: int(plan.Interval.ValueInt64()),
 	}
-	if !plan.URL.IsNull() && !plan.URL.IsUnknown() {
+	// HEARTBEAT URLs are server-generated and must never be sent on create.
+	if strings.ToUpper(plan.Type.ValueString()) != MonitorTypeHEARTBEAT && !plan.URL.IsNull() && !plan.URL.IsUnknown() {
 		req.URL = unescapeHTML(plan.URL.ValueString())
 	}
 

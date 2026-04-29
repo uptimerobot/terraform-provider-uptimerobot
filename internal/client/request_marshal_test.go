@@ -33,6 +33,43 @@ func TestUpdateMonitorRequest_AssignedAlertContacts_JSON(t *testing.T) {
 	}
 }
 
+func TestMonitorRequests_EmptyURL_JSON(t *testing.T) {
+	updateReq := UpdateMonitorRequest{
+		Name:     "heartbeat",
+		Type:     MonitorTypeHeartbeat,
+		Interval: 300,
+	}
+	updateRaw, err := json.Marshal(updateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(updateRaw), `"url"`) {
+		t.Fatalf("expected empty update url to be omitted, got %s", updateRaw)
+	}
+
+	createReq := CreateMonitorRequest{
+		Name:     "heartbeat",
+		Type:     MonitorTypeHeartbeat,
+		Interval: 300,
+	}
+	createRaw, err := json.Marshal(createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(createRaw), `"url"`) {
+		t.Fatalf("expected empty create url to be omitted, got %s", createRaw)
+	}
+
+	createReq.URL = "https://example.com/health"
+	createRaw, err = json.Marshal(createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(createRaw), `"url":"https://example.com/health"`) {
+		t.Fatalf("expected non-empty create url to be encoded, got %s", createRaw)
+	}
+}
+
 func TestCreateMonitorRequest_Config_JSON(t *testing.T) {
 	req := CreateMonitorRequest{
 		Name:     "dns-monitor",

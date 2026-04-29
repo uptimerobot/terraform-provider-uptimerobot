@@ -85,6 +85,32 @@ func TestClient_Headers_SameHostRedirect(t *testing.T) {
 	}
 }
 
+func TestIntegrationWebhookBooleansTrackPresence(t *testing.T) {
+	t.Parallel()
+
+	var omitted Integration
+	if err := json.Unmarshal([]byte(`{}`), &omitted); err != nil {
+		t.Fatalf("unmarshal omitted fields: %v", err)
+	}
+	if omitted.SendAsJSON != nil || omitted.SendAsQueryString != nil || omitted.SendAsPostParameters != nil {
+		t.Fatalf("expected omitted webhook booleans to be nil")
+	}
+
+	var explicitFalse Integration
+	if err := json.Unmarshal([]byte(`{"sendAsJSON":false,"sendAsQueryString":false,"sendAsPostParameters":false}`), &explicitFalse); err != nil {
+		t.Fatalf("unmarshal explicit false fields: %v", err)
+	}
+	if explicitFalse.SendAsJSON == nil || *explicitFalse.SendAsJSON {
+		t.Fatalf("expected explicit sendAsJSON=false to be preserved")
+	}
+	if explicitFalse.SendAsQueryString == nil || *explicitFalse.SendAsQueryString {
+		t.Fatalf("expected explicit sendAsQueryString=false to be preserved")
+	}
+	if explicitFalse.SendAsPostParameters == nil || *explicitFalse.SendAsPostParameters {
+		t.Fatalf("expected explicit sendAsPostParameters=false to be preserved")
+	}
+}
+
 func TestSanitizeValue_RedactsSensitiveKeysNested(t *testing.T) {
 	v := any(map[string]any{
 		"password": "abc",

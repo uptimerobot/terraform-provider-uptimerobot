@@ -25,7 +25,7 @@ const (
 // CreateMonitorRequest represents the request to create a new monitor.
 type CreateMonitorRequest struct {
 	Name                     string                `json:"friendlyName"`
-	URL                      string                `json:"url"`
+	URL                      string                `json:"url,omitempty"`
 	Type                     MonitorType           `json:"type"`
 	Interval                 int                   `json:"interval"`
 	Timeout                  *int                  `json:"timeout,omitempty"`
@@ -59,7 +59,7 @@ type CreateMonitorRequest struct {
 // UpdateMonitorRequest represents the request to update an existing monitor.
 type UpdateMonitorRequest struct {
 	Name                     string                 `json:"friendlyName"`
-	URL                      string                 `json:"url"`
+	URL                      string                 `json:"url,omitempty"`
 	Type                     MonitorType            `json:"type"`
 	Interval                 int                    `json:"interval"`
 	Timeout                  *int                   `json:"timeout,omitempty"`

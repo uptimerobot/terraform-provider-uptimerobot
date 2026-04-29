@@ -21,9 +21,10 @@ type Integration struct {
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 
 	// Webhook specific fields
-	SendAsJSON        bool   `json:"sendAsJSON,omitempty"`
-	SendAsQueryString bool   `json:"sendAsQueryString,omitempty"`
-	PostValue         string `json:"postValue,omitempty"`
+	SendAsJSON           *bool  `json:"sendAsJSON,omitempty"`
+	SendAsQueryString    *bool  `json:"sendAsQueryString,omitempty"`
+	SendAsPostParameters *bool  `json:"sendAsPostParameters,omitempty"`
+	PostValue            string `json:"postValue,omitempty"`
 
 	// Pushover specific field
 	Priority string `json:"priority,omitempty"`

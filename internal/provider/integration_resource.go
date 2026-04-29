@@ -58,10 +58,10 @@ func convertNotificationsForFromString(value string) int64 {
 
 // webhookConfig represents the webhook configuration stored in customValue.
 type webhookConfig struct {
-	PostValue map[string]interface{} `json:"postValue,omitempty"`
-	SendJSON  string                 `json:"sendJSON,omitempty"`
-	SendQuery string                 `json:"sendQuery,omitempty"`
-	SendPost  string                 `json:"sendPost,omitempty"`
+	PostValue json.RawMessage `json:"postValue,omitempty"`
+	SendJSON  json.RawMessage `json:"sendJSON,omitempty"`
+	SendQuery json.RawMessage `json:"sendQuery,omitempty"`
+	SendPost  json.RawMessage `json:"sendPost,omitempty"`
 }
 
 func isTempServerErr(err error) bool {
@@ -218,6 +218,10 @@ type webhookStateFields struct {
 	SendAsPostParameters types.Bool
 	PostValue            types.String
 	CustomValue          types.String
+	SendAsJSONKnown      bool
+	SendAsQueryKnown     bool
+	SendAsPostKnown      bool
+	PostValueKnown       bool
 }
 
 // parseWebhookStateFields parses webhook configuration and returns the state fields.
@@ -228,26 +232,143 @@ func parseWebhookStateFields(customValue string) (*webhookStateFields, error) {
 		return nil, fmt.Errorf("could not parse webhook configuration from API response: %w", err)
 	}
 
-	// Set webhook-specific fields from parsed config
-	fields := &webhookStateFields{
-		SendAsJSON:           types.BoolValue(webhookConfig.SendJSON == "1"),
-		SendAsQueryString:    types.BoolValue(webhookConfig.SendQuery == "1"),
-		SendAsPostParameters: types.BoolValue(webhookConfig.SendPost == "1"),
-		CustomValue:          types.StringNull(), // Webhook integrations don't use custom_value
+	sendAsJSON, sendAsJSONKnown, err := webhookFlagFromRaw(webhookConfig.SendJSON)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse sendJSON from webhook configuration: %w", err)
+	}
+	sendAsQuery, sendAsQueryKnown, err := webhookFlagFromRaw(webhookConfig.SendQuery)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse sendQuery from webhook configuration: %w", err)
+	}
+	sendAsPost, sendAsPostKnown, err := webhookFlagFromRaw(webhookConfig.SendPost)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse sendPost from webhook configuration: %w", err)
+	}
+	postValue, postValueKnown, err := webhookPostValueFromRaw(webhookConfig.PostValue)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse postValue from webhook configuration: %w", err)
 	}
 
-	// Set PostValue from parsed config - convert object back to JSON string for user
-	if webhookConfig.PostValue != nil {
-		postValueJSON, err := json.Marshal(webhookConfig.PostValue)
-		if err != nil {
-			return nil, fmt.Errorf("could not marshal post value from webhook configuration: %w", err)
-		}
-		fields.PostValue = types.StringValue(string(postValueJSON))
-	} else {
-		fields.PostValue = types.StringNull()
+	fields := &webhookStateFields{
+		SendAsJSON:           sendAsJSON,
+		SendAsQueryString:    sendAsQuery,
+		SendAsPostParameters: sendAsPost,
+		PostValue:            postValue,
+		CustomValue:          types.StringNull(), // Webhook integrations don't use custom_value
+		SendAsJSONKnown:      sendAsJSONKnown,
+		SendAsQueryKnown:     sendAsQueryKnown,
+		SendAsPostKnown:      sendAsPostKnown,
+		PostValueKnown:       postValueKnown,
 	}
 
 	return fields, nil
+}
+
+func webhookFlagFromRaw(raw json.RawMessage) (types.Bool, bool, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return types.BoolValue(false), false, nil
+	}
+
+	var b bool
+	if err := json.Unmarshal(raw, &b); err == nil {
+		return types.BoolValue(b), true, nil
+	}
+
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		switch strings.ToLower(strings.TrimSpace(s)) {
+		case "1", "true":
+			return types.BoolValue(true), true, nil
+		case "0", "false", "":
+			return types.BoolValue(false), true, nil
+		default:
+			return types.BoolValue(false), true, fmt.Errorf("unsupported boolean value %q", s)
+		}
+	}
+
+	var n int
+	if err := json.Unmarshal(raw, &n); err == nil {
+		switch n {
+		case 1:
+			return types.BoolValue(true), true, nil
+		case 0:
+			return types.BoolValue(false), true, nil
+		default:
+			return types.BoolValue(false), true, fmt.Errorf("unsupported boolean value %d", n)
+		}
+	}
+
+	return types.BoolValue(false), true, fmt.Errorf("unsupported boolean JSON %s", string(raw))
+}
+
+func webhookPostValueFromRaw(raw json.RawMessage) (types.String, bool, error) {
+	if len(raw) == 0 {
+		return types.StringNull(), false, nil
+	}
+	if string(raw) == "null" {
+		return types.StringNull(), true, nil
+	}
+
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return normalizeWebhookPostValueString(s)
+	}
+
+	var v interface{}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return types.StringNull(), true, err
+	}
+
+	normalized, err := json.Marshal(v)
+	if err != nil {
+		return types.StringNull(), true, err
+	}
+	return types.StringValue(string(normalized)), true, nil
+}
+
+func normalizeWebhookPostValueString(value string) (types.String, bool, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return types.StringNull(), true, nil
+	}
+
+	var v interface{}
+	if err := json.Unmarshal([]byte(trimmed), &v); err == nil {
+		normalized, err := json.Marshal(v)
+		if err != nil {
+			return types.StringNull(), true, err
+		}
+		return types.StringValue(string(normalized)), true, nil
+	}
+
+	return types.StringValue(value), true, nil
+}
+
+func webhookBoolState(parsed types.Bool, known bool, prev types.Bool, topLevel *bool) types.Bool {
+	if known {
+		return parsed
+	}
+	if topLevel != nil {
+		return types.BoolValue(*topLevel)
+	}
+	if !prev.IsNull() && !prev.IsUnknown() {
+		return prev
+	}
+	return types.BoolValue(false)
+}
+
+func webhookPostValueState(parsed types.String, known bool, prev types.String, topLevel string) (types.String, error) {
+	if known {
+		return parsed, nil
+	}
+	if strings.TrimSpace(topLevel) != "" {
+		value, _, err := normalizeWebhookPostValueString(topLevel)
+		return value, err
+	}
+	if !prev.IsNull() && !prev.IsUnknown() {
+		return prev, nil
+	}
+	return types.StringNull(), nil
 }
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -752,10 +873,18 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		}
 
 		// Set webhook-specific fields from parsed config
-		state.SendAsJSON = webhookFields.SendAsJSON
-		state.SendAsQueryString = webhookFields.SendAsQueryString
-		state.SendAsPostParameters = webhookFields.SendAsPostParameters
-		state.PostValue = webhookFields.PostValue
+		state.SendAsJSON = webhookBoolState(webhookFields.SendAsJSON, webhookFields.SendAsJSONKnown, prev.SendAsJSON, integration.SendAsJSON)
+		state.SendAsQueryString = webhookBoolState(webhookFields.SendAsQueryString, webhookFields.SendAsQueryKnown, prev.SendAsQueryString, integration.SendAsQueryString)
+		state.SendAsPostParameters = webhookBoolState(webhookFields.SendAsPostParameters, webhookFields.SendAsPostKnown, prev.SendAsPostParameters, integration.SendAsPostParameters)
+		postValue, err := webhookPostValueState(webhookFields.PostValue, webhookFields.PostValueKnown, prev.PostValue, integration.PostValue)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error parsing webhook configuration",
+				err.Error(),
+			)
+			return
+		}
+		state.PostValue = postValue
 		state.CustomValue = webhookFields.CustomValue
 
 		state.Priority = types.StringNull()
