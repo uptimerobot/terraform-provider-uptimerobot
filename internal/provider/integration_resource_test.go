@@ -1,7 +1,10 @@
 package provider
 
 import (
+	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -56,6 +59,72 @@ func TestPagerDutyLocationFromAPI(t *testing.T) {
 				t.Fatalf("value mismatch: got=%q want=%q", gotValue, tt.wantValue)
 			}
 		})
+	}
+}
+
+func TestIntegrationCreateLockKeyNormalizesAndHashesValue(t *testing.T) {
+	t.Parallel()
+
+	key := integrationCreateLockKey(" Mattermost ", " https://example.com/hook ")
+	if key == "" {
+		t.Fatal("expected non-empty lock key")
+	}
+	if key != integrationCreateLockKey("mattermost", "https://example.com/hook") {
+		t.Fatalf("expected type and value whitespace/case normalization")
+	}
+	if key == integrationCreateLockKey("webhook", "https://example.com/hook") {
+		t.Fatalf("expected integration type to contribute to lock key")
+	}
+	if strings.Contains(key, "example.com") {
+		t.Fatalf("expected lock key to avoid storing the sensitive integration value")
+	}
+}
+
+func TestLockIntegrationCreateSerializesSameKey(t *testing.T) {
+	t.Parallel()
+
+	key := "test-lock-" + t.Name()
+	unlock, err := lockIntegrationCreate(context.Background(), key)
+	if err != nil {
+		t.Fatalf("first lock failed: %v", err)
+	}
+
+	acquired := make(chan struct{})
+	releaseSecond := make(chan struct{})
+	errCh := make(chan error, 1)
+	go func() {
+		unlockSecond, err := lockIntegrationCreate(context.Background(), key)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		close(acquired)
+		<-releaseSecond
+		unlockSecond()
+		errCh <- nil
+	}()
+
+	select {
+	case <-acquired:
+		t.Fatal("second lock acquired before first lock was released")
+	case err := <-errCh:
+		t.Fatalf("second lock failed early: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	unlock()
+
+	select {
+	case <-acquired:
+	case err := <-errCh:
+		t.Fatalf("second lock failed: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("second lock did not acquire after first lock was released")
+	}
+
+	close(releaseSecond)
+	if err := <-errCh; err != nil {
+		t.Fatalf("second lock returned error: %v", err)
 	}
 }
 
