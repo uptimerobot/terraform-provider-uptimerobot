@@ -45,7 +45,7 @@ type monComparable struct {
 	ExpectIPVersionUnset    bool
 	APIAssertions           *apiAssertionsComparable
 	UDPConfig               *udpComparable
-	AssignedAlertContacts   []string
+	AssignedAlertContacts   []alertContactComparable
 }
 
 type apiAssertionsComparable struct {
@@ -62,6 +62,12 @@ type apiAssertionCheckComparable struct {
 type udpComparable struct {
 	Payload             *string
 	PacketLossThreshold *int64
+}
+
+type alertContactComparable struct {
+	ID         string
+	Threshold  int64
+	Recurrence int64
 }
 
 func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
@@ -178,7 +184,7 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 		c.Tags = normalizeTagSet(req.Tags)
 	}
 	if len(req.AssignedAlertContacts) > 0 {
-		c.AssignedAlertContacts = normalizeAlertContactIDsFromRequests(req.AssignedAlertContacts)
+		c.AssignedAlertContacts = normalizeAlertContactsFromRequests(req.AssignedAlertContacts)
 	}
 	// length check because on empty slice we clear to defaults and we do not need to check for returned defaults
 	if len(req.SuccessHTTPResponseCodes) > 0 {
@@ -368,7 +374,7 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		c.UDPConfig = normalizeUDPConfig(req.Config.UDP)
 	}
 	if req.AssignedAlertContacts != nil {
-		c.AssignedAlertContacts = normalizeAlertContactIDsFromRequestsPtr(req.AssignedAlertContacts)
+		c.AssignedAlertContacts = normalizeAlertContactsFromRequestsPtr(req.AssignedAlertContacts)
 	}
 
 	return c
@@ -535,7 +541,7 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 			c.UDPConfig = normalizeUDPConfig(m.Config.UDP)
 		}
 	}
-	c.AssignedAlertContacts = normalizeAlertContactIDs(m.AssignedAlertContacts)
+	c.AssignedAlertContacts = normalizeAlertContactsFromAPI(m.AssignedAlertContacts)
 
 	return c
 }
@@ -626,6 +632,90 @@ func normalizeAlertContactIDs(acs []client.AlertContact) []string {
 		}
 	}
 	return normalizeStringSet(ids)
+}
+
+func normalizeAlertContactsFromRequests(reqs []client.AlertContactRequest) []alertContactComparable {
+	if len(reqs) == 0 {
+		return []alertContactComparable{}
+	}
+	out := make([]alertContactComparable, 0, len(reqs))
+	for _, ac := range reqs {
+		id := strings.TrimSpace(ac.AlertContactID)
+		if id == "" {
+			continue
+		}
+		item := alertContactComparable{ID: id}
+		if ac.Threshold != nil {
+			item.Threshold = *ac.Threshold
+		}
+		if ac.Recurrence != nil {
+			item.Recurrence = *ac.Recurrence
+		}
+		out = append(out, item)
+	}
+	return normalizeAlertContacts(out)
+}
+
+func normalizeAlertContactsFromRequestsPtr(reqs *[]client.AlertContactRequest) []alertContactComparable {
+	if reqs == nil {
+		return nil
+	}
+	return normalizeAlertContactsFromRequests(*reqs)
+}
+
+func normalizeAlertContactsFromAPI(acs []client.AlertContact) []alertContactComparable {
+	if len(acs) == 0 {
+		return []alertContactComparable{}
+	}
+	out := make([]alertContactComparable, 0, len(acs))
+	for _, ac := range acs {
+		id := strings.TrimSpace(string(ac.AlertContactID))
+		if id == "" {
+			continue
+		}
+		out = append(out, alertContactComparable{
+			ID:         id,
+			Threshold:  ac.Threshold,
+			Recurrence: ac.Recurrence,
+		})
+	}
+	return normalizeAlertContacts(out)
+}
+
+func normalizeAlertContacts(in []alertContactComparable) []alertContactComparable {
+	if len(in) == 0 {
+		return []alertContactComparable{}
+	}
+	seen := map[string]alertContactComparable{}
+	for _, ac := range in {
+		ac.ID = strings.TrimSpace(ac.ID)
+		if ac.ID == "" {
+			continue
+		}
+		seen[ac.ID] = ac
+	}
+	out := make([]alertContactComparable, 0, len(seen))
+	for _, ac := range seen {
+		out = append(out, ac)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].ID < out[j].ID
+	})
+	return out
+}
+
+func equalAlertContacts(a, b []alertContactComparable) bool {
+	a = normalizeAlertContacts(a)
+	b = normalizeAlertContacts(b)
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func equalDNSRecords(want, got map[string][]string) bool {
@@ -775,7 +865,7 @@ func equalComparable(want, got monComparable) bool {
 	if want.Headers != nil && !equalStringMap(want.Headers, got.Headers) {
 		return false
 	}
-	if want.AssignedAlertContacts != nil && !equalStringSet(want.AssignedAlertContacts, got.AssignedAlertContacts) {
+	if want.AssignedAlertContacts != nil && !equalAlertContacts(want.AssignedAlertContacts, got.AssignedAlertContacts) {
 		return false
 	}
 	if !want.skipMWIDsCompare {
@@ -887,7 +977,7 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	if want.KeywordCaseType != nil && (got.KeywordCaseType == nil || *want.KeywordCaseType != *got.KeywordCaseType) {
 		f = append(f, "keyword_case_type")
 	}
-	if want.AssignedAlertContacts != nil && !equalStringSet(want.AssignedAlertContacts, got.AssignedAlertContacts) {
+	if want.AssignedAlertContacts != nil && !equalAlertContacts(want.AssignedAlertContacts, got.AssignedAlertContacts) {
 		f = append(f, "assigned_alert_contacts")
 	}
 

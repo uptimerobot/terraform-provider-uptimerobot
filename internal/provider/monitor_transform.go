@@ -60,6 +60,31 @@ func planAlertIDs(ctx context.Context, set types.Set) ([]string, diag.Diagnostic
 	return out, diags
 }
 
+func planAlertContactsComparable(ctx context.Context, set types.Set) ([]alertContactComparable, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if set.IsNull() || set.IsUnknown() {
+		return nil, diags
+	}
+	var acs []alertContactTF
+	diags.Append(set.ElementsAs(ctx, &acs, false)...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	out := make([]alertContactComparable, 0, len(acs))
+	for _, ac := range acs {
+		id := strings.TrimSpace(ac.AlertContactID.ValueString())
+		if id == "" {
+			continue
+		}
+		out = append(out, alertContactComparable{
+			ID:         id,
+			Threshold:  ac.Threshold.ValueInt64(),
+			Recurrence: ac.Recurrence.ValueInt64(),
+		})
+	}
+	return normalizeAlertContacts(out), diags
+}
+
 func alertIDsFromAPI(api []client.AlertContact) []string {
 	m := map[string]struct{}{}
 	for _, a := range api {

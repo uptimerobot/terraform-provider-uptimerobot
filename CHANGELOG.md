@@ -1,5 +1,10 @@
 ## Unreleased
 
+### Fixed
+
+- Stabilized monitor updates that include `response_time_threshold` and `assigned_alert_contacts` by trusting non-conflicting PATCH response data instead of requiring later GET replicas to echo those laggy fields before apply can finish.
+- Stabilized monitor refreshes for managed boolean flags and `assigned_alert_contacts`, and now compare alert-contact `threshold`/`recurrence` values during settle instead of only contact IDs.
+
 ## 1.4.4 — 2026-04-29
 
 ### Fixed

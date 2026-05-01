@@ -60,14 +60,16 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	want := wantFromUpdateReq(updateReq)
 	got := buildComparableFromAPI(initialUpdated)
+	trustedEcho := trustedMonitorUpdateEchoFields(want, got)
+	settleWant := wantWithoutTrustedUpdateEchoFields(want, trustedEcho)
 
 	updated := initialUpdated
 	settleTimeout := 120 * time.Second
 	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD ||
-		want.DNSRecords != nil ||
-		want.APIAssertions != nil ||
-		want.AssignedAlertContacts != nil ||
-		want.MaintenanceWindowIDs != nil {
+		settleWant.DNSRecords != nil ||
+		settleWant.APIAssertions != nil ||
+		settleWant.AssignedAlertContacts != nil ||
+		settleWant.MaintenanceWindowIDs != nil {
 		settleTimeout = 240 * time.Second
 	}
 
@@ -75,13 +77,13 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	needSettle := true
 
 	if needSettle {
-		if updated, err = r.waitMonitorSettled(ctx, id, want, settleTimeout); err != nil {
+		if updated, err = r.waitMonitorSettled(ctx, id, settleWant, settleTimeout); err != nil {
 			if updated != nil {
 				got = buildComparableFromAPI(updated)
 			}
 			resp.Diagnostics.AddError(
 				"Update did not settle in time",
-				fmt.Sprintf("%v\nStill differing fields: %v", err, fieldsStillDifferent(want, got)),
+				fmt.Sprintf("%v\nStill differing fields: %v", err, fieldsStillDifferent(settleWant, got)),
 			)
 			return
 		}
@@ -103,6 +105,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 			}
 		}
 	}
+	updated = applyTrustedMonitorUpdateEcho(updated, initialUpdated, updateReq, trustedEcho)
 
 	newState := applyUpdatedMonitorToState(ctx, plan, state, updated, effMethod, configSent, resp)
 	if resp.Diagnostics.HasError() {
@@ -150,6 +153,62 @@ func (r *monitorResource) updateMonitorWithRetry(ctx context.Context, id int64, 
 
 func shouldRetryUpdateMonitor(err error, attempt, maxAttempts int) bool {
 	return err != nil && isTempServerErr(err) && attempt < maxAttempts-1
+}
+
+type trustedMonitorUpdateEcho struct {
+	ResponseTimeThreshold bool
+	AssignedAlertContacts bool
+}
+
+// Some monitor fields are accepted by PATCH but can lag or be omitted on
+// immediate GET reads. Only trust fields whose PATCH response did not
+// contradict the requested value; everything else still goes through settle.
+func trustedMonitorUpdateEchoFields(want, initialGot monComparable) trustedMonitorUpdateEcho {
+	trusted := trustedMonitorUpdateEcho{}
+
+	if want.ResponseTimeThreshold != nil {
+		trusted.ResponseTimeThreshold = initialGot.ResponseTimeThreshold == nil ||
+			*want.ResponseTimeThreshold == *initialGot.ResponseTimeThreshold
+	}
+
+	if want.AssignedAlertContacts != nil {
+		trusted.AssignedAlertContacts = equalAlertContacts(want.AssignedAlertContacts, initialGot.AssignedAlertContacts)
+	}
+
+	return trusted
+}
+
+func wantWithoutTrustedUpdateEchoFields(want monComparable, trusted trustedMonitorUpdateEcho) monComparable {
+	if trusted.ResponseTimeThreshold {
+		want.ResponseTimeThreshold = nil
+	}
+	if trusted.AssignedAlertContacts {
+		want.AssignedAlertContacts = nil
+	}
+	return want
+}
+
+func applyTrustedMonitorUpdateEcho(
+	latest *client.Monitor,
+	initial *client.Monitor,
+	req *client.UpdateMonitorRequest,
+	trusted trustedMonitorUpdateEcho,
+) *client.Monitor {
+	if latest == nil {
+		latest = initial
+	}
+	if latest == nil {
+		return nil
+	}
+
+	out := *latest
+	if trusted.ResponseTimeThreshold && req.ResponseTimeThreshold != nil {
+		out.ResponseTimeThreshold = *req.ResponseTimeThreshold
+	}
+	if trusted.AssignedAlertContacts && initial != nil {
+		out.AssignedAlertContacts = append([]client.AlertContact(nil), initial.AssignedAlertContacts...)
+	}
+	return &out
 }
 
 func validateUpdateHighLevel(plan monitorResourceModel, resp *resource.UpdateResponse) bool {
