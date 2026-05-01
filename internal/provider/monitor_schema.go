@@ -359,6 +359,7 @@ Alert contacts assigned to this monitor.
 
 **Semantics**
 - Terraform sends exactly what you specify; the provider does not inject hidden defaults.
+- Each notification method has its own alert-contact id. For example, Email and MobileAppOld/push are separate ids; include every id returned by ` + "`GET /user/alert-contacts`" + ` that should be checked for the monitor.
 - **Free plan**: set ` + "`threshold = 0`" + `, ` + "`recurrence = 0`" + `.
 - **Paid plans**: any non-negative minutes for both fields.
 `,

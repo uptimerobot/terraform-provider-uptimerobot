@@ -616,6 +616,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 
 **Semantics**
 - Terraform sends exactly what you specify; the provider does not inject hidden defaults.
+- Each notification method has its own alert-contact id. For example, Email and MobileAppOld/push are separate ids; include every id returned by `GET /user/alert-contacts` that should be checked for the monitor.
 - **Free plan**: set `threshold = 0`, `recurrence = 0`.
 - **Paid plans**: any non-negative minutes for both fields. (see [below for nested schema](#nestedatt--assigned_alert_contacts))
 - `auth_type` (String) Authentication type. Allowed: NONE, HTTP_BASIC, DIGEST, BEARER.
