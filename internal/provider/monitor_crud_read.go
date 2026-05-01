@@ -285,6 +285,9 @@ func readApplyTagsHeadersAC(ctx context.Context, resp *resource.ReadResponse, st
 	acSet, d := alertContactsFromAPI(ctx, m.AssignedAlertContacts)
 	resp.Diagnostics.Append(d...)
 	if isImport {
+		// On import, populate alert contacts from the API so they appear in state.
+		// Without this, imported monitors always have null assigned_alert_contacts
+		// and any subsequent plan shows spurious additions.
 		state.AssignedAlertContacts = acSet
 	} else if state.AssignedAlertContacts.IsNull() {
 		state.AssignedAlertContacts = types.SetNull(alertContactObjectType())
