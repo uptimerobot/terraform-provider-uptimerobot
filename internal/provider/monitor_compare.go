@@ -601,39 +601,6 @@ func normalizeDNSRecords(dr *client.DNSRecords) map[string][]string {
 	return out
 }
 
-func normalizeAlertContactIDsFromRequests(reqs []client.AlertContactRequest) []string {
-	if len(reqs) == 0 {
-		return []string{}
-	}
-	ids := make([]string, 0, len(reqs))
-	for _, ac := range reqs {
-		if ac.AlertContactID != "" {
-			ids = append(ids, strings.TrimSpace(ac.AlertContactID))
-		}
-	}
-	return normalizeStringSet(ids)
-}
-
-func normalizeAlertContactIDsFromRequestsPtr(reqs *[]client.AlertContactRequest) []string {
-	if reqs == nil {
-		return nil
-	}
-	return normalizeAlertContactIDsFromRequests(*reqs)
-}
-
-func normalizeAlertContactIDs(acs []client.AlertContact) []string {
-	if len(acs) == 0 {
-		return []string{}
-	}
-	ids := make([]string, 0, len(acs))
-	for _, ac := range acs {
-		if ac.AlertContactID != "" {
-			ids = append(ids, strings.TrimSpace(string(ac.AlertContactID)))
-		}
-	}
-	return normalizeStringSet(ids)
-}
-
 func normalizeAlertContactsFromRequests(reqs []client.AlertContactRequest) []alertContactComparable {
 	if len(reqs) == 0 {
 		return []alertContactComparable{}
@@ -686,20 +653,22 @@ func normalizeAlertContacts(in []alertContactComparable) []alertContactComparabl
 	if len(in) == 0 {
 		return []alertContactComparable{}
 	}
-	seen := map[string]alertContactComparable{}
+	out := make([]alertContactComparable, 0, len(in))
 	for _, ac := range in {
 		ac.ID = strings.TrimSpace(ac.ID)
 		if ac.ID == "" {
 			continue
 		}
-		seen[ac.ID] = ac
-	}
-	out := make([]alertContactComparable, 0, len(seen))
-	for _, ac := range seen {
 		out = append(out, ac)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].ID < out[j].ID
+		if out[i].ID != out[j].ID {
+			return out[i].ID < out[j].ID
+		}
+		if out[i].Threshold != out[j].Threshold {
+			return out[i].Threshold < out[j].Threshold
+		}
+		return out[i].Recurrence < out[j].Recurrence
 	})
 	return out
 }

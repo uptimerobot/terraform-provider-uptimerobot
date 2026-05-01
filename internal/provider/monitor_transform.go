@@ -72,6 +72,11 @@ func planAlertContactsComparable(ctx context.Context, set types.Set) ([]alertCon
 	}
 	out := make([]alertContactComparable, 0, len(acs))
 	for _, ac := range acs {
+		if ac.AlertContactID.IsNull() || ac.AlertContactID.IsUnknown() ||
+			ac.Threshold.IsNull() || ac.Threshold.IsUnknown() ||
+			ac.Recurrence.IsNull() || ac.Recurrence.IsUnknown() {
+			return nil, diags
+		}
 		id := strings.TrimSpace(ac.AlertContactID.ValueString())
 		if id == "" {
 			continue

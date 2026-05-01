@@ -4,6 +4,7 @@
 
 - Stabilized monitor updates that include `response_time_threshold` and `assigned_alert_contacts` by trusting non-conflicting PATCH response data instead of requiring later GET replicas to echo those laggy fields before apply can finish.
 - Stabilized monitor refreshes for managed boolean flags and `assigned_alert_contacts`, and now compare alert-contact `threshold`/`recurrence` values during settle instead of only contact IDs.
+- Hardened alert-contact settling by preserving duplicate contact objects during comparison and skipping comparisons for incomplete alert-contact values.
 - Populated `assigned_alert_contacts` from the API during `uptimerobot_monitor` import, preventing spurious plans for imported monitors that already have alert contacts.
 - Clarified `assigned_alert_contacts` documentation that each notification method, including mobile push, must be assigned with its own alert-contact id.
 

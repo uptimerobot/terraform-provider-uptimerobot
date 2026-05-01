@@ -199,6 +199,26 @@ func TestBuildCreateRequest_HeartbeatOmitsURL(t *testing.T) {
 	}
 }
 
+func TestPlanAlertContactsComparable_SkipsComparisonForIncompleteContact(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	contact := types.ObjectValueMust(alertContactObjectType().AttrTypes, map[string]attr.Value{
+		"alert_contact_id": types.StringValue("10"),
+		"threshold":        types.Int64Unknown(),
+		"recurrence":       types.Int64Value(5),
+	})
+	set := types.SetValueMust(alertContactObjectType(), []attr.Value{contact})
+
+	got, diags := planAlertContactsComparable(ctx, set)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if got != nil {
+		t.Fatalf("expected incomplete alert contact to skip comparison, got %#v", got)
+	}
+}
+
 func TestBuildUpdateRequest_HeartbeatOmitsServerGeneratedURL(t *testing.T) {
 	t.Parallel()
 
