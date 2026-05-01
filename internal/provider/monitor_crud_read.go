@@ -284,7 +284,9 @@ func readApplyTagsHeadersAC(ctx context.Context, resp *resource.ReadResponse, st
 
 	acSet, d := alertContactsFromAPI(ctx, m.AssignedAlertContacts)
 	resp.Diagnostics.Append(d...)
-	if state.AssignedAlertContacts.IsNull() {
+	if isImport {
+		state.AssignedAlertContacts = acSet
+	} else if state.AssignedAlertContacts.IsNull() {
 		state.AssignedAlertContacts = types.SetNull(alertContactObjectType())
 	} else {
 		state.AssignedAlertContacts = acSet

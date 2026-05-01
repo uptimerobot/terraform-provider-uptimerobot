@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
 func TestMonitorReadStabilizationWant_IncludesManagedBooleansAndAlertContacts(t *testing.T) {
@@ -96,5 +98,42 @@ func TestMonitorReadStabilizationWant_SkipsUnmanagedMaintenanceWindows(t *testin
 		MaintenanceWindowIDs: []int64{1, 2},
 	}) {
 		t.Fatalf("expected unmanaged maintenance windows to be ignored during read stabilization")
+	}
+}
+
+func TestReadApplyTagsHeadersAC_ImportPopulatesAlertContacts(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := monitorResourceModel{
+		AssignedAlertContacts: types.SetNull(alertContactObjectType()),
+	}
+	resp := &resource.ReadResponse{}
+
+	readApplyTagsHeadersAC(ctx, resp, &state, &client.Monitor{
+		AssignedAlertContacts: []client.AlertContact{
+			{AlertContactID: "10", Threshold: 1, Recurrence: 2},
+		},
+	}, true)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if state.AssignedAlertContacts.IsNull() {
+		t.Fatalf("expected import read to populate assigned_alert_contacts")
+	}
+
+	var contacts []alertContactTF
+	diags := state.AssignedAlertContacts.ElementsAs(ctx, &contacts, false)
+	if diags.HasError() {
+		t.Fatalf("decoding assigned_alert_contacts: %v", diags)
+	}
+	if len(contacts) != 1 {
+		t.Fatalf("expected one alert contact, got %d", len(contacts))
+	}
+	if contacts[0].AlertContactID.ValueString() != "10" ||
+		contacts[0].Threshold.ValueInt64() != 1 ||
+		contacts[0].Recurrence.ValueInt64() != 2 {
+		t.Fatalf("unexpected alert contact from import: %#v", contacts[0])
 	}
 }
