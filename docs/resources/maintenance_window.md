@@ -109,6 +109,8 @@ For weekly maintenance windows, specify days as numbers:
 
 ## Import
 
+Existing maintenance windows created in the UptimeRobot UI or through the UptimeRobot API can be imported into Terraform state by their numeric maintenance window ID. After importing, add matching Terraform configuration and run `terraform plan` to review any differences.
+
 Import by maintenance window ID:
 
 ```bash

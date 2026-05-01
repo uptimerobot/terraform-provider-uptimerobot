@@ -327,6 +327,8 @@ resource "uptimerobot_integration" "zapier" {
 
 ## Import
 
+Existing integrations created in the UptimeRobot UI or through the UptimeRobot API can be imported into Terraform state by their numeric integration ID. After importing, add matching Terraform configuration and run `terraform plan` to review any differences.
+
 Import by integration ID:
 
 ```bash
