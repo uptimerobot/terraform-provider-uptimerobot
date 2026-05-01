@@ -55,6 +55,8 @@ description: |-
 
 {{tffile "examples/resources/uptimerobot_monitor/heartbeat.tf"}}
 
+For `HEARTBEAT` monitors, omit `url`. UptimeRobot generates the heartbeat URL and the provider stores it in state after create or import. Do not set an arbitrary URL, full heartbeat URL, or heartbeat key in configuration.
+
 ### Config Example
 
 {{tffile "examples/resources/uptimerobot_monitor/config.tf"}}

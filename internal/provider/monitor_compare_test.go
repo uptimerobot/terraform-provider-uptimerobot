@@ -243,3 +243,59 @@ func TestEqualComparable_ResponseTimeThresholdMissingEchoIsAccepted(t *testing.T
 		t.Fatalf("expected mismatched response_time_threshold echo to be reported as a diff")
 	}
 }
+
+func TestEqualComparable_AssignedAlertContactsIncludesSettings(t *testing.T) {
+	t.Parallel()
+
+	want := []alertContactComparable{{ID: "10", Threshold: 1, Recurrence: 5}}
+	gotSame := []alertContactComparable{{ID: "10", Threshold: 1, Recurrence: 5}}
+	gotDifferentThreshold := []alertContactComparable{{ID: "10", Threshold: 0, Recurrence: 5}}
+	gotDifferentRecurrence := []alertContactComparable{{ID: "10", Threshold: 1, Recurrence: 0}}
+
+	if !equalComparable(
+		monComparable{AssignedAlertContacts: want},
+		monComparable{AssignedAlertContacts: gotSame},
+	) {
+		t.Fatalf("expected equalComparable to match alert contact settings")
+	}
+	if equalComparable(
+		monComparable{AssignedAlertContacts: want},
+		monComparable{AssignedAlertContacts: gotDifferentThreshold},
+	) {
+		t.Fatalf("expected threshold mismatch to differ")
+	}
+	if equalComparable(
+		monComparable{AssignedAlertContacts: want},
+		monComparable{AssignedAlertContacts: gotDifferentRecurrence},
+	) {
+		t.Fatalf("expected recurrence mismatch to differ")
+	}
+
+	diff := fieldsStillDifferent(
+		monComparable{AssignedAlertContacts: want},
+		monComparable{AssignedAlertContacts: gotDifferentThreshold},
+	)
+	found := false
+	for _, field := range diff {
+		if field == "assigned_alert_contacts" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected assigned_alert_contacts diff, got %v", diff)
+	}
+}
+
+func TestEqualAlertContacts_DuplicateIDsArePreserved(t *testing.T) {
+	t.Parallel()
+
+	want := []alertContactComparable{{ID: "10", Threshold: 1, Recurrence: 5}}
+	gotWithDuplicateID := []alertContactComparable{
+		{ID: "10", Threshold: 0, Recurrence: 5},
+		{ID: "10", Threshold: 1, Recurrence: 5},
+	}
+
+	if equalAlertContacts(want, gotWithDuplicateID) {
+		t.Fatalf("expected duplicate alert-contact IDs to remain distinguishable")
+	}
+}

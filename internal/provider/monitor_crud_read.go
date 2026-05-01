@@ -285,10 +285,12 @@ func readApplyTagsHeadersAC(ctx context.Context, resp *resource.ReadResponse, st
 	acSet, d := alertContactsFromAPI(ctx, m.AssignedAlertContacts)
 	resp.Diagnostics.Append(d...)
 	if isImport {
-		// On import, populate alert contacts from the API so they appear in state.
-		// Without this, imported monitors always have null assigned_alert_contacts
-		// and any subsequent plan shows spurious additions.
-		state.AssignedAlertContacts = acSet
+		if len(m.AssignedAlertContacts) == 0 {
+			state.AssignedAlertContacts = types.SetNull(alertContactObjectType())
+		} else {
+			// On import, populate real alert contacts from the API so they appear in state.
+			state.AssignedAlertContacts = acSet
+		}
 	} else if state.AssignedAlertContacts.IsNull() {
 		state.AssignedAlertContacts = types.SetNull(alertContactObjectType())
 	} else {
@@ -320,89 +322,14 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 		}
 	}
 
-	expectedName := ""
-	if !state.Name.IsNull() && !state.Name.IsUnknown() {
-		expectedName = unescapeHTML(state.Name.ValueString())
-	}
-	expectedURL := ""
-	if !state.URL.IsNull() && !state.URL.IsUnknown() {
-		expectedURL = unescapeHTML(state.URL.ValueString())
-	}
-
-	var expectedMWIDs []int64
-	if !state.MaintenanceWindowIDs.IsNull() && !state.MaintenanceWindowIDs.IsUnknown() {
-		var ids []int64
-		if diags := state.MaintenanceWindowIDs.ElementsAs(ctx, &ids, false); !diags.HasError() {
-			expectedMWIDs = normalizeInt64Set(ids)
-		}
-	}
-
-	var expectedDNSRecords map[string][]string
-	var expectedSSLDays []int64
-	var expectedAPIAssertions *apiAssertionsComparable
-	if !state.Config.IsNull() && !state.Config.IsUnknown() {
-		if cfg, touched, diags := expandConfigToAPI(ctx, state.Config); touched && !diags.HasError() && cfg != nil {
-			if cfg.DNSRecords != nil {
-				expectedDNSRecords = normalizeDNSRecords(cfg.DNSRecords)
-			}
-			if cfg.SSLExpirationPeriodDays != nil {
-				days := *cfg.SSLExpirationPeriodDays
-				if len(days) == 0 {
-					expectedSSLDays = []int64{}
-				} else {
-					expectedSSLDays = normalizeInt64Set(days)
-				}
-			}
-			if cfg.APIAssertions != nil {
-				expectedAPIAssertions = normalizeAPIAssertions(cfg.APIAssertions)
-			}
-		}
-	}
-
-	if expectedName == "" && expectedURL == "" && expectedMWIDs == nil && expectedDNSRecords == nil && expectedSSLDays == nil && expectedAPIAssertions == nil && expectedPaused == nil {
+	want := monitorReadStabilizationWant(ctx, state)
+	if !hasMonitorReadStabilizationAssertions(want) {
 		return monitor
 	}
 
-	nameMatches := expectedName == "" || unescapeHTML(monitor.Name) == expectedName
-	urlMatches := expectedURL == "" || unescapeHTML(monitor.URL) == expectedURL
-	pausedMatches := expectedPaused == nil || isMonitorPausedStatus(monitor.Status) == *expectedPaused
-	mwMatches := true
-	cfgMatches := true
-	if expectedMWIDs != nil || expectedDNSRecords != nil || expectedSSLDays != nil || expectedAPIAssertions != nil {
-		got := buildComparableFromAPI(monitor)
-		mwMatches = equalInt64Set(expectedMWIDs, got.MaintenanceWindowIDs)
-		if expectedDNSRecords != nil {
-			cfgMatches = cfgMatches && equalDNSRecords(expectedDNSRecords, got.DNSRecords)
-		}
-		if expectedSSLDays != nil {
-			cfgMatches = cfgMatches && equalInt64Set(expectedSSLDays, got.SSLExpirationPeriodDays)
-		}
-		if expectedAPIAssertions != nil {
-			cfgMatches = cfgMatches && equalAPIAssertions(expectedAPIAssertions, got.APIAssertions)
-		}
-	}
-	if nameMatches && urlMatches && pausedMatches && mwMatches && cfgMatches {
+	got := buildComparableFromAPI(monitor)
+	if equalComparable(want, got) {
 		return monitor
-	}
-
-	want := monComparable{}
-	if expectedName != "" {
-		want.Name = &expectedName
-	}
-	if expectedURL != "" {
-		want.URL = &expectedURL
-	}
-	if expectedMWIDs != nil {
-		want.MaintenanceWindowIDs = expectedMWIDs
-	}
-	if expectedDNSRecords != nil {
-		want.DNSRecords = expectedDNSRecords
-	}
-	if expectedSSLDays != nil {
-		want.SSLExpirationPeriodDays = expectedSSLDays
-	}
-	if expectedAPIAssertions != nil {
-		want.APIAssertions = expectedAPIAssertions
 	}
 
 	if settled, err := r.waitMonitorSettled(ctx, id, want, 60*time.Second); err == nil && settled != nil {
@@ -412,6 +339,88 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 	}
 
 	return monitor
+}
+
+func monitorReadStabilizationWant(ctx context.Context, state monitorResourceModel) monComparable {
+	want := monComparable{skipMWIDsCompare: true}
+
+	if !state.Name.IsNull() && !state.Name.IsUnknown() {
+		v := unescapeHTML(state.Name.ValueString())
+		want.Name = &v
+	}
+	if !state.URL.IsNull() && !state.URL.IsUnknown() {
+		v := unescapeHTML(state.URL.ValueString())
+		want.URL = &v
+	}
+
+	if !state.MaintenanceWindowIDs.IsNull() && !state.MaintenanceWindowIDs.IsUnknown() {
+		var ids []int64
+		if diags := state.MaintenanceWindowIDs.ElementsAs(ctx, &ids, false); !diags.HasError() {
+			want.MaintenanceWindowIDs = normalizeInt64Set(ids)
+			want.skipMWIDsCompare = false
+		}
+	}
+
+	if !state.Config.IsNull() && !state.Config.IsUnknown() {
+		if cfg, touched, diags := expandConfigToAPI(ctx, state.Config); touched && !diags.HasError() && cfg != nil {
+			if cfg.DNSRecords != nil {
+				want.DNSRecords = normalizeDNSRecords(cfg.DNSRecords)
+			}
+			if cfg.SSLExpirationPeriodDays != nil {
+				days := *cfg.SSLExpirationPeriodDays
+				if len(days) == 0 {
+					want.SSLExpirationPeriodDays = []int64{}
+				} else {
+					want.SSLExpirationPeriodDays = normalizeInt64Set(days)
+				}
+			}
+			if cfg.APIAssertions != nil {
+				want.APIAssertions = normalizeAPIAssertions(cfg.APIAssertions)
+			}
+		}
+	}
+
+	if !state.FollowRedirections.IsNull() && !state.FollowRedirections.IsUnknown() {
+		v := state.FollowRedirections.ValueBool()
+		want.FollowRedirections = &v
+	}
+	if !state.SSLExpirationReminder.IsNull() && !state.SSLExpirationReminder.IsUnknown() {
+		v := state.SSLExpirationReminder.ValueBool()
+		want.SSLExpirationReminder = &v
+	}
+	if !state.DomainExpirationReminder.IsNull() && !state.DomainExpirationReminder.IsUnknown() {
+		v := state.DomainExpirationReminder.ValueBool()
+		want.DomainExpirationReminder = &v
+	}
+	if !state.CheckSSLErrors.IsNull() && !state.CheckSSLErrors.IsUnknown() {
+		v := state.CheckSSLErrors.ValueBool()
+		want.CheckSSLErrors = &v
+	}
+
+	if !state.AssignedAlertContacts.IsNull() && !state.AssignedAlertContacts.IsUnknown() {
+		if contacts, diags := planAlertContactsComparable(ctx, state.AssignedAlertContacts); !diags.HasError() {
+			want.AssignedAlertContacts = contacts
+		}
+	}
+
+	return want
+}
+
+func hasMonitorReadStabilizationAssertions(want monComparable) bool {
+	if want.Name != nil ||
+		want.URL != nil ||
+		want.FollowRedirections != nil ||
+		want.SSLExpirationReminder != nil ||
+		want.DomainExpirationReminder != nil ||
+		want.CheckSSLErrors != nil ||
+		want.AssignedAlertContacts != nil ||
+		want.DNSRecords != nil ||
+		want.SSLExpirationPeriodDays != nil ||
+		want.APIAssertions != nil {
+		return true
+	}
+
+	return !want.skipMWIDsCompare
 }
 
 func readApplySuccessCodes(ctx context.Context, _ *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor) {
