@@ -137,3 +137,21 @@ func TestReadApplyTagsHeadersAC_ImportPopulatesAlertContacts(t *testing.T) {
 		t.Fatalf("unexpected alert contact from import: %#v", contacts[0])
 	}
 }
+
+func TestReadApplyTagsHeadersAC_ImportKeepsEmptyAlertContactsNull(t *testing.T) {
+	t.Parallel()
+
+	state := monitorResourceModel{
+		AssignedAlertContacts: types.SetNull(alertContactObjectType()),
+	}
+	resp := &resource.ReadResponse{}
+
+	readApplyTagsHeadersAC(context.Background(), resp, &state, &client.Monitor{}, true)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if !state.AssignedAlertContacts.IsNull() {
+		t.Fatalf("expected import read with no alert contacts to keep assigned_alert_contacts null, got %#v", state.AssignedAlertContacts)
+	}
+}
