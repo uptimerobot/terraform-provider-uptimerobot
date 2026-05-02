@@ -106,48 +106,18 @@ func (c *Client) AddHeader(k, v string) {
 	c.extraHeaders[k] = v
 }
 
+type httpAttemptResult struct {
+	statusCode int
+	headers    http.Header
+	body       []byte
+}
+
 // doRequest performs an HTTP request and returns the response.
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
-	var jsonBody []byte
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return nil, err
-		}
-
-		// Fix null values in customSettings
-		if method == http.MethodPost || method == http.MethodPatch {
-			var bodyMap map[string]interface{}
-			if err := json.Unmarshal(b, &bodyMap); err == nil {
-				if customSettings, ok := bodyMap["customSettings"].(map[string]interface{}); ok {
-					// Initialize empty objects for null fields
-					if customSettings["page"] == nil {
-						customSettings["page"] = map[string]interface{}{}
-					}
-					if customSettings["colors"] == nil {
-						customSettings["colors"] = map[string]interface{}{}
-					}
-					if customSettings["features"] == nil {
-						customSettings["features"] = map[string]interface{}{}
-					}
-					// Re-marshal the fixed body
-					if fixedBody, err := json.Marshal(bodyMap); err == nil {
-						b = fixedBody
-					}
-				}
-			}
-		}
-
-		// if err == nil {
-		// 	os.WriteFile("do_req_body.json", jsonBody, 0777)
-		// } else {
-		// 	os.WriteFile("do_req_body_err.json", []byte(err.Error()), 0777)
-		// }
-
-		jsonBody = b
-
+	jsonBody, err := marshalJSONBody(method, body)
+	if err != nil {
+		return nil, err
 	}
-
 	idemp := isIdempotent(method)
 	var lastErr error
 
@@ -156,56 +126,10 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 			return nil, err
 		}
 
-		start := time.Now()
-
-		var reqBody io.Reader
-		if jsonBody != nil {
-			reqBody = bytes.NewReader(jsonBody) // new reader each attempt
-		}
-
-		req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reqBody)
+		result, retryableAttemptErr, err := c.doJSONAttempt(ctx, method, path, jsonBody, attempt, idemp)
 		if err != nil {
-			return nil, err
-		}
-
-		if jsonBody != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-		if c.userAgent != "" {
-			req.Header.Set("User-Agent", c.userAgent)
-		}
-		for k, v := range c.extraHeaders {
-			if req.Header.Get(k) == "" {
-				req.Header.Set(k, v)
-			}
-		}
-
-		// DEBUG request
-		// Only shows if TF_LOG_PROVIDER=DEBUG or TF_LOG=DEBUG
-		tflog.Debug(ctx, "uptimerobot http request", map[string]any{
-			"attempt": attempt + 1,
-			"method":  method,
-			"url":     c.baseURL + path,
-			"headers": redactHeaders(req.Header),
-			"body":    sanitizeJSON(jsonBody, 2048),
-		})
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			lastErr = fmt.Errorf("request failed: %w", err)
-
-			tflog.Warn(ctx, "uptimerobot http error (transport)", map[string]any{
-				"attempt":     attempt + 1,
-				"method":      method,
-				"url":         c.baseURL + path,
-				"duration_ms": time.Since(start).Milliseconds(),
-				"error":       err.Error(),
-				"idempotent":  idemp,
-			})
-
-			if idemp && isTransientNetErr(err) && attempt < transientMaxAttempts-1 {
+			lastErr = err
+			if idemp && retryableAttemptErr && attempt < transientMaxAttempts-1 {
 				if sleepErr := sleepContext(ctx, backoffDelay(requestBaseBackoff, attempt)); sleepErr != nil {
 					return nil, sleepErr
 				}
@@ -214,110 +138,244 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 			return nil, lastErr
 		}
 
-		respBody, readErr := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if readErr != nil {
-			lastErr = fmt.Errorf("read body failed: %w", readErr)
-
-			tflog.Warn(ctx, "uptimerobot http error (read)", map[string]any{
-				"attempt":     attempt + 1,
-				"method":      method,
-				"url":         c.baseURL + path,
-				"status":      resp.StatusCode,
-				"duration_ms": time.Since(start).Milliseconds(),
-				"error":       readErr.Error(),
-			})
-
-			if idemp && attempt < transientMaxAttempts-1 {
-				if sleepErr := sleepContext(ctx, backoffDelay(requestBaseBackoff, attempt)); sleepErr != nil {
-					return nil, sleepErr
-				}
-				continue
-			}
-			return nil, lastErr
-		}
-
-		// DEBUG response
-		tflog.Debug(ctx, "uptimerobot http response", map[string]any{
-			"attempt":        attempt + 1,
-			"method":         method,
-			"url":            c.baseURL + path,
-			"status":         resp.StatusCode,
-			"duration_ms":    time.Since(start).Milliseconds(),
-			"request_id":     resp.Header.Get("X-Request-Id"),
-			"rate_remaining": resp.Header.Get("X-RateLimit-Remaining"),
-			"headers":        resp.Header, // response headers are safe and should not contain sensitive data
-			"body":           sanitizeJSON(respBody, 4096),
-		})
-
-		if resp.StatusCode == http.StatusTooManyRequests && attempt < rateLimitMaxAttempts-1 {
-			delay := c.rememberRateLimitDelay(rateLimitRetryDelay(resp.Header, backoffDelay(requestBaseBackoff, attempt)))
-			tflog.Warn(ctx, "uptimerobot rate limit reached; retrying after delay", map[string]any{
-				"attempt":        attempt + 1,
-				"method":         method,
-				"url":            c.baseURL + path,
-				"delay":          delay.String(),
-				"retry_after":    resp.Header.Get("Retry-After"),
-				"rate_limit":     resp.Header.Get("X-RateLimit-Limit"),
-				"rate_remaining": resp.Header.Get("X-RateLimit-Remaining"),
-				"rate_reset":     resp.Header.Get("X-RateLimit-Reset"),
-			})
-			if err := sleepContext(ctx, delay); err != nil {
+		if retry, err := c.handleRateLimitResponse(ctx, method, path, result, attempt); retry || err != nil {
+			if err != nil {
 				return nil, err
 			}
 			continue
 		}
 
-		if delay, ok := c.rememberRateLimitExhausted(resp.Header); ok {
-			tflog.Debug(ctx, "uptimerobot rate limit exhausted; delaying subsequent requests", map[string]any{
-				"method":         method,
-				"url":            c.baseURL + path,
-				"delay":          delay.String(),
-				"rate_limit":     resp.Header.Get("X-RateLimit-Limit"),
-				"rate_remaining": resp.Header.Get("X-RateLimit-Remaining"),
-				"rate_reset":     resp.Header.Get("X-RateLimit-Reset"),
-			})
-		}
-
 		// Delete 404 and 410 means that it was successful
 		if method == http.MethodDelete &&
-			(resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone) {
+			(result.statusCode == http.StatusNotFound || result.statusCode == http.StatusGone) {
 			return []byte{}, nil
 		}
 
-		// if idempotend and retryable then we retry
-		if idemp && retryableStatus(resp.StatusCode) && attempt < transientMaxAttempts-1 {
-			if d, ok := parseRetryAfter(resp.Header); ok {
-				tflog.Debug(ctx, "uptimerobot retrying after server signal", map[string]any{
-					"retry_after": d.String(),
-					"status":      resp.StatusCode,
-				})
-				if err := sleepContext(ctx, d); err != nil {
-					return nil, err
-				}
-			} else {
-				delay := backoffDelay(requestBaseBackoff, attempt)
-				tflog.Debug(ctx, "uptimerobot retrying with backoff", map[string]any{
-					"backoff": delay.String(),
-					"status":  resp.StatusCode,
-				})
-				if err := sleepContext(ctx, delay); err != nil {
-					return nil, err
-				}
+		if idemp && shouldRetryHTTPStatus(result.statusCode, attempt) {
+			if err := sleepForRetryableStatus(ctx, result.headers, result.statusCode, attempt); err != nil {
+				return nil, err
 			}
 			continue
 		}
 
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, newAPIError(resp.StatusCode, respBody)
+		if result.statusCode < 200 || result.statusCode >= 300 {
+			return nil, newAPIError(result.statusCode, result.body)
 		}
 
-		return respBody, nil
+		return result.body, nil
 	}
 	if lastErr == nil {
 		lastErr = errors.New("request failed after retries")
 	}
 	return nil, lastErr
+}
+
+func marshalJSONBody(method string, body interface{}) ([]byte, error) {
+	if body == nil {
+		return nil, nil
+	}
+
+	b, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+
+	if method == http.MethodPost || method == http.MethodPatch {
+		return normalizeCustomSettingsBody(b), nil
+	}
+	return b, nil
+}
+
+func normalizeCustomSettingsBody(b []byte) []byte {
+	var bodyMap map[string]interface{}
+	if err := json.Unmarshal(b, &bodyMap); err != nil {
+		return b
+	}
+
+	customSettings, ok := bodyMap["customSettings"].(map[string]interface{})
+	if !ok {
+		return b
+	}
+
+	if customSettings["page"] == nil {
+		customSettings["page"] = map[string]interface{}{}
+	}
+	if customSettings["colors"] == nil {
+		customSettings["colors"] = map[string]interface{}{}
+	}
+	if customSettings["features"] == nil {
+		customSettings["features"] = map[string]interface{}{}
+	}
+
+	fixedBody, err := json.Marshal(bodyMap)
+	if err != nil {
+		return b
+	}
+	return fixedBody
+}
+
+func (c *Client) doJSONAttempt(
+	ctx context.Context,
+	method string,
+	path string,
+	jsonBody []byte,
+	attempt int,
+	idempotent bool,
+) (httpAttemptResult, bool, error) {
+	start := time.Now()
+
+	req, err := c.newJSONRequest(ctx, method, path, jsonBody)
+	if err != nil {
+		return httpAttemptResult{}, false, err
+	}
+
+	tflog.Debug(ctx, "uptimerobot http request", map[string]any{
+		"attempt": attempt + 1,
+		"method":  method,
+		"url":     c.baseURL + path,
+		"headers": redactHeaders(req.Header),
+		"body":    sanitizeJSON(jsonBody, 2048),
+	})
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		wrapped := fmt.Errorf("request failed: %w", err)
+		tflog.Warn(ctx, "uptimerobot http error (transport)", map[string]any{
+			"attempt":     attempt + 1,
+			"method":      method,
+			"url":         c.baseURL + path,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"error":       err.Error(),
+			"idempotent":  idempotent,
+		})
+		return httpAttemptResult{}, isTransientNetErr(err), wrapped
+	}
+
+	respBody, readErr := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if readErr != nil {
+		wrapped := fmt.Errorf("read body failed: %w", readErr)
+		tflog.Warn(ctx, "uptimerobot http error (read)", map[string]any{
+			"attempt":     attempt + 1,
+			"method":      method,
+			"url":         c.baseURL + path,
+			"status":      resp.StatusCode,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"error":       readErr.Error(),
+		})
+		return httpAttemptResult{}, true, wrapped
+	}
+
+	tflog.Debug(ctx, "uptimerobot http response", map[string]any{
+		"attempt":        attempt + 1,
+		"method":         method,
+		"url":            c.baseURL + path,
+		"status":         resp.StatusCode,
+		"duration_ms":    time.Since(start).Milliseconds(),
+		"request_id":     resp.Header.Get("X-Request-Id"),
+		"rate_remaining": resp.Header.Get("X-RateLimit-Remaining"),
+		"headers":        resp.Header, // response headers are safe and should not contain sensitive data
+		"body":           sanitizeJSON(respBody, 4096),
+	})
+
+	return httpAttemptResult{
+		statusCode: resp.StatusCode,
+		headers:    resp.Header,
+		body:       respBody,
+	}, false, nil
+}
+
+func (c *Client) newJSONRequest(ctx context.Context, method, path string, jsonBody []byte) (*http.Request, error) {
+	var reqBody io.Reader
+	if jsonBody != nil {
+		reqBody = bytes.NewReader(jsonBody)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	if jsonBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	c.applyCommonHeaders(req)
+	return req, nil
+}
+
+func (c *Client) applyCommonHeaders(req *http.Request) {
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if c.userAgent != "" {
+		req.Header.Set("User-Agent", c.userAgent)
+	}
+	for k, v := range c.extraHeaders {
+		if req.Header.Get(k) == "" {
+			req.Header.Set(k, v)
+		}
+	}
+}
+
+func (c *Client) handleRateLimitResponse(
+	ctx context.Context,
+	method string,
+	path string,
+	result httpAttemptResult,
+	attempt int,
+) (bool, error) {
+	if result.statusCode == http.StatusTooManyRequests && attempt < rateLimitMaxAttempts-1 {
+		delay := c.rememberRateLimitDelay(rateLimitRetryDelay(result.headers, backoffDelay(requestBaseBackoff, attempt)))
+		tflog.Warn(ctx, "uptimerobot rate limit reached; retrying after delay", map[string]any{
+			"attempt":        attempt + 1,
+			"method":         method,
+			"url":            c.baseURL + path,
+			"delay":          delay.String(),
+			"retry_after":    result.headers.Get("Retry-After"),
+			"rate_limit":     result.headers.Get("X-RateLimit-Limit"),
+			"rate_remaining": result.headers.Get("X-RateLimit-Remaining"),
+			"rate_reset":     result.headers.Get("X-RateLimit-Reset"),
+		})
+		if err := sleepContext(ctx, delay); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	if delay, ok := c.rememberRateLimitExhausted(result.headers); ok {
+		tflog.Debug(ctx, "uptimerobot rate limit exhausted; delaying subsequent requests", map[string]any{
+			"method":         method,
+			"url":            c.baseURL + path,
+			"delay":          delay.String(),
+			"rate_limit":     result.headers.Get("X-RateLimit-Limit"),
+			"rate_remaining": result.headers.Get("X-RateLimit-Remaining"),
+			"rate_reset":     result.headers.Get("X-RateLimit-Reset"),
+		})
+	}
+
+	return false, nil
+}
+
+func shouldRetryHTTPStatus(statusCode, attempt int) bool {
+	return statusCode != http.StatusTooManyRequests &&
+		retryableStatus(statusCode) &&
+		attempt < transientMaxAttempts-1
+}
+
+func sleepForRetryableStatus(ctx context.Context, h http.Header, statusCode, attempt int) error {
+	if d, ok := parseRetryAfter(h); ok {
+		tflog.Debug(ctx, "uptimerobot retrying after server signal", map[string]any{
+			"retry_after": d.String(),
+			"status":      statusCode,
+		})
+		return sleepContext(ctx, d)
+	}
+
+	delay := backoffDelay(requestBaseBackoff, attempt)
+	tflog.Debug(ctx, "uptimerobot retrying with backoff", map[string]any{
+		"backoff": delay.String(),
+		"status":  statusCode,
+	})
+	return sleepContext(ctx, delay)
 }
 
 func (c *Client) doMultipartRequest(
@@ -404,16 +462,7 @@ func (c *Client) doMultipartRequest(
 		}
 
 		req.Header.Set("Content-Type", contentType)
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-		if c.userAgent != "" {
-			req.Header.Set("User-Agent", c.userAgent)
-		}
-		for k, v := range c.extraHeaders {
-			if req.Header.Get(k) == "" {
-				req.Header.Set(k, v)
-			}
-		}
+		c.applyCommonHeaders(req)
 
 		tflog.Debug(ctx, "uptimerobot multipart request", map[string]any{
 			"attempt": attempt + 1,
