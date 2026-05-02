@@ -130,7 +130,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		if err != nil {
 			lastErr = err
 			if idemp && retryableAttemptErr && attempt < transientMaxAttempts-1 {
-				if sleepErr := sleepContext(ctx, backoffDelay(requestBaseBackoff, attempt)); sleepErr != nil {
+				if sleepErr := sleepContext(ctx, backoffDelay(attempt)); sleepErr != nil {
 					return nil, sleepErr
 				}
 				continue
@@ -324,7 +324,7 @@ func (c *Client) handleRateLimitResponse(
 	attempt int,
 ) (bool, error) {
 	if result.statusCode == http.StatusTooManyRequests && attempt < rateLimitMaxAttempts-1 {
-		delay := c.rememberRateLimitDelay(rateLimitRetryDelay(result.headers, backoffDelay(requestBaseBackoff, attempt)))
+		delay := c.rememberRateLimitDelay(rateLimitRetryDelay(result.headers, backoffDelay(attempt)))
 		tflog.Warn(ctx, "uptimerobot rate limit reached; retrying after delay", map[string]any{
 			"attempt":        attempt + 1,
 			"method":         method,
@@ -370,7 +370,7 @@ func sleepForRetryableStatus(ctx context.Context, h http.Header, statusCode, att
 		return sleepContext(ctx, d)
 	}
 
-	delay := backoffDelay(requestBaseBackoff, attempt)
+	delay := backoffDelay(attempt)
 	tflog.Debug(ctx, "uptimerobot retrying with backoff", map[string]any{
 		"backoff": delay.String(),
 		"status":  statusCode,
@@ -475,6 +475,8 @@ func (c *Client) doMultipartRequest(
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
+			// Do not retry multipart transport errors. The upload may have
+			// reached the API, so replaying it could duplicate side effects.
 			lastErr = fmt.Errorf("multipart request failed: %w", err)
 			return nil, lastErr
 		}
@@ -498,7 +500,7 @@ func (c *Client) doMultipartRequest(
 		})
 
 		if resp.StatusCode == http.StatusTooManyRequests && attempt < rateLimitMaxAttempts-1 {
-			delay := c.rememberRateLimitDelay(rateLimitRetryDelay(resp.Header, backoffDelay(requestBaseBackoff, attempt)))
+			delay := c.rememberRateLimitDelay(rateLimitRetryDelay(resp.Header, backoffDelay(attempt)))
 			tflog.Warn(ctx, "uptimerobot multipart rate limit reached; retrying after delay", map[string]any{
 				"attempt":        attempt + 1,
 				"method":         method,
@@ -711,12 +713,12 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func backoffDelay(base time.Duration, attempt int) time.Duration {
+func backoffDelay(attempt int) time.Duration {
 	// exponential increase
 	if attempt > 6 {
 		attempt = 6
 	}
-	d := base << attempt
+	d := requestBaseBackoff << attempt
 	// +/- 25% jitter
 	j := time.Duration(rand.Int63n(int64(d/2))) - d/4
 	return d + j
