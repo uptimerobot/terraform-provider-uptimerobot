@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func mustMap(t *testing.T, v any) map[string]any {
@@ -82,6 +83,68 @@ func TestClient_Headers_SameHostRedirect(t *testing.T) {
 	}
 	if step != 2 {
 		t.Fatalf("expected exactly 2 hops, got %d", step)
+	}
+}
+
+func TestClient_RetriesPostOnRateLimit(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if attempts == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"message":"Too Many Requests"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("test-key")
+	c.SetBaseURL(srv.URL)
+
+	body, err := c.doRequest(context.Background(), http.MethodPost, "/monitors", map[string]string{"name": "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts, got %d", attempts)
+	}
+	if string(body) != `{"ok":true}` {
+		t.Fatalf("unexpected response body: %s", body)
+	}
+}
+
+func TestClient_RateLimitWaitHonorsContextCancellation(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("test-key")
+	c.SetBaseURL(srv.URL)
+	c.rateLimitAt = time.Now().Add(time.Hour)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := c.doRequest(ctx, http.MethodGet, "/monitors", nil)
+	if err == nil {
+		t.Fatal("expected cancellation error")
+	}
+	if !strings.Contains(err.Error(), "rate limit wait cancelled") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("expected no request while rate limited, got %d", requests)
 	}
 }
 

@@ -1,5 +1,11 @@
 ## Unreleased
 
+## 1.4.7 — 2026-05-03
+
+### Fixed
+
+- Added shared API rate-limit handling that honors `Retry-After`/`X-RateLimit-Reset`, queues subsequent requests after quota exhaustion, and retries explicit `429 Too Many Requests` responses for create/update requests.
+
 ## 1.4.6 — 2026-05-02
 
 ### Fixed
