@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 1.4.6 — 2026-05-02
+
 ### Fixed
 
 - Serialized concurrent `uptimerobot_integration` creates with the same integration type and value inside one Terraform apply, avoiding non-transactional API duplicate races that could create mixed duplicate/409 results.
