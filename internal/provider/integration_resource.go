@@ -697,6 +697,13 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 		Data: integrationData,
 	}
 
+	unlockCreate, lockErr := lockIntegrationCreate(ctx, integrationCreateLockKey(integrationTypeAPI, plan.Value.ValueString()))
+	if lockErr != nil {
+		resp.Diagnostics.AddError("Create cancelled", lockErr.Error())
+		return
+	}
+	defer unlockCreate()
+
 	var newIntegration *client.Integration
 	backoffs := []time.Duration{
 		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 3 * time.Second, 5 * time.Second,
