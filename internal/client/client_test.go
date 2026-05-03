@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -146,6 +147,38 @@ func TestClient_RateLimitWaitHonorsContextCancellation(t *testing.T) {
 	if requests != 0 {
 		t.Fatalf("expected no request while rate limited, got %d", requests)
 	}
+}
+
+func TestClient_RateLimitStateConcurrentAccess(t *testing.T) {
+	c := NewClient("test-key")
+	ctx := context.Background()
+	start := make(chan struct{})
+
+	const goroutines = 16
+	const iterations = 1000
+
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			<-start
+
+			for j := 0; j < iterations; j++ {
+				if id%2 == 0 {
+					c.rememberRateLimitDelay(0)
+					continue
+				}
+				if err := c.waitForRateLimit(ctx); err != nil {
+					t.Errorf("waitForRateLimit returned error: %v", err)
+					return
+				}
+			}
+		}(i)
+	}
+
+	close(start)
+	wg.Wait()
 }
 
 func TestIntegrationWebhookBooleansTrackPresence(t *testing.T) {
