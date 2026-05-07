@@ -30,6 +30,7 @@ type monComparable struct {
 	CheckSSLErrors           *bool
 	ResponseTimeThreshold    *int
 	RegionalData             *string
+	RegionData               *regionDataComparable
 	GroupID                  *int
 
 	// Collections compared as sets and maps when present
@@ -169,6 +170,18 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	if req.RegionalData != "" {
 		s := strings.ToLower(strings.TrimSpace(req.RegionalData))
 		c.RegionalData = &s
+	}
+	if req.RegionData != nil {
+		c.RegionData = &regionDataComparable{
+			Regions: normalizeRegions(req.RegionData.Regions),
+		}
+		if req.RegionData.ManualSelected != nil {
+			autoSelect := !*req.RegionData.ManualSelected
+			c.RegionData.AutoSelect = &autoSelect
+		}
+		if req.RegionData.Thresholds != nil {
+			c.RegionData.Thresholds = normalizeRegionThresholds(*req.RegionData.Thresholds)
+		}
 	}
 	if req.GroupID != nil {
 		v := *req.GroupID
@@ -325,6 +338,18 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		s := strings.ToLower(strings.TrimSpace(*req.RegionalData))
 		c.RegionalData = &s
 	}
+	if req.RegionData != nil {
+		c.RegionData = &regionDataComparable{
+			Regions: normalizeRegions(req.RegionData.Regions),
+		}
+		if req.RegionData.ManualSelected != nil {
+			autoSelect := !*req.RegionData.ManualSelected
+			c.RegionData.AutoSelect = &autoSelect
+		}
+		if req.RegionData.Thresholds != nil {
+			c.RegionData.Thresholds = normalizeRegionThresholds(*req.RegionData.Thresholds)
+		}
+	}
 	if req.GroupID != nil {
 		v := *req.GroupID
 		c.GroupID = &v
@@ -466,16 +491,11 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 
 	// API may return an object. Normalization to a string should be performed
 	if m.RegionalData != nil {
-		switch v := m.RegionalData.(type) {
-		case string:
-			s := strings.ToLower(strings.TrimSpace(v))
-			c.RegionalData = &s
-		case map[string]interface{}:
-			if regions, ok := v["REGION"].([]interface{}); ok && len(regions) > 0 {
-				if r0, ok := regions[0].(string); ok && r0 != "" {
-					s := strings.ToLower(strings.TrimSpace(r0))
-					c.RegionalData = &s
-				}
+		if regionData, ok := normalizeRegionDataFromAPI(m.RegionalData); ok {
+			c.RegionData = regionData
+			if len(regionData.Regions) > 0 {
+				s := regionData.Regions[0]
+				c.RegionalData = &s
 			}
 		}
 	}
@@ -806,6 +826,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		return false
 	}
+	if want.RegionData != nil && !equalRegionData(want.RegionData, got.RegionData) {
+		return false
+	}
 	if want.GroupID != nil && (got.GroupID == nil || *want.GroupID != *got.GroupID) {
 		return false
 	}
@@ -924,6 +947,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	}
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		f = append(f, "regional_data")
+	}
+	if want.RegionData != nil && !equalRegionData(want.RegionData, got.RegionData) {
+		f = append(f, "region_data")
 	}
 	if want.GroupID != nil && (got.GroupID == nil || *want.GroupID != *got.GroupID) {
 		f = append(f, "group_id")

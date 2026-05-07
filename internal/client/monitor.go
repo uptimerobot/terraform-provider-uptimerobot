@@ -52,6 +52,7 @@ type CreateMonitorRequest struct {
 	FollowRedirections       bool                  `json:"followRedirections"`
 	ResponseTimeThreshold    int                   `json:"responseTimeThreshold,omitempty"`
 	RegionalData             string                `json:"regionalData,omitempty"`
+	RegionData               *RegionDataRequest    `json:"regionData,omitempty"`
 	Config                   *MonitorConfig        `json:"config,omitempty"`
 	GroupID                  *int                  `json:"groupId,omitempty"`
 }
@@ -86,6 +87,7 @@ type UpdateMonitorRequest struct {
 	FollowRedirections       bool                   `json:"followRedirections"`
 	ResponseTimeThreshold    *int                   `json:"responseTimeThreshold,omitempty"`
 	RegionalData             *string                `json:"regionalData,omitempty"`
+	RegionData               *RegionDataRequest     `json:"regionData,omitempty"`
 	Config                   *MonitorConfig         `json:"config,omitempty"`
 	GroupID                  *int                   `json:"groupId,omitempty"`
 }
@@ -154,6 +156,12 @@ type AlertContact struct {
 	AlertContactID StringOrNumberID `json:"alertContactId"`
 	Threshold      int64            `json:"threshold"`
 	Recurrence     int64            `json:"recurrence"`
+}
+
+type RegionDataRequest struct {
+	Regions        []string        `json:"REGION"`
+	ManualSelected *bool           `json:"MANUAL_SELECTED,omitempty"`
+	Thresholds     *map[string]int `json:"THRESHOLD,omitempty"`
 }
 
 type MonitorConfig struct {

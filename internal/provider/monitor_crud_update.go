@@ -52,6 +52,19 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 	configSent := updateReq.Config != nil
 
+	clearRegionThresholds, d := shouldClearRegionDataThresholds(ctx, plan, state)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if clearRegionThresholds {
+		clearReq := cloneUpdateRequestForRegionThresholdClear(updateReq)
+		if _, err := r.updateMonitorWithRetry(ctx, id, clearReq); err != nil {
+			resp.Diagnostics.AddError("Error clearing regional thresholds", "Could not clear monitor regional thresholds before update: "+err.Error())
+			return
+		}
+	}
+
 	initialUpdated, err := r.updateMonitorWithRetry(ctx, id, updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating monitor", "Could not update monitor: "+err.Error())
@@ -69,7 +82,9 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		settleWant.DNSRecords != nil ||
 		settleWant.APIAssertions != nil ||
 		settleWant.AssignedAlertContacts != nil ||
-		settleWant.MaintenanceWindowIDs != nil {
+		settleWant.MaintenanceWindowIDs != nil ||
+		settleWant.RegionData != nil ||
+		settleWant.RegionalData != nil {
 		settleTimeout = 240 * time.Second
 	}
 
@@ -341,7 +356,12 @@ func buildUpdateRequest(
 		v := int(plan.ResponseTimeThreshold.ValueInt64())
 		req.ResponseTimeThreshold = &v
 	}
-	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
+	if regionData, ok, d := expandRegionDataToAPI(ctx, plan.RegionData); d.HasError() {
+		resp.Diagnostics.Append(d...)
+		return nil, ""
+	} else if ok {
+		req.RegionData = regionData
+	} else if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
 		v := plan.RegionalData.ValueString()
 		req.RegionalData = &v
 	}
@@ -662,8 +682,24 @@ func applyUpdatedMonitorToState(
 		out.ResponseTimeThreshold = types.Int64Null()
 	}
 
+	// region_data set only if managed
+	if !plan.RegionData.IsNull() && !plan.RegionData.IsUnknown() {
+		includeThresholds := regionDataThresholdsManaged(ctx, plan.RegionData)
+		autoSelect := regionDataAutoSelectValue(ctx, plan.RegionData)
+		regionState, d := flattenRegionDataToStateWithAutoSelect(m.RegionalData, includeThresholds, autoSelect)
+		resp.Diagnostics.Append(d...)
+		if !resp.Diagnostics.HasError() && !regionState.IsNull() && !regionState.IsUnknown() {
+			out.RegionData = regionState
+		} else {
+			out.RegionData = plan.RegionData
+		}
+		out.RegionalData = types.StringNull()
+	} else {
+		out.RegionData = types.ObjectNull(regionDataObjectType().AttrTypes)
+	}
+
 	// regional_data set only if managed
-	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
+	if out.RegionData.IsNull() && !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
 		if m.RegionalData != nil {
 			if region, ok := coerceRegion(m.RegionalData); ok {
 				out.RegionalData = types.StringValue(region)

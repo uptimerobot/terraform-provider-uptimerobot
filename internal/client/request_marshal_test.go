@@ -208,6 +208,166 @@ func TestCreateMonitorRequest_Config_UDP_JSON(t *testing.T) {
 	}
 }
 
+func TestMonitorRequest_RegionData_JSON(t *testing.T) {
+	reqThresholds := map[string]int{
+		"na": 3000,
+		"eu": 5000,
+	}
+	req := CreateMonitorRequest{
+		Name:     "multi-region",
+		URL:      "https://example.com",
+		Type:     MonitorTypeHTTP,
+		Interval: 300,
+		RegionData: &RegionDataRequest{
+			Regions:    []string{"na", "eu"},
+			Thresholds: &reqThresholds,
+		},
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m["regionalData"]; ok {
+		t.Fatalf("new region data should use regionData, got %s", raw)
+	}
+	regionData, ok := m["regionData"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected regionData object, got %#v", m["regionData"])
+	}
+	regions, ok := regionData["REGION"].([]any)
+	if !ok || len(regions) != 2 {
+		t.Fatalf("expected two REGION values, got %#v", regionData["REGION"])
+	}
+	expectedRegions := []string{"na", "eu"}
+	for i, want := range expectedRegions {
+		got, ok := regions[i].(string)
+		if !ok || got != want {
+			t.Fatalf("expected REGION[%d]=%q, got %#v", i, want, regions[i])
+		}
+	}
+	thresholds, ok := regionData["THRESHOLD"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected THRESHOLD object, got %#v", regionData["THRESHOLD"])
+	}
+	if len(thresholds) != len(reqThresholds) {
+		t.Fatalf("expected %d threshold entries, got %#v", len(reqThresholds), thresholds)
+	}
+	for region, want := range reqThresholds {
+		rawThreshold, ok := thresholds[region].(float64)
+		if !ok {
+			t.Fatalf("expected %s threshold number, got %#v", region, thresholds[region])
+		}
+		if got := int(rawThreshold); got != want {
+			t.Fatalf("expected %s threshold=%d, got %d", region, want, got)
+		}
+	}
+	if _, ok := regionData["MANUAL_SELECTED"]; ok {
+		t.Fatalf("expected MANUAL_SELECTED to be omitted when auto_select is unmanaged, got %s", raw)
+	}
+}
+
+func TestMonitorRequest_RegionData_ManualSelected_JSON(t *testing.T) {
+	for name, manualSelected := range map[string]bool{
+		"auto":   false,
+		"manual": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := CreateMonitorRequest{
+				Name:     "multi-region",
+				URL:      "https://example.com",
+				Type:     MonitorTypeHTTP,
+				Interval: 300,
+				RegionData: &RegionDataRequest{
+					Regions:        []string{"na"},
+					ManualSelected: &manualSelected,
+				},
+			}
+
+			raw, err := json.Marshal(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var m map[string]any
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Fatal(err)
+			}
+			regionData, ok := m["regionData"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected regionData object, got %#v", m["regionData"])
+			}
+			got, ok := regionData["MANUAL_SELECTED"].(bool)
+			if !ok {
+				t.Fatalf("expected MANUAL_SELECTED bool, got %#v in %s", regionData["MANUAL_SELECTED"], raw)
+			}
+			if got != manualSelected {
+				t.Fatalf("expected MANUAL_SELECTED=%t, got %t", manualSelected, got)
+			}
+		})
+	}
+}
+
+func TestMonitorRequest_RegionData_EmptyThresholds_JSON(t *testing.T) {
+	reqThresholds := map[string]int{}
+	req := UpdateMonitorRequest{
+		Name:     "multi-region",
+		Type:     MonitorTypeHTTP,
+		Interval: 300,
+		RegionData: &RegionDataRequest{
+			Regions:    []string{"na", "eu"},
+			Thresholds: &reqThresholds,
+		},
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	regionData, ok := m["regionData"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected regionData object, got %#v", m["regionData"])
+	}
+	thresholds, ok := regionData["THRESHOLD"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected empty THRESHOLD object, got %#v in %s", regionData["THRESHOLD"], raw)
+	}
+	if len(thresholds) != 0 {
+		t.Fatalf("expected empty THRESHOLD object, got %#v", thresholds)
+	}
+}
+
+func TestMonitorRequest_LegacyRegionalData_JSON(t *testing.T) {
+	req := CreateMonitorRequest{
+		Name:         "single-region",
+		URL:          "https://example.com",
+		Type:         MonitorTypeHTTP,
+		Interval:     300,
+		RegionalData: "eu",
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"regionalData":"eu"`) {
+		t.Fatalf("expected legacy regionalData string, got %s", raw)
+	}
+	if strings.Contains(string(raw), `"regionData"`) {
+		t.Fatalf("did not expect new regionData object, got %s", raw)
+	}
+}
+
 func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	createReq := CreateMaintenanceWindowRequest{
 		Name:     "mw-create",

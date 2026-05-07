@@ -39,6 +39,7 @@ type monitorResourceModel struct {
 	AssignedAlertContacts    types.Set            `tfsdk:"assigned_alert_contacts"`
 	ResponseTimeThreshold    types.Int64          `tfsdk:"response_time_threshold"`
 	RegionalData             types.String         `tfsdk:"regional_data"`
+	RegionData               types.Object         `tfsdk:"region_data"`
 	CheckSSLErrors           types.Bool           `tfsdk:"check_ssl_errors"`
 	Config                   types.Object         `tfsdk:"config"`
 }
@@ -82,6 +83,12 @@ type apiAssertionsTF struct {
 type udpTF struct {
 	Payload             types.String `tfsdk:"payload"`
 	PacketLossThreshold types.Int64  `tfsdk:"packet_loss_threshold"`
+}
+
+type regionDataTF struct {
+	Regions    types.Set  `tfsdk:"regions"`
+	AutoSelect types.Bool `tfsdk:"auto_select"`
+	Thresholds types.Map  `tfsdk:"thresholds"`
 }
 
 type apiAssertionCheckTF struct {
@@ -145,6 +152,16 @@ func udpObjectType() types.ObjectType {
 		AttrTypes: map[string]attr.Type{
 			"payload":               types.StringType,
 			"packet_loss_threshold": types.Int64Type,
+		},
+	}
+}
+
+func regionDataObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"regions":     types.SetType{ElemType: types.StringType},
+			"auto_select": types.BoolType,
+			"thresholds":  types.MapType{ElemType: types.Int64Type},
 		},
 	}
 }

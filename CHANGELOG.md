@@ -1,5 +1,13 @@
 ## Unreleased
 
+### Added
+
+- Added structured `region_data` support for `uptimerobot_monitor`, including multi-region `regions` and optional per-region response-time `thresholds`.
+
+### Changed
+
+- Deprecated legacy single-region `regional_data` in favor of `region_data`; the two attributes conflict to support a safe migration path.
+
 ## 1.4.7 — 2026-05-03
 
 ### Fixed
