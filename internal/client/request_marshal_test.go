@@ -208,6 +208,75 @@ func TestCreateMonitorRequest_Config_UDP_JSON(t *testing.T) {
 	}
 }
 
+func TestMonitorRequest_RegionData_JSON(t *testing.T) {
+	req := CreateMonitorRequest{
+		Name:     "multi-region",
+		URL:      "https://example.com",
+		Type:     MonitorTypeHTTP,
+		Interval: 300,
+		RegionData: &RegionDataRequest{
+			Regions: []string{"na", "eu"},
+			Thresholds: map[string]int{
+				"na": 3000,
+				"eu": 5000,
+			},
+		},
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m["regionalData"]; ok {
+		t.Fatalf("new region data should use regionData, got %s", raw)
+	}
+	regionData, ok := m["regionData"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected regionData object, got %#v", m["regionData"])
+	}
+	regions, ok := regionData["REGION"].([]any)
+	if !ok || len(regions) != 2 {
+		t.Fatalf("expected two REGION values, got %#v", regionData["REGION"])
+	}
+	thresholds, ok := regionData["THRESHOLD"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected THRESHOLD object, got %#v", regionData["THRESHOLD"])
+	}
+	naThreshold, ok := thresholds["na"].(float64)
+	if !ok {
+		t.Fatalf("expected na threshold number, got %#v", thresholds["na"])
+	}
+	if got := int(naThreshold); got != 3000 {
+		t.Fatalf("expected na threshold=3000, got %d", got)
+	}
+}
+
+func TestMonitorRequest_LegacyRegionalData_JSON(t *testing.T) {
+	req := CreateMonitorRequest{
+		Name:         "single-region",
+		URL:          "https://example.com",
+		Type:         MonitorTypeHTTP,
+		Interval:     300,
+		RegionalData: "eu",
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"regionalData":"eu"`) {
+		t.Fatalf("expected legacy regionalData string, got %s", raw)
+	}
+	if strings.Contains(string(raw), `"regionData"`) {
+		t.Fatalf("did not expect new regionData object, got %s", raw)
+	}
+}
+
 func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	createReq := CreateMaintenanceWindowRequest{
 		Name:     "mw-create",

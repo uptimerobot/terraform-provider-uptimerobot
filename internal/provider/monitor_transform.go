@@ -820,38 +820,5 @@ func firstNonEmpty(values ...string) string {
 var allowedRegion = map[string]struct{}{"na": {}, "eu": {}, "as": {}, "oc": {}}
 
 func coerceRegion(v interface{}) (string, bool) {
-	switch x := v.(type) {
-	case string:
-		s := strings.ToLower(strings.TrimSpace(x))
-		_, ok := allowedRegion[s]
-		return s, ok
-
-	case map[string]interface{}:
-		raw, ok := x["REGION"]
-		if !ok {
-			raw, ok = x["region"]
-			if !ok {
-				return "", false
-			}
-		}
-		switch a := raw.(type) {
-		case []interface{}:
-			for _, it := range a {
-				if s, ok := it.(string); ok {
-					s = strings.ToLower(strings.TrimSpace(s))
-					if _, ok := allowedRegion[s]; ok {
-						return s, true
-					}
-				}
-			}
-		case []string:
-			for _, s0 := range a {
-				s := strings.ToLower(strings.TrimSpace(s0))
-				if _, ok := allowedRegion[s]; ok {
-					return s, true
-				}
-			}
-		}
-	}
-	return "", false
+	return firstRegionFromAPI(v)
 }

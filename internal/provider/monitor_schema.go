@@ -413,10 +413,37 @@ Alert contacts assigned to this monitor.
 				},
 			},
 			"regional_data": schema.StringAttribute{
-				Description: "Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)",
-				Optional:    true,
+				Description:        "Legacy single region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania). Use region_data for new multi-region monitor settings.",
+				DeprecationMessage: "Use region_data instead. regional_data only supports the legacy single-region API shape.",
+				Optional:           true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("na", "eu", "as", "oc"),
+				},
+			},
+			"region_data": schema.SingleNestedAttribute{
+				Description: "Multi-region monitor settings. Uses the API v3 regionData object.",
+				MarkdownDescription: "Multi-region monitor settings. Uses the API v3 `regionData` object.\n\n" +
+					"- `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`.\n" +
+					"- `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must be selected regions and values must be between `0` and `60000`.",
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"regions": schema.SetAttribute{
+						Description: "Active monitoring regions: na (North America), eu (Europe), as (Asia), oc (Oceania).",
+						Required:    true,
+						ElementType: types.StringType,
+						Validators: []validator.Set{
+							setvalidator.SizeAtLeast(1),
+							setvalidator.SizeAtMost(4),
+							setvalidator.ValueStringsAre(
+								stringvalidator.OneOf("na", "eu", "as", "oc"),
+							),
+						},
+					},
+					"thresholds": schema.MapAttribute{
+						Description: "Optional per-region response-time thresholds in milliseconds. Keys must be selected regions.",
+						Optional:    true,
+						ElementType: types.Int64Type,
+					},
 				},
 			},
 			"check_ssl_errors": schema.BoolAttribute{

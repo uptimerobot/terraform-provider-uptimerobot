@@ -1490,6 +1490,88 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
+func TestAccMonitorResource_RegionData(t *testing.T) {
+	if _, ok := testAccOptionalEnv("UPTIMEROBOT_TEST_MULTI_REGION"); !ok {
+		t.Skip("Set UPTIMEROBOT_TEST_MULTI_REGION=1 to run multi-region acceptance; the account must have monitor-location-settings.")
+	}
+
+	name := acctest.RandomWithPrefix("test-region-data")
+	url := testAccUniqueURL(name)
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    regions = ["na", "eu"]
+    thresholds = {
+      na = 3000
+      eu = 5000
+    }
+  }
+}`, name, url),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.regions.#", "2"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "region_data.regions.*", "na"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "region_data.regions.*", "eu"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.thresholds.%", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.thresholds.na", "3000"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.thresholds.eu", "5000"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    regions = ["na", "eu"]
+    thresholds = {
+      na = 3000
+    }
+  }
+}`, name, url),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.regions.#", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.thresholds.%", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.thresholds.na", "3000"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    regions = ["na", "eu"]
+    thresholds = {
+      na = 3000
+    }
+  }
+}`, name, url),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 // TestAccMonitorResource_InvalidMonitorType tests that invalid monitor types are rejected.
 func TestAccMonitorResource_InvalidMonitorType(t *testing.T) {
 	name := acctest.RandomWithPrefix("test-invalid-monitor")

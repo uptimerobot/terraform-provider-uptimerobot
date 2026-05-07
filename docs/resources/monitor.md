@@ -203,6 +203,28 @@ resource "uptimerobot_monitor" "gateway_ping" {
 }
 ```
 
+### Multi-region Monitor
+
+```terraform
+resource "uptimerobot_monitor" "multi_region" {
+  name     = "Multi-region Website"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    regions = ["na", "eu", "as"]
+
+    thresholds = {
+      na = 3000
+      eu = 4000
+      as = 6000
+    }
+  }
+}
+```
+
 ### UDP Monitor
 
 ```terraform
@@ -660,7 +682,11 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `port` (Number) The port to monitor
 - `post_value_data` (String) JSON body (use jsonencode). Mutually exclusive with post_value_kv.
 - `post_value_kv` (Map of String) Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.
-- `regional_data` (String) Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)
+- `region_data` (Attributes) Multi-region monitor settings. Uses the API v3 `regionData` object.
+
+- `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`.
+- `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must be selected regions and values must be between `0` and `60000`. (see [below for nested schema](#nestedatt--region_data))
+- `regional_data` (String, Deprecated) Legacy single region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania). Use region_data for new multi-region monitor settings.
 - `response_time_threshold` (Number) Response time threshold in milliseconds. Response time over this threshold will trigger an incident
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
 - `success_http_response_codes` (Set of String) The expected HTTP response codes. If not set API applies defaults.
@@ -761,3 +787,16 @@ Optional:
 
 - `packet_loss_threshold` (Number) Packet loss threshold percentage.
 - `payload` (String) Optional UDP payload to send.
+
+
+
+<a id="nestedatt--region_data"></a>
+### Nested Schema for `region_data`
+
+Required:
+
+- `regions` (Set of String) Active monitoring regions: na (North America), eu (Europe), as (Asia), oc (Oceania).
+
+Optional:
+
+- `thresholds` (Map of Number) Optional per-region response-time thresholds in milliseconds. Keys must be selected regions.

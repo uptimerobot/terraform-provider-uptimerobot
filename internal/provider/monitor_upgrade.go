@@ -120,6 +120,7 @@ func upgradeMonitorFromV0(ctx context.Context, prior monitorV0Model) (monitorRes
 		AssignedAlertContacts:    acSet,
 		ResponseTimeThreshold:    prior.ResponseTimeThreshold,
 		RegionalData:             prior.RegionalData,
+		RegionData:               types.ObjectNull(regionDataObjectType().AttrTypes),
 		Config:                   types.ObjectNull(configObjectType().AttrTypes),
 	}
 
@@ -410,6 +411,7 @@ func upgradeMonitorFromV1(ctx context.Context, prior monitorV1Model) (monitorRes
 		AssignedAlertContacts:    acSet,
 		ResponseTimeThreshold:    prior.ResponseTimeThreshold,
 		RegionalData:             prior.RegionalData,
+		RegionData:               types.ObjectNull(regionDataObjectType().AttrTypes),
 		Config:                   types.ObjectNull(configObjectType().AttrTypes),
 	}
 
@@ -695,6 +697,7 @@ func upgradeMonitorFromV2(ctx context.Context, prior monitorV2Model) (monitorRes
 		AssignedAlertContacts:    acSet, // converted
 		ResponseTimeThreshold:    prior.ResponseTimeThreshold,
 		RegionalData:             prior.RegionalData,
+		RegionData:               types.ObjectNull(regionDataObjectType().AttrTypes),
 		Config:                   types.ObjectNull(configObjectType().AttrTypes),
 	}
 
@@ -1023,6 +1026,7 @@ func upgradeMonitorFromV3(ctx context.Context, prior monitorV3Model) (monitorRes
 		AssignedAlertContacts: acSet,
 		ResponseTimeThreshold: prior.ResponseTimeThreshold,
 		RegionalData:          prior.RegionalData,
+		RegionData:            types.ObjectNull(regionDataObjectType().AttrTypes),
 		CheckSSLErrors:        prior.CheckSSLErrors,
 		Config:                config,
 	}
@@ -1359,6 +1363,7 @@ func upgradeMonitorFromV4(ctx context.Context, prior monitorV4Model) (monitorRes
 
 		ResponseTimeThreshold: prior.ResponseTimeThreshold,
 		RegionalData:          prior.RegionalData,
+		RegionData:            types.ObjectNull(regionDataObjectType().AttrTypes),
 		CheckSSLErrors:        prior.CheckSSLErrors,
 		Config:                config,
 	}

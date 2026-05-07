@@ -26,6 +26,10 @@ func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.Confi
 			path.MatchRoot("post_value_data"),
 			path.MatchRoot("post_value_kv"),
 		),
+		resourcevalidator.Conflicting(
+			path.MatchRoot("regional_data"),
+			path.MatchRoot("region_data"),
+		),
 	}
 }
 
@@ -57,6 +61,7 @@ func (r *monitorResource) ValidateConfig(
 	validateMethodVsBody(ctx, &data, resp)
 	validateAssignedAlertContacts(ctx, &data, resp)
 	validateConfig(ctx, t, &data, resp)
+	validateRegionData(ctx, &data, resp)
 	validateHeadersCasingDuplication(ctx, &data, resp)
 	validatePortMonitor(ctx, t, &data, resp)
 	validateKeywordMonitor(ctx, t, &data, resp)

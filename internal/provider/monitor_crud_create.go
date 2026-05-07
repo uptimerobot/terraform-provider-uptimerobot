@@ -45,7 +45,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	plan.ID = types.StringValue(strconv.FormatInt(created.ID, 10))
 	want := wantFromCreateReq(createReq)
 	settleTimeout := 60 * time.Second
-	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.APIAssertions != nil || want.AssignedAlertContacts != nil {
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.APIAssertions != nil || want.AssignedAlertContacts != nil || want.RegionData != nil || want.RegionalData != nil {
 		settleTimeout = 180 * time.Second
 	}
 	api, err := r.waitMonitorSettled(ctx, created.ID, want, settleTimeout)
@@ -234,7 +234,12 @@ func (r *monitorResource) buildCreateRequest(
 	if !plan.ResponseTimeThreshold.IsNull() && !plan.ResponseTimeThreshold.IsUnknown() {
 		req.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
 	}
-	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
+	if regionData, ok, d := expandRegionDataToAPI(ctx, plan.RegionData); d.HasError() {
+		resp.Diagnostics.Append(d...)
+		return nil, ""
+	} else if ok {
+		req.RegionData = regionData
+	} else if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
 		req.RegionalData = plan.RegionalData.ValueString()
 	}
 	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
@@ -653,6 +658,24 @@ func (r *monitorResource) buildStateAfterCreate(
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {
 			plan.Config = cfgState
+		}
+	}
+
+	// Region data
+	if !plan.RegionData.IsNull() && !plan.RegionData.IsUnknown() {
+		includeThresholds := regionDataThresholdsManaged(ctx, plan.RegionData)
+		regionState, d := flattenRegionDataToState(api.RegionalData, includeThresholds)
+		resp.Diagnostics.Append(d...)
+		if !resp.Diagnostics.HasError() && !regionState.IsNull() && !regionState.IsUnknown() {
+			plan.RegionData = regionState
+		}
+		plan.RegionalData = types.StringNull()
+	} else {
+		plan.RegionData = types.ObjectNull(regionDataObjectType().AttrTypes)
+	}
+	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
+		if region, ok := coerceRegion(api.RegionalData); ok {
+			plan.RegionalData = types.StringValue(region)
 		}
 	}
 
