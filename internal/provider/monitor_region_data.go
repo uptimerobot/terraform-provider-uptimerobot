@@ -220,9 +220,10 @@ func shouldClearRegionDataThresholds(ctx context.Context, plan, state monitorRes
 
 	var planData regionDataTF
 	diags.Append(plan.RegionData.As(ctx, &planData, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
-	if diags.HasError() || planData.Thresholds.IsUnknown() {
+	if diags.HasError() {
 		return false, diags
 	}
+	planThresholdsManaged := !planData.Thresholds.IsNull() && !planData.Thresholds.IsUnknown()
 
 	planComparable, _, d := regionDataFromTF(ctx, plan.RegionData)
 	diags.Append(d...)
@@ -236,7 +237,7 @@ func shouldClearRegionDataThresholds(ctx context.Context, plan, state monitorRes
 		return false, diags
 	}
 
-	if len(planComparable.Thresholds) == 0 {
+	if !planThresholdsManaged || len(planComparable.Thresholds) == 0 {
 		return len(stateComparable.Thresholds) > 0, diags
 	}
 
