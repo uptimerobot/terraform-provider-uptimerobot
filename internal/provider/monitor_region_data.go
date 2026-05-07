@@ -220,7 +220,7 @@ func shouldClearRegionDataThresholds(ctx context.Context, plan, state monitorRes
 
 	var planData regionDataTF
 	diags.Append(plan.RegionData.As(ctx, &planData, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
-	if diags.HasError() || planData.Thresholds.IsNull() || planData.Thresholds.IsUnknown() {
+	if diags.HasError() || planData.Thresholds.IsUnknown() {
 		return false, diags
 	}
 

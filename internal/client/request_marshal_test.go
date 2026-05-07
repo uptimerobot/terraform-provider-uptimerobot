@@ -244,6 +244,13 @@ func TestMonitorRequest_RegionData_JSON(t *testing.T) {
 	if !ok || len(regions) != 2 {
 		t.Fatalf("expected two REGION values, got %#v", regionData["REGION"])
 	}
+	expectedRegions := []string{"na", "eu"}
+	for i, want := range expectedRegions {
+		got, ok := regions[i].(string)
+		if !ok || got != want {
+			t.Fatalf("expected REGION[%d]=%q, got %#v", i, want, regions[i])
+		}
+	}
 	thresholds, ok := regionData["THRESHOLD"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected THRESHOLD object, got %#v", regionData["THRESHOLD"])
