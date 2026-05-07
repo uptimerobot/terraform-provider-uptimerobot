@@ -343,6 +343,42 @@ func TestShouldClearRegionDataThresholds_OmittedThresholds(t *testing.T) {
 	}
 }
 
+func TestShouldClearRegionDataThresholds_EmptyThresholds(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := monitorResourceModel{
+		RegionData: regionDataObjectTestValue(map[string]attr.Value{
+			"regions": types.SetValueMust(types.StringType, []attr.Value{
+				types.StringValue("na"),
+				types.StringValue("eu"),
+			}),
+			"thresholds": types.MapValueMust(types.Int64Type, map[string]attr.Value{
+				"na": types.Int64Value(3000),
+				"eu": types.Int64Value(5000),
+			}),
+		}),
+	}
+	plan := monitorResourceModel{
+		RegionData: regionDataObjectTestValue(map[string]attr.Value{
+			"regions": types.SetValueMust(types.StringType, []attr.Value{
+				types.StringValue("na"),
+				types.StringValue("eu"),
+			}),
+			"thresholds": types.MapValueMust(types.Int64Type, map[string]attr.Value{}),
+		}),
+		ResponseTimeThreshold: types.Int64Value(2500),
+	}
+
+	got, diags := shouldClearRegionDataThresholds(ctx, plan, state)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !got {
+		t.Fatal("expected threshold clear before update when thresholds are explicitly empty")
+	}
+}
+
 func boolPtr(v bool) *bool {
 	return &v
 }

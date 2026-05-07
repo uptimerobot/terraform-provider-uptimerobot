@@ -251,4 +251,13 @@ func TestReadApplyRegionalData_ImportAutoSelectUsesRegionData(t *testing.T) {
 	if got.AutoSelect.IsNull() || !got.AutoSelect.ValueBool() {
 		t.Fatalf("expected imported auto_select=true, got %#v", got.AutoSelect)
 	}
+
+	var regions []string
+	diags = got.Regions.ElementsAs(ctx, &regions, false)
+	if diags.HasError() {
+		t.Fatalf("unexpected region diagnostics: %v", diags)
+	}
+	if len(regions) != 1 || regions[0] != "na" {
+		t.Fatalf("expected imported regions to contain na, got %#v", regions)
+	}
 }

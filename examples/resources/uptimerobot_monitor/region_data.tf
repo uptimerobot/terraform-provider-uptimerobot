@@ -1,3 +1,5 @@
+# Requires an account with monitor-location-settings support.
+# Accounts without that feature cannot use region_data.
 resource "uptimerobot_monitor" "multi_region" {
   name     = "Multi-region Website"
   type     = "HTTP"
