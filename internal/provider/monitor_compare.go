@@ -176,7 +176,7 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 			Regions: normalizeRegions(req.RegionData.Regions),
 		}
 		if req.RegionData.Thresholds != nil {
-			c.RegionData.Thresholds = normalizeRegionThresholds(req.RegionData.Thresholds)
+			c.RegionData.Thresholds = normalizeRegionThresholds(*req.RegionData.Thresholds)
 		}
 	}
 	if req.GroupID != nil {
@@ -339,7 +339,7 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 			Regions: normalizeRegions(req.RegionData.Regions),
 		}
 		if req.RegionData.Thresholds != nil {
-			c.RegionData.Thresholds = normalizeRegionThresholds(req.RegionData.Thresholds)
+			c.RegionData.Thresholds = normalizeRegionThresholds(*req.RegionData.Thresholds)
 		}
 	}
 	if req.GroupID != nil {

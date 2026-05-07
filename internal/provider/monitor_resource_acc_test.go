@@ -1500,6 +1500,7 @@ func TestAccMonitorResource_RegionData(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccProviderConfig() + fmt.Sprintf(`

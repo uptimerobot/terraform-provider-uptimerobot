@@ -240,18 +240,17 @@ func readApplyPausedState(state *monitorResourceModel, m *client.Monitor, isImpo
 func readApplyRegionalData(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	if isImport {
 		if apiRegionData, ok := normalizeRegionDataFromAPI(m.RegionalData); ok {
-			if len(apiRegionData.Regions) > 1 || len(apiRegionData.Thresholds) > 0 {
-				regionState, d := regionDataObjectValue(apiRegionData, len(apiRegionData.Thresholds) > 0)
+			includeThresholds := len(apiRegionData.Thresholds) > 0
+			useRegionData := len(apiRegionData.Regions) > 1 ||
+				includeThresholds ||
+				(len(apiRegionData.Regions) == 1 && !isDefaultRegion(apiRegionData.Regions[0]))
+			if useRegionData {
+				regionState, d := regionDataObjectValue(apiRegionData, includeThresholds)
 				resp.Diagnostics.Append(d...)
 				if !resp.Diagnostics.HasError() {
 					state.RegionData = regionState
 					state.RegionalData = types.StringNull()
 				}
-				return
-			}
-			if len(apiRegionData.Regions) == 1 && !isDefaultRegion(apiRegionData.Regions[0]) {
-				state.RegionalData = types.StringValue(apiRegionData.Regions[0])
-				state.RegionData = types.ObjectNull(regionDataObjectType().AttrTypes)
 				return
 			}
 		}

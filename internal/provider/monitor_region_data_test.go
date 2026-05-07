@@ -35,7 +35,11 @@ func TestExpandRegionDataToAPI_NormalizesSetAndThresholds(t *testing.T) {
 	if len(got.Regions) != 2 || got.Regions[0] != "na" || got.Regions[1] != "eu" {
 		t.Fatalf("unexpected normalized regions: %#v", got.Regions)
 	}
-	if got.Thresholds["na"] != 3000 || got.Thresholds["eu"] != 5000 {
+	if got.Thresholds == nil {
+		t.Fatal("expected thresholds to be set")
+	}
+	thresholds := *got.Thresholds
+	if thresholds["na"] != 3000 || thresholds["eu"] != 5000 {
 		t.Fatalf("unexpected thresholds: %#v", got.Thresholds)
 	}
 }

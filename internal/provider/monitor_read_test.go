@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -153,5 +154,45 @@ func TestReadApplyTagsHeadersAC_ImportKeepsEmptyAlertContactsNull(t *testing.T) 
 	}
 	if !state.AssignedAlertContacts.IsNull() {
 		t.Fatalf("expected import read with no alert contacts to keep assigned_alert_contacts null, got %#v", state.AssignedAlertContacts)
+	}
+}
+
+func TestReadApplyRegionalData_ImportSingleRegionUsesCanonicalRegionData(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := monitorResourceModel{}
+	resp := &resource.ReadResponse{}
+
+	readApplyRegionalData(ctx, resp, &state, &client.Monitor{
+		RegionalData: "eu",
+	}, true)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if !state.RegionalData.IsNull() {
+		t.Fatalf("expected deprecated regional_data to stay null, got %#v", state.RegionalData)
+	}
+	if state.RegionData.IsNull() {
+		t.Fatal("expected import read to populate canonical region_data")
+	}
+
+	var got regionDataTF
+	diags := state.RegionData.As(ctx, &got, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})
+	if diags.HasError() {
+		t.Fatalf("unexpected region_data diagnostics: %v", diags)
+	}
+
+	var regions []string
+	diags = got.Regions.ElementsAs(ctx, &regions, false)
+	if diags.HasError() {
+		t.Fatalf("unexpected region diagnostics: %v", diags)
+	}
+	if len(regions) != 1 || regions[0] != "eu" {
+		t.Fatalf("expected imported region_data.regions to contain eu, got %#v", regions)
+	}
+	if !got.Thresholds.IsNull() {
+		t.Fatalf("expected imported region_data.thresholds to remain null, got %#v", got.Thresholds)
 	}
 }

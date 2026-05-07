@@ -93,7 +93,7 @@ func expandRegionDataToAPI(ctx context.Context, value types.Object) (*client.Reg
 			return nil, false, diags
 		}
 
-		out.Thresholds = map[string]int{}
+		thresholdsOut := map[string]int{}
 		for raw, v := range thresholds {
 			region, ok := normalizeRegionCode(raw)
 			if !ok {
@@ -104,8 +104,9 @@ func expandRegionDataToAPI(ctx context.Context, value types.Object) (*client.Reg
 				)
 				continue
 			}
-			out.Thresholds[region] = int(v)
+			thresholdsOut[region] = int(v)
 		}
+		out.Thresholds = &thresholdsOut
 	}
 
 	return out, true, diags
@@ -197,7 +198,7 @@ func regionDataFromTF(ctx context.Context, value types.Object) (*regionDataCompa
 		Regions: normalizeRegions(req.Regions),
 	}
 	if req.Thresholds != nil {
-		out.Thresholds = normalizeRegionThresholds(req.Thresholds)
+		out.Thresholds = normalizeRegionThresholds(*req.Thresholds)
 	}
 	return out, true, diags
 }
@@ -259,7 +260,8 @@ func cloneUpdateRequestForRegionThresholdClear(req *client.UpdateMonitorRequest)
 	if req.RegionData != nil {
 		regionData := *req.RegionData
 		regionData.Regions = append([]string(nil), req.RegionData.Regions...)
-		regionData.Thresholds = nil
+		thresholds := map[string]int{}
+		regionData.Thresholds = &thresholds
 		out.RegionData = &regionData
 	}
 	return &out

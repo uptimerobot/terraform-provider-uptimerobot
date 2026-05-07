@@ -209,17 +209,18 @@ func TestCreateMonitorRequest_Config_UDP_JSON(t *testing.T) {
 }
 
 func TestMonitorRequest_RegionData_JSON(t *testing.T) {
+	reqThresholds := map[string]int{
+		"na": 3000,
+		"eu": 5000,
+	}
 	req := CreateMonitorRequest{
 		Name:     "multi-region",
 		URL:      "https://example.com",
 		Type:     MonitorTypeHTTP,
 		Interval: 300,
 		RegionData: &RegionDataRequest{
-			Regions: []string{"na", "eu"},
-			Thresholds: map[string]int{
-				"na": 3000,
-				"eu": 5000,
-			},
+			Regions:    []string{"na", "eu"},
+			Thresholds: &reqThresholds,
 		},
 	}
 
@@ -247,12 +248,51 @@ func TestMonitorRequest_RegionData_JSON(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected THRESHOLD object, got %#v", regionData["THRESHOLD"])
 	}
-	naThreshold, ok := thresholds["na"].(float64)
-	if !ok {
-		t.Fatalf("expected na threshold number, got %#v", thresholds["na"])
+	if len(thresholds) != len(reqThresholds) {
+		t.Fatalf("expected %d threshold entries, got %#v", len(reqThresholds), thresholds)
 	}
-	if got := int(naThreshold); got != 3000 {
-		t.Fatalf("expected na threshold=3000, got %d", got)
+	for region, want := range reqThresholds {
+		rawThreshold, ok := thresholds[region].(float64)
+		if !ok {
+			t.Fatalf("expected %s threshold number, got %#v", region, thresholds[region])
+		}
+		if got := int(rawThreshold); got != want {
+			t.Fatalf("expected %s threshold=%d, got %d", region, want, got)
+		}
+	}
+}
+
+func TestMonitorRequest_RegionData_EmptyThresholds_JSON(t *testing.T) {
+	reqThresholds := map[string]int{}
+	req := UpdateMonitorRequest{
+		Name:     "multi-region",
+		Type:     MonitorTypeHTTP,
+		Interval: 300,
+		RegionData: &RegionDataRequest{
+			Regions:    []string{"na", "eu"},
+			Thresholds: &reqThresholds,
+		},
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	regionData, ok := m["regionData"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected regionData object, got %#v", m["regionData"])
+	}
+	thresholds, ok := regionData["THRESHOLD"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected empty THRESHOLD object, got %#v in %s", regionData["THRESHOLD"], raw)
+	}
+	if len(thresholds) != 0 {
+		t.Fatalf("expected empty THRESHOLD object, got %#v", thresholds)
 	}
 }
 
