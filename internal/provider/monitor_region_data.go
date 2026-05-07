@@ -178,7 +178,7 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 		}
 	}
 
-	if !regionData.Thresholds.IsNull() && !regionData.Thresholds.IsUnknown() &&
+	if len(thresholds) > 0 &&
 		!data.ResponseTimeThreshold.IsNull() && !data.ResponseTimeThreshold.IsUnknown() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("response_time_threshold"),

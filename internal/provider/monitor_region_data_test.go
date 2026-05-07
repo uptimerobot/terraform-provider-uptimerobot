@@ -127,6 +127,52 @@ func TestValidateRegionData_RejectsThresholdOutsideSelectedRegions(t *testing.T)
 	}
 }
 
+func TestValidateRegionData_RejectsNonEmptyThresholdsWithGlobalThreshold(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	data := &monitorResourceModel{
+		RegionData: types.ObjectValueMust(regionDataObjectType().AttrTypes, map[string]attr.Value{
+			"regions": types.SetValueMust(types.StringType, []attr.Value{
+				types.StringValue("na"),
+			}),
+			"thresholds": types.MapValueMust(types.Int64Type, map[string]attr.Value{
+				"na": types.Int64Value(3000),
+			}),
+		}),
+		ResponseTimeThreshold: types.Int64Value(3000),
+	}
+	resp := &resource.ValidateConfigResponse{}
+
+	validateRegionData(ctx, data, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestValidateRegionData_AllowsEmptyThresholdsWithGlobalThreshold(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	data := &monitorResourceModel{
+		RegionData: types.ObjectValueMust(regionDataObjectType().AttrTypes, map[string]attr.Value{
+			"regions": types.SetValueMust(types.StringType, []attr.Value{
+				types.StringValue("na"),
+			}),
+			"thresholds": types.MapValueMust(types.Int64Type, map[string]attr.Value{}),
+		}),
+		ResponseTimeThreshold: types.Int64Value(3000),
+	}
+	resp := &resource.ValidateConfigResponse{}
+
+	validateRegionData(ctx, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+}
+
 func TestShouldClearRegionDataThresholds_RemovedKey(t *testing.T) {
 	t.Parallel()
 
