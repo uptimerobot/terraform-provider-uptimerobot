@@ -10,9 +10,10 @@ resource "uptimerobot_monitor" "multi_region" {
   region_data = {
     regions = ["na", "eu", "as"]
 
-    # Optional: let UptimeRobot choose the monitoring region automatically.
-    # When omitted or false, the configured regions are used manually.
-    # auto_select = true
+    # For automatic selection, replace this region_data object with:
+    # region_data = {
+    #   auto_select = true
+    # }
 
     thresholds = {
       na = 3000

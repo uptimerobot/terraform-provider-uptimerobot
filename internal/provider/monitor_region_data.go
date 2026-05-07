@@ -16,6 +16,8 @@ import (
 
 var canonicalRegionOrder = []string{"na", "eu", "as", "oc"}
 
+const defaultAutoSelectRegion = "na"
+
 type regionDataComparable struct {
 	Regions    []string
 	AutoSelect *bool
@@ -60,6 +62,10 @@ func normalizeRegionThresholds(in map[string]int) map[string]int {
 }
 
 func expandRegionDataToAPI(ctx context.Context, value types.Object) (*client.RegionDataRequest, bool, diag.Diagnostics) {
+	return expandRegionDataToAPIWithFallback(ctx, value, nil)
+}
+
+func expandRegionDataToAPIWithFallback(ctx context.Context, value types.Object, fallbackRegions []string) (*client.RegionDataRequest, bool, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if value.IsNull() || value.IsUnknown() {
 		return nil, false, diags
@@ -71,35 +77,31 @@ func expandRegionDataToAPI(ctx context.Context, value types.Object) (*client.Reg
 		return nil, false, diags
 	}
 
-	var regions []string
-	diags.Append(data.Regions.ElementsAs(ctx, &regions, false)...)
-	if diags.HasError() {
-		return nil, false, diags
-	}
-	regions = normalizeRegions(regions)
-	if len(regions) == 0 {
-		diags.AddAttributeError(
-			path.Root("region_data").AtName("regions"),
-			"Missing regions",
-			"region_data.regions must contain at least one valid region: na, eu, as, oc.",
-		)
-		return nil, false, diags
+	autoSelect := false
+	if !data.AutoSelect.IsNull() && !data.AutoSelect.IsUnknown() {
+		autoSelect = data.AutoSelect.ValueBool()
 	}
 
-	out := &client.RegionDataRequest{Regions: regions}
-	if !data.AutoSelect.IsNull() && !data.AutoSelect.IsUnknown() {
-		autoSelect := data.AutoSelect.ValueBool()
-		manualSelected := !autoSelect
-		out.ManualSelected = &manualSelected
+	var regions []string
+	regionsManaged := !data.Regions.IsNull() && !data.Regions.IsUnknown()
+	if regionsManaged {
+		diags.Append(data.Regions.ElementsAs(ctx, &regions, false)...)
+		if diags.HasError() {
+			return nil, false, diags
+		}
+		regions = normalizeRegions(regions)
 	}
-	if !data.Thresholds.IsNull() && !data.Thresholds.IsUnknown() {
+
+	var thresholdsOut map[string]int
+	thresholdsManaged := !data.Thresholds.IsNull() && !data.Thresholds.IsUnknown()
+	if thresholdsManaged {
 		var thresholds map[string]int64
 		diags.Append(data.Thresholds.ElementsAs(ctx, &thresholds, false)...)
 		if diags.HasError() {
 			return nil, false, diags
 		}
 
-		thresholdsOut := map[string]int{}
+		thresholdsOut = map[string]int{}
 		for raw, v := range thresholds {
 			region, ok := normalizeRegionCode(raw)
 			if !ok {
@@ -112,6 +114,41 @@ func expandRegionDataToAPI(ctx context.Context, value types.Object) (*client.Reg
 			}
 			thresholdsOut[region] = int(v)
 		}
+	}
+
+	if len(regions) == 0 {
+		switch {
+		case autoSelect && len(thresholdsOut) == 0:
+			regions = normalizeRegions(fallbackRegions)
+			if len(regions) == 0 {
+				regions = []string{defaultAutoSelectRegion}
+			}
+		case len(thresholdsOut) > 0:
+			diags.AddAttributeError(
+				path.Root("region_data").AtName("regions"),
+				"Missing regions",
+				"region_data.regions is required when region_data.thresholds contains entries.",
+			)
+			return nil, false, diags
+		default:
+			diags.AddAttributeError(
+				path.Root("region_data").AtName("regions"),
+				"Missing regions",
+				"region_data.regions is required unless region_data.auto_select is true.",
+			)
+			return nil, false, diags
+		}
+	}
+
+	out := &client.RegionDataRequest{
+		Regions:        regions,
+		RegionsManaged: regionsManaged,
+	}
+	if !data.AutoSelect.IsNull() && !data.AutoSelect.IsUnknown() {
+		manualSelected := !autoSelect
+		out.ManualSelected = &manualSelected
+	}
+	if thresholdsManaged {
 		out.Thresholds = &thresholdsOut
 	}
 
@@ -134,21 +171,31 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 	}
 
 	var regions []string
-	resp.Diagnostics.Append(regionData.Regions.ElementsAs(ctx, &regions, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
+	regionsManaged := !regionData.Regions.IsNull()
 	selected := map[string]struct{}{}
-	for _, raw := range regions {
-		region, ok := normalizeRegionCode(raw)
-		if !ok {
-			continue
+	if regionsManaged {
+		resp.Diagnostics.Append(regionData.Regions.ElementsAs(ctx, &regions, false)...)
+		if resp.Diagnostics.HasError() {
+			return
 		}
-		selected[region] = struct{}{}
+
+		for _, raw := range regions {
+			region, ok := normalizeRegionCode(raw)
+			if !ok {
+				continue
+			}
+			selected[region] = struct{}{}
+		}
 	}
 
 	if regionData.Thresholds.IsNull() || regionData.Thresholds.IsUnknown() {
+		if !regionsManaged && (regionData.AutoSelect.IsNull() || regionData.AutoSelect.IsUnknown() || !regionData.AutoSelect.ValueBool()) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("region_data").AtName("regions"),
+				"Missing regions",
+				"region_data.regions is required unless region_data.auto_select is true.",
+			)
+		}
 		return
 	}
 
@@ -156,6 +203,25 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 	resp.Diagnostics.Append(regionData.Thresholds.ElementsAs(ctx, &thresholds, false)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	if !regionsManaged {
+		if len(thresholds) > 0 {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("region_data").AtName("regions"),
+				"Missing regions",
+				"region_data.regions is required when region_data.thresholds contains entries.",
+			)
+			return
+		}
+		if regionData.AutoSelect.IsNull() || regionData.AutoSelect.IsUnknown() || !regionData.AutoSelect.ValueBool() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("region_data").AtName("regions"),
+				"Missing regions",
+				"region_data.regions is required unless region_data.auto_select is true.",
+			)
+			return
+		}
 	}
 
 	for raw, v := range thresholds {
@@ -200,8 +266,9 @@ func regionDataFromTF(ctx context.Context, value types.Object) (*regionDataCompa
 		return nil, ok, diags
 	}
 
-	out := &regionDataComparable{
-		Regions: normalizeRegions(req.Regions),
+	out := &regionDataComparable{}
+	if req.RegionsManaged {
+		out.Regions = normalizeRegions(req.Regions)
 	}
 	if req.ManualSelected != nil {
 		autoSelect := !*req.ManualSelected
@@ -211,6 +278,29 @@ func regionDataFromTF(ctx context.Context, value types.Object) (*regionDataCompa
 		out.Thresholds = normalizeRegionThresholds(*req.Thresholds)
 	}
 	return out, true, diags
+}
+
+func regionDataRegionsManaged(ctx context.Context, value types.Object) bool {
+	_, ok, diags := regionDataRegionsValue(ctx, value)
+	return ok && !diags.HasError()
+}
+
+func regionDataRegionsValue(ctx context.Context, value types.Object) ([]string, bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if value.IsNull() || value.IsUnknown() {
+		return nil, false, diags
+	}
+	var data regionDataTF
+	diags.Append(value.As(ctx, &data, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+	if diags.HasError() || data.Regions.IsNull() || data.Regions.IsUnknown() {
+		return nil, false, diags
+	}
+	var regions []string
+	diags.Append(data.Regions.ElementsAs(ctx, &regions, false)...)
+	if diags.HasError() {
+		return nil, false, diags
+	}
+	return normalizeRegions(regions), true, diags
 }
 
 func regionDataAutoSelectValue(ctx context.Context, value types.Object) *bool {
@@ -284,6 +374,7 @@ func cloneUpdateRequestForRegionThresholdClear(req *client.UpdateMonitorRequest)
 	if req.RegionData != nil {
 		regionData := *req.RegionData
 		regionData.Regions = append([]string(nil), req.RegionData.Regions...)
+		regionData.RegionsManaged = req.RegionData.RegionsManaged
 		thresholds := map[string]int{}
 		regionData.Thresholds = &thresholds
 		out.RegionData = &regionData
@@ -487,10 +578,14 @@ func intFromRaw(raw interface{}) (int, bool) {
 }
 
 func flattenRegionDataToState(apiValue interface{}, includeThresholds bool) (types.Object, diag.Diagnostics) {
-	return flattenRegionDataToStateWithAutoSelect(apiValue, includeThresholds, nil)
+	return flattenRegionDataToStateWithManagedFields(apiValue, true, includeThresholds, nil)
 }
 
 func flattenRegionDataToStateWithAutoSelect(apiValue interface{}, includeThresholds bool, fallbackAutoSelect *bool) (types.Object, diag.Diagnostics) {
+	return flattenRegionDataToStateWithManagedFields(apiValue, true, includeThresholds, fallbackAutoSelect)
+}
+
+func flattenRegionDataToStateWithManagedFields(apiValue interface{}, includeRegions, includeThresholds bool, fallbackAutoSelect *bool) (types.Object, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	apiData, ok := normalizeRegionDataFromAPI(apiValue)
 	if !ok {
@@ -500,23 +595,27 @@ func flattenRegionDataToStateWithAutoSelect(apiValue interface{}, includeThresho
 		autoSelect := *fallbackAutoSelect
 		apiData.AutoSelect = &autoSelect
 	}
-	return regionDataObjectValue(apiData, includeThresholds, fallbackAutoSelect != nil)
+	return regionDataObjectValue(apiData, includeRegions, includeThresholds, fallbackAutoSelect != nil)
 }
 
-func regionDataObjectValue(data *regionDataComparable, includeThresholds, includeAutoSelect bool) (types.Object, diag.Diagnostics) {
+func regionDataObjectValue(data *regionDataComparable, includeRegions, includeThresholds, includeAutoSelect bool) (types.Object, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if data == nil || len(data.Regions) == 0 {
 		return types.ObjectNull(regionDataObjectType().AttrTypes), diags
 	}
 
-	regionValues := make([]attr.Value, 0, len(data.Regions))
-	for _, region := range normalizeRegions(data.Regions) {
-		regionValues = append(regionValues, types.StringValue(region))
-	}
-	regions, d := types.SetValue(types.StringType, regionValues)
-	diags.Append(d...)
-	if diags.HasError() {
-		return types.ObjectNull(regionDataObjectType().AttrTypes), diags
+	regions := types.SetNull(types.StringType)
+	if includeRegions {
+		regionValues := make([]attr.Value, 0, len(data.Regions))
+		for _, region := range normalizeRegions(data.Regions) {
+			regionValues = append(regionValues, types.StringValue(region))
+		}
+		regionSet, d := types.SetValue(types.StringType, regionValues)
+		diags.Append(d...)
+		if diags.HasError() {
+			return types.ObjectNull(regionDataObjectType().AttrTypes), diags
+		}
+		regions = regionSet
 	}
 
 	thresholds := types.MapNull(types.Int64Type)
@@ -566,7 +665,7 @@ func equalRegionData(want, got *regionDataComparable) bool {
 	if got == nil {
 		return false
 	}
-	if !equalStringSet(want.Regions, got.Regions) {
+	if len(want.Regions) > 0 && !equalStringSet(want.Regions, got.Regions) {
 		return false
 	}
 	if want.AutoSelect != nil {

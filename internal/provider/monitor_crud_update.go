@@ -356,7 +356,15 @@ func buildUpdateRequest(
 		v := int(plan.ResponseTimeThreshold.ValueInt64())
 		req.ResponseTimeThreshold = &v
 	}
-	if regionData, ok, d := expandRegionDataToAPI(ctx, plan.RegionData); d.HasError() {
+	fallbackRegions, _, d := regionDataRegionsValue(ctx, state.RegionData)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return nil, ""
+	}
+	if len(fallbackRegions) == 0 && !state.RegionalData.IsNull() && !state.RegionalData.IsUnknown() {
+		fallbackRegions = []string{state.RegionalData.ValueString()}
+	}
+	if regionData, ok, d := expandRegionDataToAPIWithFallback(ctx, plan.RegionData, fallbackRegions); d.HasError() {
 		resp.Diagnostics.Append(d...)
 		return nil, ""
 	} else if ok {
@@ -684,9 +692,10 @@ func applyUpdatedMonitorToState(
 
 	// region_data set only if managed
 	if !plan.RegionData.IsNull() && !plan.RegionData.IsUnknown() {
+		includeRegions := regionDataRegionsManaged(ctx, plan.RegionData)
 		includeThresholds := regionDataThresholdsManaged(ctx, plan.RegionData)
 		autoSelect := regionDataAutoSelectValue(ctx, plan.RegionData)
-		regionState, d := flattenRegionDataToStateWithAutoSelect(m.RegionalData, includeThresholds, autoSelect)
+		regionState, d := flattenRegionDataToStateWithManagedFields(m.RegionalData, includeRegions, includeThresholds, autoSelect)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() && !regionState.IsNull() && !regionState.IsUnknown() {
 			out.RegionData = regionState

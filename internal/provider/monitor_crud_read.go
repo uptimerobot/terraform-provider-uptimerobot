@@ -242,12 +242,13 @@ func readApplyRegionalData(ctx context.Context, resp *resource.ReadResponse, sta
 		if apiRegionData, ok := normalizeRegionDataFromAPI(m.RegionalData); ok {
 			includeThresholds := len(apiRegionData.Thresholds) > 0
 			includeAutoSelect := apiRegionData.AutoSelect != nil && *apiRegionData.AutoSelect
+			includeRegions := !includeAutoSelect || includeThresholds
 			useRegionData := len(apiRegionData.Regions) > 1 ||
 				includeThresholds ||
 				includeAutoSelect ||
 				(len(apiRegionData.Regions) == 1 && !isDefaultRegion(apiRegionData.Regions[0]))
 			if useRegionData {
-				regionState, d := regionDataObjectValue(apiRegionData, includeThresholds, includeAutoSelect)
+				regionState, d := regionDataObjectValue(apiRegionData, includeRegions, includeThresholds, includeAutoSelect)
 				resp.Diagnostics.Append(d...)
 				if !resp.Diagnostics.HasError() {
 					state.RegionData = regionState
@@ -261,9 +262,10 @@ func readApplyRegionalData(ctx context.Context, resp *resource.ReadResponse, sta
 		return
 	}
 	if !state.RegionData.IsNull() && !state.RegionData.IsUnknown() {
+		includeRegions := regionDataRegionsManaged(ctx, state.RegionData)
 		includeThresholds := regionDataThresholdsManaged(ctx, state.RegionData)
 		autoSelect := regionDataAutoSelectValue(ctx, state.RegionData)
-		regionState, d := flattenRegionDataToStateWithAutoSelect(m.RegionalData, includeThresholds, autoSelect)
+		regionState, d := flattenRegionDataToStateWithManagedFields(m.RegionalData, includeRegions, includeThresholds, autoSelect)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() && !regionState.IsNull() && !regionState.IsUnknown() {
 			state.RegionData = regionState
