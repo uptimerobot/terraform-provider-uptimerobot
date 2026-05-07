@@ -267,6 +267,50 @@ func TestMonitorRequest_RegionData_JSON(t *testing.T) {
 			t.Fatalf("expected %s threshold=%d, got %d", region, want, got)
 		}
 	}
+	if _, ok := regionData["MANUAL_SELECTED"]; ok {
+		t.Fatalf("expected MANUAL_SELECTED to be omitted when auto_select is unmanaged, got %s", raw)
+	}
+}
+
+func TestMonitorRequest_RegionData_ManualSelected_JSON(t *testing.T) {
+	for name, manualSelected := range map[string]bool{
+		"auto":   false,
+		"manual": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := CreateMonitorRequest{
+				Name:     "multi-region",
+				URL:      "https://example.com",
+				Type:     MonitorTypeHTTP,
+				Interval: 300,
+				RegionData: &RegionDataRequest{
+					Regions:        []string{"na"},
+					ManualSelected: &manualSelected,
+				},
+			}
+
+			raw, err := json.Marshal(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var m map[string]any
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Fatal(err)
+			}
+			regionData, ok := m["regionData"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected regionData object, got %#v", m["regionData"])
+			}
+			got, ok := regionData["MANUAL_SELECTED"].(bool)
+			if !ok {
+				t.Fatalf("expected MANUAL_SELECTED bool, got %#v in %s", regionData["MANUAL_SELECTED"], raw)
+			}
+			if got != manualSelected {
+				t.Fatalf("expected MANUAL_SELECTED=%t, got %t", manualSelected, got)
+			}
+		})
+	}
 }
 
 func TestMonitorRequest_RegionData_EmptyThresholds_JSON(t *testing.T) {

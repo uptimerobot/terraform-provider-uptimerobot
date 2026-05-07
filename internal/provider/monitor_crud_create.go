@@ -664,7 +664,8 @@ func (r *monitorResource) buildStateAfterCreate(
 	// Region data
 	if !plan.RegionData.IsNull() && !plan.RegionData.IsUnknown() {
 		includeThresholds := regionDataThresholdsManaged(ctx, plan.RegionData)
-		regionState, d := flattenRegionDataToState(api.RegionalData, includeThresholds)
+		autoSelect := regionDataAutoSelectValue(ctx, plan.RegionData)
+		regionState, d := flattenRegionDataToStateWithAutoSelect(api.RegionalData, includeThresholds, autoSelect)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() && !regionState.IsNull() && !regionState.IsUnknown() {
 			plan.RegionData = regionState

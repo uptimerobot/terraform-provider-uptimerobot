@@ -1569,6 +1569,43 @@ resource "uptimerobot_monitor" "test" {
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    regions     = ["na"]
+    auto_select = true
+  }
+}`, name, url),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.regions.#", "1"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "region_data.regions.*", "na"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.auto_select", "true"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    regions     = ["na"]
+    auto_select = true
+  }
+}`, name, url),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
 		},
 	})
 }

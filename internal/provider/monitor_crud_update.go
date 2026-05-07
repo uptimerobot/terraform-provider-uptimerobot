@@ -685,7 +685,8 @@ func applyUpdatedMonitorToState(
 	// region_data set only if managed
 	if !plan.RegionData.IsNull() && !plan.RegionData.IsUnknown() {
 		includeThresholds := regionDataThresholdsManaged(ctx, plan.RegionData)
-		regionState, d := flattenRegionDataToState(m.RegionalData, includeThresholds)
+		autoSelect := regionDataAutoSelectValue(ctx, plan.RegionData)
+		regionState, d := flattenRegionDataToStateWithAutoSelect(m.RegionalData, includeThresholds, autoSelect)
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() && !regionState.IsNull() && !regionState.IsUnknown() {
 			out.RegionData = regionState

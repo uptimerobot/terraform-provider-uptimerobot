@@ -175,6 +175,10 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 		c.RegionData = &regionDataComparable{
 			Regions: normalizeRegions(req.RegionData.Regions),
 		}
+		if req.RegionData.ManualSelected != nil {
+			autoSelect := !*req.RegionData.ManualSelected
+			c.RegionData.AutoSelect = &autoSelect
+		}
 		if req.RegionData.Thresholds != nil {
 			c.RegionData.Thresholds = normalizeRegionThresholds(*req.RegionData.Thresholds)
 		}
@@ -337,6 +341,10 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 	if req.RegionData != nil {
 		c.RegionData = &regionDataComparable{
 			Regions: normalizeRegions(req.RegionData.Regions),
+		}
+		if req.RegionData.ManualSelected != nil {
+			autoSelect := !*req.RegionData.ManualSelected
+			c.RegionData.AutoSelect = &autoSelect
 		}
 		if req.RegionData.Thresholds != nil {
 			c.RegionData.Thresholds = normalizeRegionThresholds(*req.RegionData.Thresholds)

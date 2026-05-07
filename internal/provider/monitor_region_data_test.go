@@ -10,11 +10,23 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
+func regionDataObjectTestValue(values map[string]attr.Value) types.Object {
+	attrs := map[string]attr.Value{
+		"regions":     types.SetNull(types.StringType),
+		"auto_select": types.BoolNull(),
+		"thresholds":  types.MapNull(types.Int64Type),
+	}
+	for key, value := range values {
+		attrs[key] = value
+	}
+	return types.ObjectValueMust(regionDataObjectType().AttrTypes, attrs)
+}
+
 func TestExpandRegionDataToAPI_NormalizesSetAndThresholds(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	value := types.ObjectValueMust(regionDataObjectType().AttrTypes, map[string]attr.Value{
+	value := regionDataObjectTestValue(map[string]attr.Value{
 		"regions": types.SetValueMust(types.StringType, []attr.Value{
 			types.StringValue("eu"),
 			types.StringValue("na"),
@@ -41,6 +53,41 @@ func TestExpandRegionDataToAPI_NormalizesSetAndThresholds(t *testing.T) {
 	thresholds := *got.Thresholds
 	if thresholds["na"] != 3000 || thresholds["eu"] != 5000 {
 		t.Fatalf("unexpected thresholds: %#v", got.Thresholds)
+	}
+}
+
+func TestExpandRegionDataToAPI_AutoSelectMapsToManualSelected(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	for name, autoSelect := range map[string]bool{
+		"auto":   true,
+		"manual": false,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			value := regionDataObjectTestValue(map[string]attr.Value{
+				"regions": types.SetValueMust(types.StringType, []attr.Value{
+					types.StringValue("na"),
+				}),
+				"auto_select": types.BoolValue(autoSelect),
+			})
+
+			got, ok, diags := expandRegionDataToAPI(ctx, value)
+			if diags.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", diags)
+			}
+			if !ok || got == nil {
+				t.Fatal("expected region data request")
+			}
+			if got.ManualSelected == nil {
+				t.Fatal("expected MANUAL_SELECTED to be sent")
+			}
+			if *got.ManualSelected == autoSelect {
+				t.Fatalf("expected MANUAL_SELECTED=%t for auto_select=%t", !autoSelect, autoSelect)
+			}
+		})
 	}
 }
 
@@ -84,6 +131,57 @@ func TestFlattenRegionDataToState_ObjectResponse(t *testing.T) {
 	if thresholds["na"] != 3000 || thresholds["eu"] != 5000 {
 		t.Fatalf("unexpected thresholds: %#v", thresholds)
 	}
+	if !got.AutoSelect.IsNull() {
+		t.Fatalf("expected auto_select to remain null when unmanaged, got %#v", got.AutoSelect)
+	}
+}
+
+func TestFlattenRegionDataToState_UsesManualSelectedWhenPresent(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	apiValue := map[string]interface{}{
+		"REGION":          []interface{}{"na"},
+		"MANUAL_SELECTED": false,
+	}
+
+	state, diags := flattenRegionDataToStateWithAutoSelect(apiValue, false, boolPtr(false))
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	var got regionDataTF
+	diags = state.As(ctx, &got, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})
+	if diags.HasError() {
+		t.Fatalf("unexpected decode diagnostics: %v", diags)
+	}
+	if got.AutoSelect.IsNull() || !got.AutoSelect.ValueBool() {
+		t.Fatalf("expected API MANUAL_SELECTED=false to decode as auto_select=true, got %#v", got.AutoSelect)
+	}
+}
+
+func TestFlattenRegionDataToState_PreservesManagedAutoSelectFallback(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	apiValue := map[string]interface{}{
+		"REGION": []interface{}{"na"},
+	}
+	autoSelect := true
+
+	state, diags := flattenRegionDataToStateWithAutoSelect(apiValue, false, &autoSelect)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	var got regionDataTF
+	diags = state.As(ctx, &got, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})
+	if diags.HasError() {
+		t.Fatalf("unexpected decode diagnostics: %v", diags)
+	}
+	if got.AutoSelect.IsNull() || !got.AutoSelect.ValueBool() {
+		t.Fatalf("expected fallback auto_select=true, got %#v", got.AutoSelect)
+	}
 }
 
 func TestEqualRegionData_IgnoresRegionOrder(t *testing.T) {
@@ -108,7 +206,7 @@ func TestValidateRegionData_RejectsThresholdOutsideSelectedRegions(t *testing.T)
 
 	ctx := context.Background()
 	data := &monitorResourceModel{
-		RegionData: types.ObjectValueMust(regionDataObjectType().AttrTypes, map[string]attr.Value{
+		RegionData: regionDataObjectTestValue(map[string]attr.Value{
 			"regions": types.SetValueMust(types.StringType, []attr.Value{
 				types.StringValue("eu"),
 			}),
@@ -132,7 +230,7 @@ func TestValidateRegionData_RejectsNonEmptyThresholdsWithGlobalThreshold(t *test
 
 	ctx := context.Background()
 	data := &monitorResourceModel{
-		RegionData: types.ObjectValueMust(regionDataObjectType().AttrTypes, map[string]attr.Value{
+		RegionData: regionDataObjectTestValue(map[string]attr.Value{
 			"regions": types.SetValueMust(types.StringType, []attr.Value{
 				types.StringValue("na"),
 			}),
@@ -156,7 +254,7 @@ func TestValidateRegionData_AllowsEmptyThresholdsWithGlobalThreshold(t *testing.
 
 	ctx := context.Background()
 	data := &monitorResourceModel{
-		RegionData: types.ObjectValueMust(regionDataObjectType().AttrTypes, map[string]attr.Value{
+		RegionData: regionDataObjectTestValue(map[string]attr.Value{
 			"regions": types.SetValueMust(types.StringType, []attr.Value{
 				types.StringValue("na"),
 			}),
@@ -178,7 +276,7 @@ func TestShouldClearRegionDataThresholds_RemovedKey(t *testing.T) {
 
 	ctx := context.Background()
 	state := monitorResourceModel{
-		RegionData: types.ObjectValueMust(regionDataObjectType().AttrTypes, map[string]attr.Value{
+		RegionData: regionDataObjectTestValue(map[string]attr.Value{
 			"regions": types.SetValueMust(types.StringType, []attr.Value{
 				types.StringValue("na"),
 				types.StringValue("eu"),
@@ -190,7 +288,7 @@ func TestShouldClearRegionDataThresholds_RemovedKey(t *testing.T) {
 		}),
 	}
 	plan := monitorResourceModel{
-		RegionData: types.ObjectValueMust(regionDataObjectType().AttrTypes, map[string]attr.Value{
+		RegionData: regionDataObjectTestValue(map[string]attr.Value{
 			"regions": types.SetValueMust(types.StringType, []attr.Value{
 				types.StringValue("na"),
 				types.StringValue("eu"),
@@ -215,7 +313,7 @@ func TestShouldClearRegionDataThresholds_OmittedThresholds(t *testing.T) {
 
 	ctx := context.Background()
 	state := monitorResourceModel{
-		RegionData: types.ObjectValueMust(regionDataObjectType().AttrTypes, map[string]attr.Value{
+		RegionData: regionDataObjectTestValue(map[string]attr.Value{
 			"regions": types.SetValueMust(types.StringType, []attr.Value{
 				types.StringValue("na"),
 				types.StringValue("eu"),
@@ -227,7 +325,7 @@ func TestShouldClearRegionDataThresholds_OmittedThresholds(t *testing.T) {
 		}),
 	}
 	plan := monitorResourceModel{
-		RegionData: types.ObjectValueMust(regionDataObjectType().AttrTypes, map[string]attr.Value{
+		RegionData: regionDataObjectTestValue(map[string]attr.Value{
 			"regions": types.SetValueMust(types.StringType, []attr.Value{
 				types.StringValue("na"),
 				types.StringValue("eu"),
@@ -243,4 +341,8 @@ func TestShouldClearRegionDataThresholds_OmittedThresholds(t *testing.T) {
 	if !got {
 		t.Fatal("expected threshold clear before update when thresholds are omitted from plan")
 	}
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }

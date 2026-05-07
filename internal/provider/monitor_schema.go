@@ -424,6 +424,7 @@ Alert contacts assigned to this monitor.
 				Description: "Multi-region monitor settings. Uses the API v3 regionData object.",
 				MarkdownDescription: "Multi-region monitor settings. Uses the API v3 `regionData` object.\n\n" +
 					"- `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`.\n" +
+					"- `auto_select` lets UptimeRobot choose the monitoring region automatically. When omitted or `false`, the configured `regions` are used as manually selected regions.\n" +
 					"- `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must be selected regions and values must be between `0` and `60000`.",
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
@@ -438,6 +439,10 @@ Alert contacts assigned to this monitor.
 								stringvalidator.OneOf("na", "eu", "as", "oc"),
 							),
 						},
+					},
+					"auto_select": schema.BoolAttribute{
+						Description: "When true, UptimeRobot automatically chooses the monitoring region. When omitted or false, the configured regions are used as manually selected regions.",
+						Optional:    true,
 					},
 					"thresholds": schema.MapAttribute{
 						Description: "Optional per-region response-time thresholds in milliseconds. Keys must be selected regions.",

@@ -216,6 +216,10 @@ resource "uptimerobot_monitor" "multi_region" {
   region_data = {
     regions = ["na", "eu", "as"]
 
+    # Optional: let UptimeRobot choose the monitoring region automatically.
+    # When omitted or false, the configured regions are used manually.
+    # auto_select = true
+
     thresholds = {
       na = 3000
       eu = 4000
@@ -685,6 +689,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `region_data` (Attributes) Multi-region monitor settings. Uses the API v3 `regionData` object.
 
 - `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`.
+- `auto_select` lets UptimeRobot choose the monitoring region automatically. When omitted or `false`, the configured `regions` are used as manually selected regions.
 - `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must be selected regions and values must be between `0` and `60000`. (see [below for nested schema](#nestedatt--region_data))
 - `regional_data` (String, Deprecated) Legacy single region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania). Use region_data for new multi-region monitor settings.
 - `response_time_threshold` (Number) Response time threshold in milliseconds. Response time over this threshold will trigger an incident
@@ -799,4 +804,5 @@ Required:
 
 Optional:
 
+- `auto_select` (Boolean) When true, UptimeRobot automatically chooses the monitoring region. When omitted or false, the configured regions are used as manually selected regions.
 - `thresholds` (Map of Number) Optional per-region response-time thresholds in milliseconds. Keys must be selected regions.

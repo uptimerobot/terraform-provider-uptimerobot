@@ -86,8 +86,9 @@ type udpTF struct {
 }
 
 type regionDataTF struct {
-	Regions    types.Set `tfsdk:"regions"`
-	Thresholds types.Map `tfsdk:"thresholds"`
+	Regions    types.Set  `tfsdk:"regions"`
+	AutoSelect types.Bool `tfsdk:"auto_select"`
+	Thresholds types.Map  `tfsdk:"thresholds"`
 }
 
 type apiAssertionCheckTF struct {
@@ -158,8 +159,9 @@ func udpObjectType() types.ObjectType {
 func regionDataObjectType() types.ObjectType {
 	return types.ObjectType{
 		AttrTypes: map[string]attr.Type{
-			"regions":    types.SetType{ElemType: types.StringType},
-			"thresholds": types.MapType{ElemType: types.Int64Type},
+			"regions":     types.SetType{ElemType: types.StringType},
+			"auto_select": types.BoolType,
+			"thresholds":  types.MapType{ElemType: types.Int64Type},
 		},
 	}
 }

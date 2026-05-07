@@ -196,3 +196,59 @@ func TestReadApplyRegionalData_ImportSingleRegionUsesCanonicalRegionData(t *test
 		t.Fatalf("expected imported region_data.thresholds to remain null, got %#v", got.Thresholds)
 	}
 }
+
+func TestReadApplyRegionalData_ImportDefaultManualRegionStaysUnmanaged(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := monitorResourceModel{}
+	resp := &resource.ReadResponse{}
+
+	readApplyRegionalData(ctx, resp, &state, &client.Monitor{
+		RegionalData: map[string]interface{}{
+			"REGION":          []interface{}{"na"},
+			"MANUAL_SELECTED": true,
+		},
+	}, true)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if !state.RegionalData.IsNull() {
+		t.Fatalf("expected deprecated regional_data to stay null, got %#v", state.RegionalData)
+	}
+	if !state.RegionData.IsNull() {
+		t.Fatalf("expected default manual region_data to stay null on import, got %#v", state.RegionData)
+	}
+}
+
+func TestReadApplyRegionalData_ImportAutoSelectUsesRegionData(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := monitorResourceModel{}
+	resp := &resource.ReadResponse{}
+
+	readApplyRegionalData(ctx, resp, &state, &client.Monitor{
+		RegionalData: map[string]interface{}{
+			"REGION":          []interface{}{"na"},
+			"MANUAL_SELECTED": false,
+		},
+	}, true)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if state.RegionData.IsNull() {
+		t.Fatal("expected auto-select import to populate region_data")
+	}
+
+	var got regionDataTF
+	diags := state.RegionData.As(ctx, &got, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})
+	if diags.HasError() {
+		t.Fatalf("unexpected region_data diagnostics: %v", diags)
+	}
+	if got.AutoSelect.IsNull() || !got.AutoSelect.ValueBool() {
+		t.Fatalf("expected imported auto_select=true, got %#v", got.AutoSelect)
+	}
+}
