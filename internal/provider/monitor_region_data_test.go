@@ -122,6 +122,13 @@ func TestFlattenRegionDataToState_ObjectResponse(t *testing.T) {
 	if len(regions) != 2 {
 		t.Fatalf("expected two regions, got %#v", regions)
 	}
+	seen := map[string]bool{}
+	for _, region := range regions {
+		seen[region] = true
+	}
+	if !seen["na"] || !seen["eu"] {
+		t.Fatalf("expected regions to contain na and eu, got %#v", regions)
+	}
 
 	var thresholds map[string]int64
 	diags = got.Thresholds.ElementsAs(ctx, &thresholds, false)
