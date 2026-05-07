@@ -160,6 +160,7 @@ type AlertContact struct {
 
 type RegionDataRequest struct {
 	Regions        []string        `json:"REGION"`
+	RegionsManaged bool            `json:"-"`
 	ManualSelected *bool           `json:"MANUAL_SELECTED,omitempty"`
 	Thresholds     *map[string]int `json:"THRESHOLD,omitempty"`
 }

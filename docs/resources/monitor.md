@@ -218,9 +218,10 @@ resource "uptimerobot_monitor" "multi_region" {
   region_data = {
     regions = ["na", "eu", "as"]
 
-    # Optional: let UptimeRobot choose the monitoring region automatically.
-    # When omitted or false, the configured regions are used manually.
-    # auto_select = true
+    # For automatic selection, replace this region_data object with:
+    # region_data = {
+    #   auto_select = true
+    # }
 
     thresholds = {
       na = 3000
@@ -690,8 +691,8 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `post_value_kv` (Map of String) Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.
 - `region_data` (Attributes) Multi-region monitor settings. Uses the API v3 `regionData` object.
 
-- `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`.
-- `auto_select` lets UptimeRobot choose the monitoring region automatically. When omitted or `false`, the configured `regions` are used as manually selected regions.
+- `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`. Required unless `auto_select` is `true`.
+- `auto_select` lets UptimeRobot choose the monitoring region automatically. When `true`, `regions` can be omitted and the provider sends the API-required carrier region without managing it. When omitted or `false`, configured `regions` are used as manually selected regions.
 - `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must be selected regions and values must be between `0` and `60000`. (see [below for nested schema](#nestedatt--region_data))
 - `regional_data` (String, Deprecated) Legacy single region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania). Use region_data for new multi-region monitor settings.
 - `response_time_threshold` (Number) Response time threshold in milliseconds. Response time over this threshold will trigger an incident
@@ -800,11 +801,8 @@ Optional:
 <a id="nestedatt--region_data"></a>
 ### Nested Schema for `region_data`
 
-Required:
-
-- `regions` (Set of String) Active monitoring regions: na (North America), eu (Europe), as (Asia), oc (Oceania).
-
 Optional:
 
-- `auto_select` (Boolean) When true, UptimeRobot automatically chooses the monitoring region. When omitted or false, the configured regions are used as manually selected regions.
+- `auto_select` (Boolean) When true, UptimeRobot automatically chooses the monitoring region. Regions can be omitted in this mode. When omitted or false, configured regions are used as manually selected regions.
+- `regions` (Set of String) Active monitoring regions: na (North America), eu (Europe), as (Asia), oc (Oceania). Required unless auto_select is true.
 - `thresholds` (Map of Number) Optional per-region response-time thresholds in milliseconds. Keys must be selected regions.

@@ -91,6 +91,84 @@ func TestExpandRegionDataToAPI_AutoSelectMapsToManualSelected(t *testing.T) {
 	}
 }
 
+func TestExpandRegionDataToAPI_AutoSelectAllowsOmittedRegions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	value := regionDataObjectTestValue(map[string]attr.Value{
+		"auto_select": types.BoolValue(true),
+	})
+
+	got, ok, diags := expandRegionDataToAPI(ctx, value)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !ok || got == nil {
+		t.Fatal("expected region data request")
+	}
+	if got.RegionsManaged {
+		t.Fatal("expected fallback region to stay unmanaged")
+	}
+	if len(got.Regions) != 1 || got.Regions[0] != defaultAutoSelectRegion {
+		t.Fatalf("expected default API carrier region, got %#v", got.Regions)
+	}
+	if got.ManualSelected == nil || *got.ManualSelected {
+		t.Fatalf("expected MANUAL_SELECTED=false, got %#v", got.ManualSelected)
+	}
+}
+
+func TestExpandRegionDataToAPI_AutoSelectUsesFallbackRegions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	value := regionDataObjectTestValue(map[string]attr.Value{
+		"auto_select": types.BoolValue(true),
+	})
+
+	got, ok, diags := expandRegionDataToAPIWithFallback(ctx, value, []string{"eu"})
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !ok || got == nil {
+		t.Fatal("expected region data request")
+	}
+	if got.RegionsManaged {
+		t.Fatal("expected fallback region to stay unmanaged")
+	}
+	if len(got.Regions) != 1 || got.Regions[0] != "eu" {
+		t.Fatalf("expected fallback API carrier region, got %#v", got.Regions)
+	}
+}
+
+func TestExpandRegionDataToAPI_RequiresRegionsForManualSelection(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	value := regionDataObjectTestValue(map[string]attr.Value{})
+
+	_, _, diags := expandRegionDataToAPI(ctx, value)
+	if !diags.HasError() {
+		t.Fatal("expected diagnostics when regions are omitted without auto_select=true")
+	}
+}
+
+func TestExpandRegionDataToAPI_RequiresRegionsForThresholdEntries(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	value := regionDataObjectTestValue(map[string]attr.Value{
+		"auto_select": types.BoolValue(true),
+		"thresholds": types.MapValueMust(types.Int64Type, map[string]attr.Value{
+			"na": types.Int64Value(3000),
+		}),
+	})
+
+	_, _, diags := expandRegionDataToAPI(ctx, value)
+	if !diags.HasError() {
+		t.Fatal("expected diagnostics when thresholds are set without regions")
+	}
+}
+
 func TestFlattenRegionDataToState_ObjectResponse(t *testing.T) {
 	t.Parallel()
 
@@ -191,6 +269,33 @@ func TestFlattenRegionDataToState_PreservesManagedAutoSelectFallback(t *testing.
 	}
 }
 
+func TestFlattenRegionDataToState_LeavesUnmanagedRegionsNull(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	apiValue := map[string]interface{}{
+		"REGION": []interface{}{"na"},
+	}
+	autoSelect := true
+
+	state, diags := flattenRegionDataToStateWithManagedFields(apiValue, false, false, &autoSelect)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	var got regionDataTF
+	diags = state.As(ctx, &got, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})
+	if diags.HasError() {
+		t.Fatalf("unexpected decode diagnostics: %v", diags)
+	}
+	if !got.Regions.IsNull() {
+		t.Fatalf("expected unmanaged regions to remain null, got %#v", got.Regions)
+	}
+	if got.AutoSelect.IsNull() || !got.AutoSelect.ValueBool() {
+		t.Fatalf("expected auto_select=true, got %#v", got.AutoSelect)
+	}
+}
+
 func TestEqualRegionData_IgnoresRegionOrder(t *testing.T) {
 	t.Parallel()
 
@@ -275,6 +380,42 @@ func TestValidateRegionData_AllowsEmptyThresholdsWithGlobalThreshold(t *testing.
 
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateRegionData_AllowsAutoSelectWithoutRegions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	data := &monitorResourceModel{
+		RegionData: regionDataObjectTestValue(map[string]attr.Value{
+			"auto_select": types.BoolValue(true),
+		}),
+		ResponseTimeThreshold: types.Int64Null(),
+	}
+	resp := &resource.ValidateConfigResponse{}
+
+	validateRegionData(ctx, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateRegionData_RejectsManualSelectionWithoutRegions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	data := &monitorResourceModel{
+		RegionData:            regionDataObjectTestValue(map[string]attr.Value{}),
+		ResponseTimeThreshold: types.Int64Null(),
+	}
+	resp := &resource.ValidateConfigResponse{}
+
+	validateRegionData(ctx, data, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected validation error")
 	}
 }
 

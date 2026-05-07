@@ -1579,14 +1579,12 @@ resource "uptimerobot_monitor" "test" {
   timeout  = 30
 
   region_data = {
-    regions     = ["na"]
     auto_select = true
   }
 }`, name, url),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.regions.#", "1"),
-					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "region_data.regions.*", "na"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.auto_select", "true"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "region_data.regions.#"),
 				),
 			},
 			{
@@ -1599,7 +1597,6 @@ resource "uptimerobot_monitor" "test" {
   timeout  = 30
 
   region_data = {
-    regions     = ["na"]
     auto_select = true
   }
 }`, name, url),

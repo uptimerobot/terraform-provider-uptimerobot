@@ -423,14 +423,14 @@ Alert contacts assigned to this monitor.
 			"region_data": schema.SingleNestedAttribute{
 				Description: "Multi-region monitor settings. Uses the API v3 regionData object.",
 				MarkdownDescription: "Multi-region monitor settings. Uses the API v3 `regionData` object.\n\n" +
-					"- `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`.\n" +
-					"- `auto_select` lets UptimeRobot choose the monitoring region automatically. When omitted or `false`, the configured `regions` are used as manually selected regions.\n" +
+					"- `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`. Required unless `auto_select` is `true`.\n" +
+					"- `auto_select` lets UptimeRobot choose the monitoring region automatically. When `true`, `regions` can be omitted and the provider sends the API-required carrier region without managing it. When omitted or `false`, configured `regions` are used as manually selected regions.\n" +
 					"- `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must be selected regions and values must be between `0` and `60000`.",
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
 					"regions": schema.SetAttribute{
-						Description: "Active monitoring regions: na (North America), eu (Europe), as (Asia), oc (Oceania).",
-						Required:    true,
+						Description: "Active monitoring regions: na (North America), eu (Europe), as (Asia), oc (Oceania). Required unless auto_select is true.",
+						Optional:    true,
 						ElementType: types.StringType,
 						Validators: []validator.Set{
 							setvalidator.SizeAtLeast(1),
@@ -441,7 +441,7 @@ Alert contacts assigned to this monitor.
 						},
 					},
 					"auto_select": schema.BoolAttribute{
-						Description: "When true, UptimeRobot automatically chooses the monitoring region. When omitted or false, the configured regions are used as manually selected regions.",
+						Description: "When true, UptimeRobot automatically chooses the monitoring region. Regions can be omitted in this mode. When omitted or false, configured regions are used as manually selected regions.",
 						Optional:    true,
 					},
 					"thresholds": schema.MapAttribute{
