@@ -1,8 +1,8 @@
 # Set specific days for SSL expiration period days
 resource "uptimerobot_monitor" "set_days" {
-  name     = "DNS set days"
-  type     = "DNS"
-  url      = "example.com"
+  name     = "HTTP SSL set days"
+  type     = "HTTP"
+  url      = "https://example.com"
   interval = 300
 
   config = {
@@ -24,9 +24,9 @@ resource "uptimerobot_monitor" "preserve" {
 
 # Clear days on server - send an explicit empty list
 resource "uptimerobot_monitor" "clear" {
-  name     = "DNS clear"
-  type     = "DNS"
-  url      = "example.com"
+  name     = "HTTP SSL clear"
+  type     = "HTTP"
+  url      = "https://example.com"
   interval = 300
 
   config = {
@@ -36,9 +36,9 @@ resource "uptimerobot_monitor" "clear" {
 
 # UI-managed SSL days. Ignore drift if management is preferred via dashboard
 resource "uptimerobot_monitor" "ui_driven_ssl" {
-  name     = "UI-driven DNS SSL days"
-  type     = "DNS"
-  url      = "example.com"
+  name     = "UI-driven HTTP SSL days"
+  type     = "HTTP"
+  url      = "https://example.com"
   interval = 300
 
   lifecycle {
@@ -99,6 +99,18 @@ resource "uptimerobot_monitor" "ipv6_only_port" {
 
   config = {
     ip_version = "ipv6Only"
+  }
+}
+
+# HTTP monitor with explicit application-error retry budget (0..3). Set to null to clear.
+resource "uptimerobot_monitor" "tight_app_retry" {
+  name     = "Strict app-error retries"
+  type     = "HTTP"
+  url      = "https://example.com/health"
+  interval = 300
+
+  config = {
+    application_error_retries = 0
   }
 }
 

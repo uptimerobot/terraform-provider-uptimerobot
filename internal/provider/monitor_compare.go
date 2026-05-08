@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"encoding/json"
 	"html"
 	"sort"
@@ -40,13 +41,15 @@ type monComparable struct {
 	MaintenanceWindowIDs []int64
 	skipMWIDsCompare     bool
 	// Config children which we manage
-	SSLExpirationPeriodDays []int64
-	DNSRecords              map[string][]string
-	IPVersion               *string
-	ExpectIPVersionUnset    bool
-	APIAssertions           *apiAssertionsComparable
-	UDPConfig               *udpComparable
-	AssignedAlertContacts   []alertContactComparable
+	SSLExpirationPeriodDays            []int64
+	DNSRecords                         map[string][]string
+	IPVersion                          *string
+	ExpectIPVersionUnset               bool
+	ApplicationErrorRetries            *int64
+	ExpectApplicationErrorRetriesUnset bool
+	APIAssertions                      *apiAssertionsComparable
+	UDPConfig                          *udpComparable
+	AssignedAlertContacts              []alertContactComparable
 }
 
 type apiAssertionsComparable struct {
@@ -232,6 +235,9 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	if req.Config != nil && req.Config.IPVersion == nil {
 		c.ExpectIPVersionUnset = true
 	}
+	if req.Config != nil {
+		applyApplicationErrorRetriesExpectation(&c, req.Config.ApplicationErrorRetries)
+	}
 	if req.Config != nil && req.Config.APIAssertions != nil {
 		c.APIAssertions = normalizeAPIAssertions(req.Config.APIAssertions)
 	}
@@ -394,6 +400,9 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 	if req.Config != nil && req.Config.IPVersion == nil {
 		c.ExpectIPVersionUnset = true
 	}
+	if req.Config != nil {
+		applyApplicationErrorRetriesExpectation(&c, req.Config.ApplicationErrorRetries)
+	}
 	if req.Config != nil && req.Config.APIAssertions != nil {
 		c.APIAssertions = normalizeAPIAssertions(req.Config.APIAssertions)
 	}
@@ -555,6 +564,9 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 			if normalized, keep := normalizeIPVersionForAPI(*m.Config.IPVersion); keep {
 				c.IPVersion = &normalized
 			}
+		}
+		if v, ok := decodeApplicationErrorRetries(m.Config.ApplicationErrorRetries); ok {
+			c.ApplicationErrorRetries = &v
 		}
 		if m.Config.APIAssertions != nil {
 			c.APIAssertions = normalizeAPIAssertions(m.Config.APIAssertions)
@@ -843,6 +855,12 @@ func equalComparable(want, got monComparable) bool {
 	if want.ExpectIPVersionUnset && got.IPVersion != nil {
 		return false
 	}
+	if want.ApplicationErrorRetries != nil && (got.ApplicationErrorRetries == nil || *want.ApplicationErrorRetries != *got.ApplicationErrorRetries) {
+		return false
+	}
+	if want.ExpectApplicationErrorRetriesUnset && got.ApplicationErrorRetries != nil {
+		return false
+	}
 	if want.APIAssertions != nil && !equalAPIAssertions(want.APIAssertions, got.APIAssertions) {
 		return false
 	}
@@ -965,6 +983,12 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	if want.ExpectIPVersionUnset && got.IPVersion != nil {
 		f = append(f, "config.ip_version")
 	}
+	if want.ApplicationErrorRetries != nil && (got.ApplicationErrorRetries == nil || *want.ApplicationErrorRetries != *got.ApplicationErrorRetries) {
+		f = append(f, "config.application_error_retries")
+	}
+	if want.ExpectApplicationErrorRetriesUnset && got.ApplicationErrorRetries != nil {
+		f = append(f, "config.application_error_retries")
+	}
 	if want.APIAssertions != nil && !equalAPIAssertions(want.APIAssertions, got.APIAssertions) {
 		f = append(f, "config.api_assertions")
 	}
@@ -1048,6 +1072,33 @@ func normalizeUDPConfig(in *client.UDPMonitorConfig) *udpComparable {
 		out.PacketLossThreshold = &v
 	}
 	return out
+}
+
+func decodeApplicationErrorRetries(raw json.RawMessage) (int64, bool) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return 0, false
+	}
+	var v int64
+	if err := json.Unmarshal(trimmed, &v); err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
+func applyApplicationErrorRetriesExpectation(c *monComparable, raw json.RawMessage) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return
+	}
+	if bytes.Equal(trimmed, []byte("null")) {
+		c.ExpectApplicationErrorRetriesUnset = true
+		return
+	}
+	var v int64
+	if err := json.Unmarshal(trimmed, &v); err == nil {
+		c.ApplicationErrorRetries = &v
+	}
 }
 
 func equalAPIAssertions(want, got *apiAssertionsComparable) bool {

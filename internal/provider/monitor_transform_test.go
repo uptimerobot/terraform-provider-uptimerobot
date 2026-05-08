@@ -38,6 +38,7 @@ func TestExpandConfigToAPI_DNSRecordsEmptyObjectMarksTouched(t *testing.T) {
 		"ip_version":                 types.StringNull(),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
 	})
 
 	out, touched, diags := expandConfigToAPI(ctx, cfg)
@@ -65,6 +66,7 @@ func TestFlattenConfigToState_NoAPIAndPrevNullDNS_StaysNull(t *testing.T) {
 		"ip_version":                 types.StringNull(),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
 	})
 
 	stateObj, diags := flattenConfigToState(ctx, true, prev, nil)
@@ -95,6 +97,7 @@ func TestReadApplyConfig_ManagedEmptyBlock_APINil_PreservesBlock(t *testing.T) {
 			"ip_version":                 types.StringNull(),
 			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries":  types.Int64Unknown(),
 		}),
 	}
 	m := &client.Monitor{
@@ -136,6 +139,7 @@ func TestApplyUpdatedMonitorToState_ManagedEmptyConfig_NotSent_Preserved(t *test
 			"ip_version":                 types.StringNull(),
 			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries":  types.Int64Unknown(),
 		}),
 	}
 	prev := monitorResourceModel{}
@@ -260,6 +264,7 @@ func TestFlattenConfigToState_DNSFromAPI_PopulatesSets(t *testing.T) {
 		"ip_version":                 types.StringNull(),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
 	})
 
 	a := []string{"1.1.1.1"}
@@ -328,8 +333,9 @@ func TestExpandConfigToAPI_APIAssertionsTouched(t *testing.T) {
 			"logic":  types.StringValue("AND"),
 			"checks": types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{check}),
 		}),
-		"ip_version": types.StringNull(),
-		"udp":        types.ObjectNull(udpObjectType().AttrTypes),
+		"ip_version":                types.StringNull(),
+		"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries": types.Int64Unknown(),
 	})
 
 	out, touched, diags := expandConfigToAPI(ctx, cfg)
@@ -364,6 +370,7 @@ func TestFlattenConfigToState_APIAssertionsFromAPI_PopulatesObject(t *testing.T)
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringNull(),
 		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
 	})
 
 	stateObj, diags := flattenConfigToState(ctx, true, prev, &client.MonitorConfig{
@@ -450,6 +457,7 @@ func TestExpandConfigToAPI_UDPTouched(t *testing.T) {
 			"payload":               types.StringValue("ping"),
 			"packet_loss_threshold": types.Int64Value(50),
 		}),
+		"application_error_retries": types.Int64Unknown(),
 	})
 
 	out, touched, diags := expandConfigToAPI(ctx, cfg)
@@ -520,6 +528,7 @@ func TestFlattenConfigToState_UDPFromAPI_PopulatesObject(t *testing.T) {
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringNull(),
 		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
 	})
 	payload := "ping"
 	packetLossThreshold := int64(50)
