@@ -622,6 +622,11 @@ Advanced monitor configuration.
 						Validators: []validator.Int64{
 							int64validator.Between(0, 3),
 						},
+						PlanModifiers: []planmodifier.Int64{
+							// Keep omitted optional+computed values stable in plans. Update request
+							// construction uses raw config to avoid sending stale state when omitted.
+							int64planmodifier.UseStateForUnknown(),
+						},
 					},
 				},
 			},
