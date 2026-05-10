@@ -217,6 +217,58 @@ func TestExpandConfigToAPI_ApplicationErrorRetriesUnknownIsOmitted(t *testing.T)
 	}
 }
 
+func TestConfigAttributeOmitted_DetectsMissingApplicationErrorRetries(t *testing.T) {
+	t.Parallel()
+
+	rawConfig := types.ObjectValueMust(
+		map[string]attr.Type{
+			"ip_version": types.StringType,
+		},
+		map[string]attr.Value{
+			"ip_version": types.StringValue(IPVersionIPv6Only),
+		},
+	)
+
+	if !configAttributeOmitted(rawConfig, "application_error_retries") {
+		t.Fatalf("expected application_error_retries to be omitted")
+	}
+	if configAttributeOmitted(rawConfig, "ip_version") {
+		t.Fatalf("expected ip_version to be present")
+	}
+}
+
+func TestConfigWithApplicationErrorRetriesUnknown_OmitsStateCopiedValue(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	cfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"ip_version":                 types.StringValue(IPVersionIPv6Only),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Value(2),
+	})
+
+	sanitized, diags := configWithApplicationErrorRetriesUnknown(cfg)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	out, touched, diags := expandConfigToAPI(ctx, sanitized)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if !touched {
+		t.Fatalf("expected touched=true because ip_version is set")
+	}
+	if out.IPVersion == nil || *out.IPVersion != IPVersionIPv6Only {
+		t.Fatalf("expected ip_version=%q, got %#v", IPVersionIPv6Only, out.IPVersion)
+	}
+	if len(out.ApplicationErrorRetries) != 0 {
+		t.Fatalf("expected state-copied application_error_retries to be omitted, got %q", string(out.ApplicationErrorRetries))
+	}
+}
+
 func TestConfigNullIfOmitted_ApplicationErrorRetriesMissingStaysUnknown(t *testing.T) {
 	t.Parallel()
 

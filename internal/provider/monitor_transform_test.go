@@ -236,7 +236,7 @@ func TestBuildUpdateRequest_HeartbeatOmitsServerGeneratedURL(t *testing.T) {
 	}
 	resp := &resource.UpdateResponse{}
 
-	req, _ := buildUpdateRequest(ctx, plan, monitorResourceModel{}, true, resp)
+	req, _ := buildUpdateRequest(ctx, plan, monitorResourceModel{}, true, true, resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 	}

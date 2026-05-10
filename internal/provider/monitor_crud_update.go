@@ -35,6 +35,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 	configOmitted := configVal.IsNull() || configVal.IsUnknown()
+	applicationErrorRetriesOmitted := configAttributeOmitted(configVal, "application_error_retries")
 
 	id, err := strconv.ParseInt(plan.ID.ValueString(), 10, 64)
 	if err != nil {
@@ -46,7 +47,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, resp)
+	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, applicationErrorRetriesOmitted, resp)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -264,6 +265,7 @@ func buildUpdateRequest(
 	plan monitorResourceModel,
 	state monitorResourceModel,
 	configOmitted bool,
+	applicationErrorRetriesOmitted bool,
 	resp *resource.UpdateResponse,
 ) (*client.UpdateMonitorRequest, string) {
 	req := &client.UpdateMonitorRequest{
@@ -383,9 +385,17 @@ func buildUpdateRequest(
 	}
 
 	// Config
-	expandOrClearConfigOnUpdate(ctx, plan, state.Config, configOmitted, req, resp)
+	expandOrClearConfigOnUpdate(ctx, plan, state.Config, configOmitted, applicationErrorRetriesOmitted, req, resp)
 
 	return req, effMethod
+}
+
+func configAttributeOmitted(config basetypes.ObjectValue, name string) bool {
+	if config.IsNull() || config.IsUnknown() {
+		return true
+	}
+	_, ok := config.Attributes()[name]
+	return !ok
 }
 
 func setTimeoutAndGraceOnUpdate(_ context.Context, plan monitorResourceModel, req *client.UpdateMonitorRequest) {
@@ -896,6 +906,7 @@ func expandOrClearConfigOnUpdate(
 	plan monitorResourceModel,
 	priorConfig types.Object,
 	configOmitted bool,
+	applicationErrorRetriesOmitted bool,
 	req *client.UpdateMonitorRequest,
 	resp *resource.UpdateResponse,
 ) {
@@ -910,7 +921,17 @@ func expandOrClearConfigOnUpdate(
 		// Explicit null - preserve remote
 		return
 	default:
-		out, touched, diags := expandConfigToAPI(ctx, plan.Config)
+		configForAPI := plan.Config
+		if applicationErrorRetriesOmitted {
+			var diags diag.Diagnostics
+			configForAPI, diags = configWithApplicationErrorRetriesUnknown(plan.Config)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		}
+
+		out, touched, diags := expandConfigToAPI(ctx, configForAPI)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -934,6 +955,32 @@ func expandOrClearConfigOnUpdate(
 			req.Config = cfg
 		}
 	}
+}
+
+func configWithApplicationErrorRetriesUnknown(cfg types.Object) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if cfg.IsNull() || cfg.IsUnknown() {
+		return cfg, diags
+	}
+
+	want := configObjectType().AttrTypes
+	attrs := cfg.Attributes()
+	normalized := make(map[string]attr.Value, len(want))
+	for name, attrType := range want {
+		if name == "application_error_retries" {
+			normalized[name] = types.Int64Unknown()
+			continue
+		}
+		if existing, ok := attrs[name]; ok {
+			normalized[name] = existing
+		} else {
+			normalized[name] = nullValueForType(attrType)
+		}
+	}
+
+	out, d := types.ObjectValue(want, normalized)
+	diags.Append(d...)
+	return out, diags
 }
 
 func configPayloadForIPVersionClear(
