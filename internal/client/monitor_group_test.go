@@ -90,6 +90,25 @@ func TestClient_MonitorGroupCRUDPaths(t *testing.T) {
 	}
 }
 
+func TestClient_DeleteMonitorGroup_DefaultMoveBehavior(t *testing.T) {
+	t.Parallel()
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if got := req.Method + " " + req.URL.RequestURI(); got != "DELETE /monitor-groups/101" {
+				t.Fatalf("unexpected request %s", got)
+			}
+			return jsonResponse(http.StatusNoContent, ``), nil
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	if err := c.DeleteMonitorGroup(context.Background(), 101, nil); err != nil {
+		t.Fatalf("DeleteMonitorGroup returned error: %v", err)
+	}
+}
+
 func TestClient_ListMonitorGroups_WithCursor(t *testing.T) {
 	t.Parallel()
 

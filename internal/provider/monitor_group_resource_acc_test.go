@@ -214,7 +214,11 @@ func testAccCheckExternalMonitorMovedAndCleanup(monitorID *int64, fallbackResour
 			time.Sleep(2 * time.Second)
 		}
 		if monitor == nil || monitor.GroupID != fallbackID {
-			return fmt.Errorf("external monitor group_id = %d, want fallback group %d", monitor.GroupID, fallbackID)
+			gotGroupID := int64(0)
+			if monitor != nil {
+				gotGroupID = monitor.GroupID
+			}
+			return fmt.Errorf("external monitor group_id = %d, want fallback group %d", gotGroupID, fallbackID)
 		}
 
 		if err := apiClient.DeleteMonitor(ctx, *monitorID); err != nil {

@@ -122,6 +122,12 @@ func (r *monitorGroupResource) Create(ctx context.Context, req resource.CreateRe
 		resp.Diagnostics.AddError("Error creating monitor group", err.Error())
 		return
 	}
+	settled, err := r.waitMonitorGroupName(ctx, group.ID, plan.Name.ValueString(), 90*time.Second)
+	if err != nil {
+		resp.Diagnostics.AddError("Error waiting for monitor group creation", err.Error())
+		return
+	}
+	group = settled
 
 	plan.applyAPI(group)
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -171,20 +177,24 @@ func (r *monitorGroupResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	var group *client.MonitorGroup
 	if !plan.Name.Equal(state.Name) {
-		group, err = r.client.UpdateMonitorGroup(ctx, id, &client.UpdateMonitorGroupRequest{
+		_, err = r.client.UpdateMonitorGroup(ctx, id, &client.UpdateMonitorGroupRequest{
 			Name: plan.Name.ValueString(),
 		})
 	} else {
-		group, err = r.client.GetMonitorGroup(ctx, id)
+		_, err = r.client.GetMonitorGroup(ctx, id)
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating monitor group", err.Error())
 		return
 	}
+	settled, err := r.waitMonitorGroupName(ctx, id, plan.Name.ValueString(), 90*time.Second)
+	if err != nil {
+		resp.Diagnostics.AddError("Error waiting for monitor group update", err.Error())
+		return
+	}
 
-	plan.applyAPI(group)
+	plan.applyAPI(settled)
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
@@ -209,6 +219,9 @@ func (r *monitorGroupResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 
 	if err := r.client.DeleteMonitorGroup(ctx, id, monitorsNewGroupID); err != nil {
+		if client.IsNotFound(err) {
+			return
+		}
 		resp.Diagnostics.AddError("Error deleting monitor group", err.Error())
 		return
 	}
@@ -241,4 +254,45 @@ func (m monitorGroupResourceModel) intID() (int64, error) {
 		return 0, fmt.Errorf("could not parse %q as an integer ID: %w", m.ID.ValueString(), err)
 	}
 	return id, nil
+}
+
+func (r *monitorGroupResource) waitMonitorGroupName(ctx context.Context, id int64, expectedName string, timeout time.Duration) (*client.MonitorGroup, error) {
+	if expectedName == "" {
+		return r.client.GetMonitorGroup(ctx, id)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	backoff := 500 * time.Millisecond
+	var last *client.MonitorGroup
+	var lastErr error
+
+	for {
+		group, err := r.client.GetMonitorGroup(ctx, id)
+		if err == nil {
+			last = group
+			if group.Name == expectedName {
+				return group, nil
+			}
+		} else {
+			lastErr = err
+		}
+
+		select {
+		case <-ctx.Done():
+			if last != nil {
+				return last, fmt.Errorf("timeout waiting for monitor group %d name %q; last name was %q", id, expectedName, last.Name)
+			}
+			return nil, fmt.Errorf("timeout waiting for monitor group %d name %q: %w", id, expectedName, lastErr)
+		case <-time.After(backoff):
+		}
+
+		if backoff < 5*time.Second {
+			backoff *= 2
+			if backoff > 5*time.Second {
+				backoff = 5 * time.Second
+			}
+		}
+	}
 }
