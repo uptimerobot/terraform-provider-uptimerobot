@@ -1370,3 +1370,15 @@ func upgradeMonitorFromV4(ctx context.Context, prior monitorV4Model) (monitorRes
 
 	return up, diags
 }
+
+// V5 -> V6
+
+func priorSchemaV5() *schema.Schema {
+	s := monitorSchema(5, false)
+	return &s
+}
+
+func upgradeMonitorFromV5(prior monitorResourceModel) monitorResourceModel {
+	prior.Config = retypeConfigToCurrent(prior.Config)
+	return prior
+}

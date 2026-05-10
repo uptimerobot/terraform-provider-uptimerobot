@@ -1,10 +1,12 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
@@ -268,6 +270,15 @@ func expandConfigToAPI(
 			out.IPVersion = &normalized
 			touched = true
 		}
+	}
+
+	if !c.ApplicationErrorRetries.IsUnknown() {
+		if c.ApplicationErrorRetries.IsNull() {
+			out.ApplicationErrorRetries = json.RawMessage("null")
+		} else {
+			out.ApplicationErrorRetries = json.RawMessage(strconv.FormatInt(c.ApplicationErrorRetries.ValueInt64(), 10))
+		}
+		touched = true
 	}
 
 	// api_assertions
@@ -538,6 +549,12 @@ func flattenConfigToState(
 		c.IPVersion = types.StringValue("")
 	}
 
+	prevApplicationErrorRetries := types.Int64Null()
+	if !c.ApplicationErrorRetries.IsNull() && !c.ApplicationErrorRetries.IsUnknown() {
+		prevApplicationErrorRetries = c.ApplicationErrorRetries
+	}
+	c.ApplicationErrorRetries = applicationErrorRetriesFromAPI(prevApplicationErrorRetries, api)
+
 	// API assertions
 	prevAPIAssertions := types.ObjectNull(apiAssertionsObjectType().AttrTypes)
 	if !c.APIAssertions.IsNull() && !c.APIAssertions.IsUnknown() {
@@ -656,6 +673,24 @@ func setInt64sRespectingShape(prev types.Set, api []int64) types.Set {
 		elems = append(elems, types.Int64Value(v))
 	}
 	return types.SetValueMust(types.Int64Type, elems)
+}
+
+func applicationErrorRetriesFromAPI(prev types.Int64, api *client.MonitorConfig) types.Int64 {
+	if api == nil {
+		return prev
+	}
+	raw := bytes.TrimSpace(api.ApplicationErrorRetries)
+	if len(raw) == 0 {
+		return prev
+	}
+	if bytes.Equal(raw, []byte("null")) {
+		return types.Int64Null()
+	}
+	var n int64
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return prev
+	}
+	return types.Int64Value(n)
 }
 
 // normalizeIPVersionForAPI returns a canonical provider value and whether it should be sent/stored.

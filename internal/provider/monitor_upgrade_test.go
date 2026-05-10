@@ -71,6 +71,21 @@ func TestStateUpgrader_PriorSchema_TagsIsList(t *testing.T) {
 	}
 }
 
+func TestStateUpgrader_PriorSchemaV5_OmitsApplicationErrorRetries(t *testing.T) {
+	t.Parallel()
+
+	r := &monitorResource{}
+	upgraders := r.UpgradeState(context.Background())
+
+	u5, ok := upgraders[5]
+	require.True(t, ok, "missing state upgrader for version 5")
+
+	require.EqualValues(t, 5, u5.PriorSchema.Version)
+	configAttr, ok := u5.PriorSchema.Attributes["config"].(schema.SingleNestedAttribute)
+	require.True(t, ok, "prior v5 schema config must be SingleNestedAttribute")
+	require.NotContains(t, configAttr.Attributes, "application_error_retries")
+}
+
 func TestUpgradeFromV0_Tags_NullToNullSet(t *testing.T) {
 	ctx := context.Background()
 	prior := monitorV0Model{
@@ -314,6 +329,41 @@ func TestUpgradeFromV4_Config_WithSSLDays(t *testing.T) {
 	udp, ok := attrs["udp"].(types.Object)
 	require.True(t, ok, "udp should be types.Object")
 	require.True(t, udp.IsNull(), "udp should be null")
+}
+
+func TestUpgradeFromV5_Config_BackfillsApplicationErrorRetries(t *testing.T) {
+	t.Parallel()
+
+	v5ConfigTypes := map[string]attr.Type{
+		"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
+		"dns_records":                dnsRecordsObjectType(),
+		"ip_version":                 types.StringType,
+		"api_assertions":             apiAssertionsObjectType(),
+		"udp":                        udpObjectType(),
+	}
+	prior := monitorResourceModel{
+		Config: types.ObjectValueMust(v5ConfigTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"ip_version":                 types.StringValue(IPVersionIPv4Only),
+			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		}),
+	}
+
+	up := upgradeMonitorFromV5(prior)
+
+	require.False(t, up.Config.IsNull(), "config should not be null")
+	attrs := up.Config.Attributes()
+	require.Contains(t, attrs, "application_error_retries")
+
+	retries, ok := attrs["application_error_retries"].(types.Int64)
+	require.True(t, ok, "application_error_retries should be types.Int64")
+	require.True(t, retries.IsNull(), "application_error_retries should be null")
+
+	ipVersion, ok := attrs["ip_version"].(types.String)
+	require.True(t, ok, "ip_version should be types.String")
+	require.Equal(t, IPVersionIPv4Only, ipVersion.ValueString())
 }
 
 func TestUpgradeFromV3_Config_WithSSLDays(t *testing.T) {

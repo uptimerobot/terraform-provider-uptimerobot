@@ -73,6 +73,7 @@ type configTF struct {
 	IPVersion               types.String `tfsdk:"ip_version"`
 	APIAssertions           types.Object `tfsdk:"api_assertions"`
 	UDP                     types.Object `tfsdk:"udp"`
+	ApplicationErrorRetries types.Int64  `tfsdk:"application_error_retries"`
 }
 
 type apiAssertionsTF struct {
@@ -175,6 +176,7 @@ func configObjectType() types.ObjectType {
 			"ip_version":                 types.StringType,
 			"api_assertions":             apiAssertionsObjectType(),
 			"udp":                        udpObjectType(),
+			"application_error_retries":  types.Int64Type,
 		},
 	}
 }

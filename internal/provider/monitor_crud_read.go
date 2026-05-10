@@ -403,6 +403,7 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 			if cfg.APIAssertions != nil {
 				want.APIAssertions = normalizeAPIAssertions(cfg.APIAssertions)
 			}
+			applyApplicationErrorRetriesExpectation(&want, cfg.ApplicationErrorRetries)
 		}
 	}
 
@@ -453,6 +454,8 @@ func hasMonitorReadStabilizationAssertions(want monComparable) bool {
 		want.RegionalData != nil ||
 		want.DNSRecords != nil ||
 		want.SSLExpirationPeriodDays != nil ||
+		want.ApplicationErrorRetries != nil ||
+		want.ExpectApplicationErrorRetriesUnset ||
 		want.APIAssertions != nil {
 		return true
 	}

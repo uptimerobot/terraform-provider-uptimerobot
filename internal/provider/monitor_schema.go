@@ -90,8 +90,12 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Version:     5,
+	resp.Schema = monitorSchema(6, true)
+}
+
+func monitorSchema(version int64, includeApplicationErrorRetries bool) schema.Schema {
+	s := schema.Schema{
+		Version:     version,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
@@ -471,6 +475,7 @@ Advanced monitor configuration.
 - ` + "`ssl_expiration_period_days = []`" + ` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 - Removing ` + "`ip_version`" + ` from a managed ` + "`config`" + ` block clears remote ` + "`ipVersion`" + ` (reverts to API default dual-stack behavior).
 - Setting ` + "`ip_version = \"\"`" + ` also acts as an explicit clear/default signal.
+- Omit ` + "`application_error_retries`" + ` to preserve the remote value; set ` + "`application_error_retries = null`" + ` to clear the remote override so the API applies its own default. Connection errors always retry (this setting only governs application/content failures).
 
 **Validation**
 - For ` + "`type = \"DNS\"`" + ` on create, ` + "`config`" + ` is required (use ` + "`config = {}`" + ` for defaults).
@@ -480,6 +485,7 @@ Advanced monitor configuration.
 - ` + "`ip_version`" + ` is only valid for HTTP/KEYWORD/PING/PORT/API monitors.
 - ` + "`config.api_assertions`" + ` is only valid for API monitors.
 - ` + "`config.udp`" + ` is only valid for UDP monitors.
+- ` + "`config.application_error_retries`" + ` is only valid for HTTP/KEYWORD/API monitors and must be 0..3.
 - Top-level ` + "`ssl_expiration_reminder`" + ` and ` + "`check_ssl_errors`" + ` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors.
 `,
 
@@ -604,10 +610,33 @@ Advanced monitor configuration.
 							stringplanmodifier.UseStateForUnknown(),
 						},
 					},
+					"application_error_retries": schema.Int64Attribute{
+						Description: "Number of additional retries (0..3) before declaring an application or content failure for HTTP/KEYWORD/API monitors. Connection errors are unaffected and always retry. Omit to preserve the remote value, or set to null to clear the override and let the API apply its default.",
+						MarkdownDescription: "Number of additional retries before declaring an application or content failure (response status, body assertion, keyword, etc.) " +
+							"for `HTTP`, `KEYWORD`, and `API` monitors. Connection errors (DNS, TCP, TLS, timeouts) are unaffected and always retry.\n\n" +
+							"- Allowed range: `0..3`.\n" +
+							"- Omit the attribute → **preserve** the remote value.\n" +
+							"- Set to `null` → **clear** the override; the API applies its own default.\n",
+						Optional: true,
+						Computed: true,
+						Validators: []validator.Int64{
+							int64validator.Between(0, 3),
+						},
+					},
 				},
 			},
 		},
 	}
+
+	if !includeApplicationErrorRetries {
+		configAttr, ok := s.Attributes["config"].(schema.SingleNestedAttribute)
+		if ok {
+			delete(configAttr.Attributes, "application_error_retries")
+			s.Attributes["config"] = configAttr
+		}
+	}
+
+	return s
 }
 
 func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
@@ -931,6 +960,20 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 				if resp.Diagnostics.HasError() {
 					return
 				}
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
+			},
+		},
+		5: {
+			PriorSchema: priorSchemaV5(),
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				var prior monitorResourceModel
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				upgraded := upgradeMonitorFromV5(prior)
 
 				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
 			},

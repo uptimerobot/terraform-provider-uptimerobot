@@ -3168,6 +3168,264 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
+func TestAcc_Monitor_Config_ApplicationErrorRetries_SetAndUpdate(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-app-err-retries")
+	url := testAccUniqueURL(name)
+	res := "uptimerobot_monitor.test"
+
+	cfgValue := func(v int) string {
+		return fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    application_error_retries = %d
+  }
+}
+`, name, url, v)
+	}
+	cfgOmitAttr := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {}
+}
+`, name, url)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgValue(0),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.application_error_retries", "0"),
+				),
+			},
+			{
+				ResourceName:            res,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name", "is_paused"},
+			},
+			{
+				Config: cfgValue(2),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.application_error_retries", "2"),
+				),
+			},
+			{
+				Config: cfgOmitAttr,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.application_error_retries", "2"),
+				),
+			},
+			{
+				Config:             cfgOmitAttr,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config:             cfgValue(2),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_ApplicationErrorRetries_ClearToDefault(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-app-err-retries-clear")
+	url := testAccUniqueURL(name)
+	res := "uptimerobot_monitor.test"
+
+	cfgWithValue := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    application_error_retries = 3
+  }
+}
+`, name, url)
+
+	cfgCleared := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    application_error_retries = null
+  }
+}
+`, name, url)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgWithValue,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.application_error_retries", "3"),
+				),
+			},
+			{
+				Config: cfgCleared,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					// The update sends JSON null and clears the stored override. Read responses can
+					// still expose the computed effective default, so assert stability below.
+					resource.TestCheckResourceAttrSet(res, "config.application_error_retries"),
+				),
+			},
+			{
+				Config:             cfgCleared,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_ApplicationErrorRetries_AllowedForKEYWORDAndAPI(t *testing.T) {
+	keywordName := acctest.RandomWithPrefix("acc-kw-app-err-retries")
+	apiName := acctest.RandomWithPrefix("acc-api-app-err-retries")
+	keywordURL := testAccUniqueURL(keywordName)
+	apiURL := testAccUniqueURL(apiName)
+
+	cfgKEYWORD := fmt.Sprintf(`
+resource "uptimerobot_monitor" "kw" {
+  name          = "%s"
+  type          = "KEYWORD"
+  url           = "%s"
+  interval      = 300
+  keyword_value = "ok"
+  keyword_type  = "ALERT_EXISTS"
+  keyword_case_type = "CaseInsensitive"
+
+  config = {
+    application_error_retries = 1
+  }
+}
+`, keywordName, keywordURL)
+
+	cfgAPI := fmt.Sprintf(`
+resource "uptimerobot_monitor" "api" {
+  name     = "%s"
+  type     = "API"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    application_error_retries = 2
+    api_assertions = {
+      logic = "AND"
+      checks = [{
+        property   = "$.status"
+        comparison = "is_not_null"
+      }]
+    }
+  }
+}
+`, apiName, apiURL)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgKEYWORD,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.kw", "config.application_error_retries", "1"),
+				),
+			},
+			{
+				Config: cfgAPI,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.api", "config.application_error_retries", "2"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_ApplicationErrorRetries_Validators(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-app-err-retries-validate")
+	httpURL := testAccUniqueURL(name)
+	dnsDomain := testAccUniqueDomain(name)
+
+	cfgInvalidForDNS := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "DNS"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    dns_records               = {}
+    application_error_retries = 1
+  }
+}
+`, name, dnsDomain)
+
+	cfgInvalidForPING := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "PING"
+  url      = "1.1.1.1"
+  interval = 300
+
+  config = {
+    application_error_retries = 1
+  }
+}
+`, name)
+
+	cfgOutOfRange := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    application_error_retries = 4
+  }
+}
+`, name, httpURL)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      cfgInvalidForDNS,
+				ExpectError: regexp.MustCompile(`(?i)application_error_retries[\s\S]*only[\s\S]*HTTP/KEYWORD/API`),
+			},
+			{
+				Config:      cfgInvalidForPING,
+				ExpectError: regexp.MustCompile(`(?i)application_error_retries[\s\S]*only[\s\S]*HTTP/KEYWORD/API`),
+			},
+			{
+				Config:      cfgOutOfRange,
+				ExpectError: regexp.MustCompile(`(?i)application_error_retries`),
+			},
+		},
+	})
+}
+
 func TestAcc_Monitor_Config_DNSRecords_EmptyList_StaysEmpty(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-dns-empty")
 	domain := testAccUniqueDomain(name)

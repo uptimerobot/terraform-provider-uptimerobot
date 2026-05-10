@@ -370,6 +370,10 @@ func validateConfig(
 		validateConfigIPVersion(monitorType, data.URL, cfg.IPVersion, resp)
 	}
 
+	if !cfg.ApplicationErrorRetries.IsNull() && !cfg.ApplicationErrorRetries.IsUnknown() {
+		validateConfigApplicationErrorRetries(monitorType, resp)
+	}
+
 	// Omitting the whole config block preserves/clears remote.
 	// If DNS config block is present but has no managed fields, warn.
 	if monitorType == MonitorTypeDNS &&
@@ -608,6 +612,21 @@ func validateConfigIPVersion(
 	}
 
 	validateIPVersionURLLiteralCompatibility(urlValue, ipVersion, resp)
+}
+
+func validateConfigApplicationErrorRetries(
+	monitorType string,
+	resp *resource.ValidateConfigResponse,
+) {
+	if monitorType != MonitorTypeHTTP &&
+		monitorType != MonitorTypeKEYWORD &&
+		monitorType != MonitorTypeAPI {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("application_error_retries"),
+			"application_error_retries only allowed for HTTP/KEYWORD/API monitors",
+			"Set type = HTTP, KEYWORD, or API to manage config.application_error_retries, or remove it for this monitor type.",
+		)
+	}
 }
 
 func validateIPVersionURLLiteralCompatibility(urlValue, ipVersion types.String, resp *resource.ValidateConfigResponse) {

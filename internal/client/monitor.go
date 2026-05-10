@@ -171,6 +171,7 @@ type MonitorConfig struct {
 	APIAssertions           *APIMonitorAssertions `json:"apiAssertions,omitempty"`
 	UDP                     *UDPMonitorConfig     `json:"udp,omitempty"`
 	IPVersion               *string               `json:"ipVersion,omitempty"`
+	ApplicationErrorRetries json.RawMessage       `json:"applicationErrorRetries,omitempty"`
 }
 
 type UDPMonitorConfig struct {
