@@ -623,8 +623,10 @@ Advanced monitor configuration.
 							int64validator.Between(0, 3),
 						},
 						PlanModifiers: []planmodifier.Int64{
-							// Keep omitted optional+computed values stable in plans. Update request
-							// construction uses raw config to avoid sending stale state when omitted.
+							// Keep omitted optional+computed values stable in plans by copying state.
+							// buildUpdateRequest -> expandOrClearConfigOnUpdate uses configAttributeOmitted
+							// and configWithApplicationErrorRetriesUnknown in monitor_crud_update.go to
+							// force omitted values back to Unknown before API expansion.
 							int64planmodifier.UseStateForUnknown(),
 						},
 					},
