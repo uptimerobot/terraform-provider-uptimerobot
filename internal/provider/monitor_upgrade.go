@@ -1378,9 +1378,7 @@ func priorSchemaV5() *schema.Schema {
 	return &s
 }
 
-func upgradeMonitorFromV5(ctx context.Context, prior monitorResourceModel) (monitorResourceModel, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
+func upgradeMonitorFromV5(prior monitorResourceModel) monitorResourceModel {
 	prior.Config = retypeConfigToCurrent(prior.Config)
-	return prior, diags
+	return prior
 }

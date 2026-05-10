@@ -973,11 +973,7 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 					return
 				}
 
-				upgraded, diags := upgradeMonitorFromV5(ctx, prior)
-				resp.Diagnostics.Append(diags...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
+				upgraded := upgradeMonitorFromV5(prior)
 
 				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
 			},

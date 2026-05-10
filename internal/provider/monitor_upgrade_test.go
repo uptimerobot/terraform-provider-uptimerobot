@@ -333,7 +333,6 @@ func TestUpgradeFromV4_Config_WithSSLDays(t *testing.T) {
 
 func TestUpgradeFromV5_Config_BackfillsApplicationErrorRetries(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 
 	v5ConfigTypes := map[string]attr.Type{
 		"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
@@ -352,8 +351,7 @@ func TestUpgradeFromV5_Config_BackfillsApplicationErrorRetries(t *testing.T) {
 		}),
 	}
 
-	up, diags := upgradeMonitorFromV5(ctx, prior)
-	require.False(t, diags.HasError(), "diags: %+v", diags)
+	up := upgradeMonitorFromV5(prior)
 
 	require.False(t, up.Config.IsNull(), "config should not be null")
 	attrs := up.Config.Attributes()
