@@ -1,0 +1,36 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+### Basic Monitor Group
+
+{{tffile "examples/resources/uptimerobot_monitor_group/basic.tf"}}
+
+### Move Monitors On Delete
+
+{{tffile "examples/resources/uptimerobot_monitor_group/delete_move.tf"}}
+
+## Monitor Membership
+
+Manage monitor membership with the `group_id` attribute on `uptimerobot_monitor`. The monitor group resource manages the group lifecycle and name.
+
+## Import
+
+Existing monitor groups created in the UptimeRobot UI or through the UptimeRobot API can be imported into Terraform state by their numeric monitor group ID. After importing, add matching Terraform configuration and run `terraform plan` to review any differences.
+
+Import by monitor group ID:
+
+```bash
+terraform import uptimerobot_monitor_group.example 123456
+```
+
+{{ .SchemaMarkdown | trimspace }}
