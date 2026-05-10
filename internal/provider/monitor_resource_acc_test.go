@@ -3187,6 +3187,16 @@ resource "uptimerobot_monitor" "test" {
 }
 `, name, url, v)
 	}
+	cfgOmitAttr := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {}
+}
+`, name, url)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -3209,6 +3219,17 @@ resource "uptimerobot_monitor" "test" {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(res, "config.application_error_retries", "2"),
 				),
+			},
+			{
+				Config: cfgOmitAttr,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.application_error_retries", "2"),
+				),
+			},
+			{
+				Config:             cfgOmitAttr,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 			{
 				Config:             cfgValue(2),

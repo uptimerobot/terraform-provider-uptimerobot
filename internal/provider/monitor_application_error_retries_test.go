@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -216,6 +217,36 @@ func TestExpandConfigToAPI_ApplicationErrorRetriesUnknownIsOmitted(t *testing.T)
 	}
 }
 
+func TestConfigNullIfOmitted_ApplicationErrorRetriesMissingStaysUnknown(t *testing.T) {
+	t.Parallel()
+
+	partialConfig := types.ObjectValueMust(
+		map[string]attr.Type{
+			"ssl_expiration_period_days": types.SetType{ElemType: types.Int64Type},
+		},
+		map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		},
+	)
+
+	resp := &planmodifier.ObjectResponse{}
+	configNullIfOmitted{}.PlanModifyObject(context.Background(), planmodifier.ObjectRequest{
+		ConfigValue: partialConfig,
+		StateValue:  types.ObjectNull(configObjectType().AttrTypes),
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+
+	retries, ok := resp.PlanValue.Attributes()["application_error_retries"].(types.Int64)
+	if !ok {
+		t.Fatalf("expected application_error_retries Int64 value, got %#v", resp.PlanValue.Attributes()["application_error_retries"])
+	}
+	if !retries.IsUnknown() {
+		t.Fatalf("expected missing application_error_retries to stay unknown, got %#v", retries)
+	}
+}
+
 func TestFlattenConfigToState_ApplicationErrorRetriesRoundTrips(t *testing.T) {
 	t.Parallel()
 
@@ -275,7 +306,7 @@ func TestFlattenConfigToState_ApplicationErrorRetriesNullFromAPIBecomesNull(t *t
 	}
 }
 
-func TestFlattenConfigToState_ApplicationErrorRetriesAbsentFromAPIBecomesNull(t *testing.T) {
+func TestFlattenConfigToState_ApplicationErrorRetriesAbsentFromAPIPreservesPriorValue(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -298,8 +329,39 @@ func TestFlattenConfigToState_ApplicationErrorRetriesAbsentFromAPIBecomesNull(t 
 	if d := stateObj.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); d.HasError() {
 		t.Fatalf("unexpected object decode diagnostics: %+v", d)
 	}
+	if cfg.ApplicationErrorRetries.IsNull() || cfg.ApplicationErrorRetries.IsUnknown() {
+		t.Fatalf("expected application_error_retries to be preserved when API omits")
+	}
+	if cfg.ApplicationErrorRetries.ValueInt64() != 3 {
+		t.Fatalf("expected application_error_retries=3 when API omits, got %d", cfg.ApplicationErrorRetries.ValueInt64())
+	}
+}
+
+func TestFlattenConfigToState_ApplicationErrorRetriesAbsentFromAPIWithoutPriorValueBecomesNull(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	prev := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"ip_version":                 types.StringNull(),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
+	})
+
+	apiCfg := &client.MonitorConfig{}
+	stateObj, diags := flattenConfigToState(ctx, true, prev, apiCfg)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+
+	var cfg configTF
+	if d := stateObj.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); d.HasError() {
+		t.Fatalf("unexpected object decode diagnostics: %+v", d)
+	}
 	if !cfg.ApplicationErrorRetries.IsNull() {
-		t.Fatalf("expected application_error_retries null when API omits, got %d", cfg.ApplicationErrorRetries.ValueInt64())
+		t.Fatalf("expected application_error_retries null when API omits and no prior value exists, got %d", cfg.ApplicationErrorRetries.ValueInt64())
 	}
 }
 

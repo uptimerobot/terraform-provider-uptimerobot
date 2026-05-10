@@ -549,7 +549,11 @@ func flattenConfigToState(
 		c.IPVersion = types.StringValue("")
 	}
 
-	c.ApplicationErrorRetries = applicationErrorRetriesFromAPI(api)
+	prevApplicationErrorRetries := types.Int64Null()
+	if !c.ApplicationErrorRetries.IsNull() && !c.ApplicationErrorRetries.IsUnknown() {
+		prevApplicationErrorRetries = c.ApplicationErrorRetries
+	}
+	c.ApplicationErrorRetries = applicationErrorRetriesFromAPI(prevApplicationErrorRetries, api)
 
 	// API assertions
 	prevAPIAssertions := types.ObjectNull(apiAssertionsObjectType().AttrTypes)
@@ -671,17 +675,20 @@ func setInt64sRespectingShape(prev types.Set, api []int64) types.Set {
 	return types.SetValueMust(types.Int64Type, elems)
 }
 
-func applicationErrorRetriesFromAPI(api *client.MonitorConfig) types.Int64 {
+func applicationErrorRetriesFromAPI(prev types.Int64, api *client.MonitorConfig) types.Int64 {
 	if api == nil {
-		return types.Int64Null()
+		return prev
 	}
 	raw := bytes.TrimSpace(api.ApplicationErrorRetries)
-	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+	if len(raw) == 0 {
+		return prev
+	}
+	if bytes.Equal(raw, []byte("null")) {
 		return types.Int64Null()
 	}
 	var n int64
 	if err := json.Unmarshal(raw, &n); err != nil {
-		return types.Int64Null()
+		return prev
 	}
 	return types.Int64Value(n)
 }

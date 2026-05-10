@@ -58,11 +58,15 @@ func (m configNullIfOmitted) PlanModifyObject(ctx context.Context, req planmodif
 	}
 
 	// Normalize: iterate over schema attributes, preserve existing values,
-	// default missing ones to null
+	// default missing ones to null. application_error_retries is the one
+	// config field where missing and explicit null intentionally differ:
+	// missing omits the API field, while null clears the remote override.
 	normalized := make(map[string]attr.Value, len(want))
 	for name, attrType := range want {
 		if existing, ok := attrs[name]; ok {
 			normalized[name] = existing
+		} else if name == "application_error_retries" {
+			normalized[name] = types.Int64Unknown()
 		} else {
 			normalized[name] = nullValueForType(attrType)
 		}

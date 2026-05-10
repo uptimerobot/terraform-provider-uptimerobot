@@ -618,9 +618,6 @@ Advanced monitor configuration.
 						Validators: []validator.Int64{
 							int64validator.Between(0, 3),
 						},
-						PlanModifiers: []planmodifier.Int64{
-							int64planmodifier.UseStateForUnknown(),
-						},
 					},
 				},
 			},
