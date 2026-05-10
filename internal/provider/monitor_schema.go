@@ -90,8 +90,12 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Version:     5,
+	resp.Schema = monitorSchema(6, true)
+}
+
+func monitorSchema(version int64, includeApplicationErrorRetries bool) schema.Schema {
+	s := schema.Schema{
+		Version:     version,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
@@ -623,6 +627,16 @@ Advanced monitor configuration.
 			},
 		},
 	}
+
+	if !includeApplicationErrorRetries {
+		configAttr, ok := s.Attributes["config"].(schema.SingleNestedAttribute)
+		if ok {
+			delete(configAttr.Attributes, "application_error_retries")
+			s.Attributes["config"] = configAttr
+		}
+	}
+
+	return s
 }
 
 func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
@@ -942,6 +956,24 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 				}
 
 				upgraded, diags := upgradeMonitorFromV4(ctx, prior)
+				resp.Diagnostics.Append(diags...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
+			},
+		},
+		5: {
+			PriorSchema: priorSchemaV5(),
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				var prior monitorResourceModel
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				upgraded, diags := upgradeMonitorFromV5(ctx, prior)
 				resp.Diagnostics.Append(diags...)
 				if resp.Diagnostics.HasError() {
 					return
