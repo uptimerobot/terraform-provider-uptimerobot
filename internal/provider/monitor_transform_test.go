@@ -203,6 +203,96 @@ func TestBuildCreateRequest_HeartbeatOmitsURL(t *testing.T) {
 	}
 }
 
+func TestBuildCreateRequest_CustomFields(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	plan := monitorResourceModel{
+		Type:     types.StringValue(MonitorTypeHTTP),
+		Name:     types.StringValue("metadata"),
+		URL:      types.StringValue("https://example.com"),
+		Interval: types.Int64Value(300),
+		CustomFields: types.MapValueMust(types.StringType, map[string]attr.Value{
+			"environment": types.StringValue("production"),
+			"team":        types.StringValue("platform"),
+		}),
+	}
+	resp := &resource.CreateResponse{}
+
+	req, _ := (&monitorResource{}).buildCreateRequest(ctx, plan, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+	if req == nil || len(req.CustomFields) != 2 {
+		t.Fatalf("expected custom fields in create request, got %#v", req)
+	}
+	if req.CustomFields["environment"] != "production" || req.CustomFields["team"] != "platform" {
+		t.Fatalf("unexpected custom fields: %#v", req.CustomFields)
+	}
+}
+
+func TestBuildUpdateRequest_CustomFieldsSemantics(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	basePlan := monitorResourceModel{
+		Type:     types.StringValue(MonitorTypeHTTP),
+		Name:     types.StringValue("metadata"),
+		URL:      types.StringValue("https://example.com"),
+		Interval: types.Int64Value(300),
+		Config:   types.ObjectNull(configObjectType().AttrTypes),
+	}
+
+	t.Run("unmanaged null omits", func(t *testing.T) {
+		plan := basePlan
+		plan.CustomFields = types.MapNull(types.StringType)
+		state := monitorResourceModel{CustomFields: types.MapNull(types.StringType)}
+		resp := &resource.UpdateResponse{}
+
+		req, _ := buildUpdateRequest(ctx, plan, state, true, true, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+		}
+		if req.CustomFields != nil {
+			t.Fatalf("expected custom fields to be omitted, got %#v", *req.CustomFields)
+		}
+	})
+
+	t.Run("managed null clears", func(t *testing.T) {
+		plan := basePlan
+		plan.CustomFields = types.MapNull(types.StringType)
+		state := monitorResourceModel{CustomFields: types.MapValueMust(types.StringType, map[string]attr.Value{
+			"environment": types.StringValue("production"),
+		})}
+		resp := &resource.UpdateResponse{}
+
+		req, _ := buildUpdateRequest(ctx, plan, state, true, true, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+		}
+		if req.CustomFields == nil || len(*req.CustomFields) != 0 {
+			t.Fatalf("expected empty custom fields clear payload, got %#v", req.CustomFields)
+		}
+	})
+
+	t.Run("empty map clears", func(t *testing.T) {
+		plan := basePlan
+		plan.CustomFields = types.MapValueMust(types.StringType, map[string]attr.Value{})
+		state := monitorResourceModel{CustomFields: types.MapValueMust(types.StringType, map[string]attr.Value{
+			"environment": types.StringValue("production"),
+		})}
+		resp := &resource.UpdateResponse{}
+
+		req, _ := buildUpdateRequest(ctx, plan, state, true, true, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+		}
+		if req.CustomFields == nil || len(*req.CustomFields) != 0 {
+			t.Fatalf("expected empty custom fields clear payload, got %#v", req.CustomFields)
+		}
+	})
+}
+
 func TestPlanAlertContactsComparable_SkipsComparisonForIncompleteContact(t *testing.T) {
 	t.Parallel()
 

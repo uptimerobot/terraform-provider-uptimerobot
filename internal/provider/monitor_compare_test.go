@@ -90,6 +90,37 @@ func TestEqualComparable_UsesGroupID(t *testing.T) {
 	}
 }
 
+func TestEqualComparable_UsesCustomFields(t *testing.T) {
+	t.Parallel()
+
+	want := monComparable{CustomFields: map[string]string{"environment": "production", "team": "platform"}}
+	gotSame := monComparable{CustomFields: map[string]string{"team": "platform", "environment": "production"}}
+	gotDiff := monComparable{CustomFields: map[string]string{"environment": "staging", "team": "platform"}}
+
+	if !equalComparable(want, gotSame) {
+		t.Fatalf("expected equalComparable to match same custom_fields")
+	}
+	if equalComparable(want, gotDiff) {
+		t.Fatalf("expected equalComparable mismatch for different custom_fields")
+	}
+}
+
+func TestWantFromUpdateReq_IncludesEmptyCustomFieldsForClear(t *testing.T) {
+	t.Parallel()
+
+	empty := map[string]string{}
+	want := wantFromUpdateReq(&client.UpdateMonitorRequest{
+		Type:         client.MonitorTypeHTTP,
+		CustomFields: &empty,
+	})
+	if want.CustomFields == nil {
+		t.Fatalf("expected empty custom_fields map to be asserted for clear")
+	}
+	if len(want.CustomFields) != 0 {
+		t.Fatalf("expected empty custom_fields map, got %#v", want.CustomFields)
+	}
+}
+
 func TestNormalizeAPIAssertions_SortsChecksForStableCompare(t *testing.T) {
 	t.Parallel()
 

@@ -58,6 +58,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	readApplyPausedState(&state, monitor, isImport)
 	readApplyRegionalData(ctx, resp, &state, monitor, isImport)
 	readApplyTagsHeadersAC(ctx, resp, &state, monitor, isImport)
+	readApplyCustomFields(ctx, resp, &state, monitor, isImport)
 	readApplySuccessCodes(ctx, resp, &state, monitor)
 	readApplyBooleans(&state, monitor, isImport)
 	readApplyMWIDs(ctx, resp, &state, monitor)
@@ -324,6 +325,14 @@ func readApplyTagsHeadersAC(ctx context.Context, resp *resource.ReadResponse, st
 	}
 }
 
+func readApplyCustomFields(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
+	customFields, d := customFieldsState(ctx, state.CustomFields, m.CustomFields, isImport)
+	resp.Diagnostics.Append(d...)
+	if !resp.Diagnostics.HasError() {
+		state.CustomFields = customFields
+	}
+}
+
 func (r *monitorResource) stabilizeMonitorReadSnapshot(
 	ctx context.Context,
 	id int64,
@@ -450,6 +459,11 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 			want.AssignedAlertContacts = contacts
 		}
 	}
+	if !state.CustomFields.IsNull() && !state.CustomFields.IsUnknown() {
+		if fields, diags := stringMapFromAttrPreserveEmpty(ctx, state.CustomFields); !diags.HasError() {
+			want.CustomFields = normalizeCustomFieldsForCompare(fields)
+		}
+	}
 
 	if !state.RegionData.IsNull() && !state.RegionData.IsUnknown() {
 		if regionData, ok, diags := regionDataFromTF(ctx, state.RegionData); ok && !diags.HasError() {
@@ -475,6 +489,7 @@ func hasMonitorReadStabilizationAssertions(want monComparable) bool {
 		want.AssignedAlertContacts != nil ||
 		want.RegionData != nil ||
 		want.RegionalData != nil ||
+		want.CustomFields != nil ||
 		want.DNSRecords != nil ||
 		want.SSLExpirationPeriodDays != nil ||
 		want.IPVersion != nil ||

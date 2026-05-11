@@ -41,6 +41,7 @@ type CreateMonitorRequest struct {
 	CheckSSLErrors           *bool                 `json:"checkSSLErrors,omitempty"`
 	SSLCheckEnabled          bool                  `json:"sslCheckEnabled,omitempty"`
 	CustomHTTPHeaders        map[string]string     `json:"customHttpHeaders,omitempty"`
+	CustomFields             map[string]string     `json:"customFields,omitempty"`
 	SuccessHTTPResponseCodes []string              `json:"successHttpResponseCodes,omitempty"`
 	MaintenanceWindowIDs     []int64               `json:"maintenanceWindowsIds,omitempty"`
 	Tags                     []string              `json:"tagNames"`
@@ -76,6 +77,7 @@ type UpdateMonitorRequest struct {
 	CheckSSLErrors           *bool                  `json:"checkSSLErrors,omitempty"`
 	SSLCheckEnabled          bool                   `json:"sslCheckEnabled,omitempty"`
 	CustomHTTPHeaders        *map[string]string     `json:"customHttpHeaders,omitempty"`
+	CustomFields             *map[string]string     `json:"customFields,omitempty"`
 	SuccessHTTPResponseCodes *[]string              `json:"successHttpResponseCodes,omitempty"`
 	MaintenanceWindowIDs     *[]int64               `json:"maintenanceWindowsIds,omitempty"`
 	Tags                     *[]string              `json:"tagNames,omitempty"`
@@ -107,6 +109,7 @@ type Monitor struct {
 	HTTPUsername             string              `json:"httpUsername"`
 	HTTPPassword             string              `json:"httpPassword"`
 	CustomHTTPHeaders        map[string]string   `json:"customHttpHeaders"`
+	CustomFields             map[string]string   `json:"customFields"`
 	HTTPMethodType           string              `json:"httpMethodType"`
 	SuccessHTTPResponseCodes []string            `json:"successHttpResponseCodes"`
 	Timeout                  int                 `json:"timeout"`

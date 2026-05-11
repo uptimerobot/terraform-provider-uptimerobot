@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -130,6 +131,24 @@ resource "uptimerobot_monitor" "test" {
   group_id  = %d
 }
 `, name, url, groupID)
+}
+
+func testAccMonitorResourceConfigWithCustomFields(name string, fields map[string]string) string {
+	url := testAccUniqueURL(name)
+	customFields := ""
+	if fields != nil {
+		customFields = "\n  custom_fields = " + hclStringMap(fields)
+	}
+
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30%s
+}
+`, name, url, customFields)
 }
 
 // nolint:unparam // kept for symmetry with other helpers & future reuse
@@ -478,6 +497,27 @@ func joinInts(ints []int) string {
 	return result
 }
 
+func hclStringMap(values map[string]string) string {
+	if len(values) == 0 {
+		return "{}"
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	out := "{"
+	for i, key := range keys {
+		if i > 0 {
+			out += ","
+		}
+		out += fmt.Sprintf(" %q = %q", key, values[key])
+	}
+	out += " }"
+	return out
+}
+
 func mustAlertContactID(t *testing.T) string {
 	t.Helper()
 	id := os.Getenv("UPTIMEROBOT_TEST_ALERT_CONTACT_ID")
@@ -615,6 +655,64 @@ func TestAccMonitorResource_IsPaused_StartStop(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "is_paused"),
 				),
+			},
+		},
+	})
+}
+
+func TestAccMonitorResource_CustomFields(t *testing.T) {
+	name := acctest.RandomWithPrefix("test-monitor-custom-fields")
+	initial := map[string]string{
+		"environment": "production",
+		"team":        "platform",
+	}
+	updated := map[string]string{
+		"environment": "staging",
+		"owner":       "sre",
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, initial),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.%", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.environment", "production"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.team", "platform"),
+				),
+			},
+			{
+				ResourceName:            "uptimerobot_monitor.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name", "is_paused"},
+			},
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, updated),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.%", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.environment", "staging"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.owner", "sre"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_fields.team"),
+				),
+			},
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, map[string]string{}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.%", "0"),
+				),
+			},
+			{
+				Config:             testAccMonitorResourceConfigWithCustomFields(name, map[string]string{}),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, nil),
+				Check:  resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_fields"),
 			},
 		},
 	})

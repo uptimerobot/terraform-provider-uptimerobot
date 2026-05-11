@@ -826,11 +826,61 @@ func mapFromAttr(ctx context.Context, attr types.Map) (map[string]string, diag.D
 	return out, diags
 }
 
+func stringMapFromAttrPreserveEmpty(ctx context.Context, attr types.Map) (map[string]string, diag.Diagnostics) {
+	if attr.IsNull() || attr.IsUnknown() {
+		return nil, nil
+	}
+
+	var raw map[string]types.String
+	var diags diag.Diagnostics
+	diags.Append(attr.ElementsAs(ctx, &raw, false)...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if v.IsUnknown() || v.IsNull() {
+			continue
+		}
+		out[k] = v.ValueString()
+	}
+	return out, diags
+}
+
 func attrFromMap(ctx context.Context, m map[string]string) (types.Map, diag.Diagnostics) {
 	if m == nil {
 		return types.MapNull(types.StringType), nil
 	}
 	return types.MapValueFrom(ctx, types.StringType, m)
+}
+
+func customFieldsState(ctx context.Context, desired types.Map, api map[string]string, isImport bool) (types.Map, diag.Diagnostics) {
+	if isImport {
+		if len(api) == 0 {
+			return types.MapNull(types.StringType), nil
+		}
+		return types.MapValueFrom(ctx, types.StringType, api)
+	}
+
+	if desired.IsNull() || desired.IsUnknown() {
+		return types.MapNull(types.StringType), nil
+	}
+	if api == nil {
+		api = map[string]string{}
+	}
+	return types.MapValueFrom(ctx, types.StringType, api)
+}
+
+func normalizeCustomFieldsForCompare(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // headersFromAPIForState drops added by server Content-Type headers so state stays clean

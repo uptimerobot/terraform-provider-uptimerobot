@@ -33,6 +33,44 @@ func TestUpdateMonitorRequest_AssignedAlertContacts_JSON(t *testing.T) {
 	}
 }
 
+func TestMonitorRequests_CustomFields_JSON(t *testing.T) {
+	createReq := CreateMonitorRequest{
+		Name:     "metadata-monitor",
+		Type:     MonitorTypeHTTP,
+		Interval: 300,
+		CustomFields: map[string]string{
+			"environment": "production",
+			"team":        "platform",
+		},
+	}
+	createRaw, err := json.Marshal(createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(createRaw), `"customFields":{"environment":"production","team":"platform"}`) &&
+		!strings.Contains(string(createRaw), `"customFields":{"team":"platform","environment":"production"}`) {
+		t.Fatalf("expected customFields object in create request, got %s", createRaw)
+	}
+
+	updateRaw, err := json.Marshal(UpdateMonitorRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(updateRaw), "customFields") {
+		t.Fatalf("expected nil update customFields to be omitted, got %s", updateRaw)
+	}
+
+	empty := map[string]string{}
+	updateReq := UpdateMonitorRequest{CustomFields: &empty}
+	updateRaw, err = json.Marshal(updateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(updateRaw), `"customFields":{}`) {
+		t.Fatalf("expected empty customFields object in update request, got %s", updateRaw)
+	}
+}
+
 func TestMonitorRequests_EmptyURL_JSON(t *testing.T) {
 	updateReq := UpdateMonitorRequest{
 		Name:     "heartbeat",
