@@ -98,6 +98,8 @@ func TestAccMonitorGroup_Basic(t *testing.T) {
 				ResourceName:      "uptimerobot_monitor_group.test",
 				ImportState:       true,
 				ImportStateVerify: true,
+				// The API may briefly return stale values immediately after rename.
+				ImportStateVerifyIgnore: []string{"name", "updated_at"},
 			},
 		},
 	})
