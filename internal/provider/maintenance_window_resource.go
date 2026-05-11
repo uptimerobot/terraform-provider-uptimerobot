@@ -536,12 +536,15 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		Duration: int(plan.Duration.ValueInt64()),
 	}
 	var expectedDays []int64
+	var expectedAutoAddMonitors *bool
 	shouldWait := false
 
 	// Only set AutoAddMonitors if it was explicitly set
 	if !plan.AutoAddMonitors.IsNull() && !plan.AutoAddMonitors.IsUnknown() {
 		v := plan.AutoAddMonitors.ValueBool()
 		updateReq.AutoAddMonitors = &v
+		expectedAutoAddMonitors = &v
+		shouldWait = true
 	}
 
 	// Add date if it's set
@@ -587,7 +590,7 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 
 	var settled *client.MaintenanceWindow
 	if shouldWait {
-		settled, err = waitMaintenanceWindowSettled(ctx, r.client, id, iv, expectedDays)
+		settled, err = waitMaintenanceWindowSettled(ctx, r.client, id, iv, expectedDays, expectedAutoAddMonitors)
 		if err != nil {
 			resp.Diagnostics.AddError("Maintenance window did not settle", err.Error())
 			return
@@ -646,11 +649,19 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	}
 }
 
-func waitMaintenanceWindowSettled(ctx context.Context, c *client.Client, id int64, expectedInterval string, expectedDays []int64) (*client.MaintenanceWindow, error) {
+func waitMaintenanceWindowSettled(
+	ctx context.Context,
+	c *client.Client,
+	id int64,
+	expectedInterval string,
+	expectedDays []int64,
+	expectedAutoAddMonitors *bool,
+) (*client.MaintenanceWindow, error) {
 	want := normalizeDays(expectedDays)
 	wantInterval := strings.ToLower(expectedInterval)
 	var lastGot []int64
 	var lastInterval string
+	var lastAutoAddMonitors bool
 	var lastMW *client.MaintenanceWindow
 	const requiredConsecutiveMatches = 3
 	consecutiveMatches := 0
@@ -663,8 +674,10 @@ func waitMaintenanceWindowSettled(ctx context.Context, c *client.Client, id int6
 		lastMW = mw
 		lastInterval = strings.ToLower(mw.Interval)
 		lastGot = normalizeDays(mw.Days)
+		lastAutoAddMonitors = mw.AutoAddMonitors
 
-		if lastInterval == wantInterval && equalInt64Sets(want, lastGot) {
+		autoAddMatches := expectedAutoAddMonitors == nil || mw.AutoAddMonitors == *expectedAutoAddMonitors
+		if lastInterval == wantInterval && equalInt64Sets(want, lastGot) && autoAddMatches {
 			consecutiveMatches++
 			if consecutiveMatches >= requiredConsecutiveMatches {
 				return mw, nil
@@ -678,7 +691,19 @@ func waitMaintenanceWindowSettled(ctx context.Context, c *client.Client, id int6
 		case <-time.After(3 * time.Second):
 		}
 	}
-	return lastMW, fmt.Errorf("maintenance window did not settle: want interval=%s days=%v got interval=%s days=%v", wantInterval, want, lastInterval, lastGot)
+	wantAutoAdd := "<ignored>"
+	if expectedAutoAddMonitors != nil {
+		wantAutoAdd = strconv.FormatBool(*expectedAutoAddMonitors)
+	}
+	return lastMW, fmt.Errorf(
+		"maintenance window did not settle: want interval=%s days=%v auto_add_monitors=%s got interval=%s days=%v auto_add_monitors=%t",
+		wantInterval,
+		want,
+		wantAutoAdd,
+		lastInterval,
+		lastGot,
+		lastAutoAddMonitors,
+	)
 }
 
 func (r *maintenanceWindowResource) stabilizeMaintenanceWindowReadSnapshot(
@@ -715,11 +740,17 @@ func (r *maintenanceWindowResource) stabilizeMaintenanceWindowReadSnapshot(
 
 	gotInterval := strings.ToLower(strings.TrimSpace(got.Interval))
 	gotDays := normalizeDays(got.Days)
-	if gotInterval == wantInterval && equalInt64Sets(wantDays, gotDays) {
+	var wantAutoAddMonitors *bool
+	if !state.AutoAddMonitors.IsNull() && !state.AutoAddMonitors.IsUnknown() {
+		v := state.AutoAddMonitors.ValueBool()
+		wantAutoAddMonitors = &v
+	}
+	autoAddMatches := wantAutoAddMonitors == nil || got.AutoAddMonitors == *wantAutoAddMonitors
+	if gotInterval == wantInterval && equalInt64Sets(wantDays, gotDays) && autoAddMatches {
 		return got
 	}
 
-	settled, err := waitMaintenanceWindowSettled(ctx, r.client, id, wantInterval, wantDays)
+	settled, err := waitMaintenanceWindowSettled(ctx, r.client, id, wantInterval, wantDays, wantAutoAddMonitors)
 	if err == nil && settled != nil {
 		return settled
 	}

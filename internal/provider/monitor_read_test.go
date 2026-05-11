@@ -70,6 +70,47 @@ func TestMonitorReadStabilizationWant_IncludesManagedBooleansAndAlertContacts(t 
 	}
 }
 
+func TestMonitorReadStabilizationWant_IncludesManagedTimeoutAndIPVersion(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	want := monitorReadStabilizationWant(ctx, monitorResourceModel{
+		Type:    types.StringValue(MonitorTypePING),
+		Timeout: types.Int64Value(45),
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"ip_version":                 types.StringValue(IPVersionIPv4Only),
+			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries":  types.Int64Unknown(),
+		}),
+	})
+
+	if want.Timeout == nil || *want.Timeout != 45 {
+		t.Fatalf("expected timeout assertion 45, got %#v", want.Timeout)
+	}
+	if want.IPVersion == nil || *want.IPVersion != IPVersionIPv4Only {
+		t.Fatalf("expected ip_version assertion %q, got %#v", IPVersionIPv4Only, want.IPVersion)
+	}
+	if !hasMonitorReadStabilizationAssertions(want) {
+		t.Fatalf("expected managed timeout and ip_version to require read stabilization")
+	}
+}
+
+func TestMonitorReadStabilizationWant_SkipsDNSTimeout(t *testing.T) {
+	t.Parallel()
+
+	want := monitorReadStabilizationWant(context.Background(), monitorResourceModel{
+		Type:    types.StringValue(MonitorTypeDNS),
+		Timeout: types.Int64Value(30),
+	})
+
+	if want.Timeout != nil {
+		t.Fatalf("expected DNS timeout to be skipped during read stabilization, got %#v", want.Timeout)
+	}
+}
+
 func TestMonitorReadStabilizationWant_EmptyAlertContactsAssertClear(t *testing.T) {
 	t.Parallel()
 

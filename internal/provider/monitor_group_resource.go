@@ -157,6 +157,15 @@ func (r *monitorGroupResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
+	if !state.Name.IsNull() && !state.Name.IsUnknown() {
+		expectedName := state.Name.ValueString()
+		if expectedName != "" && group.Name != expectedName {
+			if settled, waitErr := r.waitMonitorGroupName(ctx, id, expectedName, 90*time.Second); waitErr == nil && settled != nil {
+				group = settled
+			}
+		}
+	}
+
 	state.applyAPI(group)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
@@ -267,15 +276,23 @@ func (r *monitorGroupResource) waitMonitorGroupName(ctx context.Context, id int6
 	backoff := 500 * time.Millisecond
 	var last *client.MonitorGroup
 	var lastErr error
+	const requiredConsecutiveMatches = 3
+	consecutiveMatches := 0
 
 	for {
 		group, err := r.client.GetMonitorGroup(ctx, id)
 		if err == nil {
 			last = group
 			if group.Name == expectedName {
-				return group, nil
+				consecutiveMatches++
+				if consecutiveMatches >= requiredConsecutiveMatches {
+					return group, nil
+				}
+			} else {
+				consecutiveMatches = 0
 			}
 		} else {
+			consecutiveMatches = 0
 			lastErr = err
 		}
 
