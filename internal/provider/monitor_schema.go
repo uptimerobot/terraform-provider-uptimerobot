@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -42,6 +43,10 @@ const (
 
 	IPVersionIPv4Only = "ipv4Only"
 	IPVersionIPv6Only = "ipv6Only"
+
+	customFieldsMaxKeys        = 20
+	customFieldsKeyMaxLength   = 64
+	customFieldsValueMaxLength = 255
 )
 
 // NewMonitorResource is a helper function to simplify the provider implementation.
@@ -176,6 +181,30 @@ func monitorSchema(version int64, includeApplicationErrorRetries bool) schema.Sc
 					"Tip: add keys in lower-case (e.g., `\"content-type\" = \"application/json\"`).",
 				Optional:    true,
 				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"custom_fields": schema.MapAttribute{
+				Description: "Custom key-value metadata for the monitor. Max 20 keys. Keys may contain letters, numbers, underscores, and hyphens. Values may be up to 255 characters.",
+				MarkdownDescription: "Custom key-value metadata for the monitor.\n\n" +
+					"- Max 20 keys.\n" +
+					"- Keys may contain letters, numbers, underscores, and hyphens, up to 64 characters.\n" +
+					"- Values may be up to 255 characters.\n" +
+					"- Omit the attribute to leave custom fields unmanaged. Set `{}` to clear managed custom fields.",
+				Optional:    true,
+				ElementType: types.StringType,
+				Validators: []validator.Map{
+					mapvalidator.SizeAtMost(customFieldsMaxKeys),
+					mapvalidator.KeysAre(
+						stringvalidator.LengthAtLeast(1),
+						stringvalidator.LengthAtMost(customFieldsKeyMaxLength),
+						stringvalidator.RegexMatches(regexp.MustCompile(`^[a-zA-Z0-9_-]+$`), "must contain only letters, numbers, underscores, and hyphens"),
+					),
+					mapvalidator.ValueStringsAre(
+						stringvalidator.LengthAtMost(customFieldsValueMaxLength),
+					),
+				},
 				PlanModifiers: []planmodifier.Map{
 					mapplanmodifier.UseStateForUnknown(),
 				},

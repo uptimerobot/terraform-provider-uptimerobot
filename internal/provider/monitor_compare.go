@@ -38,6 +38,7 @@ type monComparable struct {
 	SuccessCodes         []string
 	Tags                 []string
 	Headers              map[string]string
+	CustomFields         map[string]string
 	MaintenanceWindowIDs []int64
 	skipMWIDsCompare     bool
 	// Config children which we manage
@@ -196,6 +197,9 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	if req.CustomHTTPHeaders != nil {
 		headers := normalizeHeadersForCompareNoCT(req.CustomHTTPHeaders)
 		c.Headers = headers
+	}
+	if len(req.CustomFields) > 0 {
+		c.CustomFields = normalizeCustomFieldsForCompare(req.CustomFields)
 	}
 	if len(req.Tags) > 0 {
 		c.Tags = normalizeTagSet(req.Tags)
@@ -372,6 +376,9 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 	if req.CustomHTTPHeaders != nil {
 		c.Headers = normalizeHeadersForCompareNoCT(*req.CustomHTTPHeaders)
 	}
+	if req.CustomFields != nil {
+		c.CustomFields = normalizeCustomFieldsForCompare(*req.CustomFields)
+	}
 	if req.MaintenanceWindowIDs == nil {
 		c.skipMWIDsCompare = true
 		c.MaintenanceWindowIDs = nil
@@ -538,6 +545,11 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 		c.Headers = normalizeHeadersForCompareNoCT(m.CustomHTTPHeaders)
 	} else {
 		c.Headers = map[string]string{}
+	}
+	if m.CustomFields != nil {
+		c.CustomFields = normalizeCustomFieldsForCompare(m.CustomFields)
+	} else {
+		c.CustomFields = map[string]string{}
 	}
 
 	var apiIDs []int64
@@ -877,6 +889,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.Headers != nil && !equalStringMap(want.Headers, got.Headers) {
 		return false
 	}
+	if want.CustomFields != nil && !equalStringMap(want.CustomFields, got.CustomFields) {
+		return false
+	}
 	if want.AssignedAlertContacts != nil && !equalAlertContacts(want.AssignedAlertContacts, got.AssignedAlertContacts) {
 		return false
 	}
@@ -943,6 +958,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	}
 	if want.Headers != nil && !equalStringMap(want.Headers, got.Headers) {
 		f = append(f, "custom_http_headers")
+	}
+	if want.CustomFields != nil && !equalStringMap(want.CustomFields, got.CustomFields) {
+		f = append(f, "custom_fields")
 	}
 	if !want.skipMWIDsCompare && want.MaintenanceWindowIDs != nil && !equalInt64Set(want.MaintenanceWindowIDs, got.MaintenanceWindowIDs) {
 		f = append(f, "maintenance_window_ids")

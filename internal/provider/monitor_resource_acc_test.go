@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -130,6 +133,66 @@ resource "uptimerobot_monitor" "test" {
   group_id  = %d
 }
 `, name, url, groupID)
+}
+
+func testAccMonitorResourceConfigWithCustomFields(name string, fields map[string]string) string {
+	url := testAccUniqueURL(name)
+	customFields := ""
+	if fields != nil {
+		customFields = "\n  custom_fields = " + hclStringMap(fields)
+	}
+
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30%s
+}
+`, name, url, customFields)
+}
+
+func testAccCheckMonitorCustomFields(resourceName string, expected map[string]string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("resource %s not found", resourceName)
+		}
+
+		id, err := strconv.ParseInt(rs.Primary.ID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("could not parse monitor ID %q: %w", rs.Primary.ID, err)
+		}
+
+		apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+		if apiURL := os.Getenv("UPTIMEROBOT_API_URL"); apiURL != "" {
+			apiClient.SetBaseURL(apiURL)
+		}
+		apiClient.SetUserAgent("terraform-provider-uptimerobot/acc-test")
+		apiClient.AddHeader("X-Terraform-Provider", "uptimerobot/acc-test")
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+
+		monitor, err := apiClient.GetMonitor(ctx, id)
+		if err != nil {
+			return fmt.Errorf("could not read monitor %d: %w", id, err)
+		}
+
+		if len(monitor.CustomFields) != len(expected) {
+			return fmt.Errorf("expected custom_fields %#v, got %#v", expected, monitor.CustomFields)
+		}
+		for k, want := range expected {
+			got, ok := monitor.CustomFields[k]
+			if !ok {
+				return fmt.Errorf("expected custom_fields key %q to be present, got %#v", k, monitor.CustomFields)
+			}
+			if got != want {
+				return fmt.Errorf("expected custom_fields[%q] = %q, got %q", k, want, got)
+			}
+		}
+		return nil
+	}
 }
 
 // nolint:unparam // kept for symmetry with other helpers & future reuse
@@ -478,6 +541,27 @@ func joinInts(ints []int) string {
 	return result
 }
 
+func hclStringMap(values map[string]string) string {
+	if len(values) == 0 {
+		return "{}"
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	out := "{"
+	for i, key := range keys {
+		if i > 0 {
+			out += ","
+		}
+		out += fmt.Sprintf(" %q = %q", key, values[key])
+	}
+	out += " }"
+	return out
+}
+
 func mustAlertContactID(t *testing.T) string {
 	t.Helper()
 	id := os.Getenv("UPTIMEROBOT_TEST_ALERT_CONTACT_ID")
@@ -615,6 +699,72 @@ func TestAccMonitorResource_IsPaused_StartStop(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "is_paused"),
 				),
+			},
+		},
+	})
+}
+
+func TestAccMonitorResource_CustomFields(t *testing.T) {
+	name := acctest.RandomWithPrefix("test-monitor-custom-fields")
+	initial := map[string]string{
+		"environment": "production",
+		"team":        "platform",
+	}
+	updated := map[string]string{
+		"environment": "staging",
+		"owner":       "sre",
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, initial),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.%", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.environment", "production"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.team", "platform"),
+				),
+			},
+			{
+				ResourceName:            "uptimerobot_monitor.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name", "is_paused"},
+			},
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, updated),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.%", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.environment", "staging"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.owner", "sre"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_fields.team"),
+				),
+			},
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_fields"),
+					testAccCheckMonitorCustomFields("uptimerobot_monitor.test", updated),
+				),
+			},
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, map[string]string{}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.%", "0"),
+					testAccCheckMonitorCustomFields("uptimerobot_monitor.test", map[string]string{}),
+				),
+			},
+			{
+				Config:             testAccMonitorResourceConfigWithCustomFields(name, map[string]string{}),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, nil),
+				Check:  resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_fields"),
 			},
 		},
 	})

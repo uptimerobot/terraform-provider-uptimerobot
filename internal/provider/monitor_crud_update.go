@@ -344,6 +344,12 @@ func buildUpdateRequest(
 		return nil, ""
 	}
 
+	// custom fields
+	setCustomFieldsOnUpdate(ctx, plan, req, resp)
+	if resp.Diagnostics.HasError() {
+		return nil, ""
+	}
+
 	// alert contacts
 	setAlertContactsOnUpdate(ctx, plan, req, resp)
 	if resp.Diagnostics.HasError() {
@@ -567,6 +573,28 @@ func setTagsOnUpdate(ctx context.Context, plan monitorResourceModel, req *client
 	}
 }
 
+func setCustomFieldsOnUpdate(
+	ctx context.Context,
+	plan monitorResourceModel,
+	req *client.UpdateMonitorRequest,
+	resp *resource.UpdateResponse,
+) {
+	switch {
+	case plan.CustomFields.IsUnknown():
+		return
+	case plan.CustomFields.IsNull():
+		// Omitted/null means unmanaged: preserve remote custom fields.
+		return
+	default:
+		m, d := stringMapFromAttrPreserveEmpty(ctx, plan.CustomFields)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		req.CustomFields = &m
+	}
+}
+
 func setAlertContactsOnUpdate(
 	ctx context.Context,
 	plan monitorResourceModel,
@@ -751,6 +779,11 @@ func applyUpdatedMonitorToState(
 		out.CustomHTTPHeaders = types.MapNull(types.StringType)
 	} else {
 		out.CustomHTTPHeaders = plan.CustomHTTPHeaders
+	}
+	customFields, d := customFieldsState(ctx, plan.CustomFields, m.CustomFields, false)
+	resp.Diagnostics.Append(d...)
+	if !resp.Diagnostics.HasError() {
+		out.CustomFields = customFields
 	}
 
 	// Maintenance windows

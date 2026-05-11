@@ -17,6 +17,7 @@ type monitorResourceModel struct {
 	HTTPUsername             types.String         `tfsdk:"http_username"`
 	HTTPPassword             types.String         `tfsdk:"http_password"`
 	CustomHTTPHeaders        types.Map            `tfsdk:"custom_http_headers"`
+	CustomFields             types.Map            `tfsdk:"custom_fields"`
 	HTTPMethodType           types.String         `tfsdk:"http_method_type"`
 	SuccessHTTPResponseCodes types.Set            `tfsdk:"success_http_response_codes"`
 	Timeout                  types.Int64          `tfsdk:"timeout"`

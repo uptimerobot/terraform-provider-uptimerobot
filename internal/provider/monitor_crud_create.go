@@ -284,6 +284,8 @@ func (r *monitorResource) buildCreateRequest(
 	r.applyMWIDsFromPlan(ctx, &plan, req, resp)
 	// Tags
 	r.applyTagsFromPlan(ctx, &plan, req, resp)
+	// Custom fields
+	r.applyCustomFieldsFromPlan(ctx, &plan, req, resp)
 	// Assigned alert contacts
 	r.applyAlertContactsFromPlan(ctx, &plan, req, resp)
 	// Flags ssl/domain/follow/check
@@ -432,6 +434,25 @@ func (r *monitorResource) applyTagsFromPlan(
 	}
 }
 
+func (r *monitorResource) applyCustomFieldsFromPlan(
+	ctx context.Context,
+	plan *monitorResourceModel,
+	req *client.CreateMonitorRequest,
+	resp *resource.CreateResponse,
+) {
+	if plan.CustomFields.IsNull() || plan.CustomFields.IsUnknown() {
+		return
+	}
+	m, d := stringMapFromAttrPreserveEmpty(ctx, plan.CustomFields)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if len(m) > 0 {
+		req.CustomFields = m
+	}
+}
+
 func (r *monitorResource) applyAlertContactsFromPlan(
 	ctx context.Context,
 	plan *monitorResourceModel,
@@ -551,6 +572,11 @@ func (r *monitorResource) buildStateAfterCreate(
 	// Headers. Keep null if omitted in plan
 	if plan.CustomHTTPHeaders.IsNull() || plan.CustomHTTPHeaders.IsUnknown() {
 		plan.CustomHTTPHeaders = types.MapNull(types.StringType)
+	}
+	customFields, d := customFieldsState(ctx, plan.CustomFields, api.CustomFields, false)
+	resp.Diagnostics.Append(d...)
+	if !resp.Diagnostics.HasError() {
+		plan.CustomFields = customFields
 	}
 
 	// Method presence in state only for HTTP/KEYWORD/API

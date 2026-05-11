@@ -232,6 +232,23 @@ resource "uptimerobot_monitor" "multi_region" {
 }
 ```
 
+### Monitor Custom Fields
+
+```terraform
+resource "uptimerobot_monitor" "metadata" {
+  name     = "API health with metadata"
+  type     = "HTTP"
+  url      = "https://example.com/health"
+  interval = 300
+  timeout  = 30
+
+  custom_fields = {
+    environment = "production"
+    team        = "platform"
+  }
+}
+```
+
 ### UDP Monitor
 
 ```terraform
@@ -686,6 +703,12 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `config.udp` is only valid for UDP monitors.
 - `config.application_error_retries` is only valid for HTTP/KEYWORD/API monitors and must be 0..3.
 - Top-level `ssl_expiration_reminder` and `check_ssl_errors` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors. (see [below for nested schema](#nestedatt--config))
+- `custom_fields` (Map of String) Custom key-value metadata for the monitor.
+
+- Max 20 keys.
+- Keys may contain letters, numbers, underscores, and hyphens, up to 64 characters.
+- Values may be up to 255 characters.
+- Omit the attribute to leave custom fields unmanaged. Set `{}` to clear managed custom fields.
 - `custom_http_headers` (Map of String) Custom HTTP headers as key:value. **Keys are case-insensitive.** The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. Tip: add keys in lower-case (e.g., `"content-type" = "application/json"`).
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
 - `follow_redirections` (Boolean) Whether to follow redirections
