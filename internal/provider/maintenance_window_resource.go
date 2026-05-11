@@ -740,17 +740,11 @@ func (r *maintenanceWindowResource) stabilizeMaintenanceWindowReadSnapshot(
 
 	gotInterval := strings.ToLower(strings.TrimSpace(got.Interval))
 	gotDays := normalizeDays(got.Days)
-	var wantAutoAddMonitors *bool
-	if !state.AutoAddMonitors.IsNull() && !state.AutoAddMonitors.IsUnknown() {
-		v := state.AutoAddMonitors.ValueBool()
-		wantAutoAddMonitors = &v
-	}
-	autoAddMatches := wantAutoAddMonitors == nil || got.AutoAddMonitors == *wantAutoAddMonitors
-	if gotInterval == wantInterval && equalInt64Sets(wantDays, gotDays) && autoAddMatches {
+	if gotInterval == wantInterval && equalInt64Sets(wantDays, gotDays) {
 		return got
 	}
 
-	settled, err := waitMaintenanceWindowSettled(ctx, r.client, id, wantInterval, wantDays, wantAutoAddMonitors)
+	settled, err := waitMaintenanceWindowSettled(ctx, r.client, id, wantInterval, wantDays, nil)
 	if err == nil && settled != nil {
 		return settled
 	}

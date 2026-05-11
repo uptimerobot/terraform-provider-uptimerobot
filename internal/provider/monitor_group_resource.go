@@ -157,15 +157,6 @@ func (r *monitorGroupResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	if !state.Name.IsNull() && !state.Name.IsUnknown() {
-		expectedName := state.Name.ValueString()
-		if expectedName != "" && group.Name != expectedName {
-			if settled, waitErr := r.waitMonitorGroupName(ctx, id, expectedName, 90*time.Second); waitErr == nil && settled != nil {
-				group = settled
-			}
-		}
-	}
-
 	state.applyAPI(group)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
@@ -186,24 +177,26 @@ func (r *monitorGroupResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
+	var group *client.MonitorGroup
 	if !plan.Name.Equal(state.Name) {
 		_, err = r.client.UpdateMonitorGroup(ctx, id, &client.UpdateMonitorGroupRequest{
 			Name: plan.Name.ValueString(),
 		})
+		if err != nil {
+			resp.Diagnostics.AddError("Error updating monitor group", err.Error())
+			return
+		}
+
+		group, err = r.waitMonitorGroupName(ctx, id, plan.Name.ValueString(), 90*time.Second)
 	} else {
-		_, err = r.client.GetMonitorGroup(ctx, id)
+		group, err = r.client.GetMonitorGroup(ctx, id)
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating monitor group", err.Error())
 		return
 	}
-	settled, err := r.waitMonitorGroupName(ctx, id, plan.Name.ValueString(), 90*time.Second)
-	if err != nil {
-		resp.Diagnostics.AddError("Error waiting for monitor group update", err.Error())
-		return
-	}
 
-	plan.applyAPI(settled)
+	plan.applyAPI(group)
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 

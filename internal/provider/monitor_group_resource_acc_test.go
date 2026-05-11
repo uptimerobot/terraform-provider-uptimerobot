@@ -180,6 +180,9 @@ func testAccCreateExternalMonitorInGroup(monitorID *int64, name, groupResource s
 		if err != nil {
 			return fmt.Errorf("creating external monitor in source group: %w", err)
 		}
+		if monitor == nil {
+			return fmt.Errorf("creating external monitor in source group: empty monitor response")
+		}
 		*monitorID = monitor.ID
 
 		if monitor.GroupID != groupID {
@@ -205,22 +208,23 @@ func testAccCheckExternalMonitorMovedAndCleanup(monitorID *int64, fallbackResour
 		defer cancel()
 
 		var monitor *client.Monitor
-		for i := 0; i < 20; i++ {
+		for {
 			monitor, err = apiClient.GetMonitor(ctx, *monitorID)
 			if err != nil {
 				return fmt.Errorf("reading external monitor after source group delete: %w", err)
 			}
-			if monitor.GroupID == fallbackID {
+			if monitor != nil && monitor.GroupID == fallbackID {
 				break
 			}
-			time.Sleep(2 * time.Second)
-		}
-		if monitor == nil || monitor.GroupID != fallbackID {
-			gotGroupID := int64(0)
-			if monitor != nil {
-				gotGroupID = monitor.GroupID
+			select {
+			case <-ctx.Done():
+				gotGroupID := int64(0)
+				if monitor != nil {
+					gotGroupID = monitor.GroupID
+				}
+				return fmt.Errorf("external monitor group_id = %d, want fallback group %d: %w", gotGroupID, fallbackID, ctx.Err())
+			case <-time.After(2 * time.Second):
 			}
-			return fmt.Errorf("external monitor group_id = %d, want fallback group %d", gotGroupID, fallbackID)
 		}
 
 		if err := apiClient.DeleteMonitor(ctx, *monitorID); err != nil {
