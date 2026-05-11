@@ -258,7 +258,7 @@ func TestBuildUpdateRequest_CustomFieldsSemantics(t *testing.T) {
 		}
 	})
 
-	t.Run("managed null clears", func(t *testing.T) {
+	t.Run("managed null preserves remote", func(t *testing.T) {
 		plan := basePlan
 		plan.CustomFields = types.MapNull(types.StringType)
 		state := monitorResourceModel{CustomFields: types.MapValueMust(types.StringType, map[string]attr.Value{
@@ -270,8 +270,8 @@ func TestBuildUpdateRequest_CustomFieldsSemantics(t *testing.T) {
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 		}
-		if req.CustomFields == nil || len(*req.CustomFields) != 0 {
-			t.Fatalf("expected empty custom fields clear payload, got %#v", req.CustomFields)
+		if req.CustomFields != nil {
+			t.Fatalf("expected custom fields to be omitted, got %#v", *req.CustomFields)
 		}
 	})
 

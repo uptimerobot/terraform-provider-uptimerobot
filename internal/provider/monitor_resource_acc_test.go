@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -149,6 +151,43 @@ resource "uptimerobot_monitor" "test" {
   timeout  = 30%s
 }
 `, name, url, customFields)
+}
+
+func testAccCheckMonitorCustomFields(resourceName string, expected map[string]string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("resource %s not found", resourceName)
+		}
+
+		id, err := strconv.ParseInt(rs.Primary.ID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("could not parse monitor ID %q: %w", rs.Primary.ID, err)
+		}
+
+		apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+
+		monitor, err := apiClient.GetMonitor(ctx, id)
+		if err != nil {
+			return fmt.Errorf("could not read monitor %d: %w", id, err)
+		}
+
+		if len(monitor.CustomFields) != len(expected) {
+			return fmt.Errorf("expected custom_fields %#v, got %#v", expected, monitor.CustomFields)
+		}
+		for k, want := range expected {
+			got, ok := monitor.CustomFields[k]
+			if !ok {
+				return fmt.Errorf("expected custom_fields key %q to be present, got %#v", k, monitor.CustomFields)
+			}
+			if got != want {
+				return fmt.Errorf("expected custom_fields[%q] = %q, got %q", k, want, got)
+			}
+		}
+		return nil
+	}
 }
 
 // nolint:unparam // kept for symmetry with other helpers & future reuse
@@ -700,9 +739,17 @@ func TestAccMonitorResource_CustomFields(t *testing.T) {
 				),
 			},
 			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_fields"),
+					testAccCheckMonitorCustomFields("uptimerobot_monitor.test", updated),
+				),
+			},
+			{
 				Config: testAccMonitorResourceConfigWithCustomFields(name, map[string]string{}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.%", "0"),
+					testAccCheckMonitorCustomFields("uptimerobot_monitor.test", map[string]string{}),
 				),
 			},
 			{

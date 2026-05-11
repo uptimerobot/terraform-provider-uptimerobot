@@ -345,7 +345,7 @@ func buildUpdateRequest(
 	}
 
 	// custom fields
-	setCustomFieldsOnUpdate(ctx, plan, state, req, resp)
+	setCustomFieldsOnUpdate(ctx, plan, req, resp)
 	if resp.Diagnostics.HasError() {
 		return nil, ""
 	}
@@ -576,7 +576,6 @@ func setTagsOnUpdate(ctx context.Context, plan monitorResourceModel, req *client
 func setCustomFieldsOnUpdate(
 	ctx context.Context,
 	plan monitorResourceModel,
-	state monitorResourceModel,
 	req *client.UpdateMonitorRequest,
 	resp *resource.UpdateResponse,
 ) {
@@ -584,11 +583,7 @@ func setCustomFieldsOnUpdate(
 	case plan.CustomFields.IsUnknown():
 		return
 	case plan.CustomFields.IsNull():
-		if state.CustomFields.IsNull() || state.CustomFields.IsUnknown() {
-			return
-		}
-		empty := map[string]string{}
-		req.CustomFields = &empty
+		// Omitted/null means unmanaged: preserve remote custom fields.
 		return
 	default:
 		m, d := stringMapFromAttrPreserveEmpty(ctx, plan.CustomFields)
