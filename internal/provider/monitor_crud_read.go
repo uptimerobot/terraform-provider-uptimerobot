@@ -379,6 +379,22 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 		want.URL = &v
 	}
 
+	monitorType := strings.ToUpper(strings.TrimSpace(state.Type.ValueString()))
+	switch monitorType {
+	case MonitorTypeHEARTBEAT:
+		if !state.GracePeriod.IsNull() && !state.GracePeriod.IsUnknown() {
+			v := int(state.GracePeriod.ValueInt64())
+			want.GracePeriod = &v
+		}
+	case MonitorTypeDNS:
+		// The API ignores timeout and grace_period for DNS monitors.
+	default:
+		if !state.Timeout.IsNull() && !state.Timeout.IsUnknown() {
+			v := int(state.Timeout.ValueInt64())
+			want.Timeout = &v
+		}
+	}
+
 	if !state.MaintenanceWindowIDs.IsNull() && !state.MaintenanceWindowIDs.IsUnknown() {
 		var ids []int64
 		if diags := state.MaintenanceWindowIDs.ElementsAs(ctx, &ids, false); !diags.HasError() {
@@ -402,6 +418,11 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 			}
 			if cfg.APIAssertions != nil {
 				want.APIAssertions = normalizeAPIAssertions(cfg.APIAssertions)
+			}
+			if cfg.IPVersion != nil {
+				if normalized, keep := normalizeIPVersionForAPI(*cfg.IPVersion); keep {
+					want.IPVersion = &normalized
+				}
 			}
 			applyApplicationErrorRetriesExpectation(&want, cfg.ApplicationErrorRetries)
 		}
@@ -445,6 +466,8 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 func hasMonitorReadStabilizationAssertions(want monComparable) bool {
 	if want.Name != nil ||
 		want.URL != nil ||
+		want.Timeout != nil ||
+		want.GracePeriod != nil ||
 		want.FollowRedirections != nil ||
 		want.SSLExpirationReminder != nil ||
 		want.DomainExpirationReminder != nil ||
@@ -454,6 +477,8 @@ func hasMonitorReadStabilizationAssertions(want monComparable) bool {
 		want.RegionalData != nil ||
 		want.DNSRecords != nil ||
 		want.SSLExpirationPeriodDays != nil ||
+		want.IPVersion != nil ||
+		want.ExpectIPVersionUnset ||
 		want.ApplicationErrorRetries != nil ||
 		want.ExpectApplicationErrorRetriesUnset ||
 		want.APIAssertions != nil {

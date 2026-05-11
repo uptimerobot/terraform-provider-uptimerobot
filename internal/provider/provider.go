@@ -101,6 +101,7 @@ func (p *UptimeRobotProvider) Configure(ctx context.Context, req provider.Config
 func (p *UptimeRobotProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewMonitorResource,
+		NewMonitorGroupResource,
 		NewPSPResource,
 		NewMaintenanceWindowResource,
 		NewIntegrationResource,

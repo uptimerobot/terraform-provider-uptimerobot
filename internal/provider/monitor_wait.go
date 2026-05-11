@@ -34,6 +34,12 @@ func (r *monitorResource) waitMonitorSettled(
 	backoff := 500 * time.Millisecond
 	const maxBackoff = 3 * time.Second
 	requiredConsecutiveMatches := 3
+	if want.Timeout != nil ||
+		want.GracePeriod != nil ||
+		want.IPVersion != nil ||
+		want.ExpectIPVersionUnset {
+		requiredConsecutiveMatches = 5
+	}
 	if want.AssignedAlertContacts != nil ||
 		want.SSLExpirationPeriodDays != nil ||
 		want.MaintenanceWindowIDs != nil {

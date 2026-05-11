@@ -208,6 +208,29 @@ func testAccCheckMonitorDestroy(s *terraform.State) error {
 	return nil
 }
 
+func testAccCheckMonitorGroupDestroy(s *terraform.State) error {
+	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "uptimerobot_monitor_group" {
+			continue
+		}
+
+		id, err := strconv.ParseInt(rs.Primary.ID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("Error converting monitor group ID to int64: %v", err)
+		}
+
+		if err := apiClient.WaitMonitorGroupDeleted(ctx, id, 90*time.Second); err != nil {
+			return fmt.Errorf("monitor group %s still exists: %w", rs.Primary.ID, err)
+		}
+	}
+
+	return nil
+}
+
 func testAccCheckIntegrationDestroy(s *terraform.State) error {
 	// Create a client to check if the integration was properly deleted
 	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))

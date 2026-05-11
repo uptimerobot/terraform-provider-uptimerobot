@@ -2892,6 +2892,26 @@ func TestAcc_Monitor_Config_IPVersion_SetAndUpdate_API(t *testing.T) {
 	url := testAccUniqueURL(name)
 	res := "uptimerobot_monitor.test"
 
+	cfgNoIPVersion := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "API"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    api_assertions = {
+      logic = "AND"
+      checks = [{
+        property   = "$.status"
+        comparison = "is_not_null"
+      }]
+    }
+  }
+}
+`, name, url)
+
 	cfgIPv4 := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "%s"
@@ -2913,46 +2933,25 @@ resource "uptimerobot_monitor" "test" {
 }
 `, name, url)
 
-	cfgIPv6 := fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-  name     = "%s"
-  type     = "API"
-  url      = "%s"
-  interval = 300
-  timeout  = 30
-
-  config = {
-    ip_version = "ipv6Only"
-    api_assertions = {
-      logic = "AND"
-      checks = [{
-        property   = "$.status"
-        comparison = "is_not_null"
-      }]
-    }
-  }
-}
-`, name, url)
-
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: cfgIPv4,
+				Config: cfgNoIPVersion,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(res, "type", "API"),
+					resource.TestCheckNoResourceAttr(res, "config.ip_version"),
+				),
+			},
+			{
+				Config: cfgIPv4,
+				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv4Only"),
 				),
 			},
 			{
-				Config: cfgIPv6,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv6Only"),
-				),
-			},
-			{
-				Config:             cfgIPv6,
+				Config:             cfgIPv4,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
