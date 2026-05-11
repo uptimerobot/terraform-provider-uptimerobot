@@ -166,6 +166,11 @@ func testAccCheckMonitorCustomFields(resourceName string, expected map[string]st
 		}
 
 		apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+		if apiURL := os.Getenv("UPTIMEROBOT_API_URL"); apiURL != "" {
+			apiClient.SetBaseURL(apiURL)
+		}
+		apiClient.SetUserAgent("terraform-provider-uptimerobot/acc-test")
+		apiClient.AddHeader("X-Terraform-Provider", "uptimerobot/acc-test")
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 
