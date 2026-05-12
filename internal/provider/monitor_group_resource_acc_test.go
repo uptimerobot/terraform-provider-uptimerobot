@@ -5,7 +5,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -115,7 +114,7 @@ func TestAccMonitorGroup_DeleteMovesExternalMonitorToConfiguredGroup(t *testing.
 		if monitorID == 0 {
 			return
 		}
-		apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+		apiClient := testAccAPIClient()
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 		_ = apiClient.DeleteMonitor(ctx, monitorID)
@@ -161,7 +160,7 @@ func testAccCreateExternalMonitorInGroup(monitorID *int64, name, groupResource s
 		groupIDInt := int(groupID)
 		timeout := 30
 
-		apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+		apiClient := testAccAPIClient()
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 
@@ -203,7 +202,7 @@ func testAccCheckExternalMonitorMovedAndCleanup(monitorID *int64, fallbackResour
 			return err
 		}
 
-		apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+		apiClient := testAccAPIClient()
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 

@@ -124,10 +124,13 @@ func (r *monitorGroupResource) Create(ctx context.Context, req resource.CreateRe
 	}
 	settled, err := r.waitMonitorGroupName(ctx, group.ID, plan.Name.ValueString(), 90*time.Second)
 	if err != nil {
-		resp.Diagnostics.AddError("Error waiting for monitor group creation", err.Error())
-		return
+		resp.Diagnostics.AddWarning("Monitor group create settled slowly", err.Error())
+		if settled != nil {
+			group = settled
+		}
+	} else {
+		group = settled
 	}
-	group = settled
 
 	plan.applyAPI(group)
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -179,7 +182,7 @@ func (r *monitorGroupResource) Update(ctx context.Context, req resource.UpdateRe
 
 	var group *client.MonitorGroup
 	if !plan.Name.Equal(state.Name) {
-		_, err = r.client.UpdateMonitorGroup(ctx, id, &client.UpdateMonitorGroupRequest{
+		group, err = r.client.UpdateMonitorGroup(ctx, id, &client.UpdateMonitorGroupRequest{
 			Name: plan.Name.ValueString(),
 		})
 		if err != nil {
@@ -187,13 +190,21 @@ func (r *monitorGroupResource) Update(ctx context.Context, req resource.UpdateRe
 			return
 		}
 
-		group, err = r.waitMonitorGroupName(ctx, id, plan.Name.ValueString(), 90*time.Second)
+		settled, err := r.waitMonitorGroupName(ctx, id, plan.Name.ValueString(), 90*time.Second)
+		if err != nil {
+			resp.Diagnostics.AddWarning("Monitor group update settled slowly", err.Error())
+			if settled != nil {
+				group = settled
+			}
+		} else {
+			group = settled
+		}
 	} else {
 		group, err = r.client.GetMonitorGroup(ctx, id)
-	}
-	if err != nil {
-		resp.Diagnostics.AddError("Error updating monitor group", err.Error())
-		return
+		if err != nil {
+			resp.Diagnostics.AddError("Error updating monitor group", err.Error())
+			return
+		}
 	}
 
 	plan.applyAPI(group)
@@ -292,7 +303,10 @@ func (r *monitorGroupResource) waitMonitorGroupName(ctx context.Context, id int6
 		select {
 		case <-ctx.Done():
 			if last != nil {
-				return last, fmt.Errorf("timeout waiting for monitor group %d name %q; last name was %q", id, expectedName, last.Name)
+				return last, fmt.Errorf("timeout waiting for monitor group %d name %q; last name was %q: %w", id, expectedName, last.Name, ctx.Err())
+			}
+			if lastErr == nil {
+				lastErr = ctx.Err()
 			}
 			return nil, fmt.Errorf("timeout waiting for monitor group %d name %q: %w", id, expectedName, lastErr)
 		case <-time.After(backoff):

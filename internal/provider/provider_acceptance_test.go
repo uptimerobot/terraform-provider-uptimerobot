@@ -180,6 +180,16 @@ func testAccProviderVersion() (string, bool) {
 	return version, true
 }
 
+func testAccAPIClient() *client.Client {
+	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+	if apiURL := os.Getenv("UPTIMEROBOT_API_URL"); apiURL != "" {
+		apiClient.SetBaseURL(apiURL)
+	}
+	apiClient.SetUserAgent("terraform-provider-uptimerobot/acc-test")
+	apiClient.AddHeader("X-Terraform-Provider", "uptimerobot/acc-test")
+	return apiClient
+}
+
 // CheckDestroy functions for each resource type.
 func testAccCheckMonitorDestroy(s *terraform.State) error {
 	// Create a client to check if the monitor was properly deleted
@@ -209,7 +219,7 @@ func testAccCheckMonitorDestroy(s *terraform.State) error {
 }
 
 func testAccCheckMonitorGroupDestroy(s *terraform.State) error {
-	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+	apiClient := testAccAPIClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
