@@ -163,6 +163,7 @@ Set either field to an empty string (`""`) to clear the existing uploaded file.
 - **Password Protection**: Restrict access with a password
 - **Custom Styling**: Apply custom CSS and branding
 - **Google Analytics**: Track status page visitors
+- **Subscriber Signup**: Enable public status page subscriptions when your account has the PSP subscribers feature
 - **SEO Control**: Control search engine indexing
 
 ## Monitor Selection
@@ -216,6 +217,7 @@ Set to an empty string (`""`) to clear the existing logo.
 - `share_analytics_consent` (Boolean) Whether analytics sharing is consented
 - `show_cookie_bar` (Boolean) Whether to show cookie bar
 - `status` (String) Status of the PSP
+- `subscription` (Boolean) Whether subscription is enabled
 - `use_small_cookie_consent_modal` (Boolean) Whether to use small cookie consent modal
 
 ### Read-Only
@@ -223,7 +225,6 @@ Set to an empty string (`""`) to clear the existing logo.
 - `id` (String) PSP identifier
 - `is_password_set` (Boolean) Whether a password is set for the PSP
 - `monitors_count` (Number) Number of monitors in the PSP
-- `subscription` (Boolean) Whether subscription is enabled
 - `url_key` (String) URL key for the PSP
 
 <a id="nestedatt--custom_settings"></a>

@@ -27,6 +27,9 @@ func TestClient_UpdatePSPManagedFields(t *testing.T) {
 		if !strings.Contains(string(body), `"homepageLink":"https://example.com"`) {
 			t.Fatalf("expected homepageLink in update body, got %s", body)
 		}
+		if !strings.Contains(string(body), `"subscription":true`) {
+			t.Fatalf("expected subscription in update body, got %s", body)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -40,7 +43,7 @@ func TestClient_UpdatePSPManagedFields(t *testing.T) {
 			"useSmallCookieConsentModal":false,
 			"noIndex":false,
 			"hideUrlLinks":false,
-			"subscription":false,
+			"subscription":true,
 			"showCookieBar":false
 		}`))
 	}))
@@ -50,13 +53,18 @@ func TestClient_UpdatePSPManagedFields(t *testing.T) {
 	c.SetBaseURL(srv.URL)
 
 	homepageLink := "https://example.com"
+	subscription := true
 	psp, err := c.UpdatePSP(context.Background(), 42, &UpdatePSPRequest{
 		HomepageLink: &homepageLink,
+		Subscription: &subscription,
 	})
 	if err != nil {
 		t.Fatalf("UpdatePSP returned error: %v", err)
 	}
 	if psp.HomepageLink == nil || *psp.HomepageLink != homepageLink {
 		t.Fatalf("expected homepageLink %q, got %#v", homepageLink, psp.HomepageLink)
+	}
+	if !psp.Subscription {
+		t.Fatal("expected subscription to be true")
 	}
 }

@@ -136,6 +136,7 @@ type UpdatePSPRequest struct {
 	NoIndex                    *bool           `json:"noIndex,omitempty"`
 	Logo                       *string         `json:"logo,omitempty"`
 	HideURLLinks               *bool           `json:"hideUrlLinks,omitempty"`
+	Subscription               *bool           `json:"subscription,omitempty"`
 	ShowCookieBar              *bool           `json:"showCookieBar,omitempty"`
 	PinnedAnnouncementID       *int64          `json:"pinnedAnnouncementId,omitempty"`
 	CustomSettings             *CustomSettings `json:"customSettings,omitempty"`

@@ -140,6 +140,9 @@ func preferPlannedTopLevelValues(plan *pspResourceModel, state *pspResourceModel
 	if hasConfiguredString(plan.HomepageLink) {
 		state.HomepageLink = plan.HomepageLink
 	}
+	if hasConfiguredBool(plan.Subscription) {
+		state.Subscription = plan.Subscription
+	}
 	if hasConfiguredString(plan.GACode) {
 		state.GACode = plan.GACode
 	}
@@ -665,6 +668,7 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			},
 			"subscription": schema.BoolAttribute{
 				Description: "Whether subscription is enabled",
+				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
@@ -880,6 +884,11 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		value := plan.HomepageLink.ValueString()
 		expectedHomepageLink = &value
 	}
+	var expectedSubscription *bool
+	if hasConfiguredBool(plan.Subscription) {
+		value := plan.Subscription.ValueBool()
+		expectedSubscription = &value
+	}
 
 	// Create new PSP
 	psp := &client.CreatePSPRequest{
@@ -1059,15 +1068,16 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	if hasConfiguredString(plan.HomepageLink) {
-		homepageLink := plan.HomepageLink.ValueString()
-		newPSP, err = r.client.UpdatePSP(ctx, newPSP.ID, &client.UpdatePSPRequest{
-			HomepageLink: &homepageLink,
-		})
+	if expectedHomepageLink != nil || expectedSubscription != nil {
+		updateReq := &client.UpdatePSPRequest{
+			HomepageLink: expectedHomepageLink,
+			Subscription: expectedSubscription,
+		}
+		newPSP, err = r.client.UpdatePSP(ctx, newPSP.ID, updateReq)
 		if err != nil {
 			resp.Diagnostics.AddError(
-				"Error updating PSP homepage link",
-				"Could not set PSP homepage link after create, unexpected error: "+err.Error(),
+				"Error updating PSP",
+				"Could not set PSP fields after create, unexpected error: "+err.Error(),
 			)
 			return
 		}
@@ -1110,6 +1120,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
 		expectedHomepageLink,
+		expectedSubscription,
 		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
@@ -1248,6 +1259,7 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 			expectedName,
 			expectedMonitorIDs,
 			nil,
+			nil,
 			20*time.Second,
 		); err == nil && settled != nil {
 			psp = settled
@@ -1336,6 +1348,11 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		value := plan.HomepageLink.ValueString()
 		expectedHomepageLink = &value
 	}
+	var expectedSubscription *bool
+	if hasConfiguredBool(plan.Subscription) {
+		value := plan.Subscription.ValueBool()
+		expectedSubscription = &value
+	}
 
 	// Get current state
 	id, err := strconv.ParseInt(state.ID.ValueString(), 10, 64)
@@ -1385,6 +1402,12 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		(state.HomepageLink.IsNull() || state.HomepageLink.IsUnknown() || plan.HomepageLink.ValueString() != state.HomepageLink.ValueString()) {
 		homepageLink := plan.HomepageLink.ValueString()
 		psp.HomepageLink = &homepageLink
+	}
+
+	if hasConfiguredBool(plan.Subscription) &&
+		(state.Subscription.IsNull() || state.Subscription.IsUnknown() || plan.Subscription.ValueBool() != state.Subscription.ValueBool()) {
+		subscription := plan.Subscription.ValueBool()
+		psp.Subscription = &subscription
 	}
 
 	if !plan.Status.IsNull() && !plan.Status.IsUnknown() &&
@@ -1571,6 +1594,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
 		expectedHomepageLink,
+		expectedSubscription,
 		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
@@ -1656,6 +1680,7 @@ func waitPSPSettled(
 	expectedName string,
 	expectedMonitorIDs []int64, // nil means omitted and should not be checked
 	expectedHomepageLink *string,
+	expectedSubscription *bool,
 	timeout time.Duration,
 ) (*client.PSP, error) {
 
@@ -1692,8 +1717,9 @@ func waitPSPSettled(
 			}
 
 			homepageLinkOK := pspStringPtrMatches(psp.HomepageLink, expectedHomepageLink)
+			subscriptionOK := expectedSubscription == nil || psp.Subscription == *expectedSubscription
 
-			if nameOK && monitorsOK && homepageLinkOK {
+			if nameOK && monitorsOK && homepageLinkOK && subscriptionOK {
 				consecutiveMatches++
 				if consecutiveMatches >= requiredConsecutiveMatches {
 					return psp, nil
