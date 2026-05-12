@@ -128,6 +128,7 @@ type UpdatePSPRequest struct {
 	Password                   *string         `json:"password,omitempty"`
 	MonitorIDs                 *[]int64        `json:"monitorIds,omitempty"`
 	Status                     *string         `json:"status,omitempty"`
+	HomepageLink               *string         `json:"homepageLink,omitempty"`
 	GACode                     *string         `json:"gaCode,omitempty"`
 	ShareAnalyticsConsent      *bool           `json:"shareAnalyticsConsent,omitempty"`
 	UseSmallCookieConsentModal *bool           `json:"useSmallCookieConsentModal,omitempty"`

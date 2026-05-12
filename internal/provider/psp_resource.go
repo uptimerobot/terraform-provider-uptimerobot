@@ -119,6 +119,9 @@ func maskOptionalTopLevelNullsFromPlan(plan *pspResourceModel, state *pspResourc
 	if plan.CustomDomain.IsNull() {
 		state.CustomDomain = types.StringNull()
 	}
+	if plan.HomepageLink.IsNull() {
+		state.HomepageLink = types.StringNull()
+	}
 	if plan.PinnedAnnouncementID.IsNull() {
 		state.PinnedAnnouncementID = types.Int64Null()
 	}
@@ -133,6 +136,9 @@ func preferPlannedTopLevelValues(plan *pspResourceModel, state *pspResourceModel
 	}
 	if hasConfiguredString(plan.CustomDomain) {
 		state.CustomDomain = plan.CustomDomain
+	}
+	if hasConfiguredString(plan.HomepageLink) {
+		state.HomepageLink = plan.HomepageLink
 	}
 	if hasConfiguredString(plan.GACode) {
 		state.GACode = plan.GACode
@@ -235,6 +241,9 @@ func ensureKnownTopLevelOptionals(state *pspResourceModel) {
 	}
 	if state.CustomDomain.IsUnknown() {
 		state.CustomDomain = types.StringNull()
+	}
+	if state.HomepageLink.IsUnknown() {
+		state.HomepageLink = types.StringNull()
 	}
 	if state.GACode.IsUnknown() {
 		state.GACode = types.StringNull()
@@ -575,7 +584,11 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			},
 			"homepage_link": schema.StringAttribute{
 				Description: "Homepage link for the PSP",
+				Optional:    true,
 				Computed:    true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtMost(255),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -862,6 +875,11 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 			return
 		}
 	}
+	var expectedHomepageLink *string
+	if hasConfiguredString(plan.HomepageLink) {
+		value := plan.HomepageLink.ValueString()
+		expectedHomepageLink = &value
+	}
 
 	// Create new PSP
 	psp := &client.CreatePSPRequest{
@@ -1041,6 +1059,20 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
+	if hasConfiguredString(plan.HomepageLink) {
+		homepageLink := plan.HomepageLink.ValueString()
+		newPSP, err = r.client.UpdatePSP(ctx, newPSP.ID, &client.UpdatePSPRequest{
+			HomepageLink: &homepageLink,
+		})
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error updating PSP homepage link",
+				"Could not set PSP homepage link after create, unexpected error: "+err.Error(),
+			)
+			return
+		}
+	}
+
 	var logoPath, iconPath *string
 	if hasConfiguredString(plan.Logo) {
 		if value := strings.TrimSpace(plan.Logo.ValueString()); value != "" {
@@ -1077,6 +1109,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		newPSP.ID,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
+		expectedHomepageLink,
 		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
@@ -1214,6 +1247,7 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 			id,
 			expectedName,
 			expectedMonitorIDs,
+			nil,
 			20*time.Second,
 		); err == nil && settled != nil {
 			psp = settled
@@ -1297,6 +1331,11 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 			return
 		}
 	}
+	var expectedHomepageLink *string
+	if hasConfiguredString(plan.HomepageLink) {
+		value := plan.HomepageLink.ValueString()
+		expectedHomepageLink = &value
+	}
 
 	// Get current state
 	id, err := strconv.ParseInt(state.ID.ValueString(), 10, 64)
@@ -1340,6 +1379,12 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		(state.GACode.IsNull() || state.GACode.IsUnknown() || plan.GACode.ValueString() != state.GACode.ValueString()) {
 		gaCode := plan.GACode.ValueString()
 		psp.GACode = &gaCode
+	}
+
+	if hasConfiguredString(plan.HomepageLink) &&
+		(state.HomepageLink.IsNull() || state.HomepageLink.IsUnknown() || plan.HomepageLink.ValueString() != state.HomepageLink.ValueString()) {
+		homepageLink := plan.HomepageLink.ValueString()
+		psp.HomepageLink = &homepageLink
 	}
 
 	if !plan.Status.IsNull() && !plan.Status.IsUnknown() &&
@@ -1525,6 +1570,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		id,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
+		expectedHomepageLink,
 		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
@@ -1609,6 +1655,7 @@ func waitPSPSettled(
 	id int64,
 	expectedName string,
 	expectedMonitorIDs []int64, // nil means omitted and should not be checked
+	expectedHomepageLink *string,
 	timeout time.Duration,
 ) (*client.PSP, error) {
 
@@ -1644,7 +1691,9 @@ func waitPSPSettled(
 				monitorsOK = (len(missing) == 0 && len(extra) == 0)
 			}
 
-			if nameOK && monitorsOK {
+			homepageLinkOK := pspStringPtrMatches(psp.HomepageLink, expectedHomepageLink)
+
+			if nameOK && monitorsOK && homepageLinkOK {
 				consecutiveMatches++
 				if consecutiveMatches >= requiredConsecutiveMatches {
 					return psp, nil
@@ -1675,6 +1724,16 @@ func waitPSPSettled(
 			}
 		}
 	}
+}
+
+func pspStringPtrMatches(got *string, want *string) bool {
+	if want == nil {
+		return true
+	}
+	if got == nil {
+		return *want == ""
+	}
+	return *got == *want
 }
 
 func pspToResourceData(_ context.Context, psp *client.PSP, plan *pspResourceModel) {
