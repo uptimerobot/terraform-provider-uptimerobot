@@ -841,7 +841,6 @@ Optional:
 
 
 <a id="nestedatt--region_data"></a>
-
 ### Nested Schema for `region_data`
 
 Optional:
