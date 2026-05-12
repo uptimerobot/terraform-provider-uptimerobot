@@ -18,7 +18,7 @@ import (
 
 // Run the docs generation tool, check its repository for more information on how it works and how docs
 // can be customized.
-//go:generate env GOFLAGS=-tags=tfplugindocs go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate -provider-name uptimerobot
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate -provider-name uptimerobot
 
 var (
 	// these will be set by the goreleaser configuration
@@ -36,7 +36,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: providerAddress,
+		Address: "registry.terraform.io/uptimerobot/uptimerobot",
 		Debug:   debug,
 	}
 
