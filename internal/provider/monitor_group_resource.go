@@ -124,6 +124,10 @@ func (r *monitorGroupResource) Create(ctx context.Context, req resource.CreateRe
 	}
 	settled, err := r.waitMonitorGroupName(ctx, group.ID, plan.Name.ValueString(), 90*time.Second)
 	if err != nil {
+		if ctx.Err() != nil {
+			resp.Diagnostics.AddError("Error waiting for monitor group stabilization", err.Error())
+			return
+		}
 		resp.Diagnostics.AddWarning("Monitor group create settled slowly", err.Error())
 		if settled != nil {
 			group = settled
@@ -203,6 +207,10 @@ func (r *monitorGroupResource) Update(ctx context.Context, req resource.UpdateRe
 
 		settled, err := r.waitMonitorGroupName(ctx, id, plan.Name.ValueString(), 90*time.Second)
 		if err != nil {
+			if ctx.Err() != nil {
+				resp.Diagnostics.AddError("Error waiting for monitor group stabilization", err.Error())
+				return
+			}
 			resp.Diagnostics.AddWarning("Monitor group update settled slowly", err.Error())
 			if settled != nil {
 				group = settled
