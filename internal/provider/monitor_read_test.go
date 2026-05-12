@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -66,6 +67,47 @@ func TestMonitorReadStabilizationWant_IncludesManagedBooleansAndAlertContacts(t 
 	}
 	if !want.skipMWIDsCompare {
 		t.Fatalf("expected unmanaged maintenance windows to be skipped")
+	}
+}
+
+func TestMonitorReadStabilizationWant_IncludesManagedTimeoutAndIPVersion(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	want := monitorReadStabilizationWant(ctx, monitorResourceModel{
+		Type:    types.StringValue(MonitorTypePING),
+		Timeout: types.Int64Value(45),
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"ip_version":                 types.StringValue(IPVersionIPv4Only),
+			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries":  types.Int64Unknown(),
+		}),
+	})
+
+	if want.Timeout == nil || *want.Timeout != 45 {
+		t.Fatalf("expected timeout assertion 45, got %#v", want.Timeout)
+	}
+	if want.IPVersion == nil || *want.IPVersion != IPVersionIPv4Only {
+		t.Fatalf("expected ip_version assertion %q, got %#v", IPVersionIPv4Only, want.IPVersion)
+	}
+	if !hasMonitorReadStabilizationAssertions(want) {
+		t.Fatalf("expected managed timeout and ip_version to require read stabilization")
+	}
+}
+
+func TestMonitorReadStabilizationWant_SkipsDNSTimeout(t *testing.T) {
+	t.Parallel()
+
+	want := monitorReadStabilizationWant(context.Background(), monitorResourceModel{
+		Type:    types.StringValue(MonitorTypeDNS),
+		Timeout: types.Int64Value(30),
+	})
+
+	if want.Timeout != nil {
+		t.Fatalf("expected DNS timeout to be skipped during read stabilization, got %#v", want.Timeout)
 	}
 }
 
@@ -153,5 +195,104 @@ func TestReadApplyTagsHeadersAC_ImportKeepsEmptyAlertContactsNull(t *testing.T) 
 	}
 	if !state.AssignedAlertContacts.IsNull() {
 		t.Fatalf("expected import read with no alert contacts to keep assigned_alert_contacts null, got %#v", state.AssignedAlertContacts)
+	}
+}
+
+func TestReadApplyRegionalData_ImportSingleRegionUsesCanonicalRegionData(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := monitorResourceModel{}
+	resp := &resource.ReadResponse{}
+
+	readApplyRegionalData(ctx, resp, &state, &client.Monitor{
+		RegionalData: "eu",
+	}, true)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if !state.RegionalData.IsNull() {
+		t.Fatalf("expected deprecated regional_data to stay null, got %#v", state.RegionalData)
+	}
+	if state.RegionData.IsNull() {
+		t.Fatal("expected import read to populate canonical region_data")
+	}
+
+	var got regionDataTF
+	diags := state.RegionData.As(ctx, &got, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})
+	if diags.HasError() {
+		t.Fatalf("unexpected region_data diagnostics: %v", diags)
+	}
+
+	var regions []string
+	diags = got.Regions.ElementsAs(ctx, &regions, false)
+	if diags.HasError() {
+		t.Fatalf("unexpected region diagnostics: %v", diags)
+	}
+	if len(regions) != 1 || regions[0] != "eu" {
+		t.Fatalf("expected imported region_data.regions to contain eu, got %#v", regions)
+	}
+	if !got.Thresholds.IsNull() {
+		t.Fatalf("expected imported region_data.thresholds to remain null, got %#v", got.Thresholds)
+	}
+}
+
+func TestReadApplyRegionalData_ImportDefaultManualRegionStaysUnmanaged(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := monitorResourceModel{}
+	resp := &resource.ReadResponse{}
+
+	readApplyRegionalData(ctx, resp, &state, &client.Monitor{
+		RegionalData: map[string]interface{}{
+			"REGION":          []interface{}{"na"},
+			"MANUAL_SELECTED": true,
+		},
+	}, true)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if !state.RegionalData.IsNull() {
+		t.Fatalf("expected deprecated regional_data to stay null, got %#v", state.RegionalData)
+	}
+	if !state.RegionData.IsNull() {
+		t.Fatalf("expected default manual region_data to stay null on import, got %#v", state.RegionData)
+	}
+}
+
+func TestReadApplyRegionalData_ImportAutoSelectUsesRegionData(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := monitorResourceModel{}
+	resp := &resource.ReadResponse{}
+
+	readApplyRegionalData(ctx, resp, &state, &client.Monitor{
+		RegionalData: map[string]interface{}{
+			"REGION":          []interface{}{"na"},
+			"MANUAL_SELECTED": false,
+		},
+	}, true)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+	}
+	if state.RegionData.IsNull() {
+		t.Fatal("expected auto-select import to populate region_data")
+	}
+
+	var got regionDataTF
+	diags := state.RegionData.As(ctx, &got, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})
+	if diags.HasError() {
+		t.Fatalf("unexpected region_data diagnostics: %v", diags)
+	}
+	if got.AutoSelect.IsNull() || !got.AutoSelect.ValueBool() {
+		t.Fatalf("expected imported auto_select=true, got %#v", got.AutoSelect)
+	}
+	if !got.Regions.IsNull() {
+		t.Fatalf("expected imported auto-select carrier regions to remain unmanaged, got %#v", got.Regions)
 	}
 }

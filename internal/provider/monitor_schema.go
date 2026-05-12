@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -42,6 +43,10 @@ const (
 
 	IPVersionIPv4Only = "ipv4Only"
 	IPVersionIPv6Only = "ipv6Only"
+
+	customFieldsMaxKeys        = 20
+	customFieldsKeyMaxLength   = 64
+	customFieldsValueMaxLength = 255
 )
 
 // NewMonitorResource is a helper function to simplify the provider implementation.
@@ -90,8 +95,12 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Version:     5,
+	resp.Schema = monitorSchema(6, true)
+}
+
+func monitorSchema(version int64, includeApplicationErrorRetries bool) schema.Schema {
+	s := schema.Schema{
+		Version:     version,
 		Description: "Manages an UptimeRobot monitor.",
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
@@ -172,6 +181,30 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					"Tip: add keys in lower-case (e.g., `\"content-type\" = \"application/json\"`).",
 				Optional:    true,
 				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"custom_fields": schema.MapAttribute{
+				Description: "Custom key-value metadata for the monitor. Max 20 keys. Keys may contain letters, numbers, underscores, and hyphens. Values may be up to 255 characters.",
+				MarkdownDescription: "Custom key-value metadata for the monitor.\n\n" +
+					"- Max 20 keys.\n" +
+					"- Keys may contain letters, numbers, underscores, and hyphens, up to 64 characters.\n" +
+					"- Values may be up to 255 characters.\n" +
+					"- Omit the attribute to leave custom fields unmanaged. Set `{}` to clear managed custom fields.",
+				Optional:    true,
+				ElementType: types.StringType,
+				Validators: []validator.Map{
+					mapvalidator.SizeAtMost(customFieldsMaxKeys),
+					mapvalidator.KeysAre(
+						stringvalidator.LengthAtLeast(1),
+						stringvalidator.LengthAtMost(customFieldsKeyMaxLength),
+						stringvalidator.RegexMatches(regexp.MustCompile(`^[a-zA-Z0-9_-]+$`), "must contain only letters, numbers, underscores, and hyphens"),
+					),
+					mapvalidator.ValueStringsAre(
+						stringvalidator.LengthAtMost(customFieldsValueMaxLength),
+					),
+				},
 				PlanModifiers: []planmodifier.Map{
 					mapplanmodifier.UseStateForUnknown(),
 				},
@@ -413,10 +446,42 @@ Alert contacts assigned to this monitor.
 				},
 			},
 			"regional_data": schema.StringAttribute{
-				Description: "Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)",
-				Optional:    true,
+				Description:        "Legacy single region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania). Use region_data for new multi-region monitor settings.",
+				DeprecationMessage: "Use region_data instead. regional_data only supports the legacy single-region API shape.",
+				Optional:           true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("na", "eu", "as", "oc"),
+				},
+			},
+			"region_data": schema.SingleNestedAttribute{
+				Description: "Multi-region monitor settings. Uses the API v3 regionData object.",
+				MarkdownDescription: "Multi-region monitor settings. Uses the API v3 `regionData` object.\n\n" +
+					"- `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`. Required unless `auto_select` is `true`.\n" +
+					"- `auto_select` lets UptimeRobot choose the monitoring region automatically. When `true`, `regions` can be omitted and the provider sends the API-required carrier region without managing it. When omitted or `false`, configured `regions` are used as manually selected regions.\n" +
+					"- `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must be selected regions and values must be between `0` and `60000`.",
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"regions": schema.SetAttribute{
+						Description: "Active monitoring regions: na (North America), eu (Europe), as (Asia), oc (Oceania). Required unless auto_select is true.",
+						Optional:    true,
+						ElementType: types.StringType,
+						Validators: []validator.Set{
+							setvalidator.SizeAtLeast(1),
+							setvalidator.SizeAtMost(4),
+							setvalidator.ValueStringsAre(
+								stringvalidator.OneOf("na", "eu", "as", "oc"),
+							),
+						},
+					},
+					"auto_select": schema.BoolAttribute{
+						Description: "When true, UptimeRobot automatically chooses the monitoring region. Regions can be omitted in this mode. When omitted or false, configured regions are used as manually selected regions.",
+						Optional:    true,
+					},
+					"thresholds": schema.MapAttribute{
+						Description: "Optional per-region response-time thresholds in milliseconds. Keys must be selected regions.",
+						Optional:    true,
+						ElementType: types.Int64Type,
+					},
 				},
 			},
 			"check_ssl_errors": schema.BoolAttribute{
@@ -439,6 +504,7 @@ Advanced monitor configuration.
 - ` + "`ssl_expiration_period_days = []`" + ` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 - Removing ` + "`ip_version`" + ` from a managed ` + "`config`" + ` block clears remote ` + "`ipVersion`" + ` (reverts to API default dual-stack behavior).
 - Setting ` + "`ip_version = \"\"`" + ` also acts as an explicit clear/default signal.
+- Omit ` + "`application_error_retries`" + ` to preserve the remote value; set ` + "`application_error_retries = null`" + ` to clear the remote override so the API applies its own default. Connection errors always retry (this setting only governs application/content failures).
 
 **Validation**
 - For ` + "`type = \"DNS\"`" + ` on create, ` + "`config`" + ` is required (use ` + "`config = {}`" + ` for defaults).
@@ -448,6 +514,7 @@ Advanced monitor configuration.
 - ` + "`ip_version`" + ` is only valid for HTTP/KEYWORD/PING/PORT/API monitors.
 - ` + "`config.api_assertions`" + ` is only valid for API monitors.
 - ` + "`config.udp`" + ` is only valid for UDP monitors.
+- ` + "`config.application_error_retries`" + ` is only valid for HTTP/KEYWORD/API monitors and must be 0..3.
 - Top-level ` + "`ssl_expiration_reminder`" + ` and ` + "`check_ssl_errors`" + ` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors.
 `,
 
@@ -572,10 +639,40 @@ Advanced monitor configuration.
 							stringplanmodifier.UseStateForUnknown(),
 						},
 					},
+					"application_error_retries": schema.Int64Attribute{
+						Description: "Number of additional retries (0..3) before declaring an application or content failure for HTTP/KEYWORD/API monitors. Connection errors are unaffected and always retry. Omit to preserve the remote value, or set to null to clear the override and let the API apply its default.",
+						MarkdownDescription: "Number of additional retries before declaring an application or content failure (response status, body assertion, keyword, etc.) " +
+							"for `HTTP`, `KEYWORD`, and `API` monitors. Connection errors (DNS, TCP, TLS, timeouts) are unaffected and always retry.\n\n" +
+							"- Allowed range: `0..3`.\n" +
+							"- Omit the attribute → **preserve** the remote value.\n" +
+							"- Set to `null` → **clear** the override; the API applies its own default.\n",
+						Optional: true,
+						Computed: true,
+						Validators: []validator.Int64{
+							int64validator.Between(0, 3),
+						},
+						PlanModifiers: []planmodifier.Int64{
+							// Keep omitted optional+computed values stable in plans by copying state.
+							// buildUpdateRequest -> expandOrClearConfigOnUpdate uses configAttributeOmitted
+							// and configWithApplicationErrorRetriesUnknown in monitor_crud_update.go to
+							// force omitted values back to Unknown before API expansion.
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
 				},
 			},
 		},
 	}
+
+	if !includeApplicationErrorRetries {
+		configAttr, ok := s.Attributes["config"].(schema.SingleNestedAttribute)
+		if ok {
+			delete(configAttr.Attributes, "application_error_retries")
+			s.Attributes["config"] = configAttr
+		}
+	}
+
+	return s
 }
 
 func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
@@ -899,6 +996,20 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 				if resp.Diagnostics.HasError() {
 					return
 				}
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
+			},
+		},
+		5: {
+			PriorSchema: priorSchemaV5(),
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				var prior monitorResourceModel
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				upgraded := upgradeMonitorFromV5(prior)
 
 				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
 			},

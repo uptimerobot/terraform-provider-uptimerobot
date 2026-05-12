@@ -203,6 +203,52 @@ resource "uptimerobot_monitor" "gateway_ping" {
 }
 ```
 
+### Multi-region Monitor
+
+```terraform
+# Requires an account with monitor-location-settings support.
+# Accounts without that feature cannot use region_data.
+resource "uptimerobot_monitor" "multi_region" {
+  name     = "Multi-region Website"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    regions = ["na", "eu", "as"]
+
+    # For automatic selection, replace this region_data object with:
+    # region_data = {
+    #   auto_select = true
+    # }
+
+    thresholds = {
+      na = 3000
+      eu = 4000
+      as = 6000
+    }
+  }
+}
+```
+
+### Monitor Custom Fields
+
+```terraform
+resource "uptimerobot_monitor" "metadata" {
+  name     = "API health with metadata"
+  type     = "HTTP"
+  url      = "https://example.com/health"
+  interval = 300
+  timeout  = 30
+
+  custom_fields = {
+    environment = "production"
+    team        = "platform"
+  }
+}
+```
+
 ### UDP Monitor
 
 ```terraform
@@ -354,9 +400,9 @@ For `HEARTBEAT` monitors, omit `url`. UptimeRobot generates the heartbeat URL an
 ```terraform
 # Set specific days for SSL expiration period days
 resource "uptimerobot_monitor" "set_days" {
-  name     = "DNS set days"
-  type     = "DNS"
-  url      = "example.com"
+  name     = "HTTP SSL set days"
+  type     = "HTTP"
+  url      = "https://example.com"
   interval = 300
 
   config = {
@@ -378,9 +424,9 @@ resource "uptimerobot_monitor" "preserve" {
 
 # Clear days on server - send an explicit empty list
 resource "uptimerobot_monitor" "clear" {
-  name     = "DNS clear"
-  type     = "DNS"
-  url      = "example.com"
+  name     = "HTTP SSL clear"
+  type     = "HTTP"
+  url      = "https://example.com"
   interval = 300
 
   config = {
@@ -390,9 +436,9 @@ resource "uptimerobot_monitor" "clear" {
 
 # UI-managed SSL days. Ignore drift if management is preferred via dashboard
 resource "uptimerobot_monitor" "ui_driven_ssl" {
-  name     = "UI-driven DNS SSL days"
-  type     = "DNS"
-  url      = "example.com"
+  name     = "UI-driven HTTP SSL days"
+  type     = "HTTP"
+  url      = "https://example.com"
   interval = 300
 
   lifecycle {
@@ -453,6 +499,18 @@ resource "uptimerobot_monitor" "ipv6_only_port" {
 
   config = {
     ip_version = "ipv6Only"
+  }
+}
+
+# HTTP monitor with explicit application-error retry budget (0..3). Set to null to clear.
+resource "uptimerobot_monitor" "tight_app_retry" {
+  name     = "Strict app-error retries"
+  type     = "HTTP"
+  url      = "https://example.com/health"
+  interval = 300
+
+  config = {
+    application_error_retries = 0
   }
 }
 
@@ -633,6 +691,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `ssl_expiration_period_days = []` → **clear** days on the server; non-empty list sets exactly those days (max 10).
 - Removing `ip_version` from a managed `config` block clears remote `ipVersion` (reverts to API default dual-stack behavior).
 - Setting `ip_version = ""` also acts as an explicit clear/default signal.
+- Omit `application_error_retries` to preserve the remote value; set `application_error_retries = null` to clear the remote override so the API applies its own default. Connection errors always retry (this setting only governs application/content failures).
 
 **Validation**
 - For `type = "DNS"` on create, `config` is required (use `config = {}` for defaults).
@@ -642,7 +701,14 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `ip_version` is only valid for HTTP/KEYWORD/PING/PORT/API monitors.
 - `config.api_assertions` is only valid for API monitors.
 - `config.udp` is only valid for UDP monitors.
+- `config.application_error_retries` is only valid for HTTP/KEYWORD/API monitors and must be 0..3.
 - Top-level `ssl_expiration_reminder` and `check_ssl_errors` are valid for HTTPS URLs on HTTP/KEYWORD/API monitors. (see [below for nested schema](#nestedatt--config))
+- `custom_fields` (Map of String) Custom key-value metadata for the monitor.
+
+- Max 20 keys.
+- Keys may contain letters, numbers, underscores, and hyphens, up to 64 characters.
+- Values may be up to 255 characters.
+- Omit the attribute to leave custom fields unmanaged. Set `{}` to clear managed custom fields.
 - `custom_http_headers` (Map of String) Custom HTTP headers as key:value. **Keys are case-insensitive.** The provider normalizes keys to **lower-case** on read and during planning to avoid false diffs. Tip: add keys in lower-case (e.g., `"content-type" = "application/json"`).
 - `domain_expiration_reminder` (Boolean) Whether to enable domain expiration reminders
 - `follow_redirections` (Boolean) Whether to follow redirections
@@ -660,7 +726,12 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `port` (Number) The port to monitor
 - `post_value_data` (String) JSON body (use jsonencode). Mutually exclusive with post_value_kv.
 - `post_value_kv` (Map of String) Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.
-- `regional_data` (String) Region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania)
+- `region_data` (Attributes) Multi-region monitor settings. Uses the API v3 `regionData` object.
+
+- `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`. Required unless `auto_select` is `true`.
+- `auto_select` lets UptimeRobot choose the monitoring region automatically. When `true`, `regions` can be omitted and the provider sends the API-required carrier region without managing it. When omitted or `false`, configured `regions` are used as manually selected regions.
+- `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must be selected regions and values must be between `0` and `60000`. (see [below for nested schema](#nestedatt--region_data))
+- `regional_data` (String, Deprecated) Legacy single region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania). Use region_data for new multi-region monitor settings.
 - `response_time_threshold` (Number) Response time threshold in milliseconds. Response time over this threshold will trigger an incident
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
 - `success_http_response_codes` (Set of String) The expected HTTP response codes. If not set API applies defaults.
@@ -702,6 +773,11 @@ Required:
 Optional:
 
 - `api_assertions` (Attributes) API monitor assertion rules. Supported only for type=API. (see [below for nested schema](#nestedatt--config--api_assertions))
+- `application_error_retries` (Number) Number of additional retries before declaring an application or content failure (response status, body assertion, keyword, etc.) for `HTTP`, `KEYWORD`, and `API` monitors. Connection errors (DNS, TCP, TLS, timeouts) are unaffected and always retry.
+
+- Allowed range: `0..3`.
+- Omit the attribute → **preserve** the remote value.
+- Set to `null` → **clear** the override; the API applies its own default.
 - `dns_records` (Attributes) DNS record lists for DNS monitors. If present on non-DNS types, validation fails. (see [below for nested schema](#nestedatt--config--dns_records))
 - `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT/API monitors. Use ipv4Only or ipv6Only. Set empty string to clear and fall back to API default behavior.
 - `ssl_expiration_period_days` (Set of Number) Reminder days before SSL expiry (0..365). Max 10 items.
@@ -761,3 +837,14 @@ Optional:
 
 - `packet_loss_threshold` (Number) Packet loss threshold percentage.
 - `payload` (String) Optional UDP payload to send.
+
+
+
+<a id="nestedatt--region_data"></a>
+### Nested Schema for `region_data`
+
+Optional:
+
+- `auto_select` (Boolean) When true, UptimeRobot automatically chooses the monitoring region. Regions can be omitted in this mode. When omitted or false, configured regions are used as manually selected regions.
+- `regions` (Set of String) Active monitoring regions: na (North America), eu (Europe), as (Asia), oc (Oceania). Required unless auto_select is true.
+- `thresholds` (Map of Number) Optional per-region response-time thresholds in milliseconds. Keys must be selected regions.

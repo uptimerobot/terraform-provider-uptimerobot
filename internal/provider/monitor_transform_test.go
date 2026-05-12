@@ -38,6 +38,7 @@ func TestExpandConfigToAPI_DNSRecordsEmptyObjectMarksTouched(t *testing.T) {
 		"ip_version":                 types.StringNull(),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
 	})
 
 	out, touched, diags := expandConfigToAPI(ctx, cfg)
@@ -65,6 +66,7 @@ func TestFlattenConfigToState_NoAPIAndPrevNullDNS_StaysNull(t *testing.T) {
 		"ip_version":                 types.StringNull(),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
 	})
 
 	stateObj, diags := flattenConfigToState(ctx, true, prev, nil)
@@ -95,6 +97,7 @@ func TestReadApplyConfig_ManagedEmptyBlock_APINil_PreservesBlock(t *testing.T) {
 			"ip_version":                 types.StringNull(),
 			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries":  types.Int64Unknown(),
 		}),
 	}
 	m := &client.Monitor{
@@ -136,6 +139,7 @@ func TestApplyUpdatedMonitorToState_ManagedEmptyConfig_NotSent_Preserved(t *test
 			"ip_version":                 types.StringNull(),
 			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries":  types.Int64Unknown(),
 		}),
 	}
 	prev := monitorResourceModel{}
@@ -199,6 +203,96 @@ func TestBuildCreateRequest_HeartbeatOmitsURL(t *testing.T) {
 	}
 }
 
+func TestBuildCreateRequest_CustomFields(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	plan := monitorResourceModel{
+		Type:     types.StringValue(MonitorTypeHTTP),
+		Name:     types.StringValue("metadata"),
+		URL:      types.StringValue("https://example.com"),
+		Interval: types.Int64Value(300),
+		CustomFields: types.MapValueMust(types.StringType, map[string]attr.Value{
+			"environment": types.StringValue("production"),
+			"team":        types.StringValue("platform"),
+		}),
+	}
+	resp := &resource.CreateResponse{}
+
+	req, _ := (&monitorResource{}).buildCreateRequest(ctx, plan, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+	if req == nil || len(req.CustomFields) != 2 {
+		t.Fatalf("expected custom fields in create request, got %#v", req)
+	}
+	if req.CustomFields["environment"] != "production" || req.CustomFields["team"] != "platform" {
+		t.Fatalf("unexpected custom fields: %#v", req.CustomFields)
+	}
+}
+
+func TestBuildUpdateRequest_CustomFieldsSemantics(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	basePlan := monitorResourceModel{
+		Type:     types.StringValue(MonitorTypeHTTP),
+		Name:     types.StringValue("metadata"),
+		URL:      types.StringValue("https://example.com"),
+		Interval: types.Int64Value(300),
+		Config:   types.ObjectNull(configObjectType().AttrTypes),
+	}
+
+	t.Run("unmanaged null omits", func(t *testing.T) {
+		plan := basePlan
+		plan.CustomFields = types.MapNull(types.StringType)
+		state := monitorResourceModel{CustomFields: types.MapNull(types.StringType)}
+		resp := &resource.UpdateResponse{}
+
+		req, _ := buildUpdateRequest(ctx, plan, state, true, true, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+		}
+		if req.CustomFields != nil {
+			t.Fatalf("expected custom fields to be omitted, got %#v", *req.CustomFields)
+		}
+	})
+
+	t.Run("managed null preserves remote", func(t *testing.T) {
+		plan := basePlan
+		plan.CustomFields = types.MapNull(types.StringType)
+		state := monitorResourceModel{CustomFields: types.MapValueMust(types.StringType, map[string]attr.Value{
+			"environment": types.StringValue("production"),
+		})}
+		resp := &resource.UpdateResponse{}
+
+		req, _ := buildUpdateRequest(ctx, plan, state, true, true, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+		}
+		if req.CustomFields != nil {
+			t.Fatalf("expected custom fields to be omitted, got %#v", *req.CustomFields)
+		}
+	})
+
+	t.Run("empty map clears", func(t *testing.T) {
+		plan := basePlan
+		plan.CustomFields = types.MapValueMust(types.StringType, map[string]attr.Value{})
+		state := monitorResourceModel{CustomFields: types.MapValueMust(types.StringType, map[string]attr.Value{
+			"environment": types.StringValue("production"),
+		})}
+		resp := &resource.UpdateResponse{}
+
+		req, _ := buildUpdateRequest(ctx, plan, state, true, true, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+		}
+		if req.CustomFields == nil || len(*req.CustomFields) != 0 {
+			t.Fatalf("expected empty custom fields clear payload, got %#v", req.CustomFields)
+		}
+	})
+}
+
 func TestPlanAlertContactsComparable_SkipsComparisonForIncompleteContact(t *testing.T) {
 	t.Parallel()
 
@@ -232,7 +326,7 @@ func TestBuildUpdateRequest_HeartbeatOmitsServerGeneratedURL(t *testing.T) {
 	}
 	resp := &resource.UpdateResponse{}
 
-	req, _ := buildUpdateRequest(ctx, plan, monitorResourceModel{}, true, resp)
+	req, _ := buildUpdateRequest(ctx, plan, monitorResourceModel{}, true, true, resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 	}
@@ -260,6 +354,7 @@ func TestFlattenConfigToState_DNSFromAPI_PopulatesSets(t *testing.T) {
 		"ip_version":                 types.StringNull(),
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
 	})
 
 	a := []string{"1.1.1.1"}
@@ -328,8 +423,9 @@ func TestExpandConfigToAPI_APIAssertionsTouched(t *testing.T) {
 			"logic":  types.StringValue("AND"),
 			"checks": types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{check}),
 		}),
-		"ip_version": types.StringNull(),
-		"udp":        types.ObjectNull(udpObjectType().AttrTypes),
+		"ip_version":                types.StringNull(),
+		"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries": types.Int64Unknown(),
 	})
 
 	out, touched, diags := expandConfigToAPI(ctx, cfg)
@@ -364,6 +460,7 @@ func TestFlattenConfigToState_APIAssertionsFromAPI_PopulatesObject(t *testing.T)
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringNull(),
 		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
 	})
 
 	stateObj, diags := flattenConfigToState(ctx, true, prev, &client.MonitorConfig{
@@ -450,6 +547,7 @@ func TestExpandConfigToAPI_UDPTouched(t *testing.T) {
 			"payload":               types.StringValue("ping"),
 			"packet_loss_threshold": types.Int64Value(50),
 		}),
+		"application_error_retries": types.Int64Unknown(),
 	})
 
 	out, touched, diags := expandConfigToAPI(ctx, cfg)
@@ -520,6 +618,7 @@ func TestFlattenConfigToState_UDPFromAPI_PopulatesObject(t *testing.T) {
 		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 		"ip_version":                 types.StringNull(),
 		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
 	})
 	payload := "ping"
 	packetLossThreshold := int64(50)

@@ -45,7 +45,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	plan.ID = types.StringValue(strconv.FormatInt(created.ID, 10))
 	want := wantFromCreateReq(createReq)
 	settleTimeout := 60 * time.Second
-	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.APIAssertions != nil || want.AssignedAlertContacts != nil {
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD || want.DNSRecords != nil || want.APIAssertions != nil || want.AssignedAlertContacts != nil || want.RegionData != nil || want.RegionalData != nil {
 		settleTimeout = 180 * time.Second
 	}
 	api, err := r.waitMonitorSettled(ctx, created.ID, want, settleTimeout)
@@ -234,7 +234,12 @@ func (r *monitorResource) buildCreateRequest(
 	if !plan.ResponseTimeThreshold.IsNull() && !plan.ResponseTimeThreshold.IsUnknown() {
 		req.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
 	}
-	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
+	if regionData, ok, d := expandRegionDataToAPI(ctx, plan.RegionData); d.HasError() {
+		resp.Diagnostics.Append(d...)
+		return nil, ""
+	} else if ok {
+		req.RegionData = regionData
+	} else if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
 		req.RegionalData = plan.RegionalData.ValueString()
 	}
 	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
@@ -279,6 +284,8 @@ func (r *monitorResource) buildCreateRequest(
 	r.applyMWIDsFromPlan(ctx, &plan, req, resp)
 	// Tags
 	r.applyTagsFromPlan(ctx, &plan, req, resp)
+	// Custom fields
+	r.applyCustomFieldsFromPlan(ctx, &plan, req, resp)
 	// Assigned alert contacts
 	r.applyAlertContactsFromPlan(ctx, &plan, req, resp)
 	// Flags ssl/domain/follow/check
@@ -427,6 +434,25 @@ func (r *monitorResource) applyTagsFromPlan(
 	}
 }
 
+func (r *monitorResource) applyCustomFieldsFromPlan(
+	ctx context.Context,
+	plan *monitorResourceModel,
+	req *client.CreateMonitorRequest,
+	resp *resource.CreateResponse,
+) {
+	if plan.CustomFields.IsNull() || plan.CustomFields.IsUnknown() {
+		return
+	}
+	m, d := stringMapFromAttrPreserveEmpty(ctx, plan.CustomFields)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if len(m) > 0 {
+		req.CustomFields = m
+	}
+}
+
 func (r *monitorResource) applyAlertContactsFromPlan(
 	ctx context.Context,
 	plan *monitorResourceModel,
@@ -547,6 +573,11 @@ func (r *monitorResource) buildStateAfterCreate(
 	if plan.CustomHTTPHeaders.IsNull() || plan.CustomHTTPHeaders.IsUnknown() {
 		plan.CustomHTTPHeaders = types.MapNull(types.StringType)
 	}
+	customFields, d := customFieldsState(ctx, plan.CustomFields, api.CustomFields, false)
+	resp.Diagnostics.Append(d...)
+	if !resp.Diagnostics.HasError() {
+		plan.CustomFields = customFields
+	}
 
 	// Method presence in state only for HTTP/KEYWORD/API
 	switch strings.ToUpper(plan.Type.ValueString()) {
@@ -653,6 +684,26 @@ func (r *monitorResource) buildStateAfterCreate(
 		resp.Diagnostics.Append(d...)
 		if !resp.Diagnostics.HasError() {
 			plan.Config = cfgState
+		}
+	}
+
+	// Region data
+	if !plan.RegionData.IsNull() && !plan.RegionData.IsUnknown() {
+		includeRegions := regionDataRegionsManaged(ctx, plan.RegionData)
+		includeThresholds := regionDataThresholdsManaged(ctx, plan.RegionData)
+		autoSelect := regionDataAutoSelectValue(ctx, plan.RegionData)
+		regionState, d := flattenRegionDataToStateWithManagedFields(api.RegionalData, includeRegions, includeThresholds, autoSelect)
+		resp.Diagnostics.Append(d...)
+		if !resp.Diagnostics.HasError() && !regionState.IsNull() && !regionState.IsUnknown() {
+			plan.RegionData = regionState
+		}
+		plan.RegionalData = types.StringNull()
+	} else {
+		plan.RegionData = types.ObjectNull(regionDataObjectType().AttrTypes)
+	}
+	if !plan.RegionalData.IsNull() && !plan.RegionalData.IsUnknown() {
+		if region, ok := coerceRegion(api.RegionalData); ok {
+			plan.RegionalData = types.StringValue(region)
 		}
 	}
 

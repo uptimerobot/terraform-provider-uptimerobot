@@ -17,6 +17,7 @@ type monitorResourceModel struct {
 	HTTPUsername             types.String         `tfsdk:"http_username"`
 	HTTPPassword             types.String         `tfsdk:"http_password"`
 	CustomHTTPHeaders        types.Map            `tfsdk:"custom_http_headers"`
+	CustomFields             types.Map            `tfsdk:"custom_fields"`
 	HTTPMethodType           types.String         `tfsdk:"http_method_type"`
 	SuccessHTTPResponseCodes types.Set            `tfsdk:"success_http_response_codes"`
 	Timeout                  types.Int64          `tfsdk:"timeout"`
@@ -39,6 +40,7 @@ type monitorResourceModel struct {
 	AssignedAlertContacts    types.Set            `tfsdk:"assigned_alert_contacts"`
 	ResponseTimeThreshold    types.Int64          `tfsdk:"response_time_threshold"`
 	RegionalData             types.String         `tfsdk:"regional_data"`
+	RegionData               types.Object         `tfsdk:"region_data"`
 	CheckSSLErrors           types.Bool           `tfsdk:"check_ssl_errors"`
 	Config                   types.Object         `tfsdk:"config"`
 }
@@ -72,6 +74,7 @@ type configTF struct {
 	IPVersion               types.String `tfsdk:"ip_version"`
 	APIAssertions           types.Object `tfsdk:"api_assertions"`
 	UDP                     types.Object `tfsdk:"udp"`
+	ApplicationErrorRetries types.Int64  `tfsdk:"application_error_retries"`
 }
 
 type apiAssertionsTF struct {
@@ -82,6 +85,12 @@ type apiAssertionsTF struct {
 type udpTF struct {
 	Payload             types.String `tfsdk:"payload"`
 	PacketLossThreshold types.Int64  `tfsdk:"packet_loss_threshold"`
+}
+
+type regionDataTF struct {
+	Regions    types.Set  `tfsdk:"regions"`
+	AutoSelect types.Bool `tfsdk:"auto_select"`
+	Thresholds types.Map  `tfsdk:"thresholds"`
 }
 
 type apiAssertionCheckTF struct {
@@ -149,6 +158,16 @@ func udpObjectType() types.ObjectType {
 	}
 }
 
+func regionDataObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"regions":     types.SetType{ElemType: types.StringType},
+			"auto_select": types.BoolType,
+			"thresholds":  types.MapType{ElemType: types.Int64Type},
+		},
+	}
+}
+
 // configObjectType is a helper for describing the config object.
 func configObjectType() types.ObjectType {
 	return types.ObjectType{
@@ -158,6 +177,7 @@ func configObjectType() types.ObjectType {
 			"ip_version":                 types.StringType,
 			"api_assertions":             apiAssertionsObjectType(),
 			"udp":                        udpObjectType(),
+			"application_error_retries":  types.Int64Type,
 		},
 	}
 }

@@ -56,8 +56,9 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	readApplyKeywordAndPort(&state, monitor, isImport)
 	readApplyIdentity(&state, monitor)
 	readApplyPausedState(&state, monitor, isImport)
-	readApplyRegionalData(&state, monitor, isImport)
+	readApplyRegionalData(ctx, resp, &state, monitor, isImport)
 	readApplyTagsHeadersAC(ctx, resp, &state, monitor, isImport)
+	readApplyCustomFields(ctx, resp, &state, monitor, isImport)
 	readApplySuccessCodes(ctx, resp, &state, monitor)
 	readApplyBooleans(&state, monitor, isImport)
 	readApplyMWIDs(ctx, resp, &state, monitor)
@@ -237,18 +238,44 @@ func readApplyPausedState(state *monitorResourceModel, m *client.Monitor, isImpo
 	state.IsPaused = types.BoolValue(isMonitorPausedStatus(m.Status))
 }
 
-func readApplyRegionalData(state *monitorResourceModel, m *client.Monitor, isImport bool) {
+func readApplyRegionalData(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	if isImport {
-		if m.RegionalData != nil {
-			if region, ok := coerceRegion(m.RegionalData); ok && !isDefaultRegion(region) {
-				state.RegionalData = types.StringValue(region)
+		if apiRegionData, ok := normalizeRegionDataFromAPI(m.RegionalData); ok {
+			includeThresholds := len(apiRegionData.Thresholds) > 0
+			includeAutoSelect := apiRegionData.AutoSelect != nil && *apiRegionData.AutoSelect
+			includeRegions := !includeAutoSelect || includeThresholds
+			useRegionData := len(apiRegionData.Regions) > 1 ||
+				includeThresholds ||
+				includeAutoSelect ||
+				(len(apiRegionData.Regions) == 1 && !isDefaultRegion(apiRegionData.Regions[0]))
+			if useRegionData {
+				regionState, d := regionDataObjectValue(apiRegionData, includeRegions, includeThresholds, includeAutoSelect)
+				resp.Diagnostics.Append(d...)
+				if !resp.Diagnostics.HasError() {
+					state.RegionData = regionState
+					state.RegionalData = types.StringNull()
+				}
 				return
 			}
-		} else {
-			state.RegionalData = types.StringNull()
 		}
+		state.RegionalData = types.StringNull()
+		state.RegionData = types.ObjectNull(regionDataObjectType().AttrTypes)
 		return
 	}
+	if !state.RegionData.IsNull() && !state.RegionData.IsUnknown() {
+		includeRegions := regionDataRegionsManaged(ctx, state.RegionData)
+		includeThresholds := regionDataThresholdsManaged(ctx, state.RegionData)
+		autoSelect := regionDataAutoSelectValue(ctx, state.RegionData)
+		regionState, d := flattenRegionDataToStateWithManagedFields(m.RegionalData, includeRegions, includeThresholds, autoSelect)
+		resp.Diagnostics.Append(d...)
+		if !resp.Diagnostics.HasError() && !regionState.IsNull() && !regionState.IsUnknown() {
+			state.RegionData = regionState
+		}
+		state.RegionalData = types.StringNull()
+		return
+	}
+	state.RegionData = types.ObjectNull(regionDataObjectType().AttrTypes)
+
 	if state.RegionalData.IsNull() || state.RegionalData.IsUnknown() {
 		// user did not manage this field and it should be kept as null
 		return
@@ -295,6 +322,14 @@ func readApplyTagsHeadersAC(ctx context.Context, resp *resource.ReadResponse, st
 		state.AssignedAlertContacts = types.SetNull(alertContactObjectType())
 	} else {
 		state.AssignedAlertContacts = acSet
+	}
+}
+
+func readApplyCustomFields(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
+	customFields, d := customFieldsState(ctx, state.CustomFields, m.CustomFields, isImport)
+	resp.Diagnostics.Append(d...)
+	if !resp.Diagnostics.HasError() {
+		state.CustomFields = customFields
 	}
 }
 
@@ -353,6 +388,22 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 		want.URL = &v
 	}
 
+	monitorType := strings.ToUpper(strings.TrimSpace(state.Type.ValueString()))
+	switch monitorType {
+	case MonitorTypeHEARTBEAT:
+		if !state.GracePeriod.IsNull() && !state.GracePeriod.IsUnknown() {
+			v := int(state.GracePeriod.ValueInt64())
+			want.GracePeriod = &v
+		}
+	case MonitorTypeDNS:
+		// The API ignores timeout and grace_period for DNS monitors.
+	default:
+		if !state.Timeout.IsNull() && !state.Timeout.IsUnknown() {
+			v := int(state.Timeout.ValueInt64())
+			want.Timeout = &v
+		}
+	}
+
 	if !state.MaintenanceWindowIDs.IsNull() && !state.MaintenanceWindowIDs.IsUnknown() {
 		var ids []int64
 		if diags := state.MaintenanceWindowIDs.ElementsAs(ctx, &ids, false); !diags.HasError() {
@@ -377,6 +428,12 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 			if cfg.APIAssertions != nil {
 				want.APIAssertions = normalizeAPIAssertions(cfg.APIAssertions)
 			}
+			if cfg.IPVersion != nil {
+				if normalized, keep := normalizeIPVersionForAPI(*cfg.IPVersion); keep {
+					want.IPVersion = &normalized
+				}
+			}
+			applyApplicationErrorRetriesExpectation(&want, cfg.ApplicationErrorRetries)
 		}
 	}
 
@@ -402,6 +459,20 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 			want.AssignedAlertContacts = contacts
 		}
 	}
+	if !state.CustomFields.IsNull() && !state.CustomFields.IsUnknown() {
+		if fields, diags := stringMapFromAttrPreserveEmpty(ctx, state.CustomFields); !diags.HasError() {
+			want.CustomFields = normalizeCustomFieldsForCompare(fields)
+		}
+	}
+
+	if !state.RegionData.IsNull() && !state.RegionData.IsUnknown() {
+		if regionData, ok, diags := regionDataFromTF(ctx, state.RegionData); ok && !diags.HasError() {
+			want.RegionData = regionData
+		}
+	} else if !state.RegionalData.IsNull() && !state.RegionalData.IsUnknown() {
+		region := strings.ToLower(strings.TrimSpace(state.RegionalData.ValueString()))
+		want.RegionalData = &region
+	}
 
 	return want
 }
@@ -409,13 +480,22 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 func hasMonitorReadStabilizationAssertions(want monComparable) bool {
 	if want.Name != nil ||
 		want.URL != nil ||
+		want.Timeout != nil ||
+		want.GracePeriod != nil ||
 		want.FollowRedirections != nil ||
 		want.SSLExpirationReminder != nil ||
 		want.DomainExpirationReminder != nil ||
 		want.CheckSSLErrors != nil ||
 		want.AssignedAlertContacts != nil ||
+		want.RegionData != nil ||
+		want.RegionalData != nil ||
+		want.CustomFields != nil ||
 		want.DNSRecords != nil ||
 		want.SSLExpirationPeriodDays != nil ||
+		want.IPVersion != nil ||
+		want.ExpectIPVersionUnset ||
+		want.ApplicationErrorRetries != nil ||
+		want.ExpectApplicationErrorRetriesUnset ||
 		want.APIAssertions != nil {
 		return true
 	}

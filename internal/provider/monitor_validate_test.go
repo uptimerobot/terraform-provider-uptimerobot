@@ -347,8 +347,9 @@ func TestValidateCreateHighLevel_APIType_AllowsAPIAssertions(t *testing.T) {
 				"logic":  types.StringValue("AND"),
 				"checks": types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{check}),
 			}),
-			"ip_version": types.StringNull(),
-			"udp":        types.ObjectNull(udpObjectType().AttrTypes),
+			"ip_version":                types.StringNull(),
+			"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries": types.Int64Unknown(),
 		}),
 	}
 
@@ -369,6 +370,7 @@ func TestValidateCreateHighLevel_UDPType_RequiresUDPConfig(t *testing.T) {
 			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 			"ip_version":                 types.StringNull(),
 			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries":  types.Int64Unknown(),
 		}),
 	}
 
@@ -395,6 +397,7 @@ func TestValidateCreateHighLevel_UDPType_AllowsUDPConfig(t *testing.T) {
 				"payload":               types.StringValue("ping"),
 				"packet_loss_threshold": types.Int64Value(50),
 			}),
+			"application_error_retries": types.Int64Unknown(),
 		}),
 	}
 
@@ -416,6 +419,7 @@ func TestValidateConfig_API_AllowsUnknownAPIAssertionsAtPlanTime(t *testing.T) {
 			"api_assertions":             types.ObjectUnknown(apiAssertionsObjectType().AttrTypes),
 			"ip_version":                 types.StringNull(),
 			"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries":  types.Int64Unknown(),
 		}),
 	}
 
@@ -436,8 +440,9 @@ func TestValidateConfig_API_AllowsUnknownAPIAssertionFieldsAtPlanTime(t *testing
 				"logic":  types.StringUnknown(),
 				"checks": types.ListUnknown(apiAssertionCheckObjectType()),
 			}),
-			"ip_version": types.StringNull(),
-			"udp":        types.ObjectNull(udpObjectType().AttrTypes),
+			"ip_version":                types.StringNull(),
+			"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries": types.Int64Unknown(),
 		}),
 	}
 
@@ -457,6 +462,7 @@ func TestValidateConfig_UDP_AllowsUnknownUDPConfigAtPlanTime(t *testing.T) {
 			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
 			"ip_version":                 types.StringNull(),
 			"udp":                        types.ObjectUnknown(udpObjectType().AttrTypes),
+			"application_error_retries":  types.Int64Unknown(),
 		}),
 	}
 
@@ -479,6 +485,7 @@ func TestValidateConfig_UDP_AllowsUnknownPacketLossThresholdAtPlanTime(t *testin
 				"payload":               types.StringNull(),
 				"packet_loss_threshold": types.Int64Unknown(),
 			}),
+			"application_error_retries": types.Int64Unknown(),
 		}),
 	}
 
@@ -515,10 +522,11 @@ func TestValidateConfig_SSLDays_AllowsHTTP(t *testing.T) {
 				types.Int64Value(7),
 				types.Int64Value(30),
 			}),
-			"dns_records":    types.ObjectNull(dnsRecordsObjectType().AttrTypes),
-			"api_assertions": types.ObjectNull(apiAssertionsObjectType().AttrTypes),
-			"ip_version":     types.StringNull(),
-			"udp":            types.ObjectNull(udpObjectType().AttrTypes),
+			"dns_records":               types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions":            types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"ip_version":                types.StringNull(),
+			"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries": types.Int64Unknown(),
 		}),
 	}
 
@@ -548,8 +556,9 @@ func TestValidateConfig_SSLDays_AllowsAPI(t *testing.T) {
 				"logic":  types.StringValue("AND"),
 				"checks": types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{check}),
 			}),
-			"ip_version": types.StringNull(),
-			"udp":        types.ObjectNull(udpObjectType().AttrTypes),
+			"ip_version":                types.StringNull(),
+			"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries": types.Int64Unknown(),
 		}),
 	}
 
@@ -569,10 +578,11 @@ func TestValidateConfig_SSLDays_RejectsDNS(t *testing.T) {
 			"ssl_expiration_period_days": types.SetValueMust(types.Int64Type, []attr.Value{
 				types.Int64Value(7),
 			}),
-			"dns_records":    types.ObjectNull(dnsRecordsObjectType().AttrTypes),
-			"api_assertions": types.ObjectNull(apiAssertionsObjectType().AttrTypes),
-			"ip_version":     types.StringNull(),
-			"udp":            types.ObjectNull(udpObjectType().AttrTypes),
+			"dns_records":               types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions":            types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"ip_version":                types.StringNull(),
+			"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries": types.Int64Unknown(),
 		}),
 	}
 

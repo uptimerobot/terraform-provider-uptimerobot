@@ -1,5 +1,25 @@
 ## Unreleased
 
+## 1.5.0 — 2026-05-12
+
+### Added
+
+- Added `uptimerobot_monitor_group` resource for creating, updating, importing, and deleting monitor groups, including `monitors_new_group_id` support to move monitors to another group on deletion.
+- Added `custom_fields` support for `uptimerobot_monitor` metadata, including create, update, import, clear, validation, docs, and examples.
+- Added `custom_headers` support for webhook `uptimerobot_integration` resources, including create, update, import, and clear handling.
+- Added `homepage_link` management for `uptimerobot_psp` resources.
+- Added `subscription` management for `uptimerobot_psp` resources.
+- Added structured `region_data` support for `uptimerobot_monitor`, including multi-region `regions` and optional per-region response-time `thresholds`.
+- Added `config.application_error_retries` support for `uptimerobot_monitor` HTTP, KEYWORD, and API monitors, including `0..3` validation, import/read/update round-tripping, and explicit `null` clearing to restore the API default.
+
+### Changed
+
+- Deprecated legacy single-region `regional_data` in favor of `region_data`; the two attributes conflict to support a safe migration path.
+
+### Fixed
+
+- Hardened read-after-write stabilization for monitor group renames, PSP `homepage_link`/`subscription`, maintenance-window `auto_add_monitors`, monitor `timeout`, and monitor `config.ip_version` to reduce false drift immediately after apply.
+
 ## 1.4.7 — 2026-05-03
 
 ### Fixed

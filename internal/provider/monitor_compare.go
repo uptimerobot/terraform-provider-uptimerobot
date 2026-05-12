@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"encoding/json"
 	"html"
 	"sort"
@@ -30,22 +31,26 @@ type monComparable struct {
 	CheckSSLErrors           *bool
 	ResponseTimeThreshold    *int
 	RegionalData             *string
+	RegionData               *regionDataComparable
 	GroupID                  *int
 
 	// Collections compared as sets and maps when present
 	SuccessCodes         []string
 	Tags                 []string
 	Headers              map[string]string
+	CustomFields         map[string]string
 	MaintenanceWindowIDs []int64
 	skipMWIDsCompare     bool
 	// Config children which we manage
-	SSLExpirationPeriodDays []int64
-	DNSRecords              map[string][]string
-	IPVersion               *string
-	ExpectIPVersionUnset    bool
-	APIAssertions           *apiAssertionsComparable
-	UDPConfig               *udpComparable
-	AssignedAlertContacts   []alertContactComparable
+	SSLExpirationPeriodDays            []int64
+	DNSRecords                         map[string][]string
+	IPVersion                          *string
+	ExpectIPVersionUnset               bool
+	ApplicationErrorRetries            *int64
+	ExpectApplicationErrorRetriesUnset bool
+	APIAssertions                      *apiAssertionsComparable
+	UDPConfig                          *udpComparable
+	AssignedAlertContacts              []alertContactComparable
 }
 
 type apiAssertionsComparable struct {
@@ -170,6 +175,19 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 		s := strings.ToLower(strings.TrimSpace(req.RegionalData))
 		c.RegionalData = &s
 	}
+	if req.RegionData != nil {
+		c.RegionData = &regionDataComparable{}
+		if req.RegionData.RegionsManaged {
+			c.RegionData.Regions = normalizeRegions(req.RegionData.Regions)
+		}
+		if req.RegionData.ManualSelected != nil {
+			autoSelect := !*req.RegionData.ManualSelected
+			c.RegionData.AutoSelect = &autoSelect
+		}
+		if req.RegionData.Thresholds != nil {
+			c.RegionData.Thresholds = normalizeRegionThresholds(*req.RegionData.Thresholds)
+		}
+	}
 	if req.GroupID != nil {
 		v := *req.GroupID
 		c.GroupID = &v
@@ -179,6 +197,9 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	if req.CustomHTTPHeaders != nil {
 		headers := normalizeHeadersForCompareNoCT(req.CustomHTTPHeaders)
 		c.Headers = headers
+	}
+	if len(req.CustomFields) > 0 {
+		c.CustomFields = normalizeCustomFieldsForCompare(req.CustomFields)
 	}
 	if len(req.Tags) > 0 {
 		c.Tags = normalizeTagSet(req.Tags)
@@ -217,6 +238,9 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	}
 	if req.Config != nil && req.Config.IPVersion == nil {
 		c.ExpectIPVersionUnset = true
+	}
+	if req.Config != nil {
+		applyApplicationErrorRetriesExpectation(&c, req.Config.ApplicationErrorRetries)
 	}
 	if req.Config != nil && req.Config.APIAssertions != nil {
 		c.APIAssertions = normalizeAPIAssertions(req.Config.APIAssertions)
@@ -325,6 +349,19 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		s := strings.ToLower(strings.TrimSpace(*req.RegionalData))
 		c.RegionalData = &s
 	}
+	if req.RegionData != nil {
+		c.RegionData = &regionDataComparable{}
+		if req.RegionData.RegionsManaged {
+			c.RegionData.Regions = normalizeRegions(req.RegionData.Regions)
+		}
+		if req.RegionData.ManualSelected != nil {
+			autoSelect := !*req.RegionData.ManualSelected
+			c.RegionData.AutoSelect = &autoSelect
+		}
+		if req.RegionData.Thresholds != nil {
+			c.RegionData.Thresholds = normalizeRegionThresholds(*req.RegionData.Thresholds)
+		}
+	}
 	if req.GroupID != nil {
 		v := *req.GroupID
 		c.GroupID = &v
@@ -338,6 +375,9 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 	}
 	if req.CustomHTTPHeaders != nil {
 		c.Headers = normalizeHeadersForCompareNoCT(*req.CustomHTTPHeaders)
+	}
+	if req.CustomFields != nil {
+		c.CustomFields = normalizeCustomFieldsForCompare(*req.CustomFields)
 	}
 	if req.MaintenanceWindowIDs == nil {
 		c.skipMWIDsCompare = true
@@ -366,6 +406,9 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 	}
 	if req.Config != nil && req.Config.IPVersion == nil {
 		c.ExpectIPVersionUnset = true
+	}
+	if req.Config != nil {
+		applyApplicationErrorRetriesExpectation(&c, req.Config.ApplicationErrorRetries)
 	}
 	if req.Config != nil && req.Config.APIAssertions != nil {
 		c.APIAssertions = normalizeAPIAssertions(req.Config.APIAssertions)
@@ -466,16 +509,11 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 
 	// API may return an object. Normalization to a string should be performed
 	if m.RegionalData != nil {
-		switch v := m.RegionalData.(type) {
-		case string:
-			s := strings.ToLower(strings.TrimSpace(v))
-			c.RegionalData = &s
-		case map[string]interface{}:
-			if regions, ok := v["REGION"].([]interface{}); ok && len(regions) > 0 {
-				if r0, ok := regions[0].(string); ok && r0 != "" {
-					s := strings.ToLower(strings.TrimSpace(r0))
-					c.RegionalData = &s
-				}
+		if regionData, ok := normalizeRegionDataFromAPI(m.RegionalData); ok {
+			c.RegionData = regionData
+			if len(regionData.Regions) > 0 {
+				s := regionData.Regions[0]
+				c.RegionalData = &s
 			}
 		}
 	}
@@ -508,6 +546,11 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 	} else {
 		c.Headers = map[string]string{}
 	}
+	if m.CustomFields != nil {
+		c.CustomFields = normalizeCustomFieldsForCompare(m.CustomFields)
+	} else {
+		c.CustomFields = map[string]string{}
+	}
 
 	var apiIDs []int64
 	for _, mw := range m.MaintenanceWindows {
@@ -533,6 +576,9 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 			if normalized, keep := normalizeIPVersionForAPI(*m.Config.IPVersion); keep {
 				c.IPVersion = &normalized
 			}
+		}
+		if v, ok := decodeApplicationErrorRetries(m.Config.ApplicationErrorRetries); ok {
+			c.ApplicationErrorRetries = &v
 		}
 		if m.Config.APIAssertions != nil {
 			c.APIAssertions = normalizeAPIAssertions(m.Config.APIAssertions)
@@ -806,6 +852,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		return false
 	}
+	if want.RegionData != nil && !equalRegionData(want.RegionData, got.RegionData) {
+		return false
+	}
 	if want.GroupID != nil && (got.GroupID == nil || *want.GroupID != *got.GroupID) {
 		return false
 	}
@@ -816,6 +865,12 @@ func equalComparable(want, got monComparable) bool {
 		return false
 	}
 	if want.ExpectIPVersionUnset && got.IPVersion != nil {
+		return false
+	}
+	if want.ApplicationErrorRetries != nil && (got.ApplicationErrorRetries == nil || *want.ApplicationErrorRetries != *got.ApplicationErrorRetries) {
+		return false
+	}
+	if want.ExpectApplicationErrorRetriesUnset && got.ApplicationErrorRetries != nil {
 		return false
 	}
 	if want.APIAssertions != nil && !equalAPIAssertions(want.APIAssertions, got.APIAssertions) {
@@ -832,6 +887,9 @@ func equalComparable(want, got monComparable) bool {
 		return false
 	}
 	if want.Headers != nil && !equalStringMap(want.Headers, got.Headers) {
+		return false
+	}
+	if want.CustomFields != nil && !equalStringMap(want.CustomFields, got.CustomFields) {
 		return false
 	}
 	if want.AssignedAlertContacts != nil && !equalAlertContacts(want.AssignedAlertContacts, got.AssignedAlertContacts) {
@@ -901,6 +959,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	if want.Headers != nil && !equalStringMap(want.Headers, got.Headers) {
 		f = append(f, "custom_http_headers")
 	}
+	if want.CustomFields != nil && !equalStringMap(want.CustomFields, got.CustomFields) {
+		f = append(f, "custom_fields")
+	}
 	if !want.skipMWIDsCompare && want.MaintenanceWindowIDs != nil && !equalInt64Set(want.MaintenanceWindowIDs, got.MaintenanceWindowIDs) {
 		f = append(f, "maintenance_window_ids")
 	}
@@ -925,6 +986,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		f = append(f, "regional_data")
 	}
+	if want.RegionData != nil && !equalRegionData(want.RegionData, got.RegionData) {
+		f = append(f, "region_data")
+	}
 	if want.GroupID != nil && (got.GroupID == nil || *want.GroupID != *got.GroupID) {
 		f = append(f, "group_id")
 	}
@@ -936,6 +1000,12 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	}
 	if want.ExpectIPVersionUnset && got.IPVersion != nil {
 		f = append(f, "config.ip_version")
+	}
+	if want.ApplicationErrorRetries != nil && (got.ApplicationErrorRetries == nil || *want.ApplicationErrorRetries != *got.ApplicationErrorRetries) {
+		f = append(f, "config.application_error_retries")
+	}
+	if want.ExpectApplicationErrorRetriesUnset && got.ApplicationErrorRetries != nil {
+		f = append(f, "config.application_error_retries")
 	}
 	if want.APIAssertions != nil && !equalAPIAssertions(want.APIAssertions, got.APIAssertions) {
 		f = append(f, "config.api_assertions")
@@ -1020,6 +1090,33 @@ func normalizeUDPConfig(in *client.UDPMonitorConfig) *udpComparable {
 		out.PacketLossThreshold = &v
 	}
 	return out
+}
+
+func decodeApplicationErrorRetries(raw json.RawMessage) (int64, bool) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return 0, false
+	}
+	var v int64
+	if err := json.Unmarshal(trimmed, &v); err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
+func applyApplicationErrorRetriesExpectation(c *monComparable, raw json.RawMessage) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return
+	}
+	if bytes.Equal(trimmed, []byte("null")) {
+		c.ExpectApplicationErrorRetriesUnset = true
+		return
+	}
+	var v int64
+	if err := json.Unmarshal(trimmed, &v); err == nil {
+		c.ApplicationErrorRetries = &v
+	}
 }
 
 func equalAPIAssertions(want, got *apiAssertionsComparable) bool {

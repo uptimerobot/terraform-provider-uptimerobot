@@ -26,6 +26,10 @@ func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.Confi
 			path.MatchRoot("post_value_data"),
 			path.MatchRoot("post_value_kv"),
 		),
+		resourcevalidator.Conflicting(
+			path.MatchRoot("regional_data"),
+			path.MatchRoot("region_data"),
+		),
 	}
 }
 
@@ -57,6 +61,7 @@ func (r *monitorResource) ValidateConfig(
 	validateMethodVsBody(ctx, &data, resp)
 	validateAssignedAlertContacts(ctx, &data, resp)
 	validateConfig(ctx, t, &data, resp)
+	validateRegionData(ctx, &data, resp)
 	validateHeadersCasingDuplication(ctx, &data, resp)
 	validatePortMonitor(ctx, t, &data, resp)
 	validateKeywordMonitor(ctx, t, &data, resp)
@@ -365,6 +370,10 @@ func validateConfig(
 		validateConfigIPVersion(monitorType, data.URL, cfg.IPVersion, resp)
 	}
 
+	if !cfg.ApplicationErrorRetries.IsNull() && !cfg.ApplicationErrorRetries.IsUnknown() {
+		validateConfigApplicationErrorRetries(monitorType, resp)
+	}
+
 	// Omitting the whole config block preserves/clears remote.
 	// If DNS config block is present but has no managed fields, warn.
 	if monitorType == MonitorTypeDNS &&
@@ -603,6 +612,21 @@ func validateConfigIPVersion(
 	}
 
 	validateIPVersionURLLiteralCompatibility(urlValue, ipVersion, resp)
+}
+
+func validateConfigApplicationErrorRetries(
+	monitorType string,
+	resp *resource.ValidateConfigResponse,
+) {
+	if monitorType != MonitorTypeHTTP &&
+		monitorType != MonitorTypeKEYWORD &&
+		monitorType != MonitorTypeAPI {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("config").AtName("application_error_retries"),
+			"application_error_retries only allowed for HTTP/KEYWORD/API monitors",
+			"Set type = HTTP, KEYWORD, or API to manage config.application_error_retries, or remove it for this monitor type.",
+		)
+	}
 }
 
 func validateIPVersionURLLiteralCompatibility(urlValue, ipVersion types.String, resp *resource.ValidateConfigResponse) {

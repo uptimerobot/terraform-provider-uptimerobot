@@ -220,6 +220,24 @@ resource "uptimerobot_psp" "test" {
 `, name)
 }
 
+func testAccPSPResourceConfigHomepageLink(name, homepageLink string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name          = %q
+  homepage_link = %q
+}
+`, name, homepageLink)
+}
+
+func testAccPSPResourceConfigSubscription(name string, subscription bool) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name         = %q
+  subscription = %t
+}
+`, name, subscription)
+}
+
 func TestAccPSPResource(t *testing.T) {
 	nameCreate := randomName("test-psp")
 	nameUpdate := randomName("test-psp-updated")
@@ -280,6 +298,88 @@ func TestAccPSPResource(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"monitor_ids", "name", "custom_settings"},
+			},
+		},
+	})
+}
+
+func TestAccPSPResource_Subscription(t *testing.T) {
+	name := randomName("acc-psp-subscription")
+
+	steps := []resource.TestStep{
+		{
+			Config: testAccPSPResourceConfigSubscription(name, false),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+				resource.TestCheckResourceAttr("uptimerobot_psp.test", "subscription", "false"),
+			),
+		},
+	}
+
+	if os.Getenv("UPTIMEROBOT_TEST_PSP_SUBSCRIPTION") == "1" {
+		steps = append(steps,
+			resource.TestStep{
+				Config: testAccPSPResourceConfigSubscription(name, true),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "subscription", "true"),
+				),
+			},
+			resource.TestStep{
+				Config: testAccPSPResourceConfigSubscription(name, false),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "subscription", "false"),
+				),
+			},
+		)
+	}
+
+	steps = append(steps, resource.TestStep{
+		Config:             testAccPSPResourceConfigSubscription(name, false),
+		PlanOnly:           true,
+		ExpectNonEmptyPlan: false,
+	})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPSPDestroy,
+		Steps:                    steps,
+	})
+}
+
+func TestAccPSPResource_HomepageLink(t *testing.T) {
+	name := randomName("acc-psp-homepage")
+	homepageLink := "https://example.com"
+	updatedHomepageLink := "https://status.example.com"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPSPDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPSPResourceConfigHomepageLink(name, homepageLink),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "homepage_link", homepageLink),
+				),
+			},
+			{
+				Config: testAccPSPResourceConfigHomepageLink(name, updatedHomepageLink),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "homepage_link", updatedHomepageLink),
+				),
+			},
+			{
+				Config: testAccPSPResourceConfigHomepageLink(name, ""),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "homepage_link", ""),
+				),
+			},
+			{
+				Config:             testAccPSPResourceConfigHomepageLink(name, ""),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})

@@ -1,10 +1,12 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
@@ -268,6 +270,15 @@ func expandConfigToAPI(
 			out.IPVersion = &normalized
 			touched = true
 		}
+	}
+
+	if !c.ApplicationErrorRetries.IsUnknown() {
+		if c.ApplicationErrorRetries.IsNull() {
+			out.ApplicationErrorRetries = json.RawMessage("null")
+		} else {
+			out.ApplicationErrorRetries = json.RawMessage(strconv.FormatInt(c.ApplicationErrorRetries.ValueInt64(), 10))
+		}
+		touched = true
 	}
 
 	// api_assertions
@@ -538,6 +549,12 @@ func flattenConfigToState(
 		c.IPVersion = types.StringValue("")
 	}
 
+	prevApplicationErrorRetries := types.Int64Null()
+	if !c.ApplicationErrorRetries.IsNull() && !c.ApplicationErrorRetries.IsUnknown() {
+		prevApplicationErrorRetries = c.ApplicationErrorRetries
+	}
+	c.ApplicationErrorRetries = applicationErrorRetriesFromAPI(prevApplicationErrorRetries, api)
+
 	// API assertions
 	prevAPIAssertions := types.ObjectNull(apiAssertionsObjectType().AttrTypes)
 	if !c.APIAssertions.IsNull() && !c.APIAssertions.IsUnknown() {
@@ -656,6 +673,24 @@ func setInt64sRespectingShape(prev types.Set, api []int64) types.Set {
 		elems = append(elems, types.Int64Value(v))
 	}
 	return types.SetValueMust(types.Int64Type, elems)
+}
+
+func applicationErrorRetriesFromAPI(prev types.Int64, api *client.MonitorConfig) types.Int64 {
+	if api == nil {
+		return prev
+	}
+	raw := bytes.TrimSpace(api.ApplicationErrorRetries)
+	if len(raw) == 0 {
+		return prev
+	}
+	if bytes.Equal(raw, []byte("null")) {
+		return types.Int64Null()
+	}
+	var n int64
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return prev
+	}
+	return types.Int64Value(n)
 }
 
 // normalizeIPVersionForAPI returns a canonical provider value and whether it should be sent/stored.
@@ -791,11 +826,61 @@ func mapFromAttr(ctx context.Context, attr types.Map) (map[string]string, diag.D
 	return out, diags
 }
 
+func stringMapFromAttrPreserveEmpty(ctx context.Context, attr types.Map) (map[string]string, diag.Diagnostics) {
+	if attr.IsNull() || attr.IsUnknown() {
+		return nil, nil
+	}
+
+	var raw map[string]types.String
+	var diags diag.Diagnostics
+	diags.Append(attr.ElementsAs(ctx, &raw, false)...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if v.IsUnknown() || v.IsNull() {
+			continue
+		}
+		out[k] = v.ValueString()
+	}
+	return out, diags
+}
+
 func attrFromMap(ctx context.Context, m map[string]string) (types.Map, diag.Diagnostics) {
 	if m == nil {
 		return types.MapNull(types.StringType), nil
 	}
 	return types.MapValueFrom(ctx, types.StringType, m)
+}
+
+func customFieldsState(ctx context.Context, desired types.Map, api map[string]string, isImport bool) (types.Map, diag.Diagnostics) {
+	if isImport {
+		if len(api) == 0 {
+			return types.MapNull(types.StringType), nil
+		}
+		return types.MapValueFrom(ctx, types.StringType, api)
+	}
+
+	if desired.IsNull() || desired.IsUnknown() {
+		return types.MapNull(types.StringType), nil
+	}
+	if api == nil {
+		api = map[string]string{}
+	}
+	return types.MapValueFrom(ctx, types.StringType, api)
+}
+
+func normalizeCustomFieldsForCompare(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // headersFromAPIForState drops added by server Content-Type headers so state stays clean
@@ -820,38 +905,5 @@ func firstNonEmpty(values ...string) string {
 var allowedRegion = map[string]struct{}{"na": {}, "eu": {}, "as": {}, "oc": {}}
 
 func coerceRegion(v interface{}) (string, bool) {
-	switch x := v.(type) {
-	case string:
-		s := strings.ToLower(strings.TrimSpace(x))
-		_, ok := allowedRegion[s]
-		return s, ok
-
-	case map[string]interface{}:
-		raw, ok := x["REGION"]
-		if !ok {
-			raw, ok = x["region"]
-			if !ok {
-				return "", false
-			}
-		}
-		switch a := raw.(type) {
-		case []interface{}:
-			for _, it := range a {
-				if s, ok := it.(string); ok {
-					s = strings.ToLower(strings.TrimSpace(s))
-					if _, ok := allowedRegion[s]; ok {
-						return s, true
-					}
-				}
-			}
-		case []string:
-			for _, s0 := range a {
-				s := strings.ToLower(strings.TrimSpace(s0))
-				if _, ok := allowedRegion[s]; ok {
-					return s, true
-				}
-			}
-		}
-	}
-	return "", false
+	return firstRegionFromAPI(v)
 }

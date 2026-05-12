@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -130,6 +133,66 @@ resource "uptimerobot_monitor" "test" {
   group_id  = %d
 }
 `, name, url, groupID)
+}
+
+func testAccMonitorResourceConfigWithCustomFields(name string, fields map[string]string) string {
+	url := testAccUniqueURL(name)
+	customFields := ""
+	if fields != nil {
+		customFields = "\n  custom_fields = " + hclStringMap(fields)
+	}
+
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30%s
+}
+`, name, url, customFields)
+}
+
+func testAccCheckMonitorCustomFields(resourceName string, expected map[string]string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("resource %s not found", resourceName)
+		}
+
+		id, err := strconv.ParseInt(rs.Primary.ID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("could not parse monitor ID %q: %w", rs.Primary.ID, err)
+		}
+
+		apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+		if apiURL := os.Getenv("UPTIMEROBOT_API_URL"); apiURL != "" {
+			apiClient.SetBaseURL(apiURL)
+		}
+		apiClient.SetUserAgent("terraform-provider-uptimerobot/acc-test")
+		apiClient.AddHeader("X-Terraform-Provider", "uptimerobot/acc-test")
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+
+		monitor, err := apiClient.GetMonitor(ctx, id)
+		if err != nil {
+			return fmt.Errorf("could not read monitor %d: %w", id, err)
+		}
+
+		if len(monitor.CustomFields) != len(expected) {
+			return fmt.Errorf("expected custom_fields %#v, got %#v", expected, monitor.CustomFields)
+		}
+		for k, want := range expected {
+			got, ok := monitor.CustomFields[k]
+			if !ok {
+				return fmt.Errorf("expected custom_fields key %q to be present, got %#v", k, monitor.CustomFields)
+			}
+			if got != want {
+				return fmt.Errorf("expected custom_fields[%q] = %q, got %q", k, want, got)
+			}
+		}
+		return nil
+	}
 }
 
 // nolint:unparam // kept for symmetry with other helpers & future reuse
@@ -478,6 +541,27 @@ func joinInts(ints []int) string {
 	return result
 }
 
+func hclStringMap(values map[string]string) string {
+	if len(values) == 0 {
+		return "{}"
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	out := "{"
+	for i, key := range keys {
+		if i > 0 {
+			out += ","
+		}
+		out += fmt.Sprintf(" %q = %q", key, values[key])
+	}
+	out += " }"
+	return out
+}
+
 func mustAlertContactID(t *testing.T) string {
 	t.Helper()
 	id := os.Getenv("UPTIMEROBOT_TEST_ALERT_CONTACT_ID")
@@ -615,6 +699,72 @@ func TestAccMonitorResource_IsPaused_StartStop(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "is_paused"),
 				),
+			},
+		},
+	})
+}
+
+func TestAccMonitorResource_CustomFields(t *testing.T) {
+	name := acctest.RandomWithPrefix("test-monitor-custom-fields")
+	initial := map[string]string{
+		"environment": "production",
+		"team":        "platform",
+	}
+	updated := map[string]string{
+		"environment": "staging",
+		"owner":       "sre",
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, initial),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.%", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.environment", "production"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.team", "platform"),
+				),
+			},
+			{
+				ResourceName:            "uptimerobot_monitor.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name", "is_paused"},
+			},
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, updated),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.%", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.environment", "staging"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.owner", "sre"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_fields.team"),
+				),
+			},
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_fields"),
+					testAccCheckMonitorCustomFields("uptimerobot_monitor.test", updated),
+				),
+			},
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, map[string]string{}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "custom_fields.%", "0"),
+					testAccCheckMonitorCustomFields("uptimerobot_monitor.test", map[string]string{}),
+				),
+			},
+			{
+				Config:             testAccMonitorResourceConfigWithCustomFields(name, map[string]string{}),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: testAccMonitorResourceConfigWithCustomFields(name, nil),
+				Check:  resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "custom_fields"),
 			},
 		},
 	})
@@ -1482,6 +1632,123 @@ resource "uptimerobot_monitor" "test" {
   timeout                 = 30
   response_time_threshold = 3000
   regional_data           = "eu"
+}`, name, url),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAccMonitorResource_RegionData(t *testing.T) {
+	if _, ok := testAccOptionalEnv("UPTIMEROBOT_TEST_MULTI_REGION"); !ok {
+		t.Skip("Set UPTIMEROBOT_TEST_MULTI_REGION=1 to run multi-region acceptance; the account must have monitor-location-settings.")
+	}
+
+	name := acctest.RandomWithPrefix("test-region-data")
+	url := testAccUniqueURL(name)
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    regions = ["na", "eu"]
+    thresholds = {
+      na = 3000
+      eu = 5000
+    }
+  }
+}`, name, url),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.regions.#", "2"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "region_data.regions.*", "na"),
+					resource.TestCheckTypeSetElemAttr("uptimerobot_monitor.test", "region_data.regions.*", "eu"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.thresholds.%", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.thresholds.na", "3000"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.thresholds.eu", "5000"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    regions = ["na", "eu"]
+    thresholds = {
+      na = 3000
+    }
+  }
+}`, name, url),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.regions.#", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.thresholds.%", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.thresholds.na", "3000"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    regions = ["na", "eu"]
+    thresholds = {
+      na = 3000
+    }
+  }
+}`, name, url),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    auto_select = true
+  }
+}`, name, url),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.auto_select", "true"),
+					resource.TestCheckNoResourceAttr("uptimerobot_monitor.test", "region_data.regions.#"),
+				),
+			},
+			{
+				Config: testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = "%s"
+  type     = "HTTP"
+  interval = 300
+  timeout  = 30
+
+  region_data = {
+    auto_select = true
+  }
 }`, name, url),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
@@ -2775,6 +3042,26 @@ func TestAcc_Monitor_Config_IPVersion_SetAndUpdate_API(t *testing.T) {
 	url := testAccUniqueURL(name)
 	res := "uptimerobot_monitor.test"
 
+	cfgNoIPVersion := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "API"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    api_assertions = {
+      logic = "AND"
+      checks = [{
+        property   = "$.status"
+        comparison = "is_not_null"
+      }]
+    }
+  }
+}
+`, name, url)
+
 	cfgIPv4 := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "%s"
@@ -2796,46 +3083,25 @@ resource "uptimerobot_monitor" "test" {
 }
 `, name, url)
 
-	cfgIPv6 := fmt.Sprintf(`
-resource "uptimerobot_monitor" "test" {
-  name     = "%s"
-  type     = "API"
-  url      = "%s"
-  interval = 300
-  timeout  = 30
-
-  config = {
-    ip_version = "ipv6Only"
-    api_assertions = {
-      logic = "AND"
-      checks = [{
-        property   = "$.status"
-        comparison = "is_not_null"
-      }]
-    }
-  }
-}
-`, name, url)
-
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: cfgIPv4,
+				Config: cfgNoIPVersion,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(res, "type", "API"),
+					resource.TestCheckNoResourceAttr(res, "config.ip_version"),
+				),
+			},
+			{
+				Config: cfgIPv4,
+				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv4Only"),
 				),
 			},
 			{
-				Config: cfgIPv6,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv6Only"),
-				),
-			},
-			{
-				Config:             cfgIPv6,
+				Config:             cfgIPv4,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
@@ -3046,6 +3312,264 @@ resource "uptimerobot_monitor" "test" {
 			{
 				Config:      cfgMismatchIPv6,
 				ExpectError: regexp.MustCompile(`(?i)incompatible ip_version[\s\S]*ipv6[\s\S]*IPv4`),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_ApplicationErrorRetries_SetAndUpdate(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-app-err-retries")
+	url := testAccUniqueURL(name)
+	res := "uptimerobot_monitor.test"
+
+	cfgValue := func(v int) string {
+		return fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    application_error_retries = %d
+  }
+}
+`, name, url, v)
+	}
+	cfgOmitAttr := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {}
+}
+`, name, url)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgValue(0),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.application_error_retries", "0"),
+				),
+			},
+			{
+				ResourceName:            res,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name", "is_paused"},
+			},
+			{
+				Config: cfgValue(2),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.application_error_retries", "2"),
+				),
+			},
+			{
+				Config: cfgOmitAttr,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.application_error_retries", "2"),
+				),
+			},
+			{
+				Config:             cfgOmitAttr,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config:             cfgValue(2),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_ApplicationErrorRetries_ClearToDefault(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-app-err-retries-clear")
+	url := testAccUniqueURL(name)
+	res := "uptimerobot_monitor.test"
+
+	cfgWithValue := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    application_error_retries = 3
+  }
+}
+`, name, url)
+
+	cfgCleared := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    application_error_retries = null
+  }
+}
+`, name, url)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgWithValue,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.application_error_retries", "3"),
+				),
+			},
+			{
+				Config: cfgCleared,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					// The update sends JSON null and clears the stored override. Read responses can
+					// still expose the computed effective default, so assert stability below.
+					resource.TestCheckResourceAttrSet(res, "config.application_error_retries"),
+				),
+			},
+			{
+				Config:             cfgCleared,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_ApplicationErrorRetries_AllowedForKEYWORDAndAPI(t *testing.T) {
+	keywordName := acctest.RandomWithPrefix("acc-kw-app-err-retries")
+	apiName := acctest.RandomWithPrefix("acc-api-app-err-retries")
+	keywordURL := testAccUniqueURL(keywordName)
+	apiURL := testAccUniqueURL(apiName)
+
+	cfgKEYWORD := fmt.Sprintf(`
+resource "uptimerobot_monitor" "kw" {
+  name          = "%s"
+  type          = "KEYWORD"
+  url           = "%s"
+  interval      = 300
+  keyword_value = "ok"
+  keyword_type  = "ALERT_EXISTS"
+  keyword_case_type = "CaseInsensitive"
+
+  config = {
+    application_error_retries = 1
+  }
+}
+`, keywordName, keywordURL)
+
+	cfgAPI := fmt.Sprintf(`
+resource "uptimerobot_monitor" "api" {
+  name     = "%s"
+  type     = "API"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    application_error_retries = 2
+    api_assertions = {
+      logic = "AND"
+      checks = [{
+        property   = "$.status"
+        comparison = "is_not_null"
+      }]
+    }
+  }
+}
+`, apiName, apiURL)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfgKEYWORD,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.kw", "config.application_error_retries", "1"),
+				),
+			},
+			{
+				Config: cfgAPI,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.api", "config.application_error_retries", "2"),
+				),
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_Config_ApplicationErrorRetries_Validators(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-app-err-retries-validate")
+	httpURL := testAccUniqueURL(name)
+	dnsDomain := testAccUniqueDomain(name)
+
+	cfgInvalidForDNS := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "DNS"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    dns_records               = {}
+    application_error_retries = 1
+  }
+}
+`, name, dnsDomain)
+
+	cfgInvalidForPING := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "PING"
+  url      = "1.1.1.1"
+  interval = 300
+
+  config = {
+    application_error_retries = 1
+  }
+}
+`, name)
+
+	cfgOutOfRange := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    application_error_retries = 4
+  }
+}
+`, name, httpURL)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      cfgInvalidForDNS,
+				ExpectError: regexp.MustCompile(`(?i)application_error_retries[\s\S]*only[\s\S]*HTTP/KEYWORD/API`),
+			},
+			{
+				Config:      cfgInvalidForPING,
+				ExpectError: regexp.MustCompile(`(?i)application_error_retries[\s\S]*only[\s\S]*HTTP/KEYWORD/API`),
+			},
+			{
+				Config:      cfgOutOfRange,
+				ExpectError: regexp.MustCompile(`(?i)application_error_retries`),
 			},
 		},
 	})

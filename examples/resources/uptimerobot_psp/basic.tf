@@ -15,7 +15,8 @@ resource "uptimerobot_monitor" "api" {
 }
 
 resource "uptimerobot_psp" "public_status" {
-  name = "Example.com Status"
+  name          = "Example.com Status"
+  homepage_link = "https://example.com"
   monitor_ids = [
     uptimerobot_monitor.website.id,
     uptimerobot_monitor.api.id,

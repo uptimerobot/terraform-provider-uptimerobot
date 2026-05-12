@@ -41,6 +41,7 @@ type CreateMonitorRequest struct {
 	CheckSSLErrors           *bool                 `json:"checkSSLErrors,omitempty"`
 	SSLCheckEnabled          bool                  `json:"sslCheckEnabled,omitempty"`
 	CustomHTTPHeaders        map[string]string     `json:"customHttpHeaders,omitempty"`
+	CustomFields             map[string]string     `json:"customFields,omitempty"`
 	SuccessHTTPResponseCodes []string              `json:"successHttpResponseCodes,omitempty"`
 	MaintenanceWindowIDs     []int64               `json:"maintenanceWindowsIds,omitempty"`
 	Tags                     []string              `json:"tagNames"`
@@ -52,6 +53,7 @@ type CreateMonitorRequest struct {
 	FollowRedirections       bool                  `json:"followRedirections"`
 	ResponseTimeThreshold    int                   `json:"responseTimeThreshold,omitempty"`
 	RegionalData             string                `json:"regionalData,omitempty"`
+	RegionData               *RegionDataRequest    `json:"regionData,omitempty"`
 	Config                   *MonitorConfig        `json:"config,omitempty"`
 	GroupID                  *int                  `json:"groupId,omitempty"`
 }
@@ -75,6 +77,7 @@ type UpdateMonitorRequest struct {
 	CheckSSLErrors           *bool                  `json:"checkSSLErrors,omitempty"`
 	SSLCheckEnabled          bool                   `json:"sslCheckEnabled,omitempty"`
 	CustomHTTPHeaders        *map[string]string     `json:"customHttpHeaders,omitempty"`
+	CustomFields             *map[string]string     `json:"customFields,omitempty"`
 	SuccessHTTPResponseCodes *[]string              `json:"successHttpResponseCodes,omitempty"`
 	MaintenanceWindowIDs     *[]int64               `json:"maintenanceWindowsIds,omitempty"`
 	Tags                     *[]string              `json:"tagNames,omitempty"`
@@ -86,6 +89,7 @@ type UpdateMonitorRequest struct {
 	FollowRedirections       bool                   `json:"followRedirections"`
 	ResponseTimeThreshold    *int                   `json:"responseTimeThreshold,omitempty"`
 	RegionalData             *string                `json:"regionalData,omitempty"`
+	RegionData               *RegionDataRequest     `json:"regionData,omitempty"`
 	Config                   *MonitorConfig         `json:"config,omitempty"`
 	GroupID                  *int                   `json:"groupId,omitempty"`
 }
@@ -105,6 +109,7 @@ type Monitor struct {
 	HTTPUsername             string              `json:"httpUsername"`
 	HTTPPassword             string              `json:"httpPassword"`
 	CustomHTTPHeaders        map[string]string   `json:"customHttpHeaders"`
+	CustomFields             map[string]string   `json:"customFields"`
 	HTTPMethodType           string              `json:"httpMethodType"`
 	SuccessHTTPResponseCodes []string            `json:"successHttpResponseCodes"`
 	Timeout                  int                 `json:"timeout"`
@@ -156,12 +161,20 @@ type AlertContact struct {
 	Recurrence     int64            `json:"recurrence"`
 }
 
+type RegionDataRequest struct {
+	Regions        []string        `json:"REGION"`
+	RegionsManaged bool            `json:"-"`
+	ManualSelected *bool           `json:"MANUAL_SELECTED,omitempty"`
+	Thresholds     *map[string]int `json:"THRESHOLD,omitempty"`
+}
+
 type MonitorConfig struct {
 	SSLExpirationPeriodDays *[]int64              `json:"sslExpirationPeriodDays,omitempty"`
 	DNSRecords              *DNSRecords           `json:"dnsRecords,omitempty"`
 	APIAssertions           *APIMonitorAssertions `json:"apiAssertions,omitempty"`
 	UDP                     *UDPMonitorConfig     `json:"udp,omitempty"`
 	IPVersion               *string               `json:"ipVersion,omitempty"`
+	ApplicationErrorRetries json.RawMessage       `json:"applicationErrorRetries,omitempty"`
 }
 
 type UDPMonitorConfig struct {
