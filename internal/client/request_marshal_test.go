@@ -71,6 +71,52 @@ func TestMonitorRequests_CustomFields_JSON(t *testing.T) {
 	}
 }
 
+func TestWebhookIntegrationData_CustomHeaders_JSON(t *testing.T) {
+	req := WebhookIntegrationData{
+		FriendlyName: "webhook",
+		URLToNotify:  "https://example.com/webhook",
+		PostValue:    "{}",
+	}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "customHeaders") {
+		t.Fatalf("expected nil customHeaders to be omitted, got %s", raw)
+	}
+
+	headers := map[string]string{
+		"Authorization": "Bearer token",
+		"X-Source":      "terraform",
+	}
+	req.CustomHeaders = &headers
+	raw, err = json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	gotHeaders, ok := body["customHeaders"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected customHeaders object, got %s", raw)
+	}
+	if gotHeaders["Authorization"] != "Bearer token" || gotHeaders["X-Source"] != "terraform" {
+		t.Fatalf("unexpected customHeaders payload: %#v", gotHeaders)
+	}
+
+	empty := map[string]string{}
+	req.CustomHeaders = &empty
+	raw, err = json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"customHeaders":{}`) {
+		t.Fatalf("expected empty customHeaders object for clear, got %s", raw)
+	}
+}
+
 func TestMonitorRequests_EmptyURL_JSON(t *testing.T) {
 	updateReq := UpdateMonitorRequest{
 		Name:     "heartbeat",

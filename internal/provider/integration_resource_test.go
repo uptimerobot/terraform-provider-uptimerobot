@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
@@ -198,6 +199,103 @@ func TestStickyStringPreferPrevOnMismatch(t *testing.T) {
 	got = stickyStringPreferPrevOnMismatch(types.StringNull(), "us", nil)
 	if got.ValueString() != "us" {
 		t.Fatalf("expected api value when previous is null, got=%q", got.ValueString())
+	}
+}
+
+func TestExpandWebhookCustomHeaders(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	headers := types.MapValueMust(types.StringType, map[string]attr.Value{
+		"Authorization": types.StringValue("Bearer token"),
+		"X-Source":      types.StringValue("terraform"),
+	})
+
+	got, diags := expandWebhookCustomHeaders(ctx, "webhook", headers)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if got == nil {
+		t.Fatal("expected custom headers pointer")
+	}
+	if (*got)["Authorization"] != "Bearer token" || (*got)["X-Source"] != "terraform" {
+		t.Fatalf("unexpected custom headers: %#v", *got)
+	}
+
+	empty, diags := expandWebhookCustomHeaders(ctx, "webhook", types.MapValueMust(types.StringType, map[string]attr.Value{}))
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics for empty map: %+v", diags)
+	}
+	if empty == nil || len(*empty) != 0 {
+		t.Fatalf("expected empty map pointer for clear, got %#v", empty)
+	}
+}
+
+func TestExpandWebhookCustomHeadersRejectsInvalidUsage(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	headers := types.MapValueMust(types.StringType, map[string]attr.Value{
+		"Authorization": types.StringValue("Bearer token"),
+	})
+
+	if _, diags := expandWebhookCustomHeaders(ctx, "slack", headers); !diags.HasError() {
+		t.Fatal("expected diagnostics for non-webhook custom_headers")
+	}
+
+	invalidName := types.MapValueMust(types.StringType, map[string]attr.Value{
+		"Bad Header": types.StringValue("value"),
+	})
+	if _, diags := expandWebhookCustomHeaders(ctx, "webhook", invalidName); !diags.HasError() {
+		t.Fatal("expected diagnostics for invalid header name")
+	}
+
+	duplicate := types.MapValueMust(types.StringType, map[string]attr.Value{
+		"X-Test": types.StringValue("one"),
+		"x-test": types.StringValue("two"),
+	})
+	if _, diags := expandWebhookCustomHeaders(ctx, "webhook", duplicate); !diags.HasError() {
+		t.Fatal("expected diagnostics for case-insensitive duplicate header names")
+	}
+}
+
+func TestWebhookCustomHeadersState(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	prev := types.MapValueMust(types.StringType, map[string]attr.Value{
+		"Authorization": types.StringValue("Bearer old"),
+	})
+
+	got, diags := webhookCustomHeadersState(ctx, prev, map[string]string{
+		"Authorization": "Bearer new",
+	})
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	var gotMap map[string]string
+	diags.Append(got.ElementsAs(ctx, &gotMap, false)...)
+	if diags.HasError() {
+		t.Fatalf("unexpected map diagnostics: %+v", diags)
+	}
+	if gotMap["Authorization"] != "Bearer new" {
+		t.Fatalf("expected API headers to win, got %#v", gotMap)
+	}
+
+	got, diags = webhookCustomHeadersState(ctx, prev, nil)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if got.IsNull() || got.IsUnknown() {
+		t.Fatal("expected previous headers to be preserved when API omits customHeaders")
+	}
+
+	got, diags = webhookCustomHeadersState(ctx, types.MapNull(types.StringType), nil)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if !got.IsNull() {
+		t.Fatalf("expected null headers when API and state omit customHeaders, got %#v", got)
 	}
 }
 

@@ -3,13 +3,18 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
 // Configs
@@ -32,6 +37,28 @@ resource "uptimerobot_integration" "webhook" {
 `, name, value)
 }
 
+func testAccWebhookIntegrationConfigWithCustomHeaders(name, value string, headers *map[string]string) string {
+	customHeaders := ""
+	if headers != nil {
+		customHeaders = "\n  custom_headers = " + hclStringMap(*headers)
+	}
+
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_integration" "webhook" {
+  name                     = %q
+  type                     = "webhook"
+  value                    = %q
+  enable_notifications_for = 1
+  ssl_expiration_reminder  = true
+
+  send_as_json             = true
+  send_as_query_string     = false
+  send_as_post_parameters  = false
+  post_value               = jsonencode({ message = "Alert: $monitorURL is $alertType" })%s
+}
+`, name, value, customHeaders)
+}
+
 func testAccIntegrationPreCheck(t *testing.T) {
 	if v := os.Getenv("UPTIMEROBOT_API_KEY"); v == "" {
 		t.Skip("UPTIMEROBOT_API_KEY must be set to run integration acceptance tests")
@@ -44,6 +71,57 @@ provider "uptimerobot" {
   api_key = "%s"
 }
 `, os.Getenv("UPTIMEROBOT_API_KEY"))
+}
+
+func testAccCheckWebhookCustomHeaders(resourceName string, expected map[string]string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("resource %s not found", resourceName)
+		}
+
+		id, err := strconv.ParseInt(rs.Primary.ID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("could not parse integration ID %q: %w", rs.Primary.ID, err)
+		}
+
+		apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+		if apiURL := os.Getenv("UPTIMEROBOT_API_URL"); apiURL != "" {
+			apiClient.SetBaseURL(apiURL)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+
+		backoff := 500 * time.Millisecond
+		var lastErr error
+		for {
+			integration, err := apiClient.GetIntegration(ctx, id)
+			if err != nil {
+				lastErr = err
+			} else if equalStringMap(integration.CustomHeaders, expected) {
+				return nil
+			} else {
+				lastErr = fmt.Errorf("expected custom_headers %#v, got %#v", expected, integration.CustomHeaders)
+			}
+
+			select {
+			case <-ctx.Done():
+				if lastErr != nil {
+					return lastErr
+				}
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+
+			if backoff < 5*time.Second {
+				backoff *= 2
+				if backoff > 5*time.Second {
+					backoff = 5 * time.Second
+				}
+			}
+		}
+	}
 }
 
 // Helpers
@@ -168,6 +246,67 @@ resource "uptimerobot_integration" "test" {
 			},
 			{
 				Config:             cfg2,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Integration_Webhook_CustomHeaders(t *testing.T) {
+	suffix := acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum)
+	name := "tfacc-webhook-headers-" + suffix
+	value := fmt.Sprintf("https://httpbin.org/anything?tfacc_headers=%s", suffix)
+	resourceName := "uptimerobot_integration.webhook"
+
+	initialHeaders := map[string]string{
+		"Authorization": "Bearer initial",
+		"X-Source":      "terraform",
+	}
+	updatedHeaders := map[string]string{
+		"Authorization": "Bearer updated",
+		"X-Trace-ID":    suffix,
+	}
+	emptyHeaders := map[string]string{}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckIntegrationDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccWebhookIntegrationConfigWithCustomHeaders(name, value, &initialHeaders),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "custom_headers.%", "2"),
+					resource.TestCheckResourceAttr(resourceName, "custom_headers.Authorization", "Bearer initial"),
+					resource.TestCheckResourceAttr(resourceName, "custom_headers.X-Source", "terraform"),
+					testAccCheckWebhookCustomHeaders(resourceName, initialHeaders),
+				),
+			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccWebhookIntegrationConfigWithCustomHeaders(name, value, &updatedHeaders),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "custom_headers.%", "2"),
+					resource.TestCheckResourceAttr(resourceName, "custom_headers.Authorization", "Bearer updated"),
+					resource.TestCheckResourceAttr(resourceName, "custom_headers.X-Trace-ID", suffix),
+					resource.TestCheckNoResourceAttr(resourceName, "custom_headers.X-Source"),
+					testAccCheckWebhookCustomHeaders(resourceName, updatedHeaders),
+				),
+			},
+			{
+				Config: testAccWebhookIntegrationConfigWithCustomHeaders(name, value, &emptyHeaders),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "custom_headers.%", "0"),
+					testAccCheckWebhookCustomHeaders(resourceName, emptyHeaders),
+				),
+			},
+			{
+				Config:             testAccWebhookIntegrationConfigWithCustomHeaders(name, value, &emptyHeaders),
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},

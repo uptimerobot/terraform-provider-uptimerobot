@@ -26,6 +26,9 @@ resource "uptimerobot_integration" "webhook" {
   ssl_expiration_reminder  = true
 
   send_as_json = true
+  custom_headers = {
+    "X-Source" = "uptimerobot"
+  }
   post_value = jsonencode({
     message    = "Monitor $monitorFriendlyName is $alertType"
     timestamp  = "$alertDateTime"
