@@ -10,6 +10,11 @@ resource "uptimerobot_integration" "api_webhook" {
   send_as_json         = true
   send_as_query_string = false
 
+  custom_headers = {
+    Authorization = "Bearer ${var.webhook_auth_token}"
+    "X-Source"    = "uptimerobot"
+  }
+
   post_value = jsonencode({
     message    = "Alert: $monitorURL is $alertType"
     status     = "$monitorStatusFullName"
@@ -30,4 +35,10 @@ resource "uptimerobot_integration" "simple_webhook" {
   # Send as query string
   send_as_json         = false
   send_as_query_string = true
+}
+
+variable "webhook_auth_token" {
+  description = "Bearer token sent in the webhook Authorization header"
+  type        = string
+  sensitive   = true
 }

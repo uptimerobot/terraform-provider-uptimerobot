@@ -8,21 +8,27 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
+
+var webhookHeaderNameRegexp = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
 
 // convertNotificationsForToString converts integer to API string format.
 func convertNotificationsForToString(value int64) string {
@@ -371,6 +377,66 @@ func webhookPostValueState(parsed types.String, known bool, prev types.String, t
 	return types.StringNull(), nil
 }
 
+func expandWebhookCustomHeaders(ctx context.Context, integrationType string, attr types.Map) (*map[string]string, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if attr.IsNull() || attr.IsUnknown() {
+		return nil, diags
+	}
+
+	if strings.ToLower(strings.TrimSpace(integrationType)) != "webhook" {
+		diags.AddError(
+			"Invalid custom_headers for integration type",
+			"`custom_headers` is only valid when type = \"webhook\".",
+		)
+		return nil, diags
+	}
+
+	headers, d := stringMapFromAttrPreserveEmpty(ctx, attr)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	if err := validateWebhookCustomHeaders(headers); err != nil {
+		diags.AddError("Invalid custom_headers", err.Error())
+		return nil, diags
+	}
+
+	return &headers, diags
+}
+
+func validateWebhookCustomHeaders(headers map[string]string) error {
+	seen := make(map[string]string, len(headers))
+	for name := range headers {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			return fmt.Errorf("header names must not be empty")
+		}
+		if trimmed != name {
+			return fmt.Errorf("header name %q must not contain leading or trailing whitespace", name)
+		}
+		if !webhookHeaderNameRegexp.MatchString(name) {
+			return fmt.Errorf("header name %q must be a valid HTTP field name", name)
+		}
+		folded := strings.ToLower(name)
+		if previous, exists := seen[folded]; exists {
+			return fmt.Errorf("header names %q and %q differ only by case", previous, name)
+		}
+		seen[folded] = name
+	}
+	return nil
+}
+
+func webhookCustomHeadersState(ctx context.Context, prev types.Map, api map[string]string) (types.Map, diag.Diagnostics) {
+	if api != nil {
+		return types.MapValueFrom(ctx, types.StringType, api)
+	}
+	if !prev.IsNull() && !prev.IsUnknown() {
+		return prev, nil
+	}
+	return types.MapNull(types.StringType), nil
+}
+
 // Ensure the implementation satisfies the expected interfaces.
 var (
 	_ resource.Resource                = &integrationResource{}
@@ -401,6 +467,7 @@ type integrationResourceModel struct {
 	SendAsQueryString      types.Bool   `tfsdk:"send_as_query_string"`
 	SendAsPostParameters   types.Bool   `tfsdk:"send_as_post_parameters"`
 	PostValue              types.String `tfsdk:"post_value"`
+	CustomHeaders          types.Map    `tfsdk:"custom_headers"`
 	Priority               types.String `tfsdk:"priority"`
 	Location               types.String `tfsdk:"location"`
 	AutoResolve            types.Bool   `tfsdk:"auto_resolve"`
@@ -488,6 +555,22 @@ func (r *integrationResource) Schema(_ context.Context, _ resource.SchemaRequest
 					jsonEquivalentPlanModifier{},
 				},
 			},
+			"custom_headers": schema.MapAttribute{
+				Optional:            true,
+				Computed:            true,
+				Sensitive:           true,
+				ElementType:         types.StringType,
+				MarkdownDescription: "Custom HTTP headers to send with webhook notifications. Only valid for webhook integrations. Set `{}` to clear managed custom headers.",
+				Validators: []validator.Map{
+					mapvalidator.KeysAre(
+						stringvalidator.LengthAtLeast(1),
+						stringvalidator.RegexMatches(webhookHeaderNameRegexp, "must be a valid HTTP field name"),
+					),
+				},
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"priority": schema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "Pushover priority (Lowest, Low, Normal, High, Emergency).",
@@ -525,6 +608,12 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	var config integrationResourceModel
+	diags = req.Config.Get(ctx, &config)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Create new integration with the new API format
 	integrationTypeAPI := TransformIntegrationTypeToAPI(plan.Type.ValueString())
@@ -540,18 +629,24 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	if t != "pagerduty" {
-		if !plan.Location.IsNull() && !plan.Location.IsUnknown() && plan.Location.ValueString() != "" {
+		if !config.Location.IsNull() && !config.Location.IsUnknown() && config.Location.ValueString() != "" {
 			resp.Diagnostics.AddWarning(
 				"Ignoring `location` for non-PagerDuty integration",
 				"The 'location' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
 			)
 		}
-		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+		if !config.AutoResolve.IsNull() && !config.AutoResolve.IsUnknown() {
 			resp.Diagnostics.AddWarning(
 				"Ignoring `auto_resolve` for non-PagerDuty integration",
 				"The 'auto_resolve' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
 			)
 		}
+	}
+
+	customHeaders, diags := expandWebhookCustomHeaders(ctx, t, config.CustomHeaders)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	switch t {
@@ -596,6 +691,7 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 			SendAsQueryString:      plan.SendAsQueryString.ValueBool(),
 			SendAsJSON:             plan.SendAsJSON.ValueBool(),
 			SendAsPostParameters:   plan.SendAsPostParameters.ValueBool(),
+			CustomHeaders:          customHeaders,
 		}
 	case "zapier":
 		integrationData = &client.ZapierIntegrationData{
@@ -749,6 +845,18 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 
 	// Map response body to schema and populate Computed attribute values
 	plan.ID = types.StringValue(strconv.FormatInt(newIntegration.ID, 10))
+	if t == "webhook" {
+		if plan.CustomHeaders.IsNull() || plan.CustomHeaders.IsUnknown() {
+			customHeadersState, diags := webhookCustomHeadersState(ctx, plan.CustomHeaders, newIntegration.CustomHeaders)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			plan.CustomHeaders = customHeadersState
+		}
+	} else {
+		plan.CustomHeaders = types.MapNull(types.StringType)
+	}
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -893,6 +1001,12 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		}
 		state.PostValue = postValue
 		state.CustomValue = webhookFields.CustomValue
+		customHeaders, diags := webhookCustomHeadersState(ctx, prev.CustomHeaders, integration.CustomHeaders)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		state.CustomHeaders = customHeaders
 
 		state.Priority = types.StringNull()
 		state.Location = types.StringNull()
@@ -906,6 +1020,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.SendAsQueryString = types.BoolNull()
 		state.SendAsPostParameters = types.BoolNull()
 		state.PostValue = types.StringNull()
+		state.CustomHeaders = types.MapNull(types.StringType)
 		state.Priority = types.StringNull()
 		state.Location = types.StringNull()
 		state.AutoResolve = types.BoolNull()
@@ -925,6 +1040,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.SendAsQueryString = types.BoolNull()
 		state.SendAsPostParameters = types.BoolNull()
 		state.PostValue = types.StringNull()
+		state.CustomHeaders = types.MapNull(types.StringType)
 		state.Location = types.StringNull()
 		state.AutoResolve = types.BoolNull()
 
@@ -946,6 +1062,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.SendAsQueryString = types.BoolNull()
 		state.SendAsPostParameters = types.BoolNull()
 		state.PostValue = types.StringNull()
+		state.CustomHeaders = types.MapNull(types.StringType)
 
 	default:
 		// For non-webhook integrations, normalize empty to null to avoid perpetual diffs
@@ -960,6 +1077,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.SendAsQueryString = types.BoolNull()
 		state.SendAsPostParameters = types.BoolNull()
 		state.PostValue = types.StringNull()
+		state.CustomHeaders = types.MapNull(types.StringType)
 		state.Priority = types.StringNull()
 		state.Location = types.StringNull()
 		state.AutoResolve = types.BoolNull()
@@ -978,6 +1096,12 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 	// Retrieve values from plan
 	var plan integrationResourceModel
 	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	var config integrationResourceModel
+	diags = req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -1006,18 +1130,24 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 
 	if t != "pagerduty" {
-		if !plan.Location.IsNull() && !plan.Location.IsUnknown() && plan.Location.ValueString() != "" {
+		if !config.Location.IsNull() && !config.Location.IsUnknown() && config.Location.ValueString() != "" {
 			resp.Diagnostics.AddWarning(
 				"Ignoring `location` for non-PagerDuty integration",
 				"The 'location' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
 			)
 		}
-		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+		if !config.AutoResolve.IsNull() && !config.AutoResolve.IsUnknown() {
 			resp.Diagnostics.AddWarning(
 				"Ignoring `auto_resolve` for non-PagerDuty integration",
 				"The 'auto_resolve' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
 			)
 		}
+	}
+
+	customHeaders, diags := expandWebhookCustomHeaders(ctx, t, config.CustomHeaders)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	switch t {
@@ -1063,6 +1193,7 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 			SendAsQueryString:      plan.SendAsQueryString.ValueBool(),
 			SendAsJSON:             plan.SendAsJSON.ValueBool(),
 			SendAsPostParameters:   plan.SendAsPostParameters.ValueBool(),
+			CustomHeaders:          customHeaders,
 		}
 	case "zapier":
 		integrationData = &client.ZapierIntegrationData{
@@ -1190,12 +1321,30 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	if _, err := r.waitIntegrationSettled(ctx, id, plan.Name.ValueString(), 90*time.Second); err != nil {
+	settled, err := r.waitIntegrationSettled(ctx, id, plan.Name.ValueString(), 90*time.Second)
+	if err != nil {
 		resp.Diagnostics.AddError(
 			"Integration update did not settle in time",
 			err.Error(),
 		)
 		return
+	}
+
+	if t == "webhook" {
+		if plan.CustomHeaders.IsNull() || plan.CustomHeaders.IsUnknown() {
+			var apiHeaders map[string]string
+			if settled != nil {
+				apiHeaders = settled.CustomHeaders
+			}
+			customHeadersState, diags := webhookCustomHeadersState(ctx, plan.CustomHeaders, apiHeaders)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			plan.CustomHeaders = customHeadersState
+		}
+	} else {
+		plan.CustomHeaders = types.MapNull(types.StringType)
 	}
 
 	// Set state to fully populated data

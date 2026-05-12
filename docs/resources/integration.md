@@ -59,6 +59,11 @@ resource "uptimerobot_integration" "api_webhook" {
   send_as_json         = true
   send_as_query_string = false
 
+  custom_headers = {
+    Authorization = "Bearer ${var.webhook_auth_token}"
+    "X-Source"    = "uptimerobot"
+  }
+
   post_value = jsonencode({
     message    = "Alert: $monitorURL is $alertType"
     status     = "$monitorStatusFullName"
@@ -79,6 +84,12 @@ resource "uptimerobot_integration" "simple_webhook" {
   # Send as query string
   send_as_json         = false
   send_as_query_string = true
+}
+
+variable "webhook_auth_token" {
+  description = "Bearer token sent in the webhook Authorization header"
+  type        = string
+  sensitive   = true
 }
 ```
 
@@ -230,6 +241,9 @@ resource "uptimerobot_integration" "webhook" {
   ssl_expiration_reminder  = true
 
   send_as_json = true
+  custom_headers = {
+    "X-Source" = "uptimerobot"
+  }
   post_value = jsonencode({
     message    = "Monitor $monitorFriendlyName is $alertType"
     timestamp  = "$alertDateTime"
@@ -349,6 +363,7 @@ terraform import uptimerobot_integration.example 123456
 ### Optional
 
 - `auto_resolve` (Boolean) PagerDuty: auto-resolve incidents after up event.
+- `custom_headers` (Map of String, Sensitive) Custom HTTP headers to send with webhook notifications. Only valid for webhook integrations. Set `{}` to clear managed custom headers.
 - `custom_value` (String) The custom value for the integration. Only valid for slack (#channel), telegram (chat_id), and pushover (device name). Not used for webhook integrations (webhook settings are stored in dedicated fields).
 - `location` (String) PagerDuty service region. One of: `us`, `eu`.
 - `post_value` (String) The POST value to send with the webhook. Only valid for webhook integrations.

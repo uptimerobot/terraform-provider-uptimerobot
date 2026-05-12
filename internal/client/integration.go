@@ -21,10 +21,11 @@ type Integration struct {
 	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 
 	// Webhook specific fields
-	SendAsJSON           *bool  `json:"sendAsJSON,omitempty"`
-	SendAsQueryString    *bool  `json:"sendAsQueryString,omitempty"`
-	SendAsPostParameters *bool  `json:"sendAsPostParameters,omitempty"`
-	PostValue            string `json:"postValue,omitempty"`
+	SendAsJSON           *bool             `json:"sendAsJSON,omitempty"`
+	SendAsQueryString    *bool             `json:"sendAsQueryString,omitempty"`
+	SendAsPostParameters *bool             `json:"sendAsPostParameters,omitempty"`
+	PostValue            string            `json:"postValue,omitempty"`
+	CustomHeaders        map[string]string `json:"customHeaders,omitempty"`
 
 	// Pushover specific field
 	Priority string `json:"priority,omitempty"`
@@ -76,15 +77,16 @@ type DiscordIntegrationData struct {
 
 // WebhookIntegrationData represents the data structure for Webhook integrations.
 type WebhookIntegrationData struct {
-	FriendlyName           string `json:"friendlyName,omitempty"`
-	URLToNotify            string `json:"urlToNotify"`
-	CustomValue            string `json:"customValue,omitempty"`
-	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
-	PostValue              string `json:"postValue"`
-	SendAsQueryString      bool   `json:"sendAsQueryString,omitempty"`
-	SendAsJSON             bool   `json:"sendAsJSON,omitempty"`
-	SendAsPostParameters   bool   `json:"sendAsPostParameters,omitempty"`
+	FriendlyName           string             `json:"friendlyName,omitempty"`
+	URLToNotify            string             `json:"urlToNotify"`
+	CustomValue            string             `json:"customValue,omitempty"`
+	EnableNotificationsFor string             `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  bool               `json:"sslExpirationReminder,omitempty"`
+	PostValue              string             `json:"postValue"`
+	SendAsQueryString      bool               `json:"sendAsQueryString,omitempty"`
+	SendAsJSON             bool               `json:"sendAsJSON,omitempty"`
+	SendAsPostParameters   bool               `json:"sendAsPostParameters,omitempty"`
+	CustomHeaders          *map[string]string `json:"customHeaders,omitempty"`
 }
 
 // ZapierIntegrationData represents the data structure for Zapier integrations.
