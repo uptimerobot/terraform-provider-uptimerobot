@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
 
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider"
 
@@ -18,7 +19,7 @@ import (
 
 // Run the docs generation tool, check its repository for more information on how it works and how docs
 // can be customized.
-//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate -provider-name uptimerobot
+//go:generate env UPTIMEROBOT_TFPLUGINDOCS_PROVIDER_ADDRESS=registry.terraform.io/hashicorp/uptimerobot go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate -provider-name uptimerobot
 
 var (
 	// these will be set by the goreleaser configuration
@@ -36,7 +37,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/uptimerobot/uptimerobot",
+		Address: providerAddress(),
 		Debug:   debug,
 	}
 
@@ -45,4 +46,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+}
+
+func providerAddress() string {
+	// tfplugindocs exports schemas through a temporary hashicorp/<name> provider install.
+	if address := os.Getenv("UPTIMEROBOT_TFPLUGINDOCS_PROVIDER_ADDRESS"); address != "" {
+		return address
+	}
+	return "registry.terraform.io/uptimerobot/uptimerobot"
 }

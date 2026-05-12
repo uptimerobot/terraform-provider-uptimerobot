@@ -1075,6 +1075,17 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		}
 		newPSP, err = r.client.UpdatePSP(ctx, newPSP.ID, updateReq)
 		if err != nil {
+			if deleteErr := r.client.DeletePSP(ctx, newPSP.ID); deleteErr != nil && !client.IsNotFound(deleteErr) {
+				resp.Diagnostics.AddWarning(
+					"Failed to clean up PSP after create",
+					fmt.Sprintf(
+						"PSP ID %d was created but the follow-up update failed. Cleanup also failed: %v. "+
+							"You may need to delete this PSP manually in the UptimeRobot UI.",
+						newPSP.ID,
+						deleteErr,
+					),
+				)
+			}
 			resp.Diagnostics.AddError(
 				"Error updating PSP",
 				"Could not set PSP fields after create, unexpected error: "+err.Error(),
