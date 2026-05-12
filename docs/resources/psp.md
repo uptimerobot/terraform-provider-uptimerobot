@@ -31,7 +31,8 @@ resource "uptimerobot_monitor" "api" {
 }
 
 resource "uptimerobot_psp" "public_status" {
-  name = "Example.com Status"
+  name          = "Example.com Status"
+  homepage_link = "https://example.com"
   monitor_ids = [
     uptimerobot_monitor.website.id,
     uptimerobot_monitor.api.id,
@@ -162,6 +163,7 @@ Set either field to an empty string (`""`) to clear the existing uploaded file.
 - **Password Protection**: Restrict access with a password
 - **Custom Styling**: Apply custom CSS and branding
 - **Google Analytics**: Track status page visitors
+- **Subscriber Signup**: Enable public status page subscriptions when your account has the PSP subscribers feature
 - **SEO Control**: Control search engine indexing
 
 ## Monitor Selection
@@ -194,6 +196,7 @@ terraform import uptimerobot_psp.example 123456
 - `custom_settings` (Attributes) Custom settings for the PSP (see [below for nested schema](#nestedatt--custom_settings))
 - `ga_code` (String) Google Analytics code
 - `hide_url_links` (Boolean) Whether to hide URL links
+- `homepage_link` (String) Homepage link for the PSP
 - `icon` (String) Local filesystem path to icon image file to upload via multipart/form-data.
 
 This field accepts only local filesystem paths. If you need a remote file, download it first (for example in CI) and then pass the downloaded file path.
@@ -214,15 +217,14 @@ Set to an empty string (`""`) to clear the existing logo.
 - `share_analytics_consent` (Boolean) Whether analytics sharing is consented
 - `show_cookie_bar` (Boolean) Whether to show cookie bar
 - `status` (String) Status of the PSP
+- `subscription` (Boolean) Whether subscription is enabled
 - `use_small_cookie_consent_modal` (Boolean) Whether to use small cookie consent modal
 
 ### Read-Only
 
-- `homepage_link` (String) Homepage link for the PSP
 - `id` (String) PSP identifier
 - `is_password_set` (Boolean) Whether a password is set for the PSP
 - `monitors_count` (Number) Number of monitors in the PSP
-- `subscription` (Boolean) Whether subscription is enabled
 - `url_key` (String) URL key for the PSP
 
 <a id="nestedatt--custom_settings"></a>
