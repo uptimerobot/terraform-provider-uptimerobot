@@ -629,13 +629,13 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	if t != "pagerduty" {
-		if !plan.Location.IsNull() && !plan.Location.IsUnknown() && plan.Location.ValueString() != "" {
+		if !config.Location.IsNull() && !config.Location.IsUnknown() && config.Location.ValueString() != "" {
 			resp.Diagnostics.AddWarning(
 				"Ignoring `location` for non-PagerDuty integration",
 				"The 'location' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
 			)
 		}
-		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+		if !config.AutoResolve.IsNull() && !config.AutoResolve.IsUnknown() {
 			resp.Diagnostics.AddWarning(
 				"Ignoring `auto_resolve` for non-PagerDuty integration",
 				"The 'auto_resolve' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
@@ -1130,13 +1130,13 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 
 	if t != "pagerduty" {
-		if !plan.Location.IsNull() && !plan.Location.IsUnknown() && plan.Location.ValueString() != "" {
+		if !config.Location.IsNull() && !config.Location.IsUnknown() && config.Location.ValueString() != "" {
 			resp.Diagnostics.AddWarning(
 				"Ignoring `location` for non-PagerDuty integration",
 				"The 'location' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
 			)
 		}
-		if !plan.AutoResolve.IsNull() && !plan.AutoResolve.IsUnknown() {
+		if !config.AutoResolve.IsNull() && !config.AutoResolve.IsUnknown() {
 			resp.Diagnostics.AddWarning(
 				"Ignoring `auto_resolve` for non-PagerDuty integration",
 				"The 'auto_resolve' attribute only applies when type = 'pagerduty'. The provided value will be ignored.",
