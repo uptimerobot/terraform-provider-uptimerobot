@@ -283,6 +283,9 @@ func (m monitorGroupResourceModel) intID() (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("could not parse %q as an integer ID: %w", m.ID.ValueString(), err)
 	}
+	if id < 1 {
+		return 0, fmt.Errorf("id must be a positive integer, got %d from %q", id, m.ID.ValueString())
+	}
 	return id, nil
 }
 

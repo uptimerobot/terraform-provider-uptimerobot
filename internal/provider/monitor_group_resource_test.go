@@ -79,6 +79,13 @@ func TestMonitorGroupResourceModelIntID(t *testing.T) {
 	if _, err := model.intID(); err == nil {
 		t.Fatal("expected invalid ID error")
 	}
+
+	for _, raw := range []string{"0", "-1"} {
+		model.ID = types.StringValue(raw)
+		if _, err := model.intID(); err == nil {
+			t.Fatalf("expected non-positive ID error for %q", raw)
+		}
+	}
 }
 
 func TestMonitorGroupResourceWaitNameReturnsLastOnTimeout(t *testing.T) {
