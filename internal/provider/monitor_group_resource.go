@@ -163,7 +163,7 @@ func (r *monitorGroupResource) Read(ctx context.Context, req resource.ReadReques
 	if !state.Name.IsNull() && !state.Name.IsUnknown() {
 		expectedName := state.Name.ValueString()
 		if expectedName != "" && group.Name != expectedName {
-			if settled, err := r.waitMonitorGroupName(ctx, id, expectedName, 60*time.Second); err == nil && settled != nil {
+			if settled, err := r.waitMonitorGroupName(ctx, id, expectedName, 10*time.Second); err == nil && settled != nil {
 				group = settled
 			} else if settled != nil {
 				group = settled
