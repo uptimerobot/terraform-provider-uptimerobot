@@ -608,6 +608,12 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	var config integrationResourceModel
+	diags = req.Config.Get(ctx, &config)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Create new integration with the new API format
 	integrationTypeAPI := TransformIntegrationTypeToAPI(plan.Type.ValueString())
@@ -637,7 +643,7 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 		}
 	}
 
-	customHeaders, diags := expandWebhookCustomHeaders(ctx, t, plan.CustomHeaders)
+	customHeaders, diags := expandWebhookCustomHeaders(ctx, t, config.CustomHeaders)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -1094,6 +1100,12 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	var config integrationResourceModel
+	diags = req.Config.Get(ctx, &config)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	id, err := strconv.ParseInt(plan.ID.ValueString(), 10, 64)
 	if err != nil {
@@ -1132,7 +1144,7 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		}
 	}
 
-	customHeaders, diags := expandWebhookCustomHeaders(ctx, t, plan.CustomHeaders)
+	customHeaders, diags := expandWebhookCustomHeaders(ctx, t, config.CustomHeaders)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
