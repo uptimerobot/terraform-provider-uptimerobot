@@ -167,8 +167,15 @@ func (r *monitorGroupResource) Read(ctx context.Context, req resource.ReadReques
 	if !state.Name.IsNull() && !state.Name.IsUnknown() {
 		expectedName := state.Name.ValueString()
 		if expectedName != "" && group.Name != expectedName {
-			if settled, err := r.waitMonitorGroupName(ctx, id, expectedName, 10*time.Second); err == nil && settled != nil {
-				group = settled
+			settled, err := r.waitMonitorGroupName(ctx, id, expectedName, 10*time.Second)
+			if err != nil {
+				if ctx.Err() != nil {
+					resp.Diagnostics.AddError("Error waiting for monitor group stabilization", err.Error())
+					return
+				}
+				if settled != nil {
+					group = settled
+				}
 			} else if settled != nil {
 				group = settled
 			}

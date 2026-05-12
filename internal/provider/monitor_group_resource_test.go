@@ -93,7 +93,7 @@ func TestMonitorGroupResourceWaitNameReturnsLastOnTimeout(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if got := req.Method + " " + req.URL.RequestURI(); got != "GET /monitor-groups/101" {
-			t.Fatalf("unexpected request %s", got)
+			t.Errorf("unexpected request %s", got)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
