@@ -1254,6 +1254,16 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 			return
 		}
 	}
+	var expectedHomepageLink *string
+	if !state.HomepageLink.IsNull() && !state.HomepageLink.IsUnknown() {
+		value := state.HomepageLink.ValueString()
+		expectedHomepageLink = &value
+	}
+	var expectedSubscription *bool
+	if !state.Subscription.IsNull() && !state.Subscription.IsUnknown() {
+		value := state.Subscription.ValueBool()
+		expectedSubscription = &value
+	}
 
 	nameMismatch := expectedName != "" && psp.Name != expectedName
 	monitorsMismatch := false
@@ -1261,18 +1271,20 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		missing, extra := diffMonitorIDs(expectedMonitorIDs, psp.MonitorIDs)
 		monitorsMismatch = len(missing) > 0 || len(extra) > 0
 	}
+	homepageLinkMismatch := expectedHomepageLink != nil && !pspStringPtrMatches(psp.HomepageLink, expectedHomepageLink)
+	subscriptionMismatch := expectedSubscription != nil && psp.Subscription != *expectedSubscription
 
 	// PSP reads can be eventually consistent right after updates.
 	// If the API returns transient old values, re-poll briefly before accepting drift.
-	if !isImport && (nameMismatch || monitorsMismatch) {
+	if !isImport && (nameMismatch || monitorsMismatch || homepageLinkMismatch || subscriptionMismatch) {
 		if settled, err := waitPSPSettled(
 			ctx,
 			r.client,
 			id,
 			expectedName,
 			expectedMonitorIDs,
-			nil,
-			nil,
+			expectedHomepageLink,
+			expectedSubscription,
 			20*time.Second,
 		); err == nil && settled != nil {
 			psp = settled

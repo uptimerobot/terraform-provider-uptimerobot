@@ -16,7 +16,7 @@
 
 ### Fixed
 
-- Hardened read-after-write stabilization for monitor group renames, maintenance-window `auto_add_monitors`, monitor `timeout`, and monitor `config.ip_version` to reduce false drift immediately after apply.
+- Hardened read-after-write stabilization for monitor group renames, PSP `homepage_link`/`subscription`, maintenance-window `auto_add_monitors`, monitor `timeout`, and monitor `config.ip_version` to reduce false drift immediately after apply.
 
 ## 1.4.7 — 2026-05-03
 
