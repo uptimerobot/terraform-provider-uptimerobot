@@ -69,7 +69,7 @@ func (r *monitorGroupResource) Metadata(_ context.Context, req resource.Metadata
 // Schema defines the schema for the resource.
 func (r *monitorGroupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages an UptimeRobot monitor group.",
+		Description: "Manages a UptimeRobot monitor group.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Monitor group identifier",
@@ -250,9 +250,7 @@ func (r *monitorGroupResource) Delete(ctx context.Context, req resource.DeleteRe
 		return
 	}
 
-	waitCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-	defer cancel()
-	if err := r.client.WaitMonitorGroupDeleted(waitCtx, id, 90*time.Second); err != nil {
+	if err := r.client.WaitMonitorGroupDeleted(ctx, id, 90*time.Second); err != nil {
 		resp.Diagnostics.AddError("Error waiting for monitor group deletion", err.Error())
 	}
 }

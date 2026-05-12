@@ -193,7 +193,7 @@ func testAccAPIClient() *client.Client {
 // CheckDestroy functions for each resource type.
 func testAccCheckMonitorDestroy(s *terraform.State) error {
 	// Create a client to check if the monitor was properly deleted
-	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+	apiClient := testAccAPIClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -243,7 +243,7 @@ func testAccCheckMonitorGroupDestroy(s *terraform.State) error {
 
 func testAccCheckIntegrationDestroy(s *terraform.State) error {
 	// Create a client to check if the integration was properly deleted
-	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+	apiClient := testAccAPIClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -270,7 +270,7 @@ func testAccCheckIntegrationDestroy(s *terraform.State) error {
 
 func testAccCheckMaintenanceWindowDestroy(s *terraform.State) error {
 	// Create a client to check if the maintenance window was properly deleted
-	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+	apiClient := testAccAPIClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -297,7 +297,7 @@ func testAccCheckMaintenanceWindowDestroy(s *terraform.State) error {
 
 func testAccCheckPSPDestroy(s *terraform.State) error {
 	// Create a client to check if the PSP was properly deleted
-	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
+	apiClient := testAccAPIClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 

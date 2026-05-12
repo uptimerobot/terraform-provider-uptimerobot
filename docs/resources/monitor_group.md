@@ -2,12 +2,12 @@
 page_title: "uptimerobot_monitor_group Resource - uptimerobot"
 subcategory: ""
 description: |-
-  Manages an UptimeRobot monitor group.
+  Manages a UptimeRobot monitor group.
 ---
 
 # uptimerobot_monitor_group (Resource)
 
-Manages an UptimeRobot monitor group.
+Manages a UptimeRobot monitor group.
 
 ## Example Usage
 
