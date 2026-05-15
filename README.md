@@ -103,7 +103,9 @@ Detailed documentation for the resources supported by this provider can be found
 
 ## Data Source Reference
 
-This provider does not currently expose data sources. When data sources are added, their documentation will live under `docs/data-sources/`.
+Detailed documentation for the data sources supported by this provider can be found in the `docs/data-sources/` directory or by clicking the links below:
+
+- [uptimerobot_ip_ranges](docs/data-sources/ip_ranges.md)
 
 ## Developing the Provider
 

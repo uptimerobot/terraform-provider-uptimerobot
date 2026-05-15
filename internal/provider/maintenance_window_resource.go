@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -333,9 +333,7 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 			return
 		}
 		if len(daysInt64) > 0 {
-			sort.Slice(daysInt64, func(i, j int) bool {
-				return daysInt64[i] < daysInt64[j]
-			})
+			slices.Sort(daysInt64)
 			mw.Days = daysInt64
 		}
 	}
@@ -561,9 +559,7 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 			return
 		}
 		if len(daysInt64) > 0 {
-			sort.Slice(daysInt64, func(i, j int) bool {
-				return daysInt64[i] < daysInt64[j]
-			})
+			slices.Sort(daysInt64)
 			updateReq.Days = daysInt64
 			expectedDays = append(expectedDays, daysInt64...)
 			shouldWait = true
@@ -759,7 +755,7 @@ func normalizeDays(days []int64) []int64 {
 		return nil
 	}
 	cp := append([]int64(nil), days...)
-	sort.Slice(cp, func(i, j int) bool { return cp[i] < cp[j] })
+	slices.Sort(cp)
 	return cp
 }
 
