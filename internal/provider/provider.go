@@ -111,6 +111,7 @@ func (p *UptimeRobotProvider) Resources(ctx context.Context) []func() resource.R
 func (p *UptimeRobotProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewIPRangesDataSource,
+		NewIntegrationDataSource,
 	}
 }
 
