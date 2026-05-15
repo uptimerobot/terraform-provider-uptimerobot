@@ -1,0 +1,18 @@
+---
+page_title: "uptimerobot_integration Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Looks up an existing UptimeRobot integration.
+---
+
+# uptimerobot_integration (Data Source)
+
+Looks up an existing UptimeRobot integration without taking ownership of it. Use this when an integration is managed outside the current Terraform state, but its ID is needed for monitor `assigned_alert_contacts`.
+
+The data source can look up an integration by `id`, or by the exact `name` and `type` pair. Secret integration values and custom headers are intentionally not exposed.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_integration/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}

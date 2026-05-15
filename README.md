@@ -106,6 +106,7 @@ Detailed documentation for the resources supported by this provider can be found
 Detailed documentation for the data sources supported by this provider can be found in the `docs/data-sources/` directory or by clicking the links below:
 
 - [uptimerobot_ip_ranges](docs/data-sources/ip_ranges.md)
+- [uptimerobot_integration](docs/data-sources/integration.md)
 
 ## Developing the Provider
 

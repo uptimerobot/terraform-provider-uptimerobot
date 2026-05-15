@@ -2,6 +2,11 @@ package client
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -32,6 +37,12 @@ type Integration struct {
 
 	Location    string `json:"location,omitempty"`    // PagerDuty
 	AutoResolve bool   `json:"autoResolve,omitempty"` // PagerDuty
+}
+
+// IntegrationListResponse represents a paginated integration list response.
+type IntegrationListResponse struct {
+	Data     []Integration `json:"data"`
+	NextLink *string       `json:"nextLink"`
 }
 
 // CreateIntegrationRequest represents the request to create a new integration.
@@ -175,6 +186,75 @@ func (c *Client) GetIntegration(ctx context.Context, id int64) (*Integration, er
 		return nil, err
 	}
 	return &integration, nil
+}
+
+// ListIntegrations lists integrations. If cursorID is nil, the first page is returned.
+func (c *Client) ListIntegrations(ctx context.Context, cursorID *int64) (*IntegrationListResponse, error) {
+	path := "/integrations"
+	if cursorID != nil {
+		path += "?cursor=" + strconv.FormatInt(*cursorID, 10)
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var integrations IntegrationListResponse
+	if err := json.Unmarshal(resp, &integrations); err != nil {
+		return nil, err
+	}
+	return &integrations, nil
+}
+
+// ListAllIntegrations follows pagination and returns all integrations visible to the API key.
+func (c *Client) ListAllIntegrations(ctx context.Context) ([]Integration, error) {
+	var out []Integration
+	var cursorID *int64
+
+	const maxPages = 1000
+	for page := 0; page < maxPages; page++ {
+		resp, err := c.ListIntegrations(ctx, cursorID)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, resp.Data...)
+
+		nextCursorID, err := integrationCursorFromNextLink(resp.NextLink)
+		if err != nil {
+			return nil, err
+		}
+		if nextCursorID == nil {
+			return out, nil
+		}
+		cursorID = nextCursorID
+	}
+
+	return nil, fmt.Errorf("integrations pagination exceeded %d pages", maxPages)
+}
+
+func integrationCursorFromNextLink(nextLink *string) (*int64, error) {
+	if nextLink == nil || strings.TrimSpace(*nextLink) == "" {
+		return nil, nil
+	}
+
+	parsed, err := url.Parse(*nextLink)
+	if err != nil {
+		return nil, fmt.Errorf("parse integrations nextLink %q: %w", *nextLink, err)
+	}
+
+	rawCursor := parsed.Query().Get("cursor")
+	if rawCursor == "" {
+		return nil, fmt.Errorf("integrations nextLink %q does not contain a cursor query parameter", *nextLink)
+	}
+
+	cursorID, err := strconv.ParseInt(rawCursor, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse integrations cursor %q: %w", rawCursor, err)
+	}
+
+	return &cursorID, nil
 }
 
 // UpdateIntegration updates an existing integration.
