@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -37,6 +38,7 @@ const (
 // Client represents an Uptimerobot API client.
 type Client struct {
 	baseURL      string
+	metaURL      string
 	apiKey       string
 	userAgent    string
 	httpClient   *http.Client
@@ -50,6 +52,7 @@ type Client struct {
 func NewClient(apiKey string) *Client {
 	client := &Client{
 		baseURL: defaultBaseURL,
+		metaURL: metaBaseURL(defaultBaseURL),
 		apiKey:  apiKey,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
@@ -91,8 +94,38 @@ func (c *Client) BaseURL() string {
 }
 
 // SetBaseURL sets the base URL for the client.
-func (c *Client) SetBaseURL(url string) {
-	c.baseURL = url
+func (c *Client) SetBaseURL(rawURL string) {
+	baseURL := strings.TrimRight(strings.TrimSpace(rawURL), "/")
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+	c.baseURL = baseURL
+	c.metaURL = metaBaseURL(baseURL)
+}
+
+func (c *Client) MetaURL() string {
+	return c.metaURL
+}
+
+func metaBaseURL(apiBaseURL string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(apiBaseURL), "/")
+	if trimmed == "" {
+		return strings.TrimSuffix(defaultBaseURL, "/v3") + "/meta"
+	}
+
+	u, err := url.Parse(trimmed)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return strings.TrimSuffix(trimmed, "/v3") + "/meta"
+	}
+
+	path := strings.TrimRight(u.Path, "/")
+	if strings.EqualFold(path, "/v3") || strings.HasSuffix(strings.ToLower(path), "/v3") {
+		path = strings.TrimRight(path[:len(path)-len("/v3")], "/")
+	}
+
+	u.Path = strings.TrimRight(path, "/") + "/meta"
+	u.RawPath = ""
+	return strings.TrimRight(u.String(), "/")
 }
 
 func (c *Client) SetUserAgent(ua string) {
@@ -114,6 +147,15 @@ type httpAttemptResult struct {
 
 // doRequest performs an HTTP request and returns the response.
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
+	return c.doRequestWithBaseURL(ctx, c.baseURL, method, path, body)
+}
+
+// doMetaRequest performs an HTTP request against the API metadata endpoint.
+func (c *Client) doMetaRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
+	return c.doRequestWithBaseURL(ctx, c.metaURL, method, path, body)
+}
+
+func (c *Client) doRequestWithBaseURL(ctx context.Context, baseURL, method, path string, body interface{}) ([]byte, error) {
 	jsonBody, err := marshalJSONBody(method, body)
 	if err != nil {
 		return nil, err
@@ -126,7 +168,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 			return nil, err
 		}
 
-		result, retryableAttemptErr, err := c.doJSONAttempt(ctx, method, path, jsonBody, attempt, idemp)
+		result, retryableAttemptErr, err := c.doJSONAttempt(ctx, baseURL, method, path, jsonBody, attempt, idemp)
 		if err != nil {
 			lastErr = err
 			if idemp && retryableAttemptErr && attempt < transientMaxAttempts-1 {
@@ -138,7 +180,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 			return nil, lastErr
 		}
 
-		if retry, err := c.handleRateLimitResponse(ctx, method, path, result, attempt); retry || err != nil {
+		if retry, err := c.handleRateLimitResponse(ctx, baseURL, method, path, result, attempt); retry || err != nil {
 			if err != nil {
 				return nil, err
 			}
@@ -216,6 +258,7 @@ func normalizeCustomSettingsBody(b []byte) []byte {
 
 func (c *Client) doJSONAttempt(
 	ctx context.Context,
+	baseURL string,
 	method string,
 	path string,
 	jsonBody []byte,
@@ -224,7 +267,7 @@ func (c *Client) doJSONAttempt(
 ) (httpAttemptResult, bool, error) {
 	start := time.Now()
 
-	req, err := c.newJSONRequest(ctx, method, path, jsonBody)
+	req, err := c.newJSONRequest(ctx, baseURL, method, path, jsonBody)
 	if err != nil {
 		return httpAttemptResult{}, false, err
 	}
@@ -232,7 +275,7 @@ func (c *Client) doJSONAttempt(
 	tflog.Debug(ctx, "uptimerobot http request", map[string]any{
 		"attempt": attempt + 1,
 		"method":  method,
-		"url":     c.baseURL + path,
+		"url":     baseURL + path,
 		"headers": redactHeaders(req.Header),
 		"body":    sanitizeJSON(jsonBody, 2048),
 	})
@@ -243,7 +286,7 @@ func (c *Client) doJSONAttempt(
 		tflog.Warn(ctx, "uptimerobot http error (transport)", map[string]any{
 			"attempt":     attempt + 1,
 			"method":      method,
-			"url":         c.baseURL + path,
+			"url":         baseURL + path,
 			"duration_ms": time.Since(start).Milliseconds(),
 			"error":       err.Error(),
 			"idempotent":  idempotent,
@@ -258,7 +301,7 @@ func (c *Client) doJSONAttempt(
 		tflog.Warn(ctx, "uptimerobot http error (read)", map[string]any{
 			"attempt":     attempt + 1,
 			"method":      method,
-			"url":         c.baseURL + path,
+			"url":         baseURL + path,
 			"status":      resp.StatusCode,
 			"duration_ms": time.Since(start).Milliseconds(),
 			"error":       readErr.Error(),
@@ -269,7 +312,7 @@ func (c *Client) doJSONAttempt(
 	tflog.Debug(ctx, "uptimerobot http response", map[string]any{
 		"attempt":        attempt + 1,
 		"method":         method,
-		"url":            c.baseURL + path,
+		"url":            baseURL + path,
 		"status":         resp.StatusCode,
 		"duration_ms":    time.Since(start).Milliseconds(),
 		"request_id":     resp.Header.Get("X-Request-Id"),
@@ -285,13 +328,13 @@ func (c *Client) doJSONAttempt(
 	}, false, nil
 }
 
-func (c *Client) newJSONRequest(ctx context.Context, method, path string, jsonBody []byte) (*http.Request, error) {
+func (c *Client) newJSONRequest(ctx context.Context, baseURL, method, path string, jsonBody []byte) (*http.Request, error) {
 	var reqBody io.Reader
 	if jsonBody != nil {
 		reqBody = bytes.NewReader(jsonBody)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reqBody)
+	req, err := http.NewRequestWithContext(ctx, method, baseURL+path, reqBody)
 	if err != nil {
 		return nil, err
 	}
@@ -318,6 +361,7 @@ func (c *Client) applyCommonHeaders(req *http.Request) {
 
 func (c *Client) handleRateLimitResponse(
 	ctx context.Context,
+	baseURL string,
 	method string,
 	path string,
 	result httpAttemptResult,
@@ -328,7 +372,7 @@ func (c *Client) handleRateLimitResponse(
 		tflog.Warn(ctx, "uptimerobot rate limit reached; retrying after delay", map[string]any{
 			"attempt":        attempt + 1,
 			"method":         method,
-			"url":            c.baseURL + path,
+			"url":            baseURL + path,
 			"delay":          delay.String(),
 			"retry_after":    result.headers.Get("Retry-After"),
 			"rate_limit":     result.headers.Get("X-RateLimit-Limit"),
@@ -344,7 +388,7 @@ func (c *Client) handleRateLimitResponse(
 	if delay, ok := c.rememberRateLimitExhausted(result.headers); ok {
 		tflog.Debug(ctx, "uptimerobot rate limit exhausted; delaying subsequent requests", map[string]any{
 			"method":         method,
-			"url":            c.baseURL + path,
+			"url":            baseURL + path,
 			"delay":          delay.String(),
 			"rate_limit":     result.headers.Get("X-RateLimit-Limit"),
 			"rate_remaining": result.headers.Get("X-RateLimit-Remaining"),

@@ -1,0 +1,18 @@
+---
+page_title: "uptimerobot_ip_ranges Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Fetches UptimeRobot monitoring IP ranges for firewall allow-lists.
+---
+
+# uptimerobot_ip_ranges (Data Source)
+
+Fetches UptimeRobot monitoring IP ranges for firewall allow-lists.
+
+The UptimeRobot Locations and IPs page documents a JSON source for monitoring IPs at `/meta/ips`. The provider derives the API host root from the configured `api_url`, so the default `https://api.uptimerobot.com/v3` reads `https://api.uptimerobot.com/meta/ips`, and an internal v3 API URL reads from the same internal host root.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_ip_ranges/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}

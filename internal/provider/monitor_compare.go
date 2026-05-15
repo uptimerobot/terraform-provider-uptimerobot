@@ -2,9 +2,10 @@ package provider
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"html"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -707,14 +708,14 @@ func normalizeAlertContacts(in []alertContactComparable) []alertContactComparabl
 		}
 		out = append(out, ac)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].ID != out[j].ID {
-			return out[i].ID < out[j].ID
+	slices.SortFunc(out, func(a, b alertContactComparable) int {
+		if c := cmp.Compare(a.ID, b.ID); c != 0 {
+			return c
 		}
-		if out[i].Threshold != out[j].Threshold {
-			return out[i].Threshold < out[j].Threshold
+		if c := cmp.Compare(a.Threshold, b.Threshold); c != 0 {
+			return c
 		}
-		return out[i].Recurrence < out[j].Recurrence
+		return cmp.Compare(a.Recurrence, b.Recurrence)
 	})
 	return out
 }
@@ -1063,14 +1064,14 @@ func normalizeAPIAssertions(in *client.APIMonitorAssertions) *apiAssertionsCompa
 			TargetJSON: targetJSON,
 		})
 	}
-	sort.Slice(checks, func(i, j int) bool {
-		if checks[i].Property != checks[j].Property {
-			return checks[i].Property < checks[j].Property
+	slices.SortFunc(checks, func(a, b apiAssertionCheckComparable) int {
+		if c := cmp.Compare(a.Property, b.Property); c != 0 {
+			return c
 		}
-		if checks[i].Comparison != checks[j].Comparison {
-			return checks[i].Comparison < checks[j].Comparison
+		if c := cmp.Compare(a.Comparison, b.Comparison); c != 0 {
+			return c
 		}
-		return checks[i].TargetJSON < checks[j].TargetJSON
+		return cmp.Compare(a.TargetJSON, b.TargetJSON)
 	})
 	out.Checks = checks
 	return out
@@ -1186,7 +1187,7 @@ func normalizeStringSet(in []string) []string {
 		seen[s] = struct{}{}
 		out = append(out, s)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -1242,7 +1243,7 @@ func normalizeTagSet(in []string) []string {
 		seen[s] = struct{}{}
 		out = append(out, s)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

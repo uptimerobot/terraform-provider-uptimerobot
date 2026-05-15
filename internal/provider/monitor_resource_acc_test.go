@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -549,7 +549,7 @@ func hclStringMap(values map[string]string) string {
 	for key := range values {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	out := "{"
 	for i, key := range keys {

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -182,7 +182,7 @@ func sortAttrStringVals(vals []attr.Value) []attr.Value {
 			ss = append(ss, s.ValueString())
 		}
 	}
-	sort.Strings(ss)
+	slices.Sort(ss)
 	out := make([]attr.Value, len(ss))
 	for i, s := range ss {
 		out[i] = types.StringValue(s)
@@ -786,7 +786,7 @@ func normalizeInt64Set(ids []int64) []int64 {
 	for v := range m {
 		out = append(out, v)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }
 
