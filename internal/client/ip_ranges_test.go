@@ -42,6 +42,22 @@ func TestClient_GetIPRanges_UsesMetaURLDerivedFromV3Base(t *testing.T) {
 	}
 }
 
+func TestIPRangePrefix_IPVersionMatchesCIDRPrecedence(t *testing.T) {
+	t.Parallel()
+
+	prefix := IPRangePrefix{
+		IPPrefix:   "3.12.251.153/32",
+		IPv6Prefix: "2a01:4ff:f0:3e03::1/128",
+	}
+
+	if got := prefix.CIDR(); got != prefix.IPPrefix {
+		t.Fatalf("CIDR() = %q, want %q", got, prefix.IPPrefix)
+	}
+	if got := prefix.IPVersion(); got != "ipv4" {
+		t.Fatalf("IPVersion() = %q, want ipv4", got)
+	}
+}
+
 func TestMetaBaseURL(t *testing.T) {
 	t.Parallel()
 

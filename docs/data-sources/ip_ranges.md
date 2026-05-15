@@ -44,6 +44,7 @@ output "uptimerobot_checker_europe_ipv4_prefixes" {
 - `sync_token` (String) Sync token returned by the UptimeRobot IP ranges endpoint.
 
 <a id="nestedatt--prefixes"></a>
+
 ### Nested Schema for `prefixes`
 
 Read-Only:

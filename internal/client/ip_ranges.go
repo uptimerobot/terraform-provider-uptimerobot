@@ -33,6 +33,9 @@ func (p IPRangePrefix) CIDR() string {
 
 // IPVersion returns ipv4 or ipv6 for the prefix.
 func (p IPRangePrefix) IPVersion() string {
+	if strings.TrimSpace(p.IPPrefix) != "" {
+		return "ipv4"
+	}
 	if strings.TrimSpace(p.IPv6Prefix) != "" {
 		return "ipv6"
 	}
