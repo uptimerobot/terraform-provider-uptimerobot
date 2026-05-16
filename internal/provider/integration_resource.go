@@ -151,7 +151,7 @@ func (r *integrationResource) waitIntegrationSettled(
 		select {
 		case <-ctx.Done():
 			if last != nil {
-				return last, fmt.Errorf("timeout waiting for integration to settle; last name=%q custom_headers=%v: %w", last.Name, last.CustomHeaders, ctx.Err())
+				return last, fmt.Errorf("timeout waiting for integration to settle; last name=%q custom_header_count=%d: %w", last.Name, len(last.CustomHeaders), ctx.Err())
 			}
 			return nil, fmt.Errorf("timeout waiting for integration to settle: %w", ctx.Err())
 		case <-time.After(backoff):

@@ -271,11 +271,12 @@ func (c *Client) doJSONAttempt(
 	if err != nil {
 		return httpAttemptResult{}, false, err
 	}
+	requestURL := req.URL.String()
 
 	tflog.Debug(ctx, "uptimerobot http request", map[string]any{
 		"attempt": attempt + 1,
 		"method":  method,
-		"url":     baseURL + path,
+		"url":     requestURL,
 		"headers": redactHeaders(req.Header),
 		"body":    sanitizeJSON(jsonBody, 2048),
 	})
@@ -286,7 +287,7 @@ func (c *Client) doJSONAttempt(
 		tflog.Warn(ctx, "uptimerobot http error (transport)", map[string]any{
 			"attempt":     attempt + 1,
 			"method":      method,
-			"url":         baseURL + path,
+			"url":         requestURL,
 			"duration_ms": time.Since(start).Milliseconds(),
 			"error":       err.Error(),
 			"idempotent":  idempotent,
@@ -301,7 +302,7 @@ func (c *Client) doJSONAttempt(
 		tflog.Warn(ctx, "uptimerobot http error (read)", map[string]any{
 			"attempt":     attempt + 1,
 			"method":      method,
-			"url":         baseURL + path,
+			"url":         requestURL,
 			"status":      resp.StatusCode,
 			"duration_ms": time.Since(start).Milliseconds(),
 			"error":       readErr.Error(),
@@ -312,7 +313,7 @@ func (c *Client) doJSONAttempt(
 	tflog.Debug(ctx, "uptimerobot http response", map[string]any{
 		"attempt":        attempt + 1,
 		"method":         method,
-		"url":            baseURL + path,
+		"url":            requestURL,
 		"status":         resp.StatusCode,
 		"duration_ms":    time.Since(start).Milliseconds(),
 		"request_id":     resp.Header.Get("X-Request-Id"),
@@ -334,7 +335,12 @@ func (c *Client) newJSONRequest(ctx context.Context, baseURL, method, path strin
 		reqBody = bytes.NewReader(jsonBody)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, baseURL+path, reqBody)
+	targetURL, err := joinBaseURLAndPath(baseURL, path)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, targetURL, reqBody)
 	if err != nil {
 		return nil, err
 	}
@@ -344,6 +350,35 @@ func (c *Client) newJSONRequest(ctx context.Context, baseURL, method, path strin
 	}
 	c.applyCommonHeaders(req)
 	return req, nil
+}
+
+func joinBaseURLAndPath(baseURL, path string) (string, error) {
+	base, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(path) == "" {
+		return base.String(), nil
+	}
+
+	baseQuery := base.RawQuery
+	if !strings.HasSuffix(base.Path, "/") {
+		base.Path += "/"
+	}
+
+	relative, err := url.Parse(strings.TrimLeft(path, "/"))
+	if err != nil {
+		return "", err
+	}
+	if relative.IsAbs() {
+		return "", fmt.Errorf("request path must be relative: %q", path)
+	}
+
+	resolved := base.ResolveReference(relative)
+	if resolved.RawQuery == "" && relative.RawQuery == "" {
+		resolved.RawQuery = baseQuery
+	}
+	return resolved.String(), nil
 }
 
 func (c *Client) applyCommonHeaders(req *http.Request) {

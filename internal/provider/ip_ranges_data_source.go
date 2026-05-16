@@ -259,7 +259,15 @@ func normalizedStringSet(ctx context.Context, set types.Set, normalize func(stri
 
 	out := make(map[string]struct{}, len(values))
 	for _, value := range values {
-		normalized := normalize(strings.TrimSpace(value))
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			diags.AddError(
+				"Invalid filter value",
+				"Filter values must not be empty or whitespace-only.",
+			)
+			continue
+		}
+		normalized := normalize(trimmed)
 		if normalized == "" {
 			continue
 		}
@@ -315,6 +323,8 @@ func flattenIPRangePrefixes(prefixes []client.IPRangePrefix) ([]ipRangePrefixTF,
 	for _, prefix := range prefixes {
 		cidr := prefix.CIDR()
 		version := prefix.IPVersion()
+		ipv4Prefix := strings.TrimSpace(prefix.IPPrefix)
+		ipv6Prefix := strings.TrimSpace(prefix.IPv6Prefix)
 
 		tfPrefix := ipRangePrefixTF{
 			CIDR:      types.StringValue(cidr),
@@ -322,14 +332,18 @@ func flattenIPRangePrefixes(prefixes []client.IPRangePrefix) ([]ipRangePrefixTF,
 			Region:    types.StringValue(prefix.Region),
 			Service:   types.StringValue(prefix.Service),
 		}
-		if prefix.IPPrefix != "" {
-			tfPrefix.IPPrefix = types.StringValue(prefix.IPPrefix)
+		switch {
+		case ipv4Prefix != "":
+			tfPrefix.IPPrefix = types.StringValue(ipv4Prefix)
 			tfPrefix.IPv6Prefix = types.StringNull()
 			ipv4 = append(ipv4, cidr)
-		} else {
+		case ipv6Prefix != "":
 			tfPrefix.IPPrefix = types.StringNull()
-			tfPrefix.IPv6Prefix = types.StringValue(prefix.IPv6Prefix)
+			tfPrefix.IPv6Prefix = types.StringValue(ipv6Prefix)
 			ipv6 = append(ipv6, cidr)
+		default:
+			tfPrefix.IPPrefix = types.StringNull()
+			tfPrefix.IPv6Prefix = types.StringNull()
 		}
 
 		tfPrefixes = append(tfPrefixes, tfPrefix)
