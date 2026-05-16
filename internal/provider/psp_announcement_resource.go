@@ -81,7 +81,7 @@ func (r *pspAnnouncementResource) Metadata(_ context.Context, req resource.Metad
 
 func (r *pspAnnouncementResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages an UptimeRobot public status page announcement.",
+		Description: "Manages a UptimeRobot public status page announcement.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "PSP announcement identifier.",

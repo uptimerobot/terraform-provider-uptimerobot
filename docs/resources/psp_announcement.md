@@ -2,12 +2,12 @@
 page_title: "uptimerobot_psp_announcement Resource - uptimerobot"
 subcategory: ""
 description: |-
-  Manages an UptimeRobot public status page announcement.
+  Manages a UptimeRobot public status page announcement.
 ---
 
 # uptimerobot_psp_announcement (Resource)
 
-Manages an UptimeRobot public status page announcement.
+Manages a UptimeRobot public status page announcement.
 
 ## Example Usage
 
