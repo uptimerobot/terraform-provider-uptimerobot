@@ -334,10 +334,12 @@ func (r *pspAnnouncementResource) Delete(ctx context.Context, req resource.Delet
 		return
 	}
 
-	forceUnpin := pspAnnouncementPinManaged(state.IsPinned) && state.IsPinned.ValueBool()
-	if err := unpinPSPAnnouncement(ctx, r.client, state.PSPID.ValueInt64(), announcementID, forceUnpin); err != nil {
-		resp.Diagnostics.AddError("Error unpinning PSP announcement before archive", err.Error())
-		return
+	if pspAnnouncementPinManaged(state.IsPinned) {
+		forceUnpin := state.IsPinned.ValueBool()
+		if err := unpinPSPAnnouncement(ctx, r.client, state.PSPID.ValueInt64(), announcementID, forceUnpin); err != nil {
+			resp.Diagnostics.AddError("Error unpinning PSP announcement before archive", err.Error())
+			return
+		}
 	}
 
 	archived, err := r.client.ArchivePSPAnnouncement(ctx, state.PSPID.ValueInt64(), announcementID)
@@ -547,6 +549,8 @@ func waitPSPAnnouncementPinSettled(
 	deadline := time.Now().Add(timeout)
 	settleDuration := 5 * time.Second
 	if !desired {
+		// Unpin can be observed as false before the API has finished propagating the write.
+		// Keep it stable longer so a later pin is not cleared by delayed unpin side effects.
 		settleDuration = 30 * time.Second
 	}
 	backoff := 500 * time.Millisecond
