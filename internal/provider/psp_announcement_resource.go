@@ -214,7 +214,17 @@ func (r *pspAnnouncementResource) Create(ctx context.Context, req resource.Creat
 
 	if pspAnnouncementPinManaged(plan.IsPinned) {
 		if err := reconcilePSPAnnouncementPin(ctx, r.client, plan.PSPID.ValueInt64(), announcement.ID, plan.IsPinned.ValueBool(), false); err != nil {
-			resp.Diagnostics.AddError("Error managing PSP announcement pin state", err.Error())
+			if cleanupErr := archiveCreatedPSPAnnouncementAfterPinFailure(ctx, r.client, plan.PSPID.ValueInt64(), announcement.ID); cleanupErr != nil {
+				resp.Diagnostics.AddError(
+					"Error managing PSP announcement pin state",
+					fmt.Sprintf("%s. Terraform also failed to archive the newly created announcement %d during cleanup: %v", err.Error(), announcement.ID, cleanupErr),
+				)
+				return
+			}
+			resp.Diagnostics.AddError(
+				"Error managing PSP announcement pin state",
+				fmt.Sprintf("%s. Terraform archived the newly created announcement %d to avoid leaving it unmanaged.", err.Error(), announcement.ID),
+			)
 			return
 		}
 	}
@@ -478,8 +488,10 @@ func reconcilePSPAnnouncementPin(ctx context.Context, c *client.Client, pspID, a
 	if err != nil {
 		return err
 	}
-	if currentlyPinned == desired && !(forceUnpin && !desired) {
-		return nil
+	if currentlyPinned == desired {
+		if !forceUnpin || desired {
+			return nil
+		}
 	}
 
 	if desired {
@@ -490,6 +502,17 @@ func reconcilePSPAnnouncementPin(ctx context.Context, c *client.Client, pspID, a
 	}
 
 	return unpinPSPAnnouncement(ctx, c, pspID, announcementID, forceUnpin)
+}
+
+func archiveCreatedPSPAnnouncementAfterPinFailure(ctx context.Context, c *client.Client, pspID, announcementID int64) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
+	_, err := c.ArchivePSPAnnouncement(cleanupCtx, pspID, announcementID)
+	if client.IsNotFound(err) {
+		return nil
+	}
+	return err
 }
 
 func unpinPSPAnnouncement(ctx context.Context, c *client.Client, pspID, announcementID int64, force bool) error {
@@ -521,7 +544,6 @@ func waitPSPAnnouncementPinSettled(
 	desired bool,
 	timeout time.Duration,
 ) error {
-	started := time.Now()
 	deadline := time.Now().Add(timeout)
 	settleDuration := 5 * time.Second
 	if !desired {
@@ -529,6 +551,7 @@ func waitPSPAnnouncementPinSettled(
 	}
 	backoff := 500 * time.Millisecond
 	var lastPinnedID *int64
+	var matchSince time.Time
 	consecutiveMatches := 0
 
 	for {
@@ -548,15 +571,18 @@ func waitPSPAnnouncementPinSettled(
 			lastPinnedID = psp.PinnedAnnouncementID
 			currentlyPinned := psp.PinnedAnnouncementID != nil && *psp.PinnedAnnouncementID == announcementID
 			if currentlyPinned == desired {
+				if consecutiveMatches == 0 {
+					matchSince = time.Now()
+				}
 				consecutiveMatches++
-				if consecutiveMatches >= 2 && time.Since(started) >= settleDuration {
+				if consecutiveMatches >= 2 && time.Since(matchSince) >= settleDuration {
 					return nil
 				}
 			} else {
+				matchSince = time.Time{}
 				consecutiveMatches = 0
 			}
 		} else if !client.IsNotFound(err) {
-			consecutiveMatches = 0
 			return err
 		}
 

@@ -97,16 +97,16 @@ func TestAccPSPAnnouncementResource_PinUnpin(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccPSPAnnouncementResourcePinConfig(name, pspAnnouncementBoolPtr(false)),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("uptimerobot_psp_announcement.test", "is_pinned", "false"),
-					testAccCheckPSPAnnouncementPinned("uptimerobot_psp_announcement.test", false),
-				),
-			},
-			{
 				Config: testAccPSPAnnouncementResourcePinConfig(name, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckNoResourceAttr("uptimerobot_psp_announcement.test", "is_pinned"),
+					testAccCheckPSPAnnouncementPinned("uptimerobot_psp_announcement.test", true),
+				),
+			},
+			{
+				Config: testAccPSPAnnouncementResourcePinConfig(name, pspAnnouncementBoolPtr(false)),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp_announcement.test", "is_pinned", "false"),
 					testAccCheckPSPAnnouncementPinned("uptimerobot_psp_announcement.test", false),
 				),
 			},
