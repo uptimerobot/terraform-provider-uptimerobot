@@ -4,6 +4,7 @@
 
 - Added `uptimerobot_ip_ranges` data source for UptimeRobot monitoring IP allow-lists, with region, service, and IP version filters plus deterministic IPv4, IPv6, and combined CIDR outputs.
 - Added `uptimerobot_integration` data source for looking up existing integrations by ID or exact name and type without exposing integration secrets.
+- Added `uptimerobot_alert_contact`, `uptimerobot_alert_contacts`, and `uptimerobot_all_alert_contacts` data sources for discovering alert contact IDs, including mobile app and organization contacts, without managing contact settings.
 
 ## 1.5.0 — 2026-05-12
 

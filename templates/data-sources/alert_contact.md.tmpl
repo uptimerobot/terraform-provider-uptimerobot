@@ -1,0 +1,22 @@
+---
+page_title: "uptimerobot_alert_contact Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Looks up one existing UptimeRobot alert contact.
+---
+
+# uptimerobot_alert_contact (Data Source)
+
+Looks up one existing personal UptimeRobot alert contact without taking ownership of it. Use this when an alert contact ID is needed for monitor `assigned_alert_contacts`, including mobile app alert contacts.
+
+The data source reads public API v3 `GET /user/alert-contacts`. It does not create, update, or delete alert contacts, and mobile app notification settings remain read-only unless the public API exposes write endpoints for them.
+
+The endpoint returns monitor notification contacts such as email, Pro SMS, voice, and mobile app push contacts. Integrations such as Slack, webhook, Telegram, PagerDuty, Discord, and similar channels are exposed through the `uptimerobot_integration` data source instead.
+
+For mobile app push contacts, the public API uses separate type values by platform: `mobile_app_old` for iOS push contacts and `mobile_app` for Android push contacts. The UptimeRobot dashboard groups both under Push notifications.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_alert_contact/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}
