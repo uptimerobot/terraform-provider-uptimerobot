@@ -1,0 +1,24 @@
+---
+page_title: "uptimerobot_all_alert_contacts Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Lists all UptimeRobot alert contacts available to the authenticated user.
+---
+
+# uptimerobot_all_alert_contacts (Data Source)
+
+Lists personal, notify-only, and organization member UptimeRobot alert contacts with optional filters. Use this to discover alert contact IDs available for monitor `assigned_alert_contacts`.
+
+The data source reads public API v3 `GET /user/all-alert-contacts`. It is read-only and does not create, update, or delete alert contacts.
+
+The endpoint returns monitor notification contacts such as email, Pro SMS, voice, and mobile app push contacts across the current user, notify-only groups, and organization members. Integrations such as Slack, webhook, Telegram, PagerDuty, Discord, and similar channels are exposed through the `uptimerobot_integration` data source instead.
+
+For mobile app push contacts, the public API uses separate type values by platform: `mobile_app_old` for iOS push contacts and `mobile_app` for Android push contacts. The UptimeRobot dashboard groups both under Push notifications.
+
+The `value` attribute may contain email addresses, phone numbers, or mobile device tokens. Terraform marks it sensitive, but sensitive values are still stored in Terraform state.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_all_alert_contacts/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}
