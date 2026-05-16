@@ -113,8 +113,11 @@ func (p *UptimeRobotProvider) DataSources(ctx context.Context) []func() datasour
 		NewAllAlertContactsDataSource,
 		NewAlertContactDataSource,
 		NewAlertContactsDataSource,
+		NewCurrentUserDataSource,
 		NewIPRangesDataSource,
 		NewIntegrationDataSource,
+		NewTagDataSource,
+		NewTagsDataSource,
 	}
 }
 
