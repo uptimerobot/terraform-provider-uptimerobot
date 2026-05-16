@@ -30,6 +30,48 @@ func mustSlice(t *testing.T, v any) []any {
 	return s
 }
 
+func TestJoinBaseURLAndPath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		baseURL string
+		path    string
+		want    string
+	}{
+		{
+			name:    "joins v3 base and absolute path",
+			baseURL: "https://api.uptimerobot.com/v3",
+			path:    "/monitors",
+			want:    "https://api.uptimerobot.com/v3/monitors",
+		},
+		{
+			name:    "joins trailing slash base and relative path query",
+			baseURL: "https://api.uptimerobot.com/v3/",
+			path:    "tags?cursor=10",
+			want:    "https://api.uptimerobot.com/v3/tags?cursor=10",
+		},
+		{
+			name:    "preserves base query",
+			baseURL: "https://api.uptimerobot.com/meta?env=staging",
+			path:    "/ips",
+			want:    "https://api.uptimerobot.com/meta/ips?env=staging",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := joinBaseURLAndPath(tt.baseURL, tt.path)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("joinBaseURLAndPath(%q, %q) = %q, want %q", tt.baseURL, tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestClient_Headers_SameHostRedirect(t *testing.T) {
 	mux := http.NewServeMux()
 	var step int

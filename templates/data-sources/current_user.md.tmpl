@@ -1,0 +1,18 @@
+---
+page_title: "uptimerobot_current_user Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Reads metadata for the authenticated UptimeRobot user.
+---
+
+# uptimerobot_current_user (Data Source)
+
+Reads account metadata for the UptimeRobot user authenticated by the configured API key, including the current plan, monitor usage, monitor limit, and SMS credits.
+
+This data source is read-only. Values can change outside Terraform when account usage or subscription state changes. The `email` attribute is marked sensitive to avoid displaying it in Terraform output, but Terraform state still stores the value.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_current_user/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}

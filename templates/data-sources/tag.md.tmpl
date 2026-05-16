@@ -1,0 +1,18 @@
+---
+page_title: "uptimerobot_tag Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Looks up one existing UptimeRobot monitor tag.
+---
+
+# uptimerobot_tag (Data Source)
+
+Looks up one existing UptimeRobot monitor tag by `id` or exact `name` without managing it.
+
+Tags are created and associated through `uptimerobot_monitor.tags`. A standalone tag resource is intentionally not provided because deleting a tag removes it from monitors and can conflict with monitor ownership.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_tag/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}

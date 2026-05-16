@@ -102,12 +102,13 @@ func isTempServerErr(err error) bool {
 		strings.Contains(s, "gateway timeout")
 }
 
-// waitIntegrationSettled polls integration until expected name is visible in
-// repeated reads. This reduces stale read-after-write drift.
+// waitIntegrationSettled polls integration until expected values are visible
+// in repeated reads. This reduces stale read-after-write drift.
 func (r *integrationResource) waitIntegrationSettled(
 	ctx context.Context,
 	id int64,
 	expectedName string,
+	expectedCustomHeaders *map[string]string,
 	timeout time.Duration,
 ) (*client.Integration, error) {
 	if timeout <= 0 {
@@ -134,7 +135,8 @@ func (r *integrationResource) waitIntegrationSettled(
 		if err == nil {
 			last = integration
 			nameOK := expectedName == "" || integration.Name == expectedName
-			if nameOK {
+			customHeadersOK := expectedCustomHeaders == nil || equalStringMap(integration.CustomHeaders, *expectedCustomHeaders)
+			if nameOK && customHeadersOK {
 				consecutiveMatches++
 				if consecutiveMatches >= requiredConsecutiveMatches {
 					return integration, nil
@@ -149,7 +151,7 @@ func (r *integrationResource) waitIntegrationSettled(
 		select {
 		case <-ctx.Done():
 			if last != nil {
-				return last, fmt.Errorf("timeout waiting for integration to settle; last name=%q: %w", last.Name, ctx.Err())
+				return last, fmt.Errorf("timeout waiting for integration to settle; last name=%q custom_header_count=%d: %w", last.Name, len(last.CustomHeaders), ctx.Err())
 			}
 			return nil, fmt.Errorf("timeout waiting for integration to settle: %w", ctx.Err())
 		case <-time.After(backoff):
@@ -843,6 +845,20 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
+	if t == "webhook" && customHeaders != nil {
+		settled, err := r.waitIntegrationSettled(ctx, newIntegration.ID, plan.Name.ValueString(), customHeaders, 90*time.Second)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Integration create did not settle in time",
+				err.Error(),
+			)
+			return
+		}
+		if settled != nil {
+			newIntegration = settled
+		}
+	}
+
 	// Map response body to schema and populate Computed attribute values
 	plan.ID = types.StringValue(strconv.FormatInt(newIntegration.ID, 10))
 	if t == "webhook" {
@@ -945,7 +961,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	if !state.Name.IsNull() && !state.Name.IsUnknown() {
 		expectedName := state.Name.ValueString()
 		if expectedName != "" && integration.Name != expectedName {
-			if settled, err := r.waitIntegrationSettled(ctx, id, expectedName, 60*time.Second); err == nil && settled != nil {
+			if settled, err := r.waitIntegrationSettled(ctx, id, expectedName, nil, 60*time.Second); err == nil && settled != nil {
 				integration = settled
 			} else if settled != nil {
 				integration = settled
@@ -1001,6 +1017,26 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		}
 		state.PostValue = postValue
 		state.CustomValue = webhookFields.CustomValue
+
+		if !prev.CustomHeaders.IsNull() && !prev.CustomHeaders.IsUnknown() {
+			expectedHeaders, headerDiags := stringMapFromAttrPreserveEmpty(ctx, prev.CustomHeaders)
+			resp.Diagnostics.Append(headerDiags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			if !equalStringMap(integration.CustomHeaders, expectedHeaders) {
+				expectedName := ""
+				if !prev.Name.IsNull() && !prev.Name.IsUnknown() {
+					expectedName = prev.Name.ValueString()
+				}
+				if settled, err := r.waitIntegrationSettled(ctx, id, expectedName, &expectedHeaders, 60*time.Second); err == nil && settled != nil {
+					integration = settled
+				} else if settled != nil {
+					integration = settled
+				}
+			}
+		}
+
 		customHeaders, diags := webhookCustomHeadersState(ctx, prev.CustomHeaders, integration.CustomHeaders)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
@@ -1321,7 +1357,7 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	settled, err := r.waitIntegrationSettled(ctx, id, plan.Name.ValueString(), 90*time.Second)
+	settled, err := r.waitIntegrationSettled(ctx, id, plan.Name.ValueString(), customHeaders, 90*time.Second)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Integration update did not settle in time",

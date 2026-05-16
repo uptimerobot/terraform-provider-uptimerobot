@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -549,7 +549,7 @@ func hclStringMap(values map[string]string) string {
 	for key := range values {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	out := "{"
 	for i, key := range keys {
@@ -1056,7 +1056,7 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 				ResourceName:            "uptimerobot_monitor.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"timeout", "status", "custom_http_headers", "group_id", "is_paused"},
+				ImportStateVerifyIgnore: []string{"timeout", "status", "custom_http_headers", "http_method_type", "group_id", "is_paused"},
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
 				),
