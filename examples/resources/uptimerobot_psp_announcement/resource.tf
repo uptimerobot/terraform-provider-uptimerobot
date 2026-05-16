@@ -13,4 +13,5 @@ resource "uptimerobot_psp_announcement" "maintenance" {
   type       = "maintenance"
   start_date = "2030-01-01T00:00:00Z"
   end_date   = "2030-01-01T02:00:00Z"
+  is_pinned  = true
 }

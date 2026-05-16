@@ -3,6 +3,7 @@
 ### Added
 
 - Added `uptimerobot_psp_announcement` resource for creating, updating, importing, and archiving public status page announcements.
+- Added `is_pinned` support to `uptimerobot_psp_announcement` for declarative PSP announcement pin and unpin management.
 
 ## 1.6.0 — 2026-05-16
 

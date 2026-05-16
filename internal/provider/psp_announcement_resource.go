@@ -46,6 +46,7 @@ type pspAnnouncementResourceModel struct {
 	Type         types.String `tfsdk:"type"`
 	StartDate    types.String `tfsdk:"start_date"`
 	EndDate      types.String `tfsdk:"end_date"`
+	IsPinned     types.Bool   `tfsdk:"is_pinned"`
 	CreationDate types.String `tfsdk:"creation_date"`
 }
 
@@ -140,6 +141,10 @@ func (r *pspAnnouncementResource) Schema(_ context.Context, _ resource.SchemaReq
 				Description: "Optional announcement end date as an RFC3339 timestamp. Omit or set to null to leave the announcement without an end date.",
 				Optional:    true,
 			},
+			"is_pinned": schema.BoolAttribute{
+				Description: "Whether this announcement is pinned on its public status page. Omit this attribute to leave pinned-announcement ownership unmanaged by this resource.",
+				Optional:    true,
+			},
 			"creation_date": schema.StringAttribute{
 				Description: "Announcement creation timestamp returned by the API.",
 				Computed:    true,
@@ -207,6 +212,13 @@ func (r *pspAnnouncementResource) Create(ctx context.Context, req resource.Creat
 		announcementForState = settled
 	}
 
+	if pspAnnouncementPinManaged(plan.IsPinned) {
+		if err := reconcilePSPAnnouncementPin(ctx, r.client, plan.PSPID.ValueInt64(), announcement.ID, plan.IsPinned.ValueBool(), false); err != nil {
+			resp.Diagnostics.AddError("Error managing PSP announcement pin state", err.Error())
+			return
+		}
+	}
+
 	plan.applyAPI(announcementForState)
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
@@ -236,6 +248,14 @@ func (r *pspAnnouncementResource) Read(ctx context.Context, req resource.ReadReq
 	}
 
 	state.applyAPI(announcement)
+	if pspAnnouncementPinManaged(state.IsPinned) {
+		pinned, err := readPSPAnnouncementPinState(ctx, r.client, pspID, announcementID, state.IsPinned.ValueBool(), 30*time.Second)
+		if err != nil {
+			resp.Diagnostics.AddError("Error reading PSP announcement pin state", err.Error())
+			return
+		}
+		state.IsPinned = types.BoolValue(pinned)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
@@ -279,6 +299,14 @@ func (r *pspAnnouncementResource) Update(ctx context.Context, req resource.Updat
 		announcementForState = settled
 	}
 
+	if pspAnnouncementPinManaged(plan.IsPinned) {
+		forceUnpin := pspAnnouncementPinManaged(state.IsPinned) && state.IsPinned.ValueBool()
+		if err := reconcilePSPAnnouncementPin(ctx, r.client, plan.PSPID.ValueInt64(), announcementID, plan.IsPinned.ValueBool(), forceUnpin); err != nil {
+			resp.Diagnostics.AddError("Error managing PSP announcement pin state", err.Error())
+			return
+		}
+	}
+
 	plan.applyAPI(announcementForState)
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
@@ -293,6 +321,12 @@ func (r *pspAnnouncementResource) Delete(ctx context.Context, req resource.Delet
 	announcementID, err := state.announcementID()
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid PSP announcement ID", err.Error())
+		return
+	}
+
+	forceUnpin := pspAnnouncementPinManaged(state.IsPinned) && state.IsPinned.ValueBool()
+	if err := unpinPSPAnnouncement(ctx, r.client, state.PSPID.ValueInt64(), announcementID, forceUnpin); err != nil {
+		resp.Diagnostics.AddError("Error unpinning PSP announcement before archive", err.Error())
 		return
 	}
 
@@ -437,6 +471,169 @@ func waitPSPAnnouncementSettled(
 			}
 		}
 	}
+}
+
+func reconcilePSPAnnouncementPin(ctx context.Context, c *client.Client, pspID, announcementID int64, desired bool, forceUnpin bool) error {
+	currentlyPinned, err := pspAnnouncementIsPinned(ctx, c, pspID, announcementID)
+	if err != nil {
+		return err
+	}
+	if currentlyPinned == desired && !(forceUnpin && !desired) {
+		return nil
+	}
+
+	if desired {
+		if err := c.PinPSPAnnouncement(ctx, pspID, announcementID); err != nil {
+			return err
+		}
+		return waitPSPAnnouncementPinSettled(ctx, c, pspID, announcementID, true, 90*time.Second)
+	}
+
+	return unpinPSPAnnouncement(ctx, c, pspID, announcementID, forceUnpin)
+}
+
+func unpinPSPAnnouncement(ctx context.Context, c *client.Client, pspID, announcementID int64, force bool) error {
+	currentlyPinned, err := pspAnnouncementIsPinned(ctx, c, pspID, announcementID)
+	if err != nil {
+		if client.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !currentlyPinned && !force {
+		return nil
+	}
+
+	if err := c.UnpinPSPAnnouncement(ctx, pspID, announcementID); err != nil {
+		pinned, readErr := pspAnnouncementIsPinned(ctx, c, pspID, announcementID)
+		if readErr == nil && !pinned {
+			return nil
+		}
+		return err
+	}
+	return waitPSPAnnouncementPinSettled(ctx, c, pspID, announcementID, false, 90*time.Second)
+}
+
+func waitPSPAnnouncementPinSettled(
+	ctx context.Context,
+	c *client.Client,
+	pspID, announcementID int64,
+	desired bool,
+	timeout time.Duration,
+) error {
+	started := time.Now()
+	deadline := time.Now().Add(timeout)
+	settleDuration := 5 * time.Second
+	if !desired {
+		settleDuration = 30 * time.Second
+	}
+	backoff := 500 * time.Millisecond
+	var lastPinnedID *int64
+	consecutiveMatches := 0
+
+	for {
+		if ctx.Err() != nil || time.Now().After(deadline) {
+			message := fmt.Sprintf("timeout waiting for PSP announcement is_pinned=%t", desired)
+			if lastPinnedID != nil {
+				message = fmt.Sprintf("%s; last pinned_announcement_id=%d", message, *lastPinnedID)
+			}
+			if ctx.Err() != nil {
+				return fmt.Errorf("%s: %w", message, ctx.Err())
+			}
+			return fmt.Errorf("%s", message)
+		}
+
+		psp, err := c.GetPSP(ctx, pspID)
+		if err == nil {
+			lastPinnedID = psp.PinnedAnnouncementID
+			currentlyPinned := psp.PinnedAnnouncementID != nil && *psp.PinnedAnnouncementID == announcementID
+			if currentlyPinned == desired {
+				consecutiveMatches++
+				if consecutiveMatches >= 2 && time.Since(started) >= settleDuration {
+					return nil
+				}
+			} else {
+				consecutiveMatches = 0
+			}
+		} else if !client.IsNotFound(err) {
+			consecutiveMatches = 0
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for PSP announcement is_pinned=%t: %w", desired, ctx.Err())
+		case <-time.After(backoff):
+		}
+
+		if backoff < 5*time.Second {
+			backoff *= 2
+			if backoff > 5*time.Second {
+				backoff = 5 * time.Second
+			}
+		}
+	}
+}
+
+func readPSPAnnouncementPinState(
+	ctx context.Context,
+	c *client.Client,
+	pspID, announcementID int64,
+	preferred bool,
+	timeout time.Duration,
+) (bool, error) {
+	deadline := time.Now().Add(timeout)
+	backoff := 500 * time.Millisecond
+	lastPinned := false
+	var lastErr error
+
+	for {
+		pinned, err := pspAnnouncementIsPinned(ctx, c, pspID, announcementID)
+		if err == nil {
+			lastErr = nil
+			lastPinned = pinned
+			if pinned == preferred {
+				return pinned, nil
+			}
+		} else {
+			lastErr = err
+			if client.IsNotFound(err) {
+				return false, err
+			}
+		}
+
+		if ctx.Err() != nil || time.Now().After(deadline) {
+			if lastErr != nil {
+				return lastPinned, lastErr
+			}
+			return lastPinned, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return lastPinned, ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		if backoff < 5*time.Second {
+			backoff *= 2
+			if backoff > 5*time.Second {
+				backoff = 5 * time.Second
+			}
+		}
+	}
+}
+
+func pspAnnouncementIsPinned(ctx context.Context, c *client.Client, pspID, announcementID int64) (bool, error) {
+	psp, err := c.GetPSP(ctx, pspID)
+	if err != nil {
+		return false, err
+	}
+	return psp.PinnedAnnouncementID != nil && *psp.PinnedAnnouncementID == announcementID, nil
+}
+
+func pspAnnouncementPinManaged(value types.Bool) bool {
+	return !value.IsNull() && !value.IsUnknown()
 }
 
 func pspAnnouncementMatches(announcement *client.PSPAnnouncement, expected pspAnnouncementExpected) bool {

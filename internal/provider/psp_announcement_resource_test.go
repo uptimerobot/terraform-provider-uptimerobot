@@ -180,3 +180,44 @@ func TestPSPAnnouncementMatches(t *testing.T) {
 		t.Fatal("expected type mismatch")
 	}
 }
+
+func TestPSPAnnouncementPinOwnershipIsOptional(t *testing.T) {
+	t.Parallel()
+
+	if pspAnnouncementPinManaged(types.BoolNull()) {
+		t.Fatal("expected null is_pinned to be unmanaged")
+	}
+	if !pspAnnouncementPinManaged(types.BoolValue(false)) {
+		t.Fatal("expected explicit false is_pinned to be managed")
+	}
+	if !pspAnnouncementPinManaged(types.BoolValue(true)) {
+		t.Fatal("expected explicit true is_pinned to be managed")
+	}
+}
+
+func TestPSPAnnouncementApplyAPIPreservesPinState(t *testing.T) {
+	t.Parallel()
+
+	title := "Maintenance"
+	content := "Window"
+	status := "Pending"
+	announcementType := "Maintenance"
+	startDate := "2030-01-01T00:00:00Z"
+
+	model := pspAnnouncementResourceModel{
+		IsPinned: types.BoolValue(true),
+	}
+	model.applyAPI(&client.PSPAnnouncement{
+		ID:        101,
+		PSPID:     42,
+		Title:     &title,
+		Content:   &content,
+		Status:    &status,
+		Type:      &announcementType,
+		StartDate: &startDate,
+	})
+
+	if model.IsPinned.IsNull() || !model.IsPinned.ValueBool() {
+		t.Fatalf("expected applyAPI to preserve managed pin state, got %#v", model.IsPinned)
+	}
+}
