@@ -33,6 +33,7 @@ resource "uptimerobot_monitor" "api" {
 resource "uptimerobot_psp" "public_status" {
   name          = "Example.com Status"
   homepage_link = "https://example.com"
+  monitor_sort  = "friendly_name_asc"
   monitor_ids = [
     uptimerobot_monitor.website.id,
     uptimerobot_monitor.api.id,
@@ -173,6 +174,14 @@ You can include specific monitors in your status page by providing their IDs in 
 - Create different status pages for different audiences
 - Group related services together
 
+Use `monitor_sort` to control how monitors are ordered on the public status page. Supported values are:
+- `friendly_name_asc`
+- `friendly_name_desc`
+- `status_up_down_paused`
+- `status_down_up_paused`
+
+The provider sends this as the API v3 PSP `sort` request field. API deployments that return `sort` in PSP responses are read back into state. When `monitor_sort` is configured but the API omits `sort`, the provider keeps the configured Terraform value in state so plans stay stable; removing `monitor_sort` stops Terraform from managing the remote sort value.
+
 ## Import
 
 Existing public status pages created in the UptimeRobot UI or through the UptimeRobot API can be imported into Terraform state by their numeric public status page ID. After importing, add matching Terraform configuration and run `terraform plan` to review any differences.
@@ -208,6 +217,7 @@ This field accepts only local filesystem paths. If you need a remote file, downl
 
 Set to an empty string (`""`) to clear the existing logo.
 - `monitor_ids` (Set of Number) Set of monitor IDs
+- `monitor_sort` (String) Sort order for monitors displayed on the PSP. Supported values are `friendly_name_asc`, `friendly_name_desc`, `status_up_down_paused`, and `status_down_up_paused`.
 - `no_index` (Boolean) Whether to prevent indexing
 - `password` (String, Sensitive) Password for accessing the PSP page.
 - Redacted in CLI output and logs.

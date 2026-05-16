@@ -49,6 +49,7 @@ type pspResourceModel struct {
 	Password                   types.String         `tfsdk:"password"`
 	IsPasswordSet              types.Bool           `tfsdk:"is_password_set"`
 	MonitorIDs                 types.Set            `tfsdk:"monitor_ids"`
+	MonitorSort                types.String         `tfsdk:"monitor_sort"`
 	MonitorsCount              types.Int64          `tfsdk:"monitors_count"`
 	Status                     types.String         `tfsdk:"status"`
 	URLKey                     types.String         `tfsdk:"url_key"`
@@ -125,6 +126,9 @@ func maskOptionalTopLevelNullsFromPlan(plan *pspResourceModel, state *pspResourc
 	if plan.PinnedAnnouncementID.IsNull() {
 		state.PinnedAnnouncementID = types.Int64Null()
 	}
+	if plan.MonitorSort.IsNull() {
+		state.MonitorSort = types.StringNull()
+	}
 }
 
 func preferPlannedTopLevelValues(plan *pspResourceModel, state *pspResourceModel) {
@@ -154,6 +158,9 @@ func preferPlannedTopLevelValues(plan *pspResourceModel, state *pspResourceModel
 	}
 	if !plan.PinnedAnnouncementID.IsNull() && !plan.PinnedAnnouncementID.IsUnknown() {
 		state.PinnedAnnouncementID = plan.PinnedAnnouncementID
+	}
+	if hasConfiguredString(plan.MonitorSort) {
+		state.MonitorSort = plan.MonitorSort
 	}
 }
 
@@ -259,6 +266,29 @@ func ensureKnownTopLevelOptionals(state *pspResourceModel) {
 	}
 	if state.PinnedAnnouncementID.IsUnknown() {
 		state.PinnedAnnouncementID = types.Int64Null()
+	}
+	if state.MonitorSort.IsUnknown() {
+		state.MonitorSort = types.StringNull()
+	}
+}
+
+type pspMonitorSortOmittedPlanModifier struct{}
+
+func (m pspMonitorSortOmittedPlanModifier) Description(context.Context) string {
+	return "Treat omitted monitor_sort as unmanaged instead of keeping the prior state value."
+}
+
+func (m pspMonitorSortOmittedPlanModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m pspMonitorSortOmittedPlanModifier) PlanModifyString(
+	_ context.Context,
+	req planmodifier.StringRequest,
+	resp *planmodifier.StringResponse,
+) {
+	if req.ConfigValue.IsNull() {
+		resp.PlanValue = types.StringNull()
 	}
 }
 
@@ -560,6 +590,20 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				// and observed from the API (including on import) when omitted.
 				Computed:    true,
 				ElementType: types.Int64Type,
+			},
+			"monitor_sort": schema.StringAttribute{
+				Description: "Sort order for monitors displayed on the PSP",
+				MarkdownDescription: "Sort order for monitors displayed on the PSP. Supported values are " +
+					"`friendly_name_asc`, `friendly_name_desc`, `status_up_down_paused`, and `status_down_up_paused`.",
+				Optional: true,
+				Computed: true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(AllPSPMonitorSorts()...),
+				},
+				PlanModifiers: []planmodifier.String{
+					pspMonitorSortOmittedPlanModifier{},
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			// monitors_count is computed by the API from the amount of monitors in the monitor_ids
 			// Do not use UseStateForUnknown because this field is managed completly by the API.
@@ -889,6 +933,15 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		value := plan.Subscription.ValueBool()
 		expectedSubscription = &value
 	}
+	var expectedMonitorSort *int
+	if hasConfiguredString(plan.MonitorSort) {
+		value, err := apiPSPMonitorSort(plan.MonitorSort.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Invalid PSP monitor sort", err.Error())
+			return
+		}
+		expectedMonitorSort = &value
+	}
 
 	// Create new PSP
 	psp := &client.CreatePSPRequest{
@@ -918,6 +971,9 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	if !plan.GACode.IsNull() && !plan.GACode.IsUnknown() {
 		psp.GACode = plan.GACode.ValueStringPointer()
+	}
+	if expectedMonitorSort != nil {
+		psp.Sort = expectedMonitorSort
 	}
 
 	// According to the API DTO, we should only include customSettings if needed
@@ -1134,6 +1190,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		requestedMonitorIDs,
 		expectedHomepageLink,
 		expectedSubscription,
+		expectedMonitorSort,
 		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
@@ -1264,6 +1321,13 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		value := state.Subscription.ValueBool()
 		expectedSubscription = &value
 	}
+	var expectedMonitorSort *int
+	if hasConfiguredString(state.MonitorSort) {
+		value, err := apiPSPMonitorSort(state.MonitorSort.ValueString())
+		if err == nil {
+			expectedMonitorSort = &value
+		}
+	}
 
 	nameMismatch := expectedName != "" && psp.Name != expectedName
 	monitorsMismatch := false
@@ -1273,10 +1337,11 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	}
 	homepageLinkMismatch := expectedHomepageLink != nil && !pspStringPtrMatches(psp.HomepageLink, expectedHomepageLink)
 	subscriptionMismatch := expectedSubscription != nil && psp.Subscription != *expectedSubscription
+	monitorSortMismatch := expectedMonitorSort != nil && psp.Sort != nil && *psp.Sort != *expectedMonitorSort
 
 	// PSP reads can be eventually consistent right after updates.
 	// If the API returns transient old values, re-poll briefly before accepting drift.
-	if !isImport && (nameMismatch || monitorsMismatch || homepageLinkMismatch || subscriptionMismatch) {
+	if !isImport && (nameMismatch || monitorsMismatch || homepageLinkMismatch || subscriptionMismatch || monitorSortMismatch) {
 		if settled, err := waitPSPSettled(
 			ctx,
 			r.client,
@@ -1285,6 +1350,7 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 			expectedMonitorIDs,
 			expectedHomepageLink,
 			expectedSubscription,
+			expectedMonitorSort,
 			20*time.Second,
 		); err == nil && settled != nil {
 			psp = settled
@@ -1305,6 +1371,9 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	if !isImport {
 		updatedState.Icon = state.Icon
 		updatedState.Logo = state.Logo
+		if psp.Sort == nil && hasConfiguredString(state.MonitorSort) {
+			updatedState.MonitorSort = state.MonitorSort
+		}
 	}
 
 	if len(psp.MonitorIDs) > 0 {
@@ -1378,6 +1447,15 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		value := plan.Subscription.ValueBool()
 		expectedSubscription = &value
 	}
+	var expectedMonitorSort *int
+	if hasConfiguredString(plan.MonitorSort) {
+		value, err := apiPSPMonitorSort(plan.MonitorSort.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Invalid PSP monitor sort", err.Error())
+			return
+		}
+		expectedMonitorSort = &value
+	}
 
 	// Get current state
 	id, err := strconv.ParseInt(state.ID.ValueString(), 10, 64)
@@ -1439,6 +1517,11 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		(state.Status.IsNull() || state.Status.IsUnknown() || plan.Status.ValueString() != state.Status.ValueString()) {
 		status := plan.Status.ValueString()
 		psp.Status = &status
+	}
+
+	if expectedMonitorSort != nil &&
+		(state.MonitorSort.IsNull() || state.MonitorSort.IsUnknown() || plan.MonitorSort.ValueString() != state.MonitorSort.ValueString()) {
+		psp.Sort = expectedMonitorSort
 	}
 
 	if hasMonitorPlan {
@@ -1620,6 +1703,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		requestedMonitorIDs,
 		expectedHomepageLink,
 		expectedSubscription,
+		expectedMonitorSort,
 		120*time.Second,
 	); err == nil && settled != nil {
 		pspForState = settled
@@ -1706,6 +1790,7 @@ func waitPSPSettled(
 	expectedMonitorIDs []int64, // nil means omitted and should not be checked
 	expectedHomepageLink *string,
 	expectedSubscription *bool,
+	expectedMonitorSort *int,
 	timeout time.Duration,
 ) (*client.PSP, error) {
 
@@ -1743,8 +1828,9 @@ func waitPSPSettled(
 
 			homepageLinkOK := pspStringPtrMatches(psp.HomepageLink, expectedHomepageLink)
 			subscriptionOK := expectedSubscription == nil || psp.Subscription == *expectedSubscription
+			monitorSortOK := pspMonitorSortPtrMatches(psp.Sort, expectedMonitorSort)
 
-			if nameOK && monitorsOK && homepageLinkOK && subscriptionOK {
+			if nameOK && monitorsOK && homepageLinkOK && subscriptionOK && monitorSortOK {
 				consecutiveMatches++
 				if consecutiveMatches >= requiredConsecutiveMatches {
 					return psp, nil
@@ -1785,6 +1871,55 @@ func pspStringPtrMatches(got *string, want *string) bool {
 		return *want == ""
 	}
 	return *got == *want
+}
+
+func pspMonitorSortPtrMatches(got *int, want *int) bool {
+	if want == nil || got == nil {
+		return true
+	}
+	return *got == *want
+}
+
+func AllPSPMonitorSorts() []string {
+	return []string{
+		"friendly_name_asc",
+		"friendly_name_desc",
+		"status_up_down_paused",
+		"status_down_up_paused",
+	}
+}
+
+func apiPSPMonitorSort(value string) (int, error) {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case "friendly_name_asc":
+		return 1, nil
+	case "friendly_name_desc":
+		return 2, nil
+	case "status_up_down_paused":
+		return 3, nil
+	case "status_down_up_paused":
+		return 4, nil
+	default:
+		return 0, fmt.Errorf("unsupported PSP monitor_sort %q", value)
+	}
+}
+
+func terraformPSPMonitorSort(value *int) (string, bool) {
+	if value == nil {
+		return "", false
+	}
+	switch *value {
+	case 1:
+		return "friendly_name_asc", true
+	case 2:
+		return "friendly_name_desc", true
+	case 3:
+		return "status_up_down_paused", true
+	case 4:
+		return "status_down_up_paused", true
+	default:
+		return "", false
+	}
 }
 
 func pspToResourceData(_ context.Context, psp *client.PSP, plan *pspResourceModel) {
@@ -1838,6 +1973,12 @@ func pspToResourceData(_ context.Context, psp *client.PSP, plan *pspResourceMode
 	} else {
 		// Keep as null if not set
 		plan.PinnedAnnouncementID = types.Int64Null()
+	}
+
+	if sortValue, ok := terraformPSPMonitorSort(psp.Sort); ok {
+		plan.MonitorSort = types.StringValue(sortValue)
+	} else {
+		plan.MonitorSort = types.StringNull()
 	}
 
 	// Handle CustomSettings if present in the API response
