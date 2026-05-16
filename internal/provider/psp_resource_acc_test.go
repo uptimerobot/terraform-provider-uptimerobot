@@ -586,6 +586,11 @@ func TestAccPSPResource_MonitorSort(t *testing.T) {
 					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "monitor_sort"),
 				),
 			},
+			{
+				Config:             testAccPSPResourceConfigMonitorSortOmitted(name),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
 		},
 	})
 }
