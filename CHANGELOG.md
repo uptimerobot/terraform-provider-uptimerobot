@@ -7,6 +7,10 @@
 - Added `uptimerobot_alert_contact`, `uptimerobot_alert_contacts`, and `uptimerobot_all_alert_contacts` data sources for discovering alert contact IDs, including mobile app and organization contacts, without managing contact settings.
 - Added `uptimerobot_current_user`, `uptimerobot_tag`, and `uptimerobot_tags` data sources for account metadata and read-only monitor tag discovery.
 
+### Fixed
+
+- Wait for webhook integration `custom_headers` to settle during create, update, and refresh operations to reduce false read-after-write drift.
+
 ## 1.5.0 — 2026-05-12
 
 ### Added

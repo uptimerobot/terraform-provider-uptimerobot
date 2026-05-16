@@ -1056,7 +1056,7 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 				ResourceName:            "uptimerobot_monitor.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"timeout", "status", "custom_http_headers", "group_id", "is_paused"},
+				ImportStateVerifyIgnore: []string{"timeout", "status", "custom_http_headers", "http_method_type", "group_id", "is_paused"},
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", url),
 				),
