@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 1.6.0 — 2026-05-16
+
 ### Added
 
 - Added `uptimerobot_ip_ranges` data source for UptimeRobot monitoring IP allow-lists, with region, service, and IP version filters plus deterministic IPv4, IPv6, and combined CIDR outputs.
