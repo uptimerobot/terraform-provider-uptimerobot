@@ -1,0 +1,18 @@
+---
+page_title: "uptimerobot_tags Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Lists existing UptimeRobot monitor tags.
+---
+
+# uptimerobot_tags (Data Source)
+
+Lists existing UptimeRobot monitor tags with an optional exact `name` filter.
+
+Use this data source to discover tag IDs for read-only composition, reporting, or future API features that reference tags by ID. Tags are still owned through monitor configuration via `uptimerobot_monitor.tags`; deleting tags is out of scope for this provider surface.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_tags/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}

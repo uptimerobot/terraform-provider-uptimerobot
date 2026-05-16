@@ -108,8 +108,11 @@ Detailed documentation for the data sources supported by this provider can be fo
 - [uptimerobot_alert_contact](docs/data-sources/alert_contact.md)
 - [uptimerobot_alert_contacts](docs/data-sources/alert_contacts.md)
 - [uptimerobot_all_alert_contacts](docs/data-sources/all_alert_contacts.md)
+- [uptimerobot_current_user](docs/data-sources/current_user.md)
 - [uptimerobot_ip_ranges](docs/data-sources/ip_ranges.md)
 - [uptimerobot_integration](docs/data-sources/integration.md)
+- [uptimerobot_tag](docs/data-sources/tag.md)
+- [uptimerobot_tags](docs/data-sources/tags.md)
 
 ## Developing the Provider
 
