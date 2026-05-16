@@ -100,6 +100,7 @@ Detailed documentation for the resources supported by this provider can be found
 - [uptimerobot_maintenance_window](docs/resources/maintenance_window.md)
 - [uptimerobot_integration](docs/resources/integration.md)
 - [uptimerobot_psp](docs/resources/psp.md)
+- [uptimerobot_psp_announcement](docs/resources/psp_announcement.md)
 
 ## Data Source Reference
 

@@ -1,0 +1,39 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{tffile "examples/resources/uptimerobot_psp_announcement/resource.tf"}}
+
+## Status And Type
+
+`status` accepts `offline`, `pending`, `published`, or `archived`.
+Use a future `start_date` with `pending` when scheduling an announcement. UptimeRobot may move scheduled announcements through their lifecycle when their configured dates are reached.
+
+`type` accepts `info`, `maintenance`, or `issue`.
+
+`end_date` is optional. Omit it or set it to `null` to keep the announcement without an end date.
+
+Delivery counters such as subscriber send counts are not exposed because they are runtime metadata and are not managed by Terraform.
+
+The UptimeRobot v3 API does not expose hard deletion for PSP announcements. Destroying this Terraform resource archives the remote announcement and removes it from Terraform state.
+
+## Import
+
+Existing public status page announcements created in the UptimeRobot UI or through the UptimeRobot API can be imported into Terraform state with the public status page ID and announcement ID.
+
+Import by `psp_id:announcement_id`:
+
+```bash
+terraform import uptimerobot_psp_announcement.example 123456:789012
+```
+
+{{ .SchemaMarkdown | trimspace }}
