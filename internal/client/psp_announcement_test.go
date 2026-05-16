@@ -47,6 +47,16 @@ func TestClient_PSPAnnouncementCRUDPaths(t *testing.T) {
 				return jsonResponse(http.StatusOK, `{"id":101,"pspId":42,"userId":7,"title":"Updated","content":"Window","status":"Pending","type":"Maintenance","startDate":"2030-01-01T00:00:00.000Z","endDate":null,"creationDate":"2026-05-16T10:00:00.000Z"}`), nil
 			case "GET /psps/42/announcements?cursor=101":
 				return jsonResponse(http.StatusOK, `{"data":[],"nextLink":null}`), nil
+			case "POST /psps/42/announcements/101/pin":
+				if string(body) != "{}" {
+					t.Fatalf("unexpected pin body: %s", body)
+				}
+				return jsonResponse(http.StatusOK, `{}`), nil
+			case "POST /psps/42/announcements/101/unpin":
+				if string(body) != "{}" {
+					t.Fatalf("unexpected unpin body: %s", body)
+				}
+				return jsonResponse(http.StatusOK, `{}`), nil
 			default:
 				t.Fatalf("unexpected request %s", req.Method+" "+req.URL.RequestURI())
 				return nil, nil
@@ -100,6 +110,14 @@ func TestClient_PSPAnnouncementCRUDPaths(t *testing.T) {
 		t.Fatalf("ListPSPAnnouncements returned error: %v", err)
 	}
 
+	if err := c.PinPSPAnnouncement(context.Background(), 42, 101); err != nil {
+		t.Fatalf("PinPSPAnnouncement returned error: %v", err)
+	}
+
+	if err := c.UnpinPSPAnnouncement(context.Background(), 42, 101); err != nil {
+		t.Fatalf("UnpinPSPAnnouncement returned error: %v", err)
+	}
+
 	archived, err := c.ArchivePSPAnnouncement(context.Background(), 42, 101)
 	if err != nil {
 		t.Fatalf("ArchivePSPAnnouncement returned error: %v", err)
@@ -113,6 +131,8 @@ func TestClient_PSPAnnouncementCRUDPaths(t *testing.T) {
 		"GET /psps/42/announcements/101",
 		"PATCH /psps/42/announcements/101",
 		"GET /psps/42/announcements?cursor=101",
+		"POST /psps/42/announcements/101/pin",
+		"POST /psps/42/announcements/101/unpin",
 		"PATCH /psps/42/announcements/101",
 	}
 	if strings.Join(seen, "\n") != strings.Join(want, "\n") {

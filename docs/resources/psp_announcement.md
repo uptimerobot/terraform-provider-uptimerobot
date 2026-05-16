@@ -27,6 +27,7 @@ resource "uptimerobot_psp_announcement" "maintenance" {
   type       = "maintenance"
   start_date = "2030-01-01T00:00:00Z"
   end_date   = "2030-01-01T02:00:00Z"
+  is_pinned  = true
 }
 ```
 
@@ -38,6 +39,13 @@ Use a future `start_date` with `pending` when scheduling an announcement. Uptime
 `type` accepts `info`, `maintenance`, or `issue`.
 
 `end_date` is optional. Omit it or set it to `null` to keep the announcement without an end date.
+
+## Pin Ownership
+
+Set `is_pinned = true` to pin this announcement on its public status page, or `is_pinned = false` to unpin it when it is currently pinned.
+Omit `is_pinned` to leave pinned-announcement state unmanaged by this resource.
+
+Do not manage `is_pinned` on `uptimerobot_psp_announcement` and `pinned_announcement_id` on `uptimerobot_psp` for the same public status page at the same time. They both own the same remote API field.
 
 Delivery counters such as subscriber send counts are not exposed because they are runtime metadata and are not managed by Terraform.
 
@@ -66,6 +74,7 @@ terraform import uptimerobot_psp_announcement.example 123456:789012
 ### Optional
 
 - `end_date` (String) Optional announcement end date as an RFC3339 timestamp. Omit or set to null to leave the announcement without an end date.
+- `is_pinned` (Boolean) Whether this announcement is pinned on its public status page. Omit this attribute to leave pinned-announcement ownership unmanaged by this resource.
 - `status` (String) Announcement status. Valid values are offline, pending, published, and archived.
 - `type` (String) Announcement type. Valid values are info, maintenance, and issue.
 

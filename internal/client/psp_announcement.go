@@ -55,6 +55,10 @@ func pspAnnouncementPath(pspID, announcementID int64) string {
 	return fmt.Sprintf("%s/%d", pspAnnouncementEndpoint(pspID), announcementID)
 }
 
+func pspAnnouncementActionPath(pspID, announcementID int64, action string) string {
+	return fmt.Sprintf("%s/%s", pspAnnouncementPath(pspID, announcementID), action)
+}
+
 // ListPSPAnnouncements lists announcements for a PSP.
 func (c *Client) ListPSPAnnouncements(ctx context.Context, pspID int64, cursorID *int64) (*PSPAnnouncementListResponse, error) {
 	path := pspAnnouncementEndpoint(pspID)
@@ -114,6 +118,18 @@ func (c *Client) UpdatePSPAnnouncement(ctx context.Context, pspID, announcementI
 		return nil, fmt.Errorf("failed to unmarshal PSP announcement response: %w", err)
 	}
 	return &announcement, nil
+}
+
+// PinPSPAnnouncement pins an announcement on its PSP.
+func (c *Client) PinPSPAnnouncement(ctx context.Context, pspID, announcementID int64) error {
+	_, err := c.doRequest(ctx, http.MethodPost, pspAnnouncementActionPath(pspID, announcementID, "pin"), struct{}{})
+	return err
+}
+
+// UnpinPSPAnnouncement unpins an announcement from its PSP.
+func (c *Client) UnpinPSPAnnouncement(ctx context.Context, pspID, announcementID int64) error {
+	_, err := c.doRequest(ctx, http.MethodPost, pspAnnouncementActionPath(pspID, announcementID, "unpin"), struct{}{})
+	return err
 }
 
 // ArchivePSPAnnouncement archives a PSP announcement. The public API does not expose hard deletion.
