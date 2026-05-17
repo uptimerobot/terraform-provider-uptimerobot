@@ -1,4 +1,4 @@
-package provider
+package alertcontact
 
 import (
 	"context"
@@ -25,13 +25,13 @@ var (
 	_ datasource.DataSourceWithConfigure = &alertContactsDataSource{}
 )
 
-// NewAlertContactDataSource returns the single alert contact lookup data source.
-func NewAlertContactDataSource() datasource.DataSource {
+// NewDataSource returns the single alert contact lookup data source.
+func NewDataSource() datasource.DataSource {
 	return &alertContactDataSource{}
 }
 
-// NewAlertContactsDataSource returns the alert contacts list data source.
-func NewAlertContactsDataSource() datasource.DataSource {
+// NewListDataSource returns the alert contacts list data source.
+func NewListDataSource() datasource.DataSource {
 	return &alertContactsDataSource{}
 }
 
@@ -441,6 +441,13 @@ func stringState(value string) types.String {
 		return types.StringNull()
 	}
 	return types.StringValue(value)
+}
+
+func valueString(value types.String) string {
+	if value.IsNull() || value.IsUnknown() {
+		return ""
+	}
+	return value.ValueString()
 }
 
 func int64PtrState(value *int64) types.Int64 {

@@ -1,4 +1,4 @@
-package provider
+package alertcontact
 
 import (
 	"context"
@@ -22,8 +22,8 @@ var (
 	_ datasource.DataSourceWithConfigure = &allAlertContactsDataSource{}
 )
 
-// NewAllAlertContactsDataSource returns the alert contacts list data source for all accessible contacts.
-func NewAllAlertContactsDataSource() datasource.DataSource {
+// NewAllDataSource returns the alert contacts list data source for all accessible contacts.
+func NewAllDataSource() datasource.DataSource {
 	return &allAlertContactsDataSource{}
 }
 
