@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/currentuser"
 )
 
 // Ensure ScaffoldingProvider satisfies various provider interfaces.
@@ -114,7 +115,7 @@ func (p *UptimeRobotProvider) DataSources(ctx context.Context) []func() datasour
 		NewAllAlertContactsDataSource,
 		NewAlertContactDataSource,
 		NewAlertContactsDataSource,
-		NewCurrentUserDataSource,
+		currentuser.NewDataSource,
 		NewIPRangesDataSource,
 		NewIntegrationDataSource,
 		NewTagDataSource,

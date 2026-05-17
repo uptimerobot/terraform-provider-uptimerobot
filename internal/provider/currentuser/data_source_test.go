@@ -1,4 +1,4 @@
-package provider
+package currentuser
 
 import (
 	"testing"

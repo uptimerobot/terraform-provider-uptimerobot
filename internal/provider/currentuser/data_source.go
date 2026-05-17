@@ -1,7 +1,8 @@
-package provider
+package currentuser
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -15,8 +16,8 @@ var (
 	_ datasource.DataSourceWithConfigure = &currentUserDataSource{}
 )
 
-// NewCurrentUserDataSource returns the current user data source.
-func NewCurrentUserDataSource() datasource.DataSource {
+// NewDataSource returns the current user data source.
+func NewDataSource() datasource.DataSource {
 	return &currentUserDataSource{}
 }
 
@@ -135,4 +136,11 @@ func stringPtrState(value *string) types.String {
 		return types.StringNull()
 	}
 	return stringState(*value)
+}
+
+func stringState(value string) types.String {
+	if strings.TrimSpace(value) == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(value)
 }
