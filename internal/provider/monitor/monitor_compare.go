@@ -1253,6 +1253,10 @@ func equalTagSet(a, b []string) bool {
 // For monitor "name" and "url" we canonicalize into a plain-text form to avoid
 // perpetual diffs and import drift.
 func unescapeHTML(s string) string {
+	return UnescapeHTML(s)
+}
+
+func UnescapeHTML(s string) string {
 	const maxPasses = 5
 
 	if !strings.Contains(s, "&") {

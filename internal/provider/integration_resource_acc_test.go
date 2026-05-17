@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/maputil"
 )
 
 // Configs
@@ -99,7 +100,7 @@ func testAccCheckWebhookCustomHeaders(resourceName string, expected map[string]s
 			integration, err := apiClient.GetIntegration(ctx, id)
 			if err != nil {
 				lastErr = err
-			} else if equalStringMap(integration.CustomHeaders, expected) {
+			} else if maputil.EqualStringMap(integration.CustomHeaders, expected) {
 				return nil
 			} else {
 				lastErr = fmt.Errorf("expected custom_headers %#v, got %#v", expected, integration.CustomHeaders)

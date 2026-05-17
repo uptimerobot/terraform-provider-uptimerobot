@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	monitorpkg "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/monitor"
 )
 
 /*
@@ -2631,8 +2632,8 @@ func TestAcc_Monitor_Import_NameURL_HTMLNormalizationFromAPI(t *testing.T) {
 		_ = apiClient.WaitMonitorDeleted(ctx, created.ID, 90*time.Second)
 	})
 
-	plainName := unescapeHTML(rawName)
-	plainURL := unescapeHTML(rawURL)
+	plainName := monitorpkg.UnescapeHTML(rawName)
+	plainURL := monitorpkg.UnescapeHTML(rawURL)
 
 	resourceName := "uptimerobot_monitor.test"
 	cfg := testAccProviderConfig() + fmt.Sprintf(`
