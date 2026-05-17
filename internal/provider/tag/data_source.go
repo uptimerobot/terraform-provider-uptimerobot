@@ -1,4 +1,4 @@
-package provider
+package tag
 
 import (
 	"context"
@@ -25,13 +25,13 @@ var (
 	_ datasource.DataSourceWithConfigure = &tagsDataSource{}
 )
 
-// NewTagDataSource returns the single tag lookup data source.
-func NewTagDataSource() datasource.DataSource {
+// NewDataSource returns the single tag lookup data source.
+func NewDataSource() datasource.DataSource {
 	return &tagDataSource{}
 }
 
-// NewTagsDataSource returns the tags list data source.
-func NewTagsDataSource() datasource.DataSource {
+// NewListDataSource returns the tags list data source.
+func NewListDataSource() datasource.DataSource {
 	return &tagsDataSource{}
 }
 
@@ -231,6 +231,13 @@ func tagLookupFilters(config tagDataSourceModel) (tagFilters, error) {
 	}
 
 	return filters, nil
+}
+
+func valueString(value types.String) string {
+	if value.IsNull() || value.IsUnknown() {
+		return ""
+	}
+	return value.ValueString()
 }
 
 func filterTags(tags []client.UserTag, filters tagFilters) []client.UserTag {
