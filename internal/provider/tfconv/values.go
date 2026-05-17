@@ -10,8 +10,11 @@ import (
 
 // Int64ListToSet converts a Terraform list of int64 values to a deduplicated set.
 func Int64ListToSet(ctx context.Context, l types.List) (types.Set, diag.Diagnostics) {
-	if l.IsNull() || l.IsUnknown() {
+	if l.IsNull() {
 		return types.SetNull(types.Int64Type), nil
+	}
+	if l.IsUnknown() {
+		return types.SetUnknown(types.Int64Type), nil
 	}
 	var diags diag.Diagnostics
 	var ids []int64

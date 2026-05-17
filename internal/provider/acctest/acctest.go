@@ -161,8 +161,8 @@ func UniqueURL(name string) string {
 	}
 	suffix := sdkacctest.RandStringFromCharSet(8, sdkacctest.CharSetAlphaNum)
 	url := fmt.Sprintf("https://example.com/%s-%s", slug, suffix)
-	uniqueURLCache.Store(name, url)
-	return url
+	actual, _ := uniqueURLCache.LoadOrStore(name, url)
+	return actual.(string)
 }
 
 // UniqueDomain returns a unique domain for API validations like DNS monitors.
@@ -178,8 +178,8 @@ func UniqueDomain(name string) string {
 	}
 	suffix := sdkacctest.RandStringFromCharSet(6, sdkacctest.CharSetAlphaNum)
 	domain := fmt.Sprintf("%s-%s.example.com", slug, suffix)
-	uniqueDomainCache.Store(name, domain)
-	return domain
+	actual, _ := uniqueDomainCache.LoadOrStore(name, domain)
+	return actual.(string)
 }
 
 func slugify(value string) string {
@@ -203,8 +203,6 @@ var uniqueDomainCache sync.Map
 // CheckDestroy functions for each resource type.
 func CheckMonitorDestroy(s *terraform.State) error {
 	apiClient := APIClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "uptimerobot_monitor" {
@@ -216,7 +214,10 @@ func CheckMonitorDestroy(s *terraform.State) error {
 			return fmt.Errorf("Error converting monitor ID to int64: %v", err)
 		}
 
-		if err := apiClient.WaitMonitorDeleted(ctx, id, 90*time.Second); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		err = apiClient.WaitMonitorDeleted(ctx, id, 90*time.Second)
+		cancel()
+		if err != nil {
 			return fmt.Errorf("Monitor %s still exists: %w", rs.Primary.ID, err)
 		}
 	}
@@ -226,8 +227,6 @@ func CheckMonitorDestroy(s *terraform.State) error {
 
 func CheckMonitorGroupDestroy(s *terraform.State) error {
 	apiClient := APIClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "uptimerobot_monitor_group" {
@@ -239,7 +238,10 @@ func CheckMonitorGroupDestroy(s *terraform.State) error {
 			return fmt.Errorf("Error converting monitor group ID to int64: %v", err)
 		}
 
-		if err := apiClient.WaitMonitorGroupDeleted(ctx, id, 90*time.Second); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		err = apiClient.WaitMonitorGroupDeleted(ctx, id, 90*time.Second)
+		cancel()
+		if err != nil {
 			return fmt.Errorf("monitor group %s still exists: %w", rs.Primary.ID, err)
 		}
 	}
@@ -249,8 +251,6 @@ func CheckMonitorGroupDestroy(s *terraform.State) error {
 
 func CheckIntegrationDestroy(s *terraform.State) error {
 	apiClient := APIClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "uptimerobot_integration" {
@@ -262,7 +262,10 @@ func CheckIntegrationDestroy(s *terraform.State) error {
 			return fmt.Errorf("Error converting integration ID to int64: %v", err)
 		}
 
-		if err := apiClient.WaitIntegrationDeleted(ctx, id, 90*time.Second); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		err = apiClient.WaitIntegrationDeleted(ctx, id, 90*time.Second)
+		cancel()
+		if err != nil {
 			return fmt.Errorf("Integration %s still exists: %w", rs.Primary.ID, err)
 		}
 	}
@@ -272,8 +275,6 @@ func CheckIntegrationDestroy(s *terraform.State) error {
 
 func CheckMaintenanceWindowDestroy(s *terraform.State) error {
 	apiClient := APIClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "uptimerobot_maintenance_window" {
@@ -285,7 +286,10 @@ func CheckMaintenanceWindowDestroy(s *terraform.State) error {
 			return fmt.Errorf("Error converting maintenance window ID to int64: %v", err)
 		}
 
-		if err := apiClient.WaitMaintenanceWindowDeleted(ctx, id, 90*time.Second); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		err = apiClient.WaitMaintenanceWindowDeleted(ctx, id, 90*time.Second)
+		cancel()
+		if err != nil {
 			return fmt.Errorf("Maintenance window %s still exists: %w", rs.Primary.ID, err)
 		}
 	}
@@ -295,8 +299,6 @@ func CheckMaintenanceWindowDestroy(s *terraform.State) error {
 
 func CheckPSPDestroy(s *terraform.State) error {
 	apiClient := APIClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "uptimerobot_psp" {
@@ -308,7 +310,10 @@ func CheckPSPDestroy(s *terraform.State) error {
 			return fmt.Errorf("Error converting PSP ID to int64: %v", err)
 		}
 
-		if err := apiClient.WaitPSPDeleted(ctx, id, 90*time.Second); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		err = apiClient.WaitPSPDeleted(ctx, id, 90*time.Second)
+		cancel()
+		if err != nil {
 			return fmt.Errorf("PSP %s still exists: %w", rs.Primary.ID, err)
 		}
 	}

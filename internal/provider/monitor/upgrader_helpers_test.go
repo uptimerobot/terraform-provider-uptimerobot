@@ -77,8 +77,8 @@ func TestListInt64ToSet_StatesAndValues(t *testing.T) {
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", diags)
 	}
-	if !out.IsNull() {
-		t.Fatalf("expected Null set from Unknown list (helper coerces to Null)")
+	if !out.IsUnknown() {
+		t.Fatalf("expected Unknown set from Unknown list")
 	}
 
 	null := types.ListNull(types.Int64Type)

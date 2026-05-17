@@ -16,7 +16,7 @@ default: testacc
 # Run acceptance tests
 .PHONY: testacc
 testacc:
-	set -a; [ -f .env ] && source .env; set +a && TF_ACC=1 go test ./internal/provider/... -tags=acceptance -run TestAcc -v $(TESTARGS) -p=1 -parallel=1 -timeout 60m
+	set -a; [ -f .env ] && . ./.env; set +a && TF_ACC=1 go test ./internal/provider/... -tags=acceptance -run TestAcc -v $(TESTARGS) -p=1 -parallel=1 -timeout 60m
 
 # Run unit tests
 .PHONY: test
