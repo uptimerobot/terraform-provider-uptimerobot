@@ -1,4 +1,4 @@
-package provider
+package pspannouncement
 
 import (
 	"encoding/json"
