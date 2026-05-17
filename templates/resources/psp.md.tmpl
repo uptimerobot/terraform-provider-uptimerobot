@@ -53,7 +53,11 @@ Use `monitor_sort` to control how monitors are ordered on the public status page
 - `status_up_down_paused`
 - `status_down_up_paused`
 
-The provider sends this as the API v3 PSP `sort` request field. API deployments that return `sort` in PSP responses are read back into state. When `monitor_sort` is configured but the API omits `sort`, the provider keeps the configured Terraform value in state so plans stay stable; removing `monitor_sort` stops Terraform from managing the remote sort value.
+The provider sends `monitor_sort` as the API v3 PSP `sort` request field.
+
+- API deployments that return `sort` in PSP responses are read back into state.
+- When `monitor_sort` is configured but the API omits `sort`, the provider keeps the configured Terraform value in state to maintain plan stability.
+- Removing `monitor_sort` from your configuration stops Terraform from managing the remote sort value.
 
 ## Import
 

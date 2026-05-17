@@ -45,7 +45,7 @@ Use a future `start_date` with `pending` when scheduling an announcement. Uptime
 Set `is_pinned = true` to pin this announcement on its public status page, or `is_pinned = false` to unpin it when it is currently pinned.
 Omit `is_pinned` to leave pinned-announcement state unmanaged by this resource.
 
-Do not manage `is_pinned` on `uptimerobot_psp_announcement` and `pinned_announcement_id` on `uptimerobot_psp` for the same public status page at the same time. They both own the same remote API field.
+~> **Warning:** Do not manage `is_pinned` on `uptimerobot_psp_announcement` and `pinned_announcement_id` on `uptimerobot_psp` for the same public status page at the same time. They both own the same remote API field.
 
 Delivery counters such as subscriber send counts are not exposed because they are runtime metadata and are not managed by Terraform.
 

@@ -455,7 +455,7 @@ func waitPSPAnnouncementSettled(
 				return announcement, nil
 			}
 		} else if !client.IsNotFound(err) {
-			last = nil
+			return last, fmt.Errorf("error reading PSP announcement during settle: %w", err)
 		}
 
 		select {
