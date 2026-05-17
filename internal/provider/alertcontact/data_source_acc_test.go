@@ -1,6 +1,6 @@
 //go:build acceptance
 
-package provider
+package alertcontact_test
 
 import (
 	"fmt"
@@ -9,10 +9,11 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	provideracctest "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/acctest"
 )
 
 func testAccAlertContactDataSourceConfig(id string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 data "uptimerobot_alert_contact" "by_id" {
   id = %q
 }
@@ -30,8 +31,8 @@ func TestAccAlertContactDataSource(t *testing.T) {
 	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccAlertContactDataSourceConfig(id),

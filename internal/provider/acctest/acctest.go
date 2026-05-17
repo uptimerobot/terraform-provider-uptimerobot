@@ -1,108 +1,35 @@
 //go:build acceptance
 
-package provider
+package acctest
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	providerpkg "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider"
 )
 
-// testAccProtoV6ProviderFactories are used to instantiate a provider during
+// ProtoV6ProviderFactories are used to instantiate a provider during
 // acceptance testing. The factory function will be invoked for every Terraform
 // CLI command executed to create a provider server to which the CLI can
 // reattach.
-var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"uptimerobot": providerserver.NewProtocol6WithError(New("test")()),
+var ProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
+	"uptimerobot": providerserver.NewProtocol6WithError(providerpkg.New("test")()),
 }
 
-func TestMain(m *testing.M) {
-	// TestMain runs before default flag parsing,
-	// due to this - parse once so -test.timeout is available.
-	if !flag.Parsed() {
-		flag.Parse()
-	}
-
-	softTimeout, enabled, err := acceptanceSoftTimeout()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid TF_ACC_SOFT_TIMEOUT: %v\n", err)
-		os.Exit(2)
-	}
-
-	done := make(chan struct{})
-	if enabled {
-		go func() {
-			timer := time.NewTimer(softTimeout)
-			defer timer.Stop()
-			select {
-			case <-timer.C:
-				fmt.Fprintf(
-					os.Stderr,
-					"ERROR: acceptance test timeout reached after %s\n",
-					softTimeout,
-				)
-				fmt.Fprintln(
-					os.Stderr,
-					"Run stopped early to avoid a panic. For full goroutine traceback, rerun with TF_ACC_SOFT_TIMEOUT=0.",
-				)
-				fmt.Fprintln(os.Stderr, "Tip: rerun with TF_LOG=DEBUG and a narrower -run filter to isolate the hanging step.")
-				os.Exit(1)
-			case <-done:
-			}
-		}()
-	}
-
-	code := m.Run()
-	close(done)
-	os.Exit(code)
-}
-
-func acceptanceSoftTimeout() (time.Duration, bool, error) {
-	// TF_ACC_SOFT_TIMEOUT=0 for disabling
-	// TF_ACC_SOFT_TIMEOUT=30m for setting exact duration
-	// default behavior - it will use setted value in test.timeout
-	if raw := os.Getenv("TF_ACC_SOFT_TIMEOUT"); raw != "" {
-		d, err := time.ParseDuration(raw)
-		if err != nil {
-			return 0, false, err
-		}
-		if d <= 0 {
-			return 0, false, nil
-		}
-		return d, true, nil
-	}
-
-	tf := flag.Lookup("test.timeout")
-	if tf == nil {
-		return 0, false, nil
-	}
-
-	d, err := time.ParseDuration(tf.Value.String())
-	if err != nil || d <= 0 {
-		return 0, false, nil
-	}
-
-	soft := d - time.Minute
-	if soft < time.Minute {
-		soft = d / 2
-	}
-	if soft <= 0 {
-		return 0, false, nil
-	}
-
-	return soft, true, nil
-}
-
-func testAccPreCheck(t *testing.T) {
+func PreCheck(t *testing.T) {
 	t.Helper()
 
 	if os.Getenv("TF_ACC") == "" {
@@ -114,8 +41,8 @@ func testAccPreCheck(t *testing.T) {
 	}
 }
 
-func testAccProviderConfig() string {
-	if !testAccNeedsExplicitProviderSource() {
+func ProviderConfig() string {
+	if !needsExplicitProviderSource() {
 		return fmt.Sprintf(`
 provider "uptimerobot" {
   api_key = "%s"
@@ -123,8 +50,8 @@ provider "uptimerobot" {
 `, os.Getenv("UPTIMEROBOT_API_KEY"))
 	}
 
-	source := testAccProviderSource()
-	version, hasVersion := testAccProviderVersion()
+	source := providerSource()
+	version, hasVersion := providerVersion()
 
 	requiredProvider := fmt.Sprintf(`
     uptimerobot = {
@@ -151,13 +78,13 @@ provider "uptimerobot" {
 `, requiredProvider, os.Getenv("UPTIMEROBOT_API_KEY"))
 }
 
-func testAccNeedsExplicitProviderSource() bool {
+func needsExplicitProviderSource() bool {
 	return os.Getenv("TF_ACC_PROVIDER_HOST") != "" ||
 		os.Getenv("TF_ACC_PROVIDER_NAMESPACE") != "" ||
 		os.Getenv("TF_ACC_PROVIDER_VERSION") != ""
 }
 
-func testAccProviderSource() string {
+func providerSource() string {
 	namespace := os.Getenv("TF_ACC_PROVIDER_NAMESPACE")
 	if namespace == "" {
 		namespace = "uptimerobot"
@@ -171,7 +98,7 @@ func testAccProviderSource() string {
 	return fmt.Sprintf("%s/%s/uptimerobot", host, namespace)
 }
 
-func testAccProviderVersion() (string, bool) {
+func providerVersion() (string, bool) {
 	version := os.Getenv("TF_ACC_PROVIDER_VERSION")
 	if version == "" {
 		return "", false
@@ -180,7 +107,7 @@ func testAccProviderVersion() (string, bool) {
 	return version, true
 }
 
-func testAccAPIClient() *client.Client {
+func APIClient() *client.Client {
 	apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
 	if apiURL := os.Getenv("UPTIMEROBOT_API_URL"); apiURL != "" {
 		apiClient.SetBaseURL(apiURL)
@@ -190,10 +117,92 @@ func testAccAPIClient() *client.Client {
 	return apiClient
 }
 
+func RandomName(prefix string) string {
+	return sdkacctest.RandomWithPrefix(prefix)
+}
+
+func OptionalEnv(key string) (string, bool) {
+	v := os.Getenv(key)
+	return v, v != ""
+}
+
+func HCLStringMap(values map[string]string) string {
+	if len(values) == 0 {
+		return "{}"
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+
+	out := "{"
+	for i, key := range keys {
+		if i > 0 {
+			out += ","
+		}
+		out += fmt.Sprintf(" %q = %q", key, values[key])
+	}
+	out += " }"
+	return out
+}
+
+// UniqueURL produces a stable and per-name unique URL to satisfy API
+// deduplication validations for GET and HEAD monitors.
+func UniqueURL(name string) string {
+	if v, ok := uniqueURLCache.Load(name); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	slug := slugify(name)
+	if strings.Trim(slug, "-") == "" {
+		slug = "monitor"
+	}
+	suffix := sdkacctest.RandStringFromCharSet(8, sdkacctest.CharSetAlphaNum)
+	url := fmt.Sprintf("https://example.com/%s-%s", slug, suffix)
+	uniqueURLCache.Store(name, url)
+	return url
+}
+
+// UniqueDomain returns a unique domain for API validations like DNS monitors.
+func UniqueDomain(name string) string {
+	if v, ok := uniqueDomainCache.Load(name); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	slug := slugify(name)
+	if strings.Trim(slug, "-") == "" {
+		slug = "dns"
+	}
+	suffix := sdkacctest.RandStringFromCharSet(6, sdkacctest.CharSetAlphaNum)
+	domain := fmt.Sprintf("%s-%s.example.com", slug, suffix)
+	uniqueDomainCache.Store(name, domain)
+	return domain
+}
+
+func slugify(value string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r + ('a' - 'A')
+		case r >= '0' && r <= '9':
+			return r
+		default:
+			return '-'
+		}
+	}, value)
+}
+
+var uniqueURLCache sync.Map
+var uniqueDomainCache sync.Map
+
 // CheckDestroy functions for each resource type.
-func testAccCheckMonitorDestroy(s *terraform.State) error {
-	// Create a client to check if the monitor was properly deleted
-	apiClient := testAccAPIClient()
+func CheckMonitorDestroy(s *terraform.State) error {
+	apiClient := APIClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -202,15 +211,12 @@ func testAccCheckMonitorDestroy(s *terraform.State) error {
 			continue
 		}
 
-		// Convert ID from string to int64
 		id, err := strconv.ParseInt(rs.Primary.ID, 10, 64)
 		if err != nil {
 			return fmt.Errorf("Error converting monitor ID to int64: %v", err)
 		}
 
-		// Try to get the monitor - it should not exist
-		err = apiClient.WaitMonitorDeleted(ctx, id, 90*time.Second)
-		if err != nil {
+		if err := apiClient.WaitMonitorDeleted(ctx, id, 90*time.Second); err != nil {
 			return fmt.Errorf("Monitor %s still exists: %w", rs.Primary.ID, err)
 		}
 	}
@@ -218,8 +224,8 @@ func testAccCheckMonitorDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckMonitorGroupDestroy(s *terraform.State) error {
-	apiClient := testAccAPIClient()
+func CheckMonitorGroupDestroy(s *terraform.State) error {
+	apiClient := APIClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -241,9 +247,8 @@ func testAccCheckMonitorGroupDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckIntegrationDestroy(s *terraform.State) error {
-	// Create a client to check if the integration was properly deleted
-	apiClient := testAccAPIClient()
+func CheckIntegrationDestroy(s *terraform.State) error {
+	apiClient := APIClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -252,15 +257,12 @@ func testAccCheckIntegrationDestroy(s *terraform.State) error {
 			continue
 		}
 
-		// Convert ID from string to int64
 		id, err := strconv.ParseInt(rs.Primary.ID, 10, 64)
 		if err != nil {
 			return fmt.Errorf("Error converting integration ID to int64: %v", err)
 		}
 
-		// Try to get the integration - it should not exist
-		err = apiClient.WaitIntegrationDeleted(ctx, id, 90*time.Second)
-		if err != nil {
+		if err := apiClient.WaitIntegrationDeleted(ctx, id, 90*time.Second); err != nil {
 			return fmt.Errorf("Integration %s still exists: %w", rs.Primary.ID, err)
 		}
 	}
@@ -268,9 +270,8 @@ func testAccCheckIntegrationDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckMaintenanceWindowDestroy(s *terraform.State) error {
-	// Create a client to check if the maintenance window was properly deleted
-	apiClient := testAccAPIClient()
+func CheckMaintenanceWindowDestroy(s *terraform.State) error {
+	apiClient := APIClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -279,15 +280,12 @@ func testAccCheckMaintenanceWindowDestroy(s *terraform.State) error {
 			continue
 		}
 
-		// Convert ID from string to int64
 		id, err := strconv.ParseInt(rs.Primary.ID, 10, 64)
 		if err != nil {
 			return fmt.Errorf("Error converting maintenance window ID to int64: %v", err)
 		}
 
-		// Try to get the maintenance window - it should not exist
-		err = apiClient.WaitMaintenanceWindowDeleted(ctx, id, 90*time.Second)
-		if err != nil {
+		if err := apiClient.WaitMaintenanceWindowDeleted(ctx, id, 90*time.Second); err != nil {
 			return fmt.Errorf("Maintenance window %s still exists: %w", rs.Primary.ID, err)
 		}
 	}
@@ -295,9 +293,8 @@ func testAccCheckMaintenanceWindowDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckPSPDestroy(s *terraform.State) error {
-	// Create a client to check if the PSP was properly deleted
-	apiClient := testAccAPIClient()
+func CheckPSPDestroy(s *terraform.State) error {
+	apiClient := APIClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -306,15 +303,12 @@ func testAccCheckPSPDestroy(s *terraform.State) error {
 			continue
 		}
 
-		// Convert ID from string to int64
 		id, err := strconv.ParseInt(rs.Primary.ID, 10, 64)
 		if err != nil {
 			return fmt.Errorf("Error converting PSP ID to int64: %v", err)
 		}
 
-		// Try to get the PSP - it should not exist
-		err = apiClient.WaitPSPDeleted(ctx, id, 90*time.Second)
-		if err != nil {
+		if err := apiClient.WaitPSPDeleted(ctx, id, 90*time.Second); err != nil {
 			return fmt.Errorf("PSP %s still exists: %w", rs.Primary.ID, err)
 		}
 	}

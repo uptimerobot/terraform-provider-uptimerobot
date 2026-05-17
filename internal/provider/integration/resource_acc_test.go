@@ -1,11 +1,10 @@
 //go:build acceptance
 
-package provider
+package integration_test
 
 import (
 	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"strconv"
 	"testing"
@@ -14,14 +13,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
-	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	provideracctest "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/acctest"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/maputil"
 )
 
 // Configs
 
 func testAccWebhookIntegrationConfig(name, value string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_integration" "webhook" {
   name                     = %q
   type                     = "webhook"
@@ -41,10 +40,10 @@ resource "uptimerobot_integration" "webhook" {
 func testAccWebhookIntegrationConfigWithCustomHeaders(name, value string, headers *map[string]string) string {
 	customHeaders := ""
 	if headers != nil {
-		customHeaders = "\n  custom_headers = " + hclStringMap(*headers)
+		customHeaders = "\n  custom_headers = " + provideracctest.HCLStringMap(*headers)
 	}
 
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_integration" "webhook" {
   name                     = %q
   type                     = "webhook"
@@ -60,20 +59,6 @@ resource "uptimerobot_integration" "webhook" {
 `, name, value, customHeaders)
 }
 
-func testAccIntegrationPreCheck(t *testing.T) {
-	if v := os.Getenv("UPTIMEROBOT_API_KEY"); v == "" {
-		t.Skip("UPTIMEROBOT_API_KEY must be set to run integration acceptance tests")
-	}
-}
-
-func testAccIntegrationProviderConfig() string {
-	return fmt.Sprintf(`
-provider "uptimerobot" {
-  api_key = "%s"
-}
-`, os.Getenv("UPTIMEROBOT_API_KEY"))
-}
-
 func testAccCheckWebhookCustomHeaders(resourceName string, expected map[string]string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[resourceName]
@@ -86,10 +71,7 @@ func testAccCheckWebhookCustomHeaders(resourceName string, expected map[string]s
 			return fmt.Errorf("could not parse integration ID %q: %w", rs.Primary.ID, err)
 		}
 
-		apiClient := client.NewClient(os.Getenv("UPTIMEROBOT_API_KEY"))
-		if apiURL := os.Getenv("UPTIMEROBOT_API_URL"); apiURL != "" {
-			apiClient.SetBaseURL(apiURL)
-		}
+		apiClient := provideracctest.APIClient()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
@@ -125,17 +107,6 @@ func testAccCheckWebhookCustomHeaders(resourceName string, expected map[string]s
 	}
 }
 
-// Helpers
-
-func randomName(prefix string) string {
-	return acctest.RandomWithPrefix(prefix)
-}
-
-func testAccOptionalEnv(key string) (string, bool) {
-	v := os.Getenv(key)
-	return v, v != ""
-}
-
 // Acceptance tests
 
 func TestAccIntegrationResource(t *testing.T) {
@@ -149,9 +120,9 @@ func TestAccIntegrationResource(t *testing.T) {
 	cfgUpdate := testAccWebhookIntegrationConfig(name2, value)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckIntegrationDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckIntegrationDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgCreate,
@@ -190,7 +161,7 @@ func TestAccIntegrationResource(t *testing.T) {
 }
 
 func TestAcc_Integration_Webhook_JSONPlanModifier_RoundTrip(t *testing.T) {
-	name := randomName("acc-webhook-json")
+	name := provideracctest.RandomName("acc-webhook-json")
 	resourceName := "uptimerobot_integration.test"
 	value := fmt.Sprintf("https://example.com/hook?tfacc=%s", acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum))
 
@@ -209,7 +180,7 @@ resource "uptimerobot_integration" "test" {
   send_as_query_string     = false
   send_as_post_parameters  = false
 }
-`, testAccIntegrationProviderConfig(), name, value)
+`, provideracctest.ProviderConfig(), name, value)
 
 	// Same logical JSON but with different key order/formatting; plan should be empty
 	cfg2 := fmt.Sprintf(`
@@ -227,11 +198,11 @@ resource "uptimerobot_integration" "test" {
   send_as_query_string     = false
   send_as_post_parameters  = false
 }
-`, testAccIntegrationProviderConfig(), name, value)
+`, provideracctest.ProviderConfig(), name, value)
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		PreCheck:                 func() { testAccIntegrationPreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
 		Steps: []resource.TestStep{
 			{
 				Config: cfg1,
@@ -271,9 +242,9 @@ func TestAcc_Integration_Webhook_CustomHeaders(t *testing.T) {
 	emptyHeaders := map[string]string{}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckIntegrationDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckIntegrationDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccWebhookIntegrationConfigWithCustomHeaders(name, value, &initialHeaders),
@@ -316,11 +287,11 @@ func TestAcc_Integration_Webhook_CustomHeaders(t *testing.T) {
 }
 
 func TestAcc_Integration_Mattermost_CustomValue_Clear(t *testing.T) {
-	mwURL, ok := testAccOptionalEnv("UPTIMEROBOT_TEST_MATTERMOST_WEBHOOK_URL")
+	mwURL, ok := provideracctest.OptionalEnv("UPTIMEROBOT_TEST_MATTERMOST_WEBHOOK_URL")
 	if !ok {
 		t.Skip("set UPTIMEROBOT_TEST_MATTERMOST_WEBHOOK_URL to run this test")
 	}
-	name := randomName("acc-mattermost")
+	name := provideracctest.RandomName("acc-mattermost")
 	resourceName := "uptimerobot_integration.test"
 
 	cfgCreate := fmt.Sprintf(`
@@ -333,7 +304,7 @@ resource "uptimerobot_integration" "test" {
   ssl_expiration_reminder  = false
   custom_value             = "initial-note"
 }
-`, testAccIntegrationProviderConfig(), name, mwURL)
+`, provideracctest.ProviderConfig(), name, mwURL)
 
 	cfgClear := fmt.Sprintf(`
 %s
@@ -345,11 +316,11 @@ resource "uptimerobot_integration" "test" {
   ssl_expiration_reminder  = false
   custom_value             = ""
 }
-`, testAccIntegrationProviderConfig(), name, mwURL)
+`, provideracctest.ProviderConfig(), name, mwURL)
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		PreCheck:                 func() { testAccIntegrationPreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
 		Steps: []resource.TestStep{
 			{
 				Config: cfgCreate,
@@ -374,7 +345,7 @@ resource "uptimerobot_integration" "test" {
 }
 
 func TestAcc_Integration_PagerDuty_RegionAndAutoResolve(t *testing.T) {
-	name := randomName("acc-pagerduty")
+	name := provideracctest.RandomName("acc-pagerduty")
 	resourceName := "uptimerobot_integration.test"
 	key1 := acctest.RandStringFromCharSet(32, acctest.CharSetAlphaNum)
 	key2 := acctest.RandStringFromCharSet(32, acctest.CharSetAlphaNum)
@@ -390,7 +361,7 @@ resource "uptimerobot_integration" "test" {
   location                 = "us"
   auto_resolve             = true
 }
-`, testAccIntegrationProviderConfig(), name, key1)
+`, provideracctest.ProviderConfig(), name, key1)
 
 	cfg2 := fmt.Sprintf(`
 %s
@@ -403,11 +374,11 @@ resource "uptimerobot_integration" "test" {
   location                 = "eu"
   auto_resolve             = false
 }
-`, testAccIntegrationProviderConfig(), name, key2)
+`, provideracctest.ProviderConfig(), name, key2)
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		PreCheck:                 func() { testAccIntegrationPreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
 		Steps: []resource.TestStep{
 			{
 				Config: cfg1,
@@ -434,11 +405,11 @@ resource "uptimerobot_integration" "test" {
 }
 
 func TestAcc_Integration_Pushover_Priority_RoundTrip(t *testing.T) {
-	userKey, ok := testAccOptionalEnv("UPTIMEROBOT_TEST_PUSHOVER_USER_KEY")
+	userKey, ok := provideracctest.OptionalEnv("UPTIMEROBOT_TEST_PUSHOVER_USER_KEY")
 	if !ok {
 		t.Skip("set UPTIMEROBOT_TEST_PUSHOVER_USER_KEY to run this test")
 	}
-	name := randomName("acc-pushover")
+	name := provideracctest.RandomName("acc-pushover")
 	resourceName := "uptimerobot_integration.test"
 
 	cfg1 := fmt.Sprintf(`
@@ -451,7 +422,7 @@ resource "uptimerobot_integration" "test" {
   ssl_expiration_reminder  = false
   priority                 = "High"
 }
-`, testAccIntegrationProviderConfig(), name, userKey)
+`, provideracctest.ProviderConfig(), name, userKey)
 
 	cfg2 := fmt.Sprintf(`
 %s
@@ -463,11 +434,11 @@ resource "uptimerobot_integration" "test" {
   ssl_expiration_reminder  = false
   priority                 = "Normal"
 }
-`, testAccIntegrationProviderConfig(), name, userKey)
+`, provideracctest.ProviderConfig(), name, userKey)
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		PreCheck:                 func() { testAccIntegrationPreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
 		Steps: []resource.TestStep{
 			{
 				Config: cfg1,
@@ -493,8 +464,8 @@ resource "uptimerobot_integration" "test" {
 
 func TestAcc_Integration_Webhook_DuplicateConflict(t *testing.T) {
 	suffix := acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum)
-	namePrimary := randomName("acc-webhook-dup-primary")
-	nameDuplicate := randomName("acc-webhook-dup-duplicate")
+	namePrimary := provideracctest.RandomName("acc-webhook-dup-primary")
+	nameDuplicate := provideracctest.RandomName("acc-webhook-dup-duplicate")
 	value := fmt.Sprintf("https://httpbin.org/anything?dup=%s", suffix)
 
 	cfgSingle := fmt.Sprintf(`
@@ -509,7 +480,7 @@ resource "uptimerobot_integration" "primary" {
   send_as_query_string     = false
   send_as_post_parameters  = false
 }
-`, testAccIntegrationProviderConfig(), namePrimary, value)
+`, provideracctest.ProviderConfig(), namePrimary, value)
 
 	cfgDuplicate := fmt.Sprintf(`
 %s
@@ -534,12 +505,12 @@ resource "uptimerobot_integration" "duplicate" {
   send_as_query_string     = false
   send_as_post_parameters  = false
 }
-`, testAccIntegrationProviderConfig(), namePrimary, value, nameDuplicate, value)
+`, provideracctest.ProviderConfig(), namePrimary, value, nameDuplicate, value)
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		PreCheck:                 func() { testAccIntegrationPreCheck(t) },
-		CheckDestroy:             testAccCheckIntegrationDestroy,
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		CheckDestroy:             provideracctest.CheckIntegrationDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgSingle,

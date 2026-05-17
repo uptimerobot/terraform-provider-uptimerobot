@@ -1,16 +1,17 @@
 //go:build acceptance
 
-package provider
+package integration_test
 
 import (
 	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	provideracctest "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/acctest"
 )
 
 func testAccIntegrationDataSourceConfig(name, value string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_integration" "webhook" {
   name                     = %q
   type                     = "webhook"
@@ -40,13 +41,13 @@ data "uptimerobot_integration" "by_name_type" {
 }
 
 func TestAccIntegrationDataSource(t *testing.T) {
-	name := randomName("tf-acc-integration-ds")
+	name := provideracctest.RandomName("tf-acc-integration-ds")
 	value := fmt.Sprintf("https://httpbin.org/anything/%s", name)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckIntegrationDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckIntegrationDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIntegrationDataSourceConfig(name, value),

@@ -1,6 +1,6 @@
 //go:build acceptance
 
-package provider
+package maintenancewindow_test
 
 import (
 	"fmt"
@@ -9,10 +9,11 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	provideracctest "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/acctest"
 )
 
 func testAccMWWeeklyWithDaysCfg(name string, days string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "test" {
   name     = %q
   interval = "weekly"
@@ -24,7 +25,7 @@ resource "uptimerobot_maintenance_window" "test" {
 }
 
 func testAccMWMonthlyCfg(name string, days string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "test" {
   name     = %q
   interval = "monthly"
@@ -36,7 +37,7 @@ resource "uptimerobot_maintenance_window" "test" {
 }
 
 func testAccMWDailyWithDaysInvalidCfg(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "test" {
   name     = %q
   interval = "daily"
@@ -50,9 +51,9 @@ resource "uptimerobot_maintenance_window" "test" {
 func TestAccMaintenanceWindow_WeeklyDays(t *testing.T) {
 	name := acctest.RandomWithPrefix("mw-weekly")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccMWWeeklyWithDaysCfg(name, "[2,4,5]"),
@@ -88,9 +89,9 @@ func TestAccMaintenanceWindow_WeeklyDays(t *testing.T) {
 func TestAccMaintenanceWindow_MonthlyWithLastDay(t *testing.T) {
 	name := acctest.RandomWithPrefix("mw-monthly-last")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccMWMonthlyCfg(name, "[-1]"),
@@ -112,8 +113,8 @@ func TestAccMaintenanceWindow_MonthlyWithLastDay(t *testing.T) {
 func TestAccMaintenanceWindow_DailyWithDays_ShouldError(t *testing.T) {
 	name := acctest.RandomWithPrefix("mw-daily-bad")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      testAccMWDailyWithDaysInvalidCfg(name),
@@ -126,7 +127,7 @@ func TestAccMaintenanceWindow_DailyWithDays_ShouldError(t *testing.T) {
 
 func TestAccMaintenanceWindow_DriftSuppression_DailyOmitDays(t *testing.T) {
 	name := acctest.RandomWithPrefix("mw-drift")
-	cfgWeekly := testAccProviderConfig() + fmt.Sprintf(`
+	cfgWeekly := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
   name     = "%s"
   interval = "weekly"
@@ -135,7 +136,7 @@ resource "uptimerobot_maintenance_window" "mw" {
   days     = [2,4,5]
 }
 `, name)
-	cfgDaily := testAccProviderConfig() + fmt.Sprintf(`
+	cfgDaily := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
   name     = "%s"
   interval = "daily"
@@ -145,9 +146,9 @@ resource "uptimerobot_maintenance_window" "mw" {
 }
 `, name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
 			{Config: cfgWeekly},
 			{
@@ -168,7 +169,7 @@ resource "uptimerobot_maintenance_window" "mw" {
 
 func TestAccMaintenanceWindow_WeeklyDays_DedupAndOrderIrrelevant(t *testing.T) {
 	name := acctest.RandomWithPrefix("mw-dedup")
-	cfg := testAccProviderConfig() + fmt.Sprintf(`
+	cfg := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
   name     = "%s"
   interval = "weekly"
@@ -178,9 +179,9 @@ resource "uptimerobot_maintenance_window" "mw" {
 }
 `, name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: cfg,
@@ -198,7 +199,7 @@ resource "uptimerobot_maintenance_window" "mw" {
 
 func TestAccMaintenanceWindow_WeeklyEmptyDays_ShouldError(t *testing.T) {
 	name := acctest.RandomWithPrefix("mw-weekly-empty")
-	cfg := testAccProviderConfig() + fmt.Sprintf(`
+	cfg := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
   name     = "%s"
   interval = "weekly"
@@ -208,8 +209,8 @@ resource "uptimerobot_maintenance_window" "mw" {
 }
 `, name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      cfg,
@@ -222,7 +223,7 @@ resource "uptimerobot_maintenance_window" "mw" {
 
 func TestAccMaintenanceWindow_MonthlyInvalidDay_ShouldError(t *testing.T) {
 	name := acctest.RandomWithPrefix("mw-monthly-bad")
-	cfg := testAccProviderConfig() + fmt.Sprintf(`
+	cfg := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
   name     = "%s"
   interval = "monthly"
@@ -232,8 +233,8 @@ resource "uptimerobot_maintenance_window" "mw" {
 }
 `, name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      cfg,
@@ -246,7 +247,7 @@ resource "uptimerobot_maintenance_window" "mw" {
 
 func TestAccMaintenanceWindow_AutoAddMonitors_NullAndSet(t *testing.T) {
 	name := acctest.RandomWithPrefix("mw-auto-null")
-	cfgNull := testAccProviderConfig() + fmt.Sprintf(`
+	cfgNull := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
   name     = "%s"
   interval = "weekly"
@@ -256,7 +257,7 @@ resource "uptimerobot_maintenance_window" "mw" {
   // auto_add_monitors omitted on purpose
 }
 `, name)
-	cfgSet := testAccProviderConfig() + fmt.Sprintf(`
+	cfgSet := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
   name     = "%s"
   interval = "weekly"
@@ -266,7 +267,7 @@ resource "uptimerobot_maintenance_window" "mw" {
   auto_add_monitors = true
 }
 `, name)
-	cfgOmitAgain := testAccProviderConfig() + fmt.Sprintf(`
+	cfgOmitAgain := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
   name     = "%s"
   interval = "weekly"
@@ -277,9 +278,9 @@ resource "uptimerobot_maintenance_window" "mw" {
 }
 `, name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgNull,
@@ -304,7 +305,7 @@ resource "uptimerobot_maintenance_window" "mw" {
 
 func TestAccMaintenanceWindow_IntervalTransitions_StableRead(t *testing.T) {
 	name := acctest.RandomWithPrefix("mw-interval-transitions")
-	cfgWeekly := testAccProviderConfig() + fmt.Sprintf(`
+	cfgWeekly := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
   name     = "%s"
   interval = "weekly"
@@ -313,7 +314,7 @@ resource "uptimerobot_maintenance_window" "mw" {
   days     = [2,6]
 }
 `, name)
-	cfgMonthly := testAccProviderConfig() + fmt.Sprintf(`
+	cfgMonthly := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
   name     = "%s"
   interval = "monthly"
@@ -322,7 +323,7 @@ resource "uptimerobot_maintenance_window" "mw" {
   days     = [-1, 15]
 }
 `, name)
-	cfgDaily := testAccProviderConfig() + fmt.Sprintf(`
+	cfgDaily := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "mw" {
   name     = "%s"
   interval = "daily"
@@ -331,9 +332,9 @@ resource "uptimerobot_maintenance_window" "mw" {
 }
 `, name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMaintenanceWindowDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMaintenanceWindowDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgWeekly,

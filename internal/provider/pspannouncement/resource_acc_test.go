@@ -1,6 +1,6 @@
 //go:build acceptance
 
-package provider
+package pspannouncement_test
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	provideracctest "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/acctest"
 )
 
 func TestAccPSPAnnouncementResource(t *testing.T) {
@@ -19,14 +20,14 @@ func TestAccPSPAnnouncementResource(t *testing.T) {
 		t.Skip("set UPTIMEROBOT_TEST_PSP_ANNOUNCEMENT=1 to run PSP announcement acceptance tests")
 	}
 
-	name := randomName("acc-psp-ann")
+	name := provideracctest.RandomName("acc-psp-ann")
 	startDate := "2030-01-01T00:00:00Z"
 	endDate := "2030-01-01T01:00:00Z"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckPSPDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPSPAnnouncementResourceConfig(
@@ -82,12 +83,12 @@ func TestAccPSPAnnouncementResource_PinUnpin(t *testing.T) {
 		t.Skip("set UPTIMEROBOT_TEST_PSP_ANNOUNCEMENT=1 to run PSP announcement acceptance tests")
 	}
 
-	name := randomName("acc-psp-ann-pin")
+	name := provideracctest.RandomName("acc-psp-ann-pin")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckPSPDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPSPAnnouncementResourcePinConfig(name, pspAnnouncementBoolPtr(true)),
@@ -135,7 +136,7 @@ func testAccPSPAnnouncementResourceConfig(
 		endDateConfig = fmt.Sprintf("\n  end_date = %q", *endDate)
 	}
 
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name         = %q
   subscription = true
@@ -158,7 +159,7 @@ func testAccPSPAnnouncementResourcePinConfig(name string, pinned *bool) string {
 		pinnedConfig = fmt.Sprintf("\n  is_pinned  = %t", *pinned)
 	}
 
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name         = %q
   subscription = true
@@ -205,7 +206,7 @@ func testAccCheckPSPAnnouncementPinned(resourceName string, expected bool) resou
 			return fmt.Errorf("could not parse announcement ID %q: %w", rs.Primary.ID, err)
 		}
 
-		apiClient := testAccAPIClient()
+		apiClient := provideracctest.APIClient()
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 

@@ -1,6 +1,6 @@
 //go:build acceptance
 
-package provider
+package tag_test
 
 import (
 	"context"
@@ -10,37 +10,16 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	provideracctest "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/acctest"
 )
 
-func TestAccCurrentUserDataSource(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccProviderConfig() + `
-data "uptimerobot_current_user" "current" {}
-`,
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("data.uptimerobot_current_user.current", "id", "current"),
-					resource.TestCheckResourceAttrSet("data.uptimerobot_current_user.current", "monitor_limit"),
-					resource.TestCheckResourceAttrSet("data.uptimerobot_current_user.current", "monitors_count"),
-					resource.TestCheckResourceAttrSet("data.uptimerobot_current_user.current", "plan"),
-					resource.TestCheckResourceAttrSet("data.uptimerobot_current_user.current", "sms_credits"),
-					resource.TestCheckResourceAttrSet("data.uptimerobot_current_user.current", "subscription_monitor_limit"),
-				),
-			},
-		},
-	})
-}
-
 func TestAccTagDataSources(t *testing.T) {
-	testAccPreCheck(t)
+	provideracctest.PreCheck(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	tags, err := testAccAPIClient().ListAllTags(ctx)
+	tags, err := provideracctest.APIClient().ListAllTags(ctx)
 	if err != nil {
 		t.Fatalf("could not list tags for acceptance precheck: %v", err)
 	}
@@ -52,8 +31,8 @@ func TestAccTagDataSources(t *testing.T) {
 	id := fmt.Sprintf("%d", tag.ID)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccTagDataSourcesConfig(id, tag.Name),
@@ -71,7 +50,7 @@ func TestAccTagDataSources(t *testing.T) {
 }
 
 func testAccTagDataSourcesConfig(id, name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 data "uptimerobot_tag" "by_id" {
   id = %q
 }

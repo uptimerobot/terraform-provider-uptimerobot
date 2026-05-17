@@ -1,6 +1,6 @@
 //go:build acceptance
 
-package provider
+package monitorgroup_test
 
 import (
 	"context"
@@ -13,10 +13,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	provideracctest "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/acctest"
 )
 
 func testAccMonitorGroupConfig(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor_group" "test" {
   name = %q
 }
@@ -24,8 +25,8 @@ resource "uptimerobot_monitor_group" "test" {
 }
 
 func testAccMonitorGroupWithMonitorConfig(groupName, monitorName string) string {
-	url := testAccUniqueURL(monitorName)
-	return testAccProviderConfig() + fmt.Sprintf(`
+	url := provideracctest.UniqueURL(monitorName)
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor_group" "test" {
   name = %q
 }
@@ -42,7 +43,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorGroupDeleteMoveConfig(sourceName, fallbackName string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor_group" "fallback" {
   name = %q
 }
@@ -55,7 +56,7 @@ resource "uptimerobot_monitor_group" "source" {
 }
 
 func testAccMonitorGroupFallbackOnlyConfig(fallbackName string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor_group" "fallback" {
   name = %q
 }
@@ -67,9 +68,9 @@ func TestAccMonitorGroup_Basic(t *testing.T) {
 	renamed := name + "-renamed"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorGroupDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorGroupDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccMonitorGroupConfig(name),
@@ -114,7 +115,7 @@ func TestAccMonitorGroup_DeleteMovesExternalMonitorToConfiguredGroup(t *testing.
 		if monitorID == 0 {
 			return
 		}
-		apiClient := testAccAPIClient()
+		apiClient := provideracctest.APIClient()
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 		_ = apiClient.DeleteMonitor(ctx, monitorID)
@@ -124,9 +125,9 @@ func TestAccMonitorGroup_DeleteMovesExternalMonitorToConfiguredGroup(t *testing.
 	t.Cleanup(cleanupMonitor)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorGroupDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorGroupDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccMonitorGroupDeleteMoveConfig(sourceName, fallbackName),
@@ -160,13 +161,13 @@ func testAccCreateExternalMonitorInGroup(monitorID *int64, name, groupResource s
 		groupIDInt := int(groupID)
 		timeout := 30
 
-		apiClient := testAccAPIClient()
+		apiClient := provideracctest.APIClient()
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 
 		monitor, err := apiClient.CreateMonitor(ctx, &client.CreateMonitorRequest{
 			Name:                     name,
-			URL:                      testAccUniqueURL(name),
+			URL:                      provideracctest.UniqueURL(name),
 			Type:                     client.MonitorTypeHTTP,
 			Interval:                 300,
 			Timeout:                  &timeout,
@@ -202,7 +203,7 @@ func testAccCheckExternalMonitorMovedAndCleanup(monitorID *int64, fallbackResour
 			return err
 		}
 
-		apiClient := testAccAPIClient()
+		apiClient := provideracctest.APIClient()
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 
@@ -254,9 +255,9 @@ func TestAccMonitorGroup_WithMonitorAssignment(t *testing.T) {
 	monitorName := acctest.RandomWithPrefix("acc-monitor-group-monitor")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorGroupDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorGroupDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccMonitorGroupWithMonitorConfig(groupName, monitorName),

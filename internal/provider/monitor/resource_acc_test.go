@@ -1,16 +1,14 @@
 //go:build acceptance
 
-package provider
+package monitor_test
 
 import (
 	"context"
 	"fmt"
 	"os"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	provideracctest "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/acctest"
 	monitorpkg "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/monitor"
 )
 
@@ -56,8 +55,8 @@ func twoMWDateTimes() (d1, t1, d2, t2 string) {
 // ------------------------ Config helpers ------------------------
 
 func testAccMonitorResourceConfig(name string) string {
-	url := testAccUniqueURL(name)
-	return testAccProviderConfig() + fmt.Sprintf(`
+	url := provideracctest.UniqueURL(name)
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = "%s"
@@ -69,7 +68,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithURL(name, url string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = "%s"
@@ -81,13 +80,13 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithPause(name string, isPaused *bool) string {
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	pause := ""
 	if isPaused != nil {
 		pause = fmt.Sprintf("\n  is_paused = %t", *isPaused)
 	}
 
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -99,7 +98,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithTags(name string, tags []string) string {
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	tagsStr := ""
 	if tags != nil {
 		if len(tags) == 0 {
@@ -111,7 +110,7 @@ func testAccMonitorResourceConfigWithTags(name string, tags []string) string {
 		}
 	}
 
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = "%s"
@@ -123,8 +122,8 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithGroupID(name string, groupID int) string {
-	url := testAccUniqueURL(name)
-	return testAccProviderConfig() + fmt.Sprintf(`
+	url := provideracctest.UniqueURL(name)
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name      = %q
   url       = "%s"
@@ -137,13 +136,13 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithCustomFields(name string, fields map[string]string) string {
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	customFields := ""
 	if fields != nil {
-		customFields = "\n  custom_fields = " + hclStringMap(fields)
+		customFields = "\n  custom_fields = " + provideracctest.HCLStringMap(fields)
 	}
 
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -198,7 +197,7 @@ func testAccCheckMonitorCustomFields(resourceName string, expected map[string]st
 
 // nolint:unparam // kept for symmetry with other helpers & future reuse
 func testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name string, responseCodes []string) string {
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	var responseCodesStr string
 	if responseCodes != nil {
 		if len(responseCodes) == 0 {
@@ -209,7 +208,7 @@ func testAccMonitorResourceConfigWithSuccessHTTPResponseCodes(name string, respo
     success_http_response_codes = [%s]`, joinQuotedStrings(responseCodes))
 		}
 	}
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = "%s"
@@ -221,7 +220,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithHeaders(name string, headers map[string]string) string {
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	hdr := ""
 	method := `http_method_type = "GET"`
 	if headers != nil {
@@ -238,7 +237,7 @@ func testAccMonitorResourceConfigWithHeaders(name string, headers map[string]str
 		}
 		hdr += " }"
 	}
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -251,9 +250,9 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithBody(name string, body string) string {
-	url := fmt.Sprintf("%s/echo", testAccUniqueURL(name))
+	url := fmt.Sprintf("%s/echo", provideracctest.UniqueURL(name))
 	// body should be an HCL expression, e.g. ` + "`jsonencode({foo=\"bar\", n=1})` or `null`" + `
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = "%s"
@@ -267,7 +266,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithKV(name string, kv map[string]string) string {
-	url := fmt.Sprintf("%s/echo", testAccUniqueURL(name))
+	url := fmt.Sprintf("%s/echo", provideracctest.UniqueURL(name))
 	body := ""
 	if kv != nil {
 		body = "\n  post_value_kv = {"
@@ -282,7 +281,7 @@ func testAccMonitorResourceConfigWithKV(name string, kv map[string]string) strin
 		}
 		body += " }"
 	}
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = "%s"
@@ -296,8 +295,8 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigPostNoBody(name string) string {
-	url := fmt.Sprintf("%s/echo", testAccUniqueURL(name))
-	return testAccProviderConfig() + fmt.Sprintf(`
+	url := fmt.Sprintf("%s/echo", provideracctest.UniqueURL(name))
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = "%s"
@@ -311,11 +310,11 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigGetNoBody(name string) string {
-	return testAccMonitorResourceConfigGetNoBodyAtURL(name, testAccUniqueURL(name))
+	return testAccMonitorResourceConfigGetNoBodyAtURL(name, provideracctest.UniqueURL(name))
 }
 
 func testAccMonitorResourceConfigGetNoBodyAtURL(name, url string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = "%s"
@@ -329,7 +328,7 @@ resource "uptimerobot_monitor" "test" {
 
 //nolint:unparam // name kept for symmetry with other helpers & future reuse
 func testAccMonitorResourceConfigWithAlertContactObjects(name string, ids []string) string {
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	ac := ""
 	if len(ids) > 0 {
 		ac = "\n  assigned_alert_contacts = ["
@@ -341,7 +340,7 @@ func testAccMonitorResourceConfigWithAlertContactObjects(name string, ids []stri
 		}
 		ac += "]"
 	}
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -353,7 +352,7 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithSSLPeriod(name string, days []int) string {
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	cfg := ""
 	if days != nil {
 		if len(days) == 0 {
@@ -368,7 +367,7 @@ func testAccMonitorResourceConfigWithSSLPeriod(name string, days []int) string {
   }`, joinInts(days))
 		}
 	}
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -381,12 +380,12 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func testAccMonitorResourceConfigWithAPIAssertions(name, logic, comparison, targetExpr string) string {
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	target := ""
 	if strings.TrimSpace(targetExpr) != "" {
 		target = "\n          target     = " + targetExpr
 	}
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -413,7 +412,7 @@ resource "uptimerobot_monitor" "test" {
 
 func testAccConfigMonitorWithTwoMWs(sfx string) string {
 	monitorName := fmt.Sprintf("%s-monitor", sfx)
-	url := testAccUniqueURL(monitorName)
+	url := provideracctest.UniqueURL(monitorName)
 	d1, t1, d2, t2 := twoMWDateTimes()
 	return fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "a" {
@@ -450,7 +449,7 @@ resource "uptimerobot_monitor" "test" {
 
 func testAccConfigMonitorWithOneMW(sfx string) string {
 	monitorName := fmt.Sprintf("%s-monitor", sfx)
-	url := testAccUniqueURL(monitorName)
+	url := provideracctest.UniqueURL(monitorName)
 	d1, t1, d2, t2 := twoMWDateTimes()
 	return fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "a" {
@@ -486,7 +485,7 @@ resource "uptimerobot_monitor" "test" {
 
 func testAccConfigMonitorNoMW(sfx string) string {
 	monitorName := fmt.Sprintf("%s-monitor", sfx)
-	url := testAccUniqueURL(monitorName)
+	url := provideracctest.UniqueURL(monitorName)
 	d1, t1, d2, t2 := twoMWDateTimes()
 	return fmt.Sprintf(`
 resource "uptimerobot_maintenance_window" "a" {
@@ -542,27 +541,6 @@ func joinInts(ints []int) string {
 	return result
 }
 
-func hclStringMap(values map[string]string) string {
-	if len(values) == 0 {
-		return "{}"
-	}
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-
-	out := "{"
-	for i, key := range keys {
-		if i > 0 {
-			out += ","
-		}
-		out += fmt.Sprintf(" %q = %q", key, values[key])
-	}
-	out += " }"
-	return out
-}
-
 func mustAlertContactID(t *testing.T) string {
 	t.Helper()
 	id := os.Getenv("UPTIMEROBOT_TEST_ALERT_CONTACT_ID")
@@ -572,77 +550,17 @@ func mustAlertContactID(t *testing.T) string {
 	return id
 }
 
-// testAccUniqueURL produces a stable and per-name unique URL to satisfy API
-// deduplication validations for GET and HEAD monitors.
-func testAccUniqueURL(name string) string {
-	if v, ok := uniqueURLCache.Load(name); ok {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	slug := strings.Map(func(r rune) rune {
-		switch {
-		case r >= 'a' && r <= 'z':
-			return r
-		case r >= 'A' && r <= 'Z':
-			return r + ('a' - 'A')
-		case r >= '0' && r <= '9':
-			return r
-		default:
-			return '-'
-		}
-	}, name)
-	if strings.Trim(slug, "-") == "" {
-		slug = "monitor"
-	}
-	suffix := acctest.RandStringFromCharSet(8, acctest.CharSetAlphaNum)
-	url := fmt.Sprintf("https://example.com/%s-%s", slug, suffix)
-	uniqueURLCache.Store(name, url)
-	return url
-}
-
-var uniqueURLCache sync.Map
-var uniqueDomainCache sync.Map
-
-// testAccUniqueDomain returns a unique domain for API validations like DNS monitors.
-func testAccUniqueDomain(name string) string {
-	if v, ok := uniqueDomainCache.Load(name); ok {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	slug := strings.Map(func(r rune) rune {
-		switch {
-		case r >= 'a' && r <= 'z':
-			return r
-		case r >= 'A' && r <= 'Z':
-			return r + ('a' - 'A')
-		case r >= '0' && r <= '9':
-			return r
-		default:
-			return '-'
-		}
-	}, name)
-	if strings.Trim(slug, "-") == "" {
-		slug = "dns"
-	}
-	suffix := acctest.RandStringFromCharSet(6, acctest.CharSetAlphaNum)
-	domain := fmt.Sprintf("%s-%s.example.com", slug, suffix)
-	uniqueDomainCache.Store(name, domain)
-	return domain
-}
-
 // ---------------------- Acceptance tests ----------------------
 
 func TestAccMonitorResource(t *testing.T) {
 	name := acctest.RandomWithPrefix("test-monitor")
 	updatedName := acctest.RandomWithPrefix("test-monitor-updated")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
@@ -679,9 +597,9 @@ func TestAccMonitorResource_IsPaused_StartStop(t *testing.T) {
 	started := false
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccMonitorResourceConfigWithPause(name, &paused),
@@ -717,9 +635,9 @@ func TestAccMonitorResource_CustomFields(t *testing.T) {
 	}
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccMonitorResourceConfigWithCustomFields(name, initial),
@@ -776,9 +694,9 @@ func TestAccMonitorResource_AlertContacts(t *testing.T) {
 	name := acctest.RandomWithPrefix("test-monitor-alerts")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			// Step 1: create with no contacts
 			{
@@ -823,12 +741,12 @@ func TestAccMonitorResource_AlertContacts(t *testing.T) {
 func TestAccMonitorResource_AlertContacts_ExplicitEmpty(t *testing.T) {
 	id := mustAlertContactID(t)
 	name := acctest.RandomWithPrefix("test-monitor-contacts-empty")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			// 1) Start with one contact assigned
 			{
@@ -848,7 +766,7 @@ func TestAccMonitorResource_AlertContacts_ExplicitEmpty(t *testing.T) {
 			},
 			// 2) Explicitly set to empty list. Plan should exist and clears server
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = %q
@@ -863,7 +781,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// 3) Apply explicit empty. State should be an empty set
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = %q
@@ -879,7 +797,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// 4) Idempotent re-plan with explicit empty
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = %q
@@ -904,9 +822,9 @@ resource "uptimerobot_monitor" "test" {
 func TestAccMonitorResource_AlertContacts_MissingThreshold(t *testing.T) {
 	id := mustAlertContactID(t)
 	name := acctest.RandomWithPrefix("test-missing-threshold")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
-	cfg := testAccProviderConfig() + fmt.Sprintf(`
+	cfg := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = %q
@@ -925,8 +843,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, url, id)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      cfg,
@@ -939,9 +857,9 @@ resource "uptimerobot_monitor" "test" {
 func TestAccMonitorResource_AlertContacts_MissingRecurrence(t *testing.T) {
 	id := mustAlertContactID(t)
 	name := acctest.RandomWithPrefix("test-missing-recurrence")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
-	cfg := testAccProviderConfig() + fmt.Sprintf(`
+	cfg := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = %q
@@ -960,8 +878,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, url, id)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      cfg,
@@ -975,12 +893,12 @@ resource "uptimerobot_monitor" "test" {
 // are added to an existing monitor that was initially created without any.
 func TestAccMonitorResource_Tags(t *testing.T) {
 	name := acctest.RandomWithPrefix("test-monitor-tags")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			// Step 1: Create monitor without tags
 			{
@@ -1019,12 +937,12 @@ func TestAccMonitorResource_Tags(t *testing.T) {
 
 func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 	name := acctest.RandomWithPrefix("test-monitor-headers")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			// 1) Create without headers
 			{
@@ -1068,16 +986,16 @@ func TestAccMonitorResource_CustomHTTPHeaders(t *testing.T) {
 
 func TestAccMonitorResource_CustomHTTPHeaders_ContentTypeWithBody(t *testing.T) {
 	name := acctest.RandomWithPrefix("test-monitor-headers-ct")
-	url := fmt.Sprintf("%s/echo", testAccUniqueURL(name))
+	url := fmt.Sprintf("%s/echo", provideracctest.UniqueURL(name))
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			// 1) Create with POST and JSON body with header 'Content-Type'
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = "%s"
@@ -1099,7 +1017,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// 2) Change Content-Type value
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = "%s"
@@ -1118,7 +1036,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// 3) Remove headers while body remains
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = "%s"
@@ -1145,9 +1063,9 @@ func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 	sfx := acctest.RandomWithPrefix("acc-mw")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
 				// Step 1: attach two MWs
@@ -1189,9 +1107,9 @@ func TestAccMonitorResource_MaintenanceWindows(t *testing.T) {
 func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 	name := acctest.RandomWithPrefix("test-monitor-response-codes")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			// 1) Create with attr omitted. Defaults may be set on server, attribute is ABSENT in state
 			{
@@ -1239,15 +1157,15 @@ func TestAccMonitorResource_SuccessHTTPResponseCodes(t *testing.T) {
 // TestAccMonitorResource_PortMonitorValidation tests that PORT monitors require a port number.
 func TestAccMonitorResource_PortMonitorValidation(t *testing.T) {
 	name := acctest.RandomWithPrefix("test-port-monitor")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Test that PORT monitor without port fails
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = %q
@@ -1260,7 +1178,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// Test that PORT monitor with port succeeds
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
     name         = %q
     url          = %q
@@ -1283,16 +1201,16 @@ resource "uptimerobot_monitor" "test" {
 // TestAccMonitorResource_KeywordMonitorValidation tests that KEYWORD monitors require keyword fields.
 func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
 	baseName := acctest.RandomWithPrefix("test-keyword-monitor")
-	url := testAccUniqueURL(baseName + "-exists")
-	urlNot := testAccUniqueURL(baseName + "-not")
+	url := provideracctest.UniqueURL(baseName + "-exists")
+	urlNot := provideracctest.UniqueURL(baseName + "-not")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Test that KEYWORD monitor without keywordType fails
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 	resource "uptimerobot_monitor" "test" {
 	    name         = %q
 	    url          = %q
@@ -1307,7 +1225,7 @@ func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
 			},
 			// Test that KEYWORD monitor without keywordCaseType fails
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 	resource "uptimerobot_monitor" "test" {
 	    name         = %q
 	    url          = %q
@@ -1322,7 +1240,7 @@ func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
 			},
 			// Test that KEYWORD monitor without keywordValue fails
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 	resource "uptimerobot_monitor" "test" {
 	    name         = %q
 	    url          = %q
@@ -1337,7 +1255,7 @@ func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
 			},
 			// Test that KEYWORD monitor with invalid keywordType fails
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 	resource "uptimerobot_monitor" "test" {
 	    name         = %q
 	    url          = %q
@@ -1353,7 +1271,7 @@ func TestAccMonitorResource_KeywordMonitorValidation(t *testing.T) {
 			},
 			// Validate both keyword types succeed
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 	resource "uptimerobot_monitor" "exists" {
 	    name         = "%s-exists"
 	    url          = "%s"
@@ -1396,16 +1314,16 @@ func TestAccMonitorResource_NewMonitorTypes(t *testing.T) {
 	hbName := acctest.RandomWithPrefix("acc-hb-newtypes")
 	dnsName := acctest.RandomWithPrefix("acc-dns-newtypes")
 	udpName := acctest.RandomWithPrefix("acc-udp-newtypes")
-	dnsDomain := testAccUniqueDomain(dnsName)
-	udpDomain := testAccUniqueDomain(udpName)
+	dnsDomain := provideracctest.UniqueDomain(dnsName)
+	udpDomain := provideracctest.UniqueDomain(udpName)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Test HEARTBEAT monitor
 			{
-				Config: testAccProviderConfig() + `
+				Config: provideracctest.ProviderConfig() + `
 resource "uptimerobot_monitor" "test" {
     name         = "` + hbName + `"
     type         = "HEARTBEAT"
@@ -1421,7 +1339,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// Test DNS monitor
 			{
-				Config: testAccProviderConfig() + `
+				Config: provideracctest.ProviderConfig() + `
 resource "uptimerobot_monitor" "test" {
     name         = "` + dnsName + `"
     url          = "` + dnsDomain + `"
@@ -1440,7 +1358,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// Test UDP monitor
 			{
-				Config: testAccProviderConfig() + `
+				Config: provideracctest.ProviderConfig() + `
 resource "uptimerobot_monitor" "test" {
     name         = "` + udpName + `"
     url          = "` + udpDomain + `"
@@ -1472,9 +1390,9 @@ func TestAcc_Monitor_API_ConfigAssertions_RoundTrip(t *testing.T) {
 	res := "uptimerobot_monitor.test"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccMonitorResourceConfigWithAPIAssertions(name, "AND", "equals", `jsonencode("ok")`),
@@ -1505,14 +1423,14 @@ func TestAcc_Monitor_API_ConfigAssertions_RoundTrip(t *testing.T) {
 
 func TestAcc_Monitor_API_RequiresConfigOnCreate(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-api-reqcfg")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = %q
@@ -1529,14 +1447,14 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_APIAssertions_ForbiddenOnHTTP(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-apiassert-http")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = %q
@@ -1567,14 +1485,14 @@ resource "uptimerobot_monitor" "test" {
 // TestAccMonitorResource_NewFields tests the new fields added to the monitor resource.
 func TestAccMonitorResource_NewFields(t *testing.T) {
 	name := acctest.RandomWithPrefix("test-newfields")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// 1) threshold only
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name                    = %q
   url                     = "%s"
@@ -1590,7 +1508,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// 2) change threshold
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name                    = %q
   url                     = "%s"
@@ -1606,7 +1524,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// 3) add regional_data as well
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name                    = %q
   url                     = "%s"
@@ -1624,7 +1542,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// 4) idempotency re-plan
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name                    = %q
   url                     = "%s"
@@ -1642,19 +1560,19 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAccMonitorResource_RegionData(t *testing.T) {
-	if _, ok := testAccOptionalEnv("UPTIMEROBOT_TEST_MULTI_REGION"); !ok {
+	if _, ok := provideracctest.OptionalEnv("UPTIMEROBOT_TEST_MULTI_REGION"); !ok {
 		t.Skip("Set UPTIMEROBOT_TEST_MULTI_REGION=1 to run multi-region acceptance; the account must have monitor-location-settings.")
 	}
 
 	name := acctest.RandomWithPrefix("test-region-data")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -1680,7 +1598,7 @@ resource "uptimerobot_monitor" "test" {
 				),
 			},
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -1702,7 +1620,7 @@ resource "uptimerobot_monitor" "test" {
 				),
 			},
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -1721,7 +1639,7 @@ resource "uptimerobot_monitor" "test" {
 				ExpectNonEmptyPlan: false,
 			},
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -1739,7 +1657,7 @@ resource "uptimerobot_monitor" "test" {
 				),
 			},
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -1761,14 +1679,14 @@ resource "uptimerobot_monitor" "test" {
 // TestAccMonitorResource_InvalidMonitorType tests that invalid monitor types are rejected.
 func TestAccMonitorResource_InvalidMonitorType(t *testing.T) {
 	name := acctest.RandomWithPrefix("test-invalid-monitor")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Test invalid monitor type
 			{
-				Config: testAccProviderConfig() + `
+				Config: provideracctest.ProviderConfig() + `
 resource "uptimerobot_monitor" "test" {
     name         = "` + name + `"
     url          = "` + url + `"
@@ -1785,10 +1703,10 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_HTTP_UsesTimeout(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-http")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: fmt.Sprintf(`
@@ -1812,13 +1730,13 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_HTTP_DefaultTimeout_WhenOmitted(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-http-no-timeout")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   type     = "HTTP"
@@ -1840,10 +1758,10 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_DNS_IgnoreTimeoutAndGrace_And_PING_UsesTimeout(t *testing.T) {
 	dnsName := "acc-dns"
-	dnsDomain := testAccUniqueDomain(dnsName)
+	dnsDomain := provideracctest.UniqueDomain(dnsName)
 	pingName := "acc-ping"
-	pingURL := testAccUniqueURL(pingName)
-	pingConfig := testAccProviderConfig() + fmt.Sprintf(`
+	pingURL := provideracctest.UniqueURL(pingName)
+	pingConfig := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "ping" {
   name     = %q
   type     = "PING"
@@ -1853,12 +1771,12 @@ resource "uptimerobot_monitor" "ping" {
 	`, pingName, pingURL)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				// DNS with neither timeout nor grace_period
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "dns" {
   name     = %q
   type     = "DNS"
@@ -1896,10 +1814,10 @@ resource "uptimerobot_monitor" "dns" {
 
 func TestAcc_Monitor_PING_CustomTimeout_SetAndUpdate(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-ping-timeout")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	res := "uptimerobot_monitor.test"
 
-	cfg10 := testAccProviderConfig() + fmt.Sprintf(`
+	cfg10 := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "%s"
   type     = "PING"
@@ -1909,7 +1827,7 @@ resource "uptimerobot_monitor" "test" {
 }
 `, name, url)
 
-	cfg45 := testAccProviderConfig() + fmt.Sprintf(`
+	cfg45 := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "%s"
   type     = "PING"
@@ -1920,9 +1838,9 @@ resource "uptimerobot_monitor" "test" {
 `, name, url)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: cfg10,
@@ -1951,8 +1869,8 @@ resource "uptimerobot_monitor" "test" {
 func TestAcc_Monitor_Heartbeat_UsesGrace(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-heartbeat")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: fmt.Sprintf(`
@@ -1976,12 +1894,12 @@ resource "uptimerobot_monitor" "hb" {
 func TestAcc_Monitor_Heartbeat_Grace_Bounds_OK(t *testing.T) {
 	baseName := acctest.RandomWithPrefix("hb-bounds")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				// Create both boundaries in one apply to avoid update-timing flakes.
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb_min" {
   name         = "%s-min"
   type         = "HEARTBEAT"
@@ -2008,11 +1926,11 @@ resource "uptimerobot_monitor" "hb_max" {
 func TestAcc_Monitor_Heartbeat_Grace_Invalid(t *testing.T) {
 	baseName := acctest.RandomWithPrefix("hb-bad")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb" {
   name         = "%s-low"
   type         = "HEARTBEAT"
@@ -2023,7 +1941,7 @@ resource "uptimerobot_monitor" "hb" {
 				ExpectError: regexp.MustCompile(`must be between 0 and 86400`),
 			},
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "hb" {
   name         = "%s-high"
   type         = "HEARTBEAT"
@@ -2040,8 +1958,8 @@ resource "uptimerobot_monitor" "hb" {
 func TestAcc_Monitor_HTTP_PostBody_RoundTrip(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-body")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// create with body
 			{
@@ -2068,10 +1986,10 @@ func TestAcc_Monitor_HTTP_PostBody_RoundTrip(t *testing.T) {
 
 func TestAcc_Monitor_HTTP_PostBody_ClearByRemoving(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-body-clear")
-	url := fmt.Sprintf("%s/echo", testAccUniqueURL(name))
+	url := fmt.Sprintf("%s/echo", provideracctest.UniqueURL(name))
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// set a body first
 			{
@@ -2083,7 +2001,7 @@ func TestAcc_Monitor_HTTP_PostBody_ClearByRemoving(t *testing.T) {
 			},
 			// remove the attribute from config → should clear on server (requires post_value_data NOT Computed)
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = "%s"
@@ -2104,13 +2022,13 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_HTTP_GetHead_NoBodyAllowed(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-get-body-error")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = "%s"
@@ -2129,9 +2047,9 @@ resource "uptimerobot_monitor" "test" {
 func TestAcc_Monitor_HTTP_PostKV_RoundTrip(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-kv")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			// Create with KV
 			{
@@ -2169,9 +2087,9 @@ func TestAcc_Monitor_HTTP_PostKV_RoundTrip(t *testing.T) {
 func TestAcc_Monitor_HTTP_Post_NoBody_StablePlan(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-post-nobody")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			// Start at GET with no body
 			{Config: testAccMonitorResourceConfigGetNoBody(name)},
@@ -2196,8 +2114,8 @@ func TestAcc_Monitor_HTTP_Post_NoBody_StablePlan(t *testing.T) {
 func TestAcc_Monitor_HTTP_MethodSwitch_ClearsBody(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-method-switch")
 	// Keep one URL across steps to avoid backend URL normalization drift.
-	url := fmt.Sprintf("%s/echo", testAccUniqueURL(name))
-	postNoBodyConfig := testAccProviderConfig() + fmt.Sprintf(`
+	url := fmt.Sprintf("%s/echo", provideracctest.UniqueURL(name))
+	postNoBodyConfig := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = "%s"
@@ -2209,9 +2127,9 @@ resource "uptimerobot_monitor" "test" {
 `, name, url)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			// 1) POST + JSON
 			{
@@ -2258,8 +2176,8 @@ resource "uptimerobot_monitor" "test" {
 func TestAcc_Monitor_HTTP_DefaultMethod_GET(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-default-method")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccMonitorResourceConfig(name),
@@ -2272,9 +2190,9 @@ func TestAcc_Monitor_HTTP_DefaultMethod_GET(t *testing.T) {
 func TestAcc_Monitor_HTTP_Body_Switch_JSON_KV(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-switch-json-kv")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{ // start JSON
 				Config: testAccMonitorResourceConfigWithBody(name, `jsonencode({a="1"})`),
@@ -2309,8 +2227,8 @@ func TestAcc_Monitor_CreatePlanOnly_NoExistingState(t *testing.T) {
 	// This specifically exercises ModifyPlan with a null state on first create.
 	// It should produce a non-empty plan and not panic / error.
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:             testAccMonitorResourceConfig(name),
@@ -2324,9 +2242,9 @@ func TestAcc_Monitor_CreatePlanOnly_NoExistingState(t *testing.T) {
 func TestAcc_Monitor_CheckSSLErrors_DefaultFalse(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-sslerrs-default")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccMonitorResourceConfig(name),
@@ -2344,14 +2262,14 @@ func TestAcc_Monitor_CheckSSLErrors_DefaultFalse(t *testing.T) {
 
 func TestAcc_Monitor_CheckSSLErrors_ExplicitTrue(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-sslerrs-true")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = %q
@@ -2365,7 +2283,7 @@ resource "uptimerobot_monitor" "test" {
 			},
 			// flip back to false
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name             = %q
   url              = %q
@@ -2384,9 +2302,9 @@ resource "uptimerobot_monitor" "test" {
 func TestAcc_Monitor_GroupID_SetAndPlanStable(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-group-id")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccMonitorResourceConfigWithGroupID(name, 0),
@@ -2404,9 +2322,9 @@ func TestAcc_Monitor_GroupID_SetAndPlanStable(t *testing.T) {
 func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-ssl-period")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{ // apply [0, 7, 30]
 				Config: testAccMonitorResourceConfigWithSSLPeriod(name, []int{0, 7, 30}),
@@ -2436,15 +2354,15 @@ func TestAcc_Monitor_Config_SSLExpirationPeriodDays(t *testing.T) {
 
 func TestAcc_Monitor_Config_SSLExpirationPeriodDays_Invalid(t *testing.T) {
 	baseName := acctest.RandomWithPrefix("acc-ssl-period")
-	baseURL := testAccUniqueURL(baseName)
+	baseURL := provideracctest.UniqueURL(baseName)
 	invalidName := acctest.RandomWithPrefix("acc-ssl-period-invalid")
 	tooManyName := acctest.RandomWithPrefix("acc-ssl-period-too-many")
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{ // out of range
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -2464,7 +2382,7 @@ resource "uptimerobot_monitor" "test" {
 				),
 			},
 			{ // > 10 items
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = "%s"
@@ -2485,11 +2403,11 @@ resource "uptimerobot_monitor" "test" {
 }
 
 func TestAcc_Monitor_NameURL_HTMLNormalization(t *testing.T) {
-	testAccPreCheck(t)
+	provideracctest.PreCheck(t)
 
 	resourceName := "uptimerobot_monitor.test"
 	name := fmt.Sprintf("A & B <C> %s", acctest.RandStringFromCharSet(6, acctest.CharSetAlphaNum))
-	url := fmt.Sprintf("%s/health?a=1&b=2", testAccUniqueURL(name))
+	url := fmt.Sprintf("%s/health?a=1&b=2", provideracctest.UniqueURL(name))
 
 	cfgPlain := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
@@ -2501,7 +2419,7 @@ resource "uptimerobot_monitor" "test" {
 `, name, url)
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgPlain,
@@ -2544,7 +2462,7 @@ func TestAcc_Monitor_Import_NameURL_HTMLNormalizationFromAPI(t *testing.T) {
 	// Create a monitor via API with intentionally escaped inputs to simulate
 	// out-of-band creation (UI, direct API usage, other tools).
 	suffix := acctest.RandStringFromCharSet(6, acctest.CharSetAlphaNum)
-	rawURL := fmt.Sprintf("%s/health?a=1&amp;b=2", testAccUniqueURL("acc-import-html-normalization-"+suffix))
+	rawURL := fmt.Sprintf("%s/health?a=1&amp;b=2", provideracctest.UniqueURL("acc-import-html-normalization-"+suffix))
 	rawName := fmt.Sprintf("A &amp; B <C> %s", suffix)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -2636,7 +2554,7 @@ func TestAcc_Monitor_Import_NameURL_HTMLNormalizationFromAPI(t *testing.T) {
 	plainURL := monitorpkg.UnescapeHTML(rawURL)
 
 	resourceName := "uptimerobot_monitor.test"
-	cfg := testAccProviderConfig() + fmt.Sprintf(`
+	cfg := provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = %q
   url      = %q
@@ -2647,7 +2565,7 @@ resource "uptimerobot_monitor" "test" {
 `, plainName, plainURL)
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:             cfg,
@@ -2667,15 +2585,15 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAccMonitorResource_KeywordCaseType_Semantics(t *testing.T) {
 	name := acctest.RandomWithPrefix("kct-semantics")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckMonitorDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 	resource "uptimerobot_monitor" "test" {
 	  name          = %q
 	  url           = %q
@@ -2692,7 +2610,7 @@ func TestAccMonitorResource_KeywordCaseType_Semantics(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 	resource "uptimerobot_monitor" "test" {
   name              = %q
   url               = %q
@@ -2709,7 +2627,7 @@ func TestAccMonitorResource_KeywordCaseType_Semantics(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccProviderConfig() + fmt.Sprintf(`
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 	resource "uptimerobot_monitor" "test" {
 	  name          = %q
 	  url           = %q
@@ -2733,7 +2651,7 @@ func TestAccMonitorResource_KeywordCaseType_Semantics(t *testing.T) {
 func TestAcc_Monitor_Config_SSLDays_Semantics(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-ssl-config")
 	res := "uptimerobot_monitor.test"
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
 	cfgSet := `
 resource "uptimerobot_monitor" "test" {
@@ -2786,8 +2704,8 @@ resource "uptimerobot_monitor" "test" {
 `
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Set concrete days
 			{
@@ -2832,7 +2750,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_DNSRecords_Manage(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-dns-config")
-	domain := testAccUniqueDomain(name)
+	domain := provideracctest.UniqueDomain(name)
 	res := "uptimerobot_monitor.test"
 
 	cfgAandCNAME := fmt.Sprintf(`
@@ -2877,8 +2795,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, domain, domain)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgAandCNAME,
@@ -2907,7 +2825,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_DNSRecords_ForbiddenOnHTTP(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-http-dns")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	cfg := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
   name     = "`+name+`"
@@ -2923,8 +2841,8 @@ resource "uptimerobot_monitor" "test" {
 }
 `, url)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      cfg,
@@ -2936,7 +2854,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_SSLDays_Validators(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-ssl-validate")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 
 	tooMany := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
@@ -2967,8 +2885,8 @@ resource "uptimerobot_monitor" "test" {
 `, url)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      tooMany,
@@ -2984,7 +2902,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_IPVersion_SetAndUpdate(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-ip-version")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	res := "uptimerobot_monitor.test"
 
 	cfgIPv4 := fmt.Sprintf(`
@@ -3014,8 +2932,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, url)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgIPv4,
@@ -3040,7 +2958,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_IPVersion_SetAndUpdate_API(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-api-ip-version")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	res := "uptimerobot_monitor.test"
 
 	cfgNoIPVersion := fmt.Sprintf(`
@@ -3085,8 +3003,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, url)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgNoIPVersion,
@@ -3113,8 +3031,8 @@ resource "uptimerobot_monitor" "test" {
 func TestAcc_Monitor_Config_IPVersion_AllowedForPingAndPort(t *testing.T) {
 	pingName := acctest.RandomWithPrefix("acc-ping-ipv")
 	portName := acctest.RandomWithPrefix("acc-port-ipv")
-	pingURL := testAccUniqueURL(pingName)
-	portURL := testAccUniqueURL(portName)
+	pingURL := provideracctest.UniqueURL(pingName)
+	portURL := provideracctest.UniqueURL(portName)
 
 	cfgInitial := fmt.Sprintf(`
 resource "uptimerobot_monitor" "ping" {
@@ -3169,8 +3087,8 @@ resource "uptimerobot_monitor" "port" {
 `, pingName, pingURL, portName, portURL)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgInitial,
@@ -3193,8 +3111,8 @@ resource "uptimerobot_monitor" "port" {
 func TestAcc_Monitor_Config_IPVersion_AllowsAPI_RejectsUDP(t *testing.T) {
 	apiName := acctest.RandomWithPrefix("acc-api-ipv")
 	udpName := acctest.RandomWithPrefix("acc-udp-ipv")
-	apiURL := testAccUniqueURL(apiName)
-	udpURL := testAccUniqueURL(udpName)
+	apiURL := provideracctest.UniqueURL(apiName)
+	udpURL := provideracctest.UniqueURL(udpName)
 
 	cfgAPIAllowed := fmt.Sprintf(`
 resource "uptimerobot_monitor" "api" {
@@ -3236,8 +3154,8 @@ resource "uptimerobot_monitor" "udp" {
 `, udpName, udpURL)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      cfgUnsupportedRejected,
@@ -3255,8 +3173,8 @@ resource "uptimerobot_monitor" "udp" {
 
 func TestAcc_Monitor_Config_IPVersion_Validators(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-ip-version-validate")
-	httpURL := testAccUniqueURL(name)
-	dnsDomain := testAccUniqueDomain(name)
+	httpURL := provideracctest.UniqueURL(name)
+	dnsDomain := provideracctest.UniqueDomain(name)
 
 	cfgInvalidForDNS := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
@@ -3299,8 +3217,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, strings.Replace(httpURL, "example.com", "1.1.1.1", 1))
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      cfgInvalidForDNS,
@@ -3320,7 +3238,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_ApplicationErrorRetries_SetAndUpdate(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-app-err-retries")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	res := "uptimerobot_monitor.test"
 
 	cfgValue := func(v int) string {
@@ -3349,8 +3267,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, url)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgValue(0),
@@ -3392,7 +3310,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_ApplicationErrorRetries_ClearToDefault(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-app-err-retries-clear")
-	url := testAccUniqueURL(name)
+	url := provideracctest.UniqueURL(name)
 	res := "uptimerobot_monitor.test"
 
 	cfgWithValue := fmt.Sprintf(`
@@ -3422,8 +3340,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, url)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgWithValue,
@@ -3451,8 +3369,8 @@ resource "uptimerobot_monitor" "test" {
 func TestAcc_Monitor_Config_ApplicationErrorRetries_AllowedForKEYWORDAndAPI(t *testing.T) {
 	keywordName := acctest.RandomWithPrefix("acc-kw-app-err-retries")
 	apiName := acctest.RandomWithPrefix("acc-api-app-err-retries")
-	keywordURL := testAccUniqueURL(keywordName)
-	apiURL := testAccUniqueURL(apiName)
+	keywordURL := provideracctest.UniqueURL(keywordName)
+	apiURL := provideracctest.UniqueURL(apiName)
 
 	cfgKEYWORD := fmt.Sprintf(`
 resource "uptimerobot_monitor" "kw" {
@@ -3492,8 +3410,8 @@ resource "uptimerobot_monitor" "api" {
 `, apiName, apiURL)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgKEYWORD,
@@ -3513,8 +3431,8 @@ resource "uptimerobot_monitor" "api" {
 
 func TestAcc_Monitor_Config_ApplicationErrorRetries_Validators(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-app-err-retries-validate")
-	httpURL := testAccUniqueURL(name)
-	dnsDomain := testAccUniqueDomain(name)
+	httpURL := provideracctest.UniqueURL(name)
+	dnsDomain := provideracctest.UniqueDomain(name)
 
 	cfgInvalidForDNS := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
@@ -3557,8 +3475,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, httpURL)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      cfgInvalidForDNS,
@@ -3578,7 +3496,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_DNSRecords_EmptyList_StaysEmpty(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-dns-empty")
-	domain := testAccUniqueDomain(name)
+	domain := provideracctest.UniqueDomain(name)
 	res := "uptimerobot_monitor.test"
 
 	cfgEmpty := fmt.Sprintf(`
@@ -3610,8 +3528,8 @@ resource "uptimerobot_monitor" "test" {
 }
 `, name, domain, domain)
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Create with empty list -> should be an empty set in state, not null
 			{
@@ -3641,7 +3559,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_DNSRecords_EmptyList_A_StaysEmpty(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-dns-empty-a")
-	domain := testAccUniqueDomain(name)
+	domain := provideracctest.UniqueDomain(name)
 	res := "uptimerobot_monitor.test"
 
 	cfgEmpty := fmt.Sprintf(`
@@ -3677,8 +3595,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, domain, domain)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Start with a = []
 			{
@@ -3721,7 +3639,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_DNSRecords_OmitConfig_Preserves(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-dns-omit-config")
-	domain := testAccUniqueDomain(name)
+	domain := provideracctest.UniqueDomain(name)
 	res := "uptimerobot_monitor.test"
 
 	cfgWithRecords := fmt.Sprintf(`
@@ -3751,8 +3669,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, domain)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// 1) Create with explicit dns_records
 			{
@@ -3783,7 +3701,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_DNSRecords_ConfigWithoutRecords_AllowsEmptyConfig(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-dns-norecords")
-	domain := testAccUniqueDomain(name)
+	domain := provideracctest.UniqueDomain(name)
 	res := "uptimerobot_monitor.test"
 
 	cfgMissing := fmt.Sprintf(`
@@ -3799,8 +3717,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, domain)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: cfgMissing,
@@ -3819,7 +3737,7 @@ resource "uptimerobot_monitor" "test" {
 
 func TestAcc_Monitor_Config_DNSRequiresConfigOnCreate(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-dns-requires-config")
-	domain := testAccUniqueDomain(name)
+	domain := provideracctest.UniqueDomain(name)
 
 	cfgMissingConfig := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
@@ -3831,8 +3749,8 @@ resource "uptimerobot_monitor" "test" {
 `, name, domain)
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      cfgMissingConfig,

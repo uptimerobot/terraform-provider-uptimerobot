@@ -1,6 +1,6 @@
 //go:build acceptance
 
-package provider
+package psp_test
 
 import (
 	"fmt"
@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	provideracctest "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/acctest"
 )
 
 func writeAccPSPImageFile(t *testing.T, name string, fill color.RGBA) string {
@@ -43,7 +44,7 @@ func writeAccPSPImageFile(t *testing.T, name string, fill color.RGBA) string {
 
 // Basic config with features + a few custom settings to cover both bool and string fields.
 func testAccPSPResourceConfigWithFeatures(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 	resource "uptimerobot_psp" "test" {
 	  name         = %q
 
@@ -72,7 +73,7 @@ func testAccPSPResourceConfigWithFeatures(name string) string {
 
 // Updated config: flip a couple of feature flags and tweak a string field.
 func testAccPSPResourceConfigWithFeaturesUpdated(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 	resource "uptimerobot_psp" "test" {
 	  name         = %q
 
@@ -99,7 +100,7 @@ func testAccPSPResourceConfigWithFeaturesUpdated(name string) string {
 }
 
 func testAccPSPResourceConfigWithoutMonitors(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name = %q
 
@@ -114,7 +115,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigWithMonitor(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "psp" {
   name     = %q
   type     = "HTTP"
@@ -131,7 +132,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigCustomSettingsOmitDefaults(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name       = %q
   monitor_ids = []
@@ -156,7 +157,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigCustomSettingsEmpty(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name        = %q
   monitor_ids = []
@@ -167,7 +168,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigOptionalsSet(name, logoPath, iconPath string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name = %q
 
@@ -182,7 +183,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigOptionalsOmitted(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name = %q
 
@@ -192,7 +193,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigOptionalsClearFiles(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name = %q
 
@@ -203,7 +204,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigPinnedAnnouncementID(name string, pinnedID int64) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name = %q
 
@@ -213,7 +214,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigPinnedAnnouncementIDOmitted(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name = %q
 }
@@ -221,7 +222,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigMonitorSort(name, monitorSort string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name         = %q
   monitor_sort = %q
@@ -230,7 +231,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigMonitorSortOmitted(name string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name = %q
 }
@@ -238,7 +239,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigHomepageLink(name, homepageLink string) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name          = %q
   homepage_link = %q
@@ -247,7 +248,7 @@ resource "uptimerobot_psp" "test" {
 }
 
 func testAccPSPResourceConfigSubscription(name string, subscription bool) string {
-	return testAccProviderConfig() + fmt.Sprintf(`
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
   name         = %q
   subscription = %t
@@ -256,14 +257,14 @@ resource "uptimerobot_psp" "test" {
 }
 
 func TestAccPSPResource(t *testing.T) {
-	nameCreate := randomName("test-psp")
-	nameUpdate := randomName("test-psp-updated")
-	nameNoMonitors := randomName("test-psp-nomon")
+	nameCreate := provideracctest.RandomName("test-psp")
+	nameUpdate := provideracctest.RandomName("test-psp-updated")
+	nameNoMonitors := provideracctest.RandomName("test-psp-nomon")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckPSPDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
 		Steps: []resource.TestStep{
 			// Create + Read
 			{
@@ -321,7 +322,7 @@ func TestAccPSPResource(t *testing.T) {
 }
 
 func TestAccPSPResource_Subscription(t *testing.T) {
-	name := randomName("acc-psp-subscription")
+	name := provideracctest.RandomName("acc-psp-subscription")
 
 	steps := []resource.TestStep{
 		{
@@ -357,22 +358,22 @@ func TestAccPSPResource_Subscription(t *testing.T) {
 	})
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckPSPDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
 		Steps:                    steps,
 	})
 }
 
 func TestAccPSPResource_HomepageLink(t *testing.T) {
-	name := randomName("acc-psp-homepage")
+	name := provideracctest.RandomName("acc-psp-homepage")
 	homepageLink := "https://example.com"
 	updatedHomepageLink := "https://status.example.com"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckPSPDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPSPResourceConfigHomepageLink(name, homepageLink),
@@ -403,12 +404,12 @@ func TestAccPSPResource_HomepageLink(t *testing.T) {
 }
 
 func TestAccPSPResource_MonitorCountFollowsMonitorIDs(t *testing.T) {
-	name := randomName("test-psp-monitors")
+	name := provideracctest.RandomName("test-psp-monitors")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckPSPDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
 		Steps: []resource.TestStep{
 			// Step 1: PSP with one monitor
 			{
@@ -433,12 +434,12 @@ func TestAccPSPResource_MonitorCountFollowsMonitorIDs(t *testing.T) {
 }
 
 func TestAccPSPResource_CustomSettings_OmittedDefaultsNotPersisted(t *testing.T) {
-	name := randomName("acc-psp-omit-defaults")
+	name := provideracctest.RandomName("acc-psp-omit-defaults")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckPSPDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPSPResourceConfigCustomSettingsOmitDefaults(name),
@@ -460,12 +461,12 @@ func TestAccPSPResource_CustomSettings_OmittedDefaultsNotPersisted(t *testing.T)
 }
 
 func TestAccPSPResource_CustomSettings_EmptyObjectStable(t *testing.T) {
-	name := randomName("acc-psp-empty-settings")
+	name := provideracctest.RandomName("acc-psp-empty-settings")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckPSPDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPSPResourceConfigCustomSettingsEmpty(name),
@@ -483,14 +484,14 @@ func TestAccPSPResource_CustomSettings_EmptyObjectStable(t *testing.T) {
 }
 
 func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
-	name := randomName("acc-psp-opt")
+	name := provideracctest.RandomName("acc-psp-opt")
 	logoPath := writeAccPSPImageFile(t, "logo", color.RGBA{R: 20, G: 120, B: 220, A: 255})
 	iconPath := writeAccPSPImageFile(t, "icon", color.RGBA{R: 220, G: 120, B: 20, A: 255})
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckPSPDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPSPResourceConfigOptionalsSet(name, logoPath, iconPath),
@@ -523,7 +524,7 @@ func TestAccPSPResource_OmitOptionalTopLevelFields_DoesNotError(t *testing.T) {
 }
 
 func TestAccPSPResource_PinnedAnnouncementID_OmitDoesNotClear(t *testing.T) {
-	idStr, ok := testAccOptionalEnv("UPTIMEROBOT_TEST_PINNED_ANNOUNCEMENT_ID")
+	idStr, ok := provideracctest.OptionalEnv("UPTIMEROBOT_TEST_PINNED_ANNOUNCEMENT_ID")
 	if !ok {
 		t.Skip("Set UPTIMEROBOT_TEST_PINNED_ANNOUNCEMENT_ID to run pinned_announcement_id acceptance")
 	}
@@ -532,12 +533,12 @@ func TestAccPSPResource_PinnedAnnouncementID_OmitDoesNotClear(t *testing.T) {
 		t.Fatalf("invalid UPTIMEROBOT_TEST_PINNED_ANNOUNCEMENT_ID %q: %v", idStr, err)
 	}
 
-	name := randomName("acc-psp-pinned")
+	name := provideracctest.RandomName("acc-psp-pinned")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckPSPDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPSPResourceConfigPinnedAnnouncementID(name, id),
@@ -558,12 +559,12 @@ func TestAccPSPResource_PinnedAnnouncementID_OmitDoesNotClear(t *testing.T) {
 }
 
 func TestAccPSPResource_MonitorSort(t *testing.T) {
-	name := randomName("acc-psp-sort")
+	name := provideracctest.RandomName("acc-psp-sort")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckPSPDestroy,
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPSPResourceConfigMonitorSort(name, "friendly_name_asc"),
