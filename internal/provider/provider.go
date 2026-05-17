@@ -16,6 +16,7 @@ import (
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/alertcontact"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/currentuser"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/iprange"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/maintenancewindow"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/tag"
 )
 
@@ -108,7 +109,7 @@ func (p *UptimeRobotProvider) Resources(ctx context.Context) []func() resource.R
 		NewMonitorGroupResource,
 		NewPSPResource,
 		NewPSPAnnouncementResource,
-		NewMaintenanceWindowResource,
+		maintenancewindow.NewResource,
 		NewIntegrationResource,
 	}
 }

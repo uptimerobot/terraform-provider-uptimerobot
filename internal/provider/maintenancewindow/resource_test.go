@@ -1,4 +1,4 @@
-package provider
+package maintenancewindow
 
 import (
 	"context"

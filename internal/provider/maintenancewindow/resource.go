@@ -1,4 +1,4 @@
-package provider
+package maintenancewindow
 
 import (
 	"context"
@@ -22,6 +22,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/apiretry"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/providerclient"
 )
 
 const (
@@ -40,8 +42,8 @@ var (
 	_ resource.ResourceWithUpgradeState   = &maintenanceWindowResource{}
 )
 
-// NewMaintenanceWindowResource is a helper function to simplify the provider implementation.
-func NewMaintenanceWindowResource() resource.Resource {
+// NewResource returns the maintenance window resource.
+func NewResource() resource.Resource {
 	return &maintenanceWindowResource{}
 }
 
@@ -65,20 +67,7 @@ type maintenanceWindowResourceModel struct {
 
 // Configure adds the provider configured client to the resource.
 func (r *maintenanceWindowResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			"The provider data is not of type *client.Client",
-		)
-		return
-	}
-
-	r.client = client
+	r.client = providerclient.FromResourceConfigure(req, resp)
 }
 
 // Metadata returns the resource type name.
@@ -398,7 +387,7 @@ func shouldRetryCreateMaintenanceWindow(err error, attempt, maxAttempts int) boo
 	if err == nil {
 		return false
 	}
-	return isTempServerErr(err) && attempt < maxAttempts-1
+	return apiretry.IsTempServerErr(err) && attempt < maxAttempts-1
 }
 
 func (r *maintenanceWindowResource) createMaintenanceWindowWithRetry(

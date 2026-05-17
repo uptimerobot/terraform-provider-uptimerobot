@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/apiretry"
 )
 
 func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -168,7 +169,7 @@ func (r *monitorResource) updateMonitorWithRetry(ctx context.Context, id int64, 
 }
 
 func shouldRetryUpdateMonitor(err error, attempt, maxAttempts int) bool {
-	return err != nil && isTempServerErr(err) && attempt < maxAttempts-1
+	return err != nil && apiretry.IsTempServerErr(err) && attempt < maxAttempts-1
 }
 
 type trustedMonitorUpdateEcho struct {

@@ -3,9 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"reflect"
 	"regexp"
@@ -26,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/apiretry"
 )
 
 var webhookHeaderNameRegexp = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
@@ -68,38 +67,6 @@ type webhookConfig struct {
 	SendJSON  json.RawMessage `json:"sendJSON,omitempty"`
 	SendQuery json.RawMessage `json:"sendQuery,omitempty"`
 	SendPost  json.RawMessage `json:"sendPost,omitempty"`
-}
-
-func isTempServerErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
-		return true
-	}
-	if code, ok := client.StatusCode(err); ok {
-		switch code {
-		case http.StatusInternalServerError,
-			http.StatusBadGateway,
-			http.StatusServiceUnavailable,
-			http.StatusGatewayTimeout:
-			return true
-		default:
-			return false
-		}
-	}
-	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "status 500") ||
-		strings.Contains(s, "status 502") ||
-		strings.Contains(s, "status 503") ||
-		strings.Contains(s, "status 504") ||
-		strings.Contains(s, "timeout") ||
-		strings.Contains(s, "tls handshake timeout") ||
-		strings.Contains(s, "internal server error") ||
-		strings.Contains(s, "bad gateway") ||
-		strings.Contains(s, "service unavailable") ||
-		strings.Contains(s, "gateway timeout")
 }
 
 // waitIntegrationSettled polls integration until expected values are visible
@@ -812,7 +779,7 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 		if err == nil {
 			break
 		}
-		if !isTempServerErr(err) || i == len(backoffs)-1 {
+		if !apiretry.IsTempServerErr(err) || i == len(backoffs)-1 {
 			break
 		}
 		select {
@@ -931,7 +898,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		if isTempServerErr(err) {
+		if apiretry.IsTempServerErr(err) {
 			// final attempt -> degrade gracefully: keep prior state to let plan proceed
 			if i == len(backoffs)-1 {
 				resp.Diagnostics.AddWarning(
@@ -1339,7 +1306,7 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		if err == nil {
 			break
 		}
-		if !isTempServerErr(err) || i == len(backoffs)-1 {
+		if !apiretry.IsTempServerErr(err) || i == len(backoffs)-1 {
 			break
 		}
 		select {
