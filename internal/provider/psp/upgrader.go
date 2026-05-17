@@ -3,6 +3,8 @@ package psp
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -67,6 +69,22 @@ type pspV0Features struct {
 	HidePausedMonitors   types.String `tfsdk:"hide_paused_monitors"`
 }
 
+func boolFromLegacyString(v types.String) types.Bool {
+	if v.IsNull() || v.IsUnknown() {
+		return types.BoolNull()
+	}
+	s := strings.TrimSpace(strings.ToLower(v.ValueString()))
+	if s == "" {
+		return types.BoolNull()
+	}
+	// strconv.ParseBool handles: 1/0, t/f, true/false.
+	b, err := strconv.ParseBool(s)
+	if err != nil {
+		return types.BoolNull()
+	}
+	return types.BoolValue(b)
+}
+
 func upgradePSPFromV0(ctx context.Context, prior pspV0Model) (pspResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
@@ -119,15 +137,15 @@ func upgradePSPFromV0(ctx context.Context, prior pspV0Model) (pspResourceModel, 
 		}
 		if prior.CustomSettings.Features != nil {
 			cs.Features = &featureSettingsModel{
-				ShowBars:             tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowBars),
-				ShowUptimePercentage: tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowUptimePercentage),
-				EnableFloatingStatus: tfconv.BoolFromLegacyString(prior.CustomSettings.Features.EnableFloatingStatus),
-				ShowOverallUptime:    tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowOverallUptime),
-				ShowOutageUpdates:    tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowOutageUpdates),
-				ShowOutageDetails:    tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowOutageDetails),
-				EnableDetailsPage:    tfconv.BoolFromLegacyString(prior.CustomSettings.Features.EnableDetailsPage),
-				ShowMonitorURL:       tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowMonitorURL),
-				HidePausedMonitors:   tfconv.BoolFromLegacyString(prior.CustomSettings.Features.HidePausedMonitors),
+				ShowBars:             boolFromLegacyString(prior.CustomSettings.Features.ShowBars),
+				ShowUptimePercentage: boolFromLegacyString(prior.CustomSettings.Features.ShowUptimePercentage),
+				EnableFloatingStatus: boolFromLegacyString(prior.CustomSettings.Features.EnableFloatingStatus),
+				ShowOverallUptime:    boolFromLegacyString(prior.CustomSettings.Features.ShowOverallUptime),
+				ShowOutageUpdates:    boolFromLegacyString(prior.CustomSettings.Features.ShowOutageUpdates),
+				ShowOutageDetails:    boolFromLegacyString(prior.CustomSettings.Features.ShowOutageDetails),
+				EnableDetailsPage:    boolFromLegacyString(prior.CustomSettings.Features.EnableDetailsPage),
+				ShowMonitorURL:       boolFromLegacyString(prior.CustomSettings.Features.ShowMonitorURL),
+				HidePausedMonitors:   boolFromLegacyString(prior.CustomSettings.Features.HidePausedMonitors),
 			}
 		}
 

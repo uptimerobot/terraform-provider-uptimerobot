@@ -2,30 +2,11 @@ package tfconv
 
 import (
 	"context"
-	"strconv"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
-
-// BoolFromLegacyString converts legacy string booleans to framework bool values.
-func BoolFromLegacyString(v types.String) types.Bool {
-	if v.IsNull() || v.IsUnknown() {
-		return types.BoolNull()
-	}
-	s := strings.TrimSpace(strings.ToLower(v.ValueString()))
-	if s == "" {
-		return types.BoolNull()
-	}
-	// strconv.ParseBool handles: 1/0, t/f, true/false, yes/no.
-	b, err := strconv.ParseBool(s)
-	if err != nil {
-		return types.BoolNull()
-	}
-	return types.BoolValue(b)
-}
 
 // Int64ListToSet converts a Terraform list of int64 values to a deduplicated set.
 func Int64ListToSet(ctx context.Context, l types.List) (types.Set, diag.Diagnostics) {
