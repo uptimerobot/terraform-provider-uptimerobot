@@ -1,4 +1,4 @@
-package provider
+package monitorgroup
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 func TestMonitorGroupResource_Metadata(t *testing.T) {
 	t.Parallel()
 
-	r := NewMonitorGroupResource()
+	r := NewResource()
 	resp := &resource.MetadataResponse{}
 	r.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "uptimerobot"}, resp)
 
@@ -28,7 +28,7 @@ func TestMonitorGroupResource_Metadata(t *testing.T) {
 func TestMonitorGroupResource_Schema(t *testing.T) {
 	t.Parallel()
 
-	r := NewMonitorGroupResource()
+	r := NewResource()
 	resp := &resource.SchemaResponse{}
 	r.Schema(context.Background(), resource.SchemaRequest{}, resp)
 
