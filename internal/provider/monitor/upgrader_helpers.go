@@ -9,10 +9,6 @@ import (
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/tfconv"
 )
 
-func toBool(v types.String) types.Bool {
-	return tfconv.BoolFromLegacyString(v)
-}
-
 func listInt64ToSet(ctx context.Context, l types.List) (types.Set, diag.Diagnostics) {
 	return tfconv.Int64ListToSet(ctx, l)
 }
