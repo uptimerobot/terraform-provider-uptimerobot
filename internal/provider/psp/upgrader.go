@@ -1,11 +1,12 @@
 // psp_upgrade.go
-package provider
+package psp
 
 import (
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/tfconv"
 )
 
 type pspV0Model struct {
@@ -91,7 +92,7 @@ func upgradePSPFromV0(ctx context.Context, prior pspV0Model) (pspResourceModel, 
 	}
 
 	// monitor_ids: list -> set
-	setIDs, d := listInt64ToSet(ctx, prior.MonitorIDs)
+	setIDs, d := tfconv.Int64ListToSet(ctx, prior.MonitorIDs)
 	diags.Append(d...)
 	up.MonitorIDs = setIDs
 
@@ -118,15 +119,15 @@ func upgradePSPFromV0(ctx context.Context, prior pspV0Model) (pspResourceModel, 
 		}
 		if prior.CustomSettings.Features != nil {
 			cs.Features = &featureSettingsModel{
-				ShowBars:             toBool(prior.CustomSettings.Features.ShowBars),
-				ShowUptimePercentage: toBool(prior.CustomSettings.Features.ShowUptimePercentage),
-				EnableFloatingStatus: toBool(prior.CustomSettings.Features.EnableFloatingStatus),
-				ShowOverallUptime:    toBool(prior.CustomSettings.Features.ShowOverallUptime),
-				ShowOutageUpdates:    toBool(prior.CustomSettings.Features.ShowOutageUpdates),
-				ShowOutageDetails:    toBool(prior.CustomSettings.Features.ShowOutageDetails),
-				EnableDetailsPage:    toBool(prior.CustomSettings.Features.EnableDetailsPage),
-				ShowMonitorURL:       toBool(prior.CustomSettings.Features.ShowMonitorURL),
-				HidePausedMonitors:   toBool(prior.CustomSettings.Features.HidePausedMonitors),
+				ShowBars:             tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowBars),
+				ShowUptimePercentage: tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowUptimePercentage),
+				EnableFloatingStatus: tfconv.BoolFromLegacyString(prior.CustomSettings.Features.EnableFloatingStatus),
+				ShowOverallUptime:    tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowOverallUptime),
+				ShowOutageUpdates:    tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowOutageUpdates),
+				ShowOutageDetails:    tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowOutageDetails),
+				EnableDetailsPage:    tfconv.BoolFromLegacyString(prior.CustomSettings.Features.EnableDetailsPage),
+				ShowMonitorURL:       tfconv.BoolFromLegacyString(prior.CustomSettings.Features.ShowMonitorURL),
+				HidePausedMonitors:   tfconv.BoolFromLegacyString(prior.CustomSettings.Features.HidePausedMonitors),
 			}
 		}
 

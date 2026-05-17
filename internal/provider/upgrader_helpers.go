@@ -2,63 +2,19 @@ package provider
 
 import (
 	"context"
-	"strconv"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/tfconv"
 )
 
-/*
-	If / when 2 or 3 resources will begin sharing these helpers.
-	Consider making them a separate internal/tfconv package so they will be reusable across all resources
-	without becoming public package or some kinda API.
-	However if something will be moved out - it MUST NOT be related to or depends on the resources.
-	So resource related helpers	might stay here.
-*/
-
 func toBool(v types.String) types.Bool {
-	if v.IsNull() || v.IsUnknown() {
-		return types.BoolNull()
-	}
-	s := strings.TrimSpace(strings.ToLower(v.ValueString()))
-	if s == "" {
-		return types.BoolNull()
-	}
-	// strconv.ParseBool handles: 1/0, t/f, true/false, yes/no
-	b, err := strconv.ParseBool(s)
-	if err != nil {
-		return types.BoolNull()
-	}
-	return types.BoolValue(b)
+	return tfconv.BoolFromLegacyString(v)
 }
 
 func listInt64ToSet(ctx context.Context, l types.List) (types.Set, diag.Diagnostics) {
-	if l.IsNull() || l.IsUnknown() {
-		return types.SetNull(types.Int64Type), nil
-	}
-	var diags diag.Diagnostics
-	var ids []int64
-	diags.Append(l.ElementsAs(ctx, &ids, false)...)
-	if diags.HasError() {
-		return types.SetNull(types.Int64Type), diags
-	}
-	if len(ids) == 0 {
-		return types.SetValueMust(types.Int64Type, []attr.Value{}), nil
-	}
-	seen := make(map[int64]struct{}, len(ids))
-	out := make([]int64, 0, len(ids))
-	for _, id := range ids {
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
-	}
-	v, d := types.SetValueFrom(ctx, types.Int64Type, out)
-	diags.Append(d...)
-	return v, diags
+	return tfconv.Int64ListToSet(ctx, l)
 }
 
 // helper: List[string] -> Set[object{alert_contact_id, threshold, recurrence}]

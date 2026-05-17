@@ -1,4 +1,4 @@
-package provider
+package psp
 
 import (
 	"context"
@@ -21,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/providerclient"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -31,8 +32,8 @@ var (
 	_ resource.ResourceWithUpgradeState = &pspResource{}
 )
 
-// NewPSPResource is a helper function to simplify the provider implementation.
-func NewPSPResource() resource.Resource {
+// NewResource is a helper function to simplify the provider implementation.
+func NewResource() resource.Resource {
 	return &pspResource{}
 }
 
@@ -520,20 +521,7 @@ func maskCustomSettingsFromPriorState(prior *pspResourceModel, next *pspResource
 
 // Configure adds the provider configured client to the resource.
 func (r *pspResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			"The provider data is not of type *client.Client",
-		)
-		return
-	}
-
-	r.client = client
+	r.client = providerclient.FromResourceConfigure(req, resp)
 }
 
 // Metadata returns the resource type name.
@@ -545,7 +533,7 @@ func (r *pspResource) Metadata(_ context.Context, req resource.MetadataRequest, 
 func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Version:     1,
-		Description: "Manages an UptimeRobot Public Status Page (PSP).",
+		Description: "Manages a UptimeRobot Public Status Page (PSP).",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "PSP identifier",
