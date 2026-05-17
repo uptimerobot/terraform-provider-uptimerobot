@@ -2,12 +2,12 @@
 page_title: "uptimerobot_psp Resource - uptimerobot"
 subcategory: ""
 description: |-
-  Manages an UptimeRobot Public Status Page (PSP).
+  Manages a UptimeRobot Public Status Page (PSP).
 ---
 
 # uptimerobot_psp (Resource)
 
-Manages an UptimeRobot Public Status Page (PSP).
+Manages a UptimeRobot Public Status Page (PSP).
 
 ## Example Usage
 
