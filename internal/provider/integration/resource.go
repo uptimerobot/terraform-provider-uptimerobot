@@ -1,4 +1,4 @@
-package provider
+package integration
 
 import (
 	"context"
@@ -25,6 +25,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/apiretry"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/maputil"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/providerclient"
 )
 
 var webhookHeaderNameRegexp = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
@@ -102,7 +104,7 @@ func (r *integrationResource) waitIntegrationSettled(
 		if err == nil {
 			last = integration
 			nameOK := expectedName == "" || integration.Name == expectedName
-			customHeadersOK := expectedCustomHeaders == nil || equalStringMap(integration.CustomHeaders, *expectedCustomHeaders)
+			customHeadersOK := expectedCustomHeaders == nil || maputil.EqualStringMap(integration.CustomHeaders, *expectedCustomHeaders)
 			if nameOK && customHeadersOK {
 				consecutiveMatches++
 				if consecutiveMatches >= requiredConsecutiveMatches {
@@ -360,7 +362,7 @@ func expandWebhookCustomHeaders(ctx context.Context, integrationType string, att
 		return nil, diags
 	}
 
-	headers, d := stringMapFromAttrPreserveEmpty(ctx, attr)
+	headers, d := maputil.StringMapFromAttrPreserveEmpty(ctx, attr)
 	diags.Append(d...)
 	if diags.HasError() {
 		return nil, diags
@@ -413,8 +415,8 @@ var (
 	_ resource.ResourceWithImportState = &integrationResource{}
 )
 
-// NewIntegrationResource is a helper function to simplify the provider implementation.
-func NewIntegrationResource() resource.Resource {
+// NewResource returns the integration resource.
+func NewResource() resource.Resource {
 	return &integrationResource{}
 }
 
@@ -444,20 +446,7 @@ type integrationResourceModel struct {
 
 // Configure adds the provider configured client to the resource.
 func (r *integrationResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-
-	r.client = client
+	r.client = providerclient.FromResourceConfigure(req, resp)
 }
 
 // Metadata returns the resource type name.
@@ -986,12 +975,12 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.CustomValue = webhookFields.CustomValue
 
 		if !prev.CustomHeaders.IsNull() && !prev.CustomHeaders.IsUnknown() {
-			expectedHeaders, headerDiags := stringMapFromAttrPreserveEmpty(ctx, prev.CustomHeaders)
+			expectedHeaders, headerDiags := maputil.StringMapFromAttrPreserveEmpty(ctx, prev.CustomHeaders)
 			resp.Diagnostics.Append(headerDiags...)
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			if !equalStringMap(integration.CustomHeaders, expectedHeaders) {
+			if !maputil.EqualStringMap(integration.CustomHeaders, expectedHeaders) {
 				expectedName := ""
 				if !prev.Name.IsNull() && !prev.Name.IsUnknown() {
 					expectedName = prev.Name.ValueString()

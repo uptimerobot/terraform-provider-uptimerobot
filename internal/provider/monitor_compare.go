@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/maputil"
 )
 
 type monComparable struct {
@@ -1192,24 +1193,7 @@ func normalizeStringSet(in []string) []string {
 }
 
 func equalStringMap(a, b map[string]string) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil {
-		a = map[string]string{}
-	}
-	if b == nil {
-		b = map[string]string{}
-	}
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if b[k] != v {
-			return false
-		}
-	}
-	return true
+	return maputil.EqualStringMap(a, b)
 }
 
 func equalInt64Set(a, b []int64) bool {

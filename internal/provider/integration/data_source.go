@@ -1,4 +1,4 @@
-package provider
+package integration
 
 import (
 	"context"
@@ -21,8 +21,8 @@ var (
 	_ datasource.DataSourceWithConfigure = &integrationDataSource{}
 )
 
-// NewIntegrationDataSource is a helper function to simplify the provider implementation.
-func NewIntegrationDataSource() datasource.DataSource {
+// NewDataSource returns the integration data source.
+func NewDataSource() datasource.DataSource {
 	return &integrationDataSource{}
 }
 
