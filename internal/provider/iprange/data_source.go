@@ -1,4 +1,4 @@
-package provider
+package iprange
 
 import (
 	"context"
@@ -22,8 +22,8 @@ var (
 	_ datasource.DataSourceWithConfigure = &ipRangesDataSource{}
 )
 
-// NewIPRangesDataSource returns the UptimeRobot IP ranges data source.
-func NewIPRangesDataSource() datasource.DataSource {
+// NewDataSource returns the UptimeRobot IP ranges data source.
+func NewDataSource() datasource.DataSource {
 	return &ipRangesDataSource{}
 }
 

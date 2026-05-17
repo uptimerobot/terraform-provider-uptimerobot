@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/currentuser"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/iprange"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/tag"
 )
 
@@ -117,7 +118,7 @@ func (p *UptimeRobotProvider) DataSources(ctx context.Context) []func() datasour
 		NewAlertContactDataSource,
 		NewAlertContactsDataSource,
 		currentuser.NewDataSource,
-		NewIPRangesDataSource,
+		iprange.NewDataSource,
 		NewIntegrationDataSource,
 		tag.NewDataSource,
 		tag.NewListDataSource,
