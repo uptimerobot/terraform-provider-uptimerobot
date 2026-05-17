@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 1.7.0 — 2026-05-18
+
 ### Added
 
 - Added `uptimerobot_psp_announcement` resource for creating, updating, importing, and archiving public status page announcements.
