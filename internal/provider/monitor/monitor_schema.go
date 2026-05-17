@@ -1,4 +1,4 @@
-package provider
+package monitor
 
 import (
 	"context"
@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/providerclient"
 )
 
 const (
@@ -49,8 +50,8 @@ const (
 	customFieldsValueMaxLength = 255
 )
 
-// NewMonitorResource is a helper function to simplify the provider implementation.
-func NewMonitorResource() resource.Resource {
+// NewResource is a helper function to simplify the provider implementation.
+func NewResource() resource.Resource {
 	return &monitorResource{}
 }
 
@@ -72,20 +73,7 @@ type monitorResource struct {
 
 // Configure adds the provider configured client to the resource.
 func (r *monitorResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			"The provider data is not of type *client.Client",
-		)
-		return
-	}
-
-	r.client = client
+	r.client = providerclient.FromResourceConfigure(req, resp)
 }
 
 // Metadata returns the resource type name.

@@ -1,4 +1,4 @@
-package provider
+package monitor
 
 import (
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
