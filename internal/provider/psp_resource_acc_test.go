@@ -220,6 +220,23 @@ resource "uptimerobot_psp" "test" {
 `, name)
 }
 
+func testAccPSPResourceConfigMonitorSort(name, monitorSort string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name         = %q
+  monitor_sort = %q
+}
+`, name, monitorSort)
+}
+
+func testAccPSPResourceConfigMonitorSortOmitted(name string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name = %q
+}
+`, name)
+}
+
 func testAccPSPResourceConfigHomepageLink(name, homepageLink string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_psp" "test" {
@@ -535,6 +552,44 @@ func TestAccPSPResource_PinnedAnnouncementID_OmitDoesNotClear(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "pinned_announcement_id", idStr),
 				),
+			},
+		},
+	})
+}
+
+func TestAccPSPResource_MonitorSort(t *testing.T) {
+	name := randomName("acc-psp-sort")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPSPDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPSPResourceConfigMonitorSort(name, "friendly_name_asc"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_sort", "friendly_name_asc"),
+				),
+			},
+			{
+				Config: testAccPSPResourceConfigMonitorSort(name, "status_down_up_paused"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_sort", "status_down_up_paused"),
+				),
+			},
+			{
+				Config: testAccPSPResourceConfigMonitorSortOmitted(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "name", name),
+					resource.TestCheckNoResourceAttr("uptimerobot_psp.test", "monitor_sort"),
+				),
+			},
+			{
+				Config:             testAccPSPResourceConfigMonitorSortOmitted(name),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})
