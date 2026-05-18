@@ -1,5 +1,11 @@
 ## Unreleased
 
+## 1.7.1 — 2026-05-18
+
+### Changed
+
+- Clarified documentation for assigning integrations to monitors through `uptimerobot_monitor.assigned_alert_contacts`.
+
 ## 1.7.0 — 2026-05-18
 
 ### Added

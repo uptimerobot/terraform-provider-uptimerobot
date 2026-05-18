@@ -377,6 +377,33 @@ resource "uptimerobot_monitor" "website_no_contacts" {
 }
 ```
 
+### Integration Notifications Example
+
+Integrations such as PagerDuty, Slack, webhook, Telegram, Discord, and similar channels are assigned with the same `assigned_alert_contacts` block used for other monitor notification contacts. Use the integration ID as `alert_contact_id`; `threshold` is the delay in minutes before the first notification, and `recurrence` is the repeat interval in minutes while the incident remains open.
+
+```terraform
+data "uptimerobot_integration" "pagerduty" {
+  name = "Production PagerDuty"
+  type = "pagerduty"
+}
+
+resource "uptimerobot_monitor" "website_with_pagerduty" {
+  name     = "Example Website"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  timeout  = 30
+
+  assigned_alert_contacts = [
+    {
+      alert_contact_id = data.uptimerobot_integration.pagerduty.id
+      threshold        = 5
+      recurrence       = 30
+    }
+  ]
+}
+```
+
 ### Heartbeat Example
 
 ```terraform
@@ -674,11 +701,12 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 
 ### Optional
 
-- `assigned_alert_contacts` (Attributes Set) Alert contacts assigned to this monitor.
+- `assigned_alert_contacts` (Attributes Set) Alert contacts and integrations assigned to this monitor.
 
 **Semantics**
 - Terraform sends exactly what you specify; the provider does not inject hidden defaults.
 - Each notification method has its own alert-contact id. For example, Email and MobileAppOld/push are separate ids; include every id returned by `GET /user/alert-contacts` that should be checked for the monitor.
+- Integrations such as PagerDuty, Slack, webhook, Telegram, Discord, and similar channels are assigned here too. Use the integration ID as `alert_contact_id`; `threshold` is the delay in minutes, and `recurrence` is the repeat interval in minutes.
 - **Free plan**: set `threshold = 0`, `recurrence = 0`.
 - **Paid plans**: any non-negative minutes for both fields. (see [below for nested schema](#nestedatt--assigned_alert_contacts))
 - `auth_type` (String) Authentication type. Allowed: NONE, HTTP_BASIC, DIGEST, BEARER.

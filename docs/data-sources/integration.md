@@ -11,12 +11,14 @@ Looks up an existing UptimeRobot integration without taking ownership of it. Use
 
 The data source can look up an integration by `id`, or by the exact `name` and `type` pair. Secret integration values and custom headers are intentionally not exposed.
 
+Integrations are assigned to monitors through `uptimerobot_monitor.assigned_alert_contacts`. Use the integration ID as `alert_contact_id`; `threshold` is the notification delay in minutes, and `recurrence` is the repeat interval in minutes.
+
 ## Example Usage
 
 ```terraform
-data "uptimerobot_integration" "webhook" {
-  name = "Production Webhook"
-  type = "webhook"
+data "uptimerobot_integration" "pagerduty" {
+  name = "Production PagerDuty"
+  type = "pagerduty"
 }
 
 resource "uptimerobot_monitor" "website" {
@@ -27,9 +29,9 @@ resource "uptimerobot_monitor" "website" {
 
   assigned_alert_contacts = [
     {
-      alert_contact_id = data.uptimerobot_integration.webhook.id
-      threshold        = 0
-      recurrence       = 0
+      alert_contact_id = data.uptimerobot_integration.pagerduty.id
+      threshold        = 5
+      recurrence       = 30
     }
   ]
 }
