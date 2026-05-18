@@ -49,7 +49,7 @@ func (d *integrationDataSource) Metadata(_ context.Context, req datasource.Metad
 
 func (d *integrationDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = datasourceschema.Schema{
-		MarkdownDescription: "Looks up an existing UptimeRobot integration without managing it.",
+		MarkdownDescription: "Looks up an existing UptimeRobot integration without managing it. Use the returned ID in `uptimerobot_monitor.assigned_alert_contacts` when assigning the integration to monitor notifications.",
 		Attributes: map[string]datasourceschema.Attribute{
 			"id": datasourceschema.StringAttribute{
 				Optional:            true,

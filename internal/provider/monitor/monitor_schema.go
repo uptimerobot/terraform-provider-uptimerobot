@@ -374,14 +374,15 @@ func monitorSchema(version int64, includeApplicationErrorRetries bool) schema.Sc
 				},
 			},
 			"assigned_alert_contacts": schema.SetNestedAttribute{
-				Description: "Alert contacts to assign. Each item must include `alert_contact_id`, `threshold`, and `recurrence`." +
+				Description: "Alert contacts or integrations to assign. Each item must include `alert_contact_id`, `threshold`, and `recurrence`." +
 					"Free plan have to use 0 for threshold and recurrence",
 				MarkdownDescription: `
-Alert contacts assigned to this monitor.
+Alert contacts and integrations assigned to this monitor.
 
 **Semantics**
 - Terraform sends exactly what you specify; the provider does not inject hidden defaults.
 - Each notification method has its own alert-contact id. For example, Email and MobileAppOld/push are separate ids; include every id returned by ` + "`GET /user/alert-contacts`" + ` that should be checked for the monitor.
+- Integrations such as PagerDuty, Slack, webhook, Telegram, Discord, and similar channels are assigned here too. Use the integration ID as ` + "`alert_contact_id`" + `; ` + "`threshold`" + ` is the delay in minutes before the first notification after the monitor is DOWN, and ` + "`recurrence`" + ` is the repeat interval in minutes while the incident remains open.
 - **Free plan**: set ` + "`threshold = 0`" + `, ` + "`recurrence = 0`" + `.
 - **Paid plans**: any non-negative minutes for both fields.
 `,

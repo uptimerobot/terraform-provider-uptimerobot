@@ -3,11 +3,12 @@ data "uptimerobot_integration" "pagerduty" {
   type = "pagerduty"
 }
 
-resource "uptimerobot_monitor" "website" {
+resource "uptimerobot_monitor" "website_with_pagerduty" {
   name     = "Example Website"
   type     = "HTTP"
   url      = "https://example.com"
   interval = 300
+  timeout  = 30
 
   assigned_alert_contacts = [
     {
