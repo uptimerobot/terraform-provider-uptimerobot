@@ -61,7 +61,7 @@ description: |-
 
 ### Integration Notifications Example
 
-Integrations such as PagerDuty, Slack, webhook, Telegram, Discord, and similar channels are assigned with the same `assigned_alert_contacts` block used for other monitor notification contacts. Use the integration ID as `alert_contact_id`; `threshold` is the delay in minutes before the first notification, and `recurrence` is the repeat interval in minutes while the incident remains open.
+Integrations such as PagerDuty, Slack, webhook, Telegram, Discord, and similar channels are assigned with the same `assigned_alert_contacts` block used for other monitor notification contacts. Use the integration ID as `alert_contact_id`; `threshold` is the delay in minutes before the first notification after the monitor is DOWN, and `recurrence` is the repeat interval in minutes while the incident remains open.
 
 {{tffile "examples/resources/uptimerobot_monitor/integration_notifications.tf"}}
 

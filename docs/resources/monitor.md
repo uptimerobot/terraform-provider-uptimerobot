@@ -379,7 +379,7 @@ resource "uptimerobot_monitor" "website_no_contacts" {
 
 ### Integration Notifications Example
 
-Integrations such as PagerDuty, Slack, webhook, Telegram, Discord, and similar channels are assigned with the same `assigned_alert_contacts` block used for other monitor notification contacts. Use the integration ID as `alert_contact_id`; `threshold` is the delay in minutes before the first notification, and `recurrence` is the repeat interval in minutes while the incident remains open.
+Integrations such as PagerDuty, Slack, webhook, Telegram, Discord, and similar channels are assigned with the same `assigned_alert_contacts` block used for other monitor notification contacts. Use the integration ID as `alert_contact_id`; `threshold` is the delay in minutes before the first notification after the monitor is DOWN, and `recurrence` is the repeat interval in minutes while the incident remains open.
 
 ```terraform
 data "uptimerobot_integration" "pagerduty" {
@@ -706,7 +706,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 **Semantics**
 - Terraform sends exactly what you specify; the provider does not inject hidden defaults.
 - Each notification method has its own alert-contact id. For example, Email and MobileAppOld/push are separate ids; include every id returned by `GET /user/alert-contacts` that should be checked for the monitor.
-- Integrations such as PagerDuty, Slack, webhook, Telegram, Discord, and similar channels are assigned here too. Use the integration ID as `alert_contact_id`; `threshold` is the delay in minutes, and `recurrence` is the repeat interval in minutes.
+- Integrations such as PagerDuty, Slack, webhook, Telegram, Discord, and similar channels are assigned here too. Use the integration ID as `alert_contact_id`; `threshold` is the delay in minutes before the first notification after the monitor is DOWN, and `recurrence` is the repeat interval in minutes while the incident remains open.
 - **Free plan**: set `threshold = 0`, `recurrence = 0`.
 - **Paid plans**: any non-negative minutes for both fields. (see [below for nested schema](#nestedatt--assigned_alert_contacts))
 - `auth_type` (String) Authentication type. Allowed: NONE, HTTP_BASIC, DIGEST, BEARER.
