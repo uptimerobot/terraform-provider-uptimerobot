@@ -31,6 +31,7 @@ type PSP struct {
 	Subscription               bool                `json:"subscription"`
 	ShowCookieBar              bool                `json:"showCookieBar"`
 	PinnedAnnouncementID       *int64              `json:"pinnedAnnouncementId,omitempty"`
+	Sort                       *int                `json:"sort,omitempty"`
 	CustomSettings             *CustomSettingsResp `json:"customSettings,omitempty"`
 }
 
@@ -90,6 +91,7 @@ type CreatePSPRequest struct {
 	HideURLLinks               bool            `json:"hideUrlLinks"`
 	ShowCookieBar              bool            `json:"showCookieBar"`
 	PinnedAnnouncementID       *int64          `json:"pinnedAnnouncementId,omitempty"`
+	Sort                       *int            `json:"sort,omitempty"`
 	CustomSettings             *CustomSettings `json:"customSettings,omitempty"`
 }
 
@@ -139,6 +141,7 @@ type UpdatePSPRequest struct {
 	Subscription               *bool           `json:"subscription,omitempty"`
 	ShowCookieBar              *bool           `json:"showCookieBar,omitempty"`
 	PinnedAnnouncementID       *int64          `json:"pinnedAnnouncementId,omitempty"`
+	Sort                       *int            `json:"sort,omitempty"`
 	CustomSettings             *CustomSettings `json:"customSettings,omitempty"`
 }
 

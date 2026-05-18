@@ -13,6 +13,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/alertcontact"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/currentuser"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/integration"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/iprange"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/maintenancewindow"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/monitor"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/monitorgroup"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/psp"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/pspannouncement"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/tag"
 )
 
 // Ensure ScaffoldingProvider satisfies various provider interfaces.
@@ -100,24 +110,25 @@ func (p *UptimeRobotProvider) Configure(ctx context.Context, req provider.Config
 
 func (p *UptimeRobotProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewMonitorResource,
-		NewMonitorGroupResource,
-		NewPSPResource,
-		NewMaintenanceWindowResource,
-		NewIntegrationResource,
+		monitor.NewResource,
+		monitorgroup.NewResource,
+		psp.NewResource,
+		pspannouncement.NewResource,
+		maintenancewindow.NewResource,
+		integration.NewResource,
 	}
 }
 
 func (p *UptimeRobotProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		NewAllAlertContactsDataSource,
-		NewAlertContactDataSource,
-		NewAlertContactsDataSource,
-		NewCurrentUserDataSource,
-		NewIPRangesDataSource,
-		NewIntegrationDataSource,
-		NewTagDataSource,
-		NewTagsDataSource,
+		alertcontact.NewAllDataSource,
+		alertcontact.NewDataSource,
+		alertcontact.NewListDataSource,
+		currentuser.NewDataSource,
+		iprange.NewDataSource,
+		integration.NewDataSource,
+		tag.NewDataSource,
+		tag.NewListDataSource,
 	}
 }
 

@@ -515,6 +515,61 @@ func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	}
 }
 
+func TestPSPRequest_MonitorSort_JSON(t *testing.T) {
+	createReq := CreatePSPRequest{Name: "psp"}
+	raw, err := json.Marshal(createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var createMap map[string]any
+	if err := json.Unmarshal(raw, &createMap); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := createMap["sort"]; ok {
+		t.Fatalf("sort should be omitted when nil, got %s", raw)
+	}
+
+	sort := 4
+	createReq.Sort = &sort
+	raw, err = json.Marshal(createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createMap = map[string]any{}
+	if err := json.Unmarshal(raw, &createMap); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := createMap["sort"].(float64); !ok || int(v) != sort {
+		t.Fatalf("expected sort=%d in create request, got %#v", sort, createMap["sort"])
+	}
+
+	updateReq := UpdatePSPRequest{Name: "psp"}
+	raw, err = json.Marshal(updateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var updateMap map[string]any
+	if err := json.Unmarshal(raw, &updateMap); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := updateMap["sort"]; ok {
+		t.Fatalf("sort should be omitted in update when nil, got %s", raw)
+	}
+
+	updateReq.Sort = &sort
+	raw, err = json.Marshal(updateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updateMap = map[string]any{}
+	if err := json.Unmarshal(raw, &updateMap); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := updateMap["sort"].(float64); !ok || int(v) != sort {
+		t.Fatalf("expected sort=%d in update request, got %#v", sort, updateMap["sort"])
+	}
+}
+
 func TestCreatePSPRequest_Marshal_CustomSettingsEmptyObjects(t *testing.T) {
 	req := &CreatePSPRequest{
 		Name:           "my-psp",
