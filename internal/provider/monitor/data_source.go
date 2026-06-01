@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -13,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/apiretry"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/providerclient"
 )
 
@@ -20,6 +22,14 @@ var (
 	_ datasource.DataSource              = &monitorDataSource{}
 	_ datasource.DataSourceWithConfigure = &monitorDataSource{}
 )
+
+var monitorListLookupBackoffs = []time.Duration{
+	2 * time.Second,
+	4 * time.Second,
+	8 * time.Second,
+	15 * time.Second,
+	30 * time.Second,
+}
 
 // NewDataSource returns the single monitor lookup data source.
 func NewDataSource() datasource.DataSource {
@@ -142,7 +152,7 @@ func (d *monitorDataSource) lookupMonitor(ctx context.Context, filters monitorFi
 		return monitor, nil
 	}
 
-	monitors, err := d.client.GetMonitors(ctx)
+	monitors, err := d.listMonitorsForLookup(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("could not list monitors: %w", err)
 	}
@@ -165,6 +175,35 @@ func (d *monitorDataSource) lookupMonitor(ctx context.Context, filters monitorFi
 			monitorIDs(matches),
 		)
 	}
+}
+
+func (d *monitorDataSource) listMonitorsForLookup(ctx context.Context) ([]client.Monitor, error) {
+	var lastErr error
+	maxAttempts := len(monitorListLookupBackoffs) + 1
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		monitors, err := d.client.GetMonitors(ctx)
+		if err == nil {
+			return monitors, nil
+		}
+
+		lastErr = err
+		if !shouldRetryMonitorListLookup(err, attempt, maxAttempts) {
+			return nil, err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(monitorListLookupBackoffs[attempt]):
+		}
+	}
+
+	return nil, lastErr
+}
+
+func shouldRetryMonitorListLookup(err error, attempt, maxAttempts int) bool {
+	return err != nil && apiretry.IsTempServerErr(err) && attempt < maxAttempts-1
 }
 
 func monitorLookupFilters(config monitorDataSourceModel) (monitorFilters, error) {

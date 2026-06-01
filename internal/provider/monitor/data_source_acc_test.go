@@ -46,7 +46,7 @@ data "uptimerobot_monitor" "by_name" {
 func testAccCheckMonitorVisibleInList(name string) resource.TestCheckFunc {
 	return func(_ *terraform.State) error {
 		apiClient := provideracctest.APIClient()
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
 
 		var lastGetMonitorsErr error
@@ -68,7 +68,7 @@ func testAccCheckMonitorVisibleInList(name string) resource.TestCheckFunc {
 					return fmt.Errorf("monitor %q was not visible in list endpoint before ctx.Done; last apiClient.GetMonitors error: %v: %w", name, lastGetMonitorsErr, ctx.Err())
 				}
 				return fmt.Errorf("monitor %q was not visible in list endpoint before timeout: %w", name, ctx.Err())
-			case <-time.After(2 * time.Second):
+			case <-time.After(5 * time.Second):
 			}
 		}
 	}

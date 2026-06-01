@@ -1,6 +1,9 @@
 package monitor
 
 import (
+	"errors"
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -53,6 +56,64 @@ func TestMonitorIDsSorted(t *testing.T) {
 	})
 	if got != "2, 100, 200, 300" {
 		t.Fatalf("unexpected IDs %q", got)
+	}
+}
+
+func TestShouldRetryMonitorListLookup(t *testing.T) {
+	t.Parallel()
+
+	transientErr := fmt.Errorf("wrapped: %w", &client.APIError{
+		StatusCode: http.StatusBadGateway,
+		Message:    "bad gateway",
+	})
+	nonTransientErr := errors.New("validation failed")
+
+	tests := []struct {
+		name        string
+		err         error
+		attempt     int
+		maxAttempts int
+		want        bool
+	}{
+		{
+			name:        "retries transient error before final attempt",
+			err:         transientErr,
+			attempt:     0,
+			maxAttempts: 2,
+			want:        true,
+		},
+		{
+			name:        "stops on final attempt",
+			err:         transientErr,
+			attempt:     1,
+			maxAttempts: 2,
+			want:        false,
+		},
+		{
+			name:        "does not retry non-transient error",
+			err:         nonTransientErr,
+			attempt:     0,
+			maxAttempts: 2,
+			want:        false,
+		},
+		{
+			name:        "does not retry nil error",
+			err:         nil,
+			attempt:     0,
+			maxAttempts: 2,
+			want:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := shouldRetryMonitorListLookup(tt.err, tt.attempt, tt.maxAttempts)
+			if got != tt.want {
+				t.Fatalf("shouldRetryMonitorListLookup() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
