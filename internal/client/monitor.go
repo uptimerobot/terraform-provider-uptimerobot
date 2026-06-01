@@ -286,9 +286,25 @@ func (c *Client) GetMonitor(ctx context.Context, id int64) (*Monitor, error) {
 
 // ListMonitors lists monitors. If cursorID is nil, the first page is returned.
 func (c *Client) ListMonitors(ctx context.Context, cursorID *int64) (*MonitorListResponse, error) {
+	return c.listMonitors(ctx, cursorID, "")
+}
+
+// ListMonitorsByName lists monitors matching the API name filter. If cursorID is nil, the first page is returned.
+func (c *Client) ListMonitorsByName(ctx context.Context, name string, cursorID *int64) (*MonitorListResponse, error) {
+	return c.listMonitors(ctx, cursorID, name)
+}
+
+func (c *Client) listMonitors(ctx context.Context, cursorID *int64, name string) (*MonitorListResponse, error) {
 	path := "/monitors"
+	query := url.Values{}
 	if cursorID != nil {
-		path += "?cursor=" + strconv.FormatInt(*cursorID, 10)
+		query.Set("cursor", strconv.FormatInt(*cursorID, 10))
+	}
+	if strings.TrimSpace(name) != "" {
+		query.Set("name", name)
+	}
+	if len(query) > 0 {
+		path += "?" + query.Encode()
 	}
 
 	resp, err := c.doRequest(ctx, "GET", path, nil)
@@ -309,12 +325,23 @@ func (c *Client) ListMonitors(ctx context.Context, cursorID *int64) (*MonitorLis
 
 // GetMonitors retrieves all monitors.
 func (c *Client) GetMonitors(ctx context.Context) ([]Monitor, error) {
+	return c.getMonitorPages(ctx, c.ListMonitors)
+}
+
+// GetMonitorsByName retrieves all monitors matching the API name filter.
+func (c *Client) GetMonitorsByName(ctx context.Context, name string) ([]Monitor, error) {
+	return c.getMonitorPages(ctx, func(ctx context.Context, cursorID *int64) (*MonitorListResponse, error) {
+		return c.ListMonitorsByName(ctx, name, cursorID)
+	})
+}
+
+func (c *Client) getMonitorPages(ctx context.Context, listPage func(context.Context, *int64) (*MonitorListResponse, error)) ([]Monitor, error) {
 	var out []Monitor
 	var cursorID *int64
 
 	const maxPages = 1000
 	for page := 0; page < maxPages; page++ {
-		resp, err := c.ListMonitors(ctx, cursorID)
+		resp, err := listPage(ctx, cursorID)
 		if err != nil {
 			return nil, err
 		}

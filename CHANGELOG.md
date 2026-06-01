@@ -2,6 +2,7 @@
 
 ### Added
 
+- Added `uptimerobot_maintenance_window` data source for looking up existing maintenance windows by ID or exact name.
 - Added `uptimerobot_monitor` data source for looking up existing monitors by ID or exact name, including non-secret metadata such as tags and group ID.
 
 ## 1.7.1 — 2026-05-18

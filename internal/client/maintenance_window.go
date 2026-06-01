@@ -2,6 +2,11 @@ package client
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -18,6 +23,14 @@ type MaintenanceWindow struct {
 	Days            []int64 `json:"days"`
 	Status          string  `json:"status"`
 	Created         string  `json:"created"`
+}
+
+// MaintenanceWindowListResponse represents a paginated maintenance window list response.
+type MaintenanceWindowListResponse struct {
+	Data               []MaintenanceWindow `json:"data"`
+	MaintenanceWindows []MaintenanceWindow `json:"maintenanceWindows"`
+	NextCursorID       *int64              `json:"nextCursorId"`
+	NextLink           *string             `json:"nextLink"`
 }
 
 // CreateMaintenanceWindowRequest represents the request to create a new maintenance window.
@@ -60,6 +73,89 @@ func (c *Client) GetMaintenanceWindow(ctx context.Context, id int64) (*Maintenan
 		return nil, err
 	}
 	return &maintenanceWindow, nil
+}
+
+// ListMaintenanceWindows lists maintenance windows. If cursorID is nil, the first page is returned.
+func (c *Client) ListMaintenanceWindows(ctx context.Context, cursorID *int64) (*MaintenanceWindowListResponse, error) {
+	path := "/maintenance-windows"
+	if cursorID != nil {
+		path += "?cursor=" + strconv.FormatInt(*cursorID, 10)
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response MaintenanceWindowListResponse
+	if err := json.Unmarshal(resp, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal maintenance windows response: %v", err)
+	}
+	if len(response.Data) == 0 && len(response.MaintenanceWindows) > 0 {
+		response.Data = response.MaintenanceWindows
+	}
+
+	return &response, nil
+}
+
+// ListAllMaintenanceWindows follows pagination and returns all maintenance windows visible to the API key.
+func (c *Client) ListAllMaintenanceWindows(ctx context.Context) ([]MaintenanceWindow, error) {
+	var out []MaintenanceWindow
+	var cursorID *int64
+
+	const maxPages = 1000
+	for page := 0; page < maxPages; page++ {
+		resp, err := c.ListMaintenanceWindows(ctx, cursorID)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, resp.Data...)
+
+		nextCursorID, err := maintenanceWindowCursorFromListResponse(resp)
+		if err != nil {
+			return nil, err
+		}
+		if nextCursorID == nil {
+			return out, nil
+		}
+		cursorID = nextCursorID
+	}
+
+	return nil, fmt.Errorf("maintenance windows pagination exceeded %d pages", maxPages)
+}
+
+func maintenanceWindowCursorFromListResponse(resp *MaintenanceWindowListResponse) (*int64, error) {
+	if resp == nil {
+		return nil, nil
+	}
+	if resp.NextCursorID != nil {
+		return resp.NextCursorID, nil
+	}
+	return maintenanceWindowCursorFromNextLink(resp.NextLink)
+}
+
+func maintenanceWindowCursorFromNextLink(nextLink *string) (*int64, error) {
+	if nextLink == nil || strings.TrimSpace(*nextLink) == "" {
+		return nil, nil
+	}
+
+	parsed, err := url.Parse(*nextLink)
+	if err != nil {
+		return nil, fmt.Errorf("parse maintenance windows nextLink %q: %w", *nextLink, err)
+	}
+
+	rawCursor := parsed.Query().Get("cursor")
+	if rawCursor == "" {
+		return nil, fmt.Errorf("maintenance windows nextLink %q does not contain a cursor query parameter", *nextLink)
+	}
+
+	cursorID, err := strconv.ParseInt(rawCursor, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse maintenance windows cursor %q: %w", rawCursor, err)
+	}
+
+	return &cursorID, nil
 }
 
 // UpdateMaintenanceWindow updates an existing maintenance window.

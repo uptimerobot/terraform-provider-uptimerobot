@@ -1,0 +1,18 @@
+---
+page_title: "uptimerobot_maintenance_window Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Looks up an existing UptimeRobot maintenance window.
+---
+
+# uptimerobot_maintenance_window (Data Source)
+
+Looks up an existing UptimeRobot maintenance window without taking ownership of it. Use this when a maintenance window is managed outside the current Terraform state, but its ID is needed for monitor `maintenance_window_ids`.
+
+The data source can look up a maintenance window by `id` or by exact `name`. Maintenance window names are not guaranteed unique; if more than one maintenance window has the same name, configure `id` to select one.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_maintenance_window/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}
