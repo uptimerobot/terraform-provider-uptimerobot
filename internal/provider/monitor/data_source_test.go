@@ -68,8 +68,9 @@ func TestMonitorDataSourceStateMapsNonSecretFields(t *testing.T) {
 		GroupID: 12,
 		Tags: []client.Tag{
 			{Name: "Prod"},
-			{Name: "api"},
-			{Name: "api"},
+			{Name: " prod "},
+			{Name: "PROD"},
+			{Name: " "},
 		},
 		HTTPPassword:      "secret",
 		CustomHTTPHeaders: map[string]string{"authorization": "Bearer secret"},
@@ -90,7 +91,15 @@ func TestMonitorDataSourceStateMapsNonSecretFields(t *testing.T) {
 	if state.GroupID.ValueInt64() != 12 {
 		t.Fatalf("unexpected group ID %d", state.GroupID.ValueInt64())
 	}
-	if state.Tags.IsNull() || state.Tags.IsUnknown() || len(state.Tags.Elements()) != 2 {
+	if state.Tags.IsNull() || state.Tags.IsUnknown() {
 		t.Fatalf("unexpected tags %#v", state.Tags)
+	}
+	var tags []string
+	diags := state.Tags.ElementsAs(t.Context(), &tags, false)
+	if diags.HasError() {
+		t.Fatalf("unexpected tag diagnostics: %v", diags.Errors())
+	}
+	if strings.Join(tags, ",") != "prod" {
+		t.Fatalf("unexpected tags %#v", tags)
 	}
 }

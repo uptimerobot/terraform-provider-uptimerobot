@@ -49,9 +49,12 @@ func testAccCheckMonitorVisibleInList(name string) resource.TestCheckFunc {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
+		var lastGetMonitorsErr error
 		for {
 			monitors, err := apiClient.GetMonitors(ctx)
-			if err == nil {
+			if err != nil {
+				lastGetMonitorsErr = err
+			} else {
 				for _, monitor := range monitors {
 					if monitor.Name == name {
 						return nil
@@ -61,6 +64,9 @@ func testAccCheckMonitorVisibleInList(name string) resource.TestCheckFunc {
 
 			select {
 			case <-ctx.Done():
+				if lastGetMonitorsErr != nil {
+					return fmt.Errorf("monitor %q was not visible in list endpoint before ctx.Done; last apiClient.GetMonitors error: %v: %w", name, lastGetMonitorsErr, ctx.Err())
+				}
 				return fmt.Errorf("monitor %q was not visible in list endpoint before timeout: %w", name, ctx.Err())
 			case <-time.After(2 * time.Second):
 			}
