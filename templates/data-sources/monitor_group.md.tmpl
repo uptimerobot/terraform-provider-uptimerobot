@@ -1,0 +1,18 @@
+---
+page_title: "uptimerobot_monitor_group Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Looks up one existing UptimeRobot monitor group.
+---
+
+# uptimerobot_monitor_group (Data Source)
+
+Looks up one existing UptimeRobot monitor group by `id` or exact `name` without managing it. Monitor group names are not guaranteed unique in UptimeRobot; if more than one monitor group has the configured name, the data source returns an error and lists the matching IDs. Configure `id` to select one monitor group unambiguously.
+
+Use this when monitor groups are managed in another Terraform state, created through the UI/API, or otherwise owned outside the current configuration. The data source exposes monitor group metadata so existing groups can be referenced from `uptimerobot_monitor.group_id` without importing them as resources.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_monitor_group/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}

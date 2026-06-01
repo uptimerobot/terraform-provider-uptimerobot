@@ -114,6 +114,7 @@ Detailed documentation for the data sources supported by this provider can be fo
 - [uptimerobot_integration](docs/data-sources/integration.md)
 - [uptimerobot_maintenance_window](docs/data-sources/maintenance_window.md)
 - [uptimerobot_monitor](docs/data-sources/monitor.md)
+- [uptimerobot_monitor_group](docs/data-sources/monitor_group.md)
 - [uptimerobot_tag](docs/data-sources/tag.md)
 - [uptimerobot_tags](docs/data-sources/tags.md)
 
