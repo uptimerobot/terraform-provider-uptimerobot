@@ -130,6 +130,7 @@ func (p *UptimeRobotProvider) DataSources(ctx context.Context) []func() datasour
 		maintenancewindow.NewDataSource,
 		monitor.NewDataSource,
 		monitorgroup.NewDataSource,
+		psp.NewDataSource,
 		tag.NewDataSource,
 		tag.NewListDataSource,
 	}
