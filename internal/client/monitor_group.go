@@ -95,6 +95,9 @@ func (c *Client) ListAllMonitorGroups(ctx context.Context) ([]MonitorGroup, erro
 		if nextCursorID == nil {
 			return out, nil
 		}
+		if cursorID != nil && *nextCursorID == *cursorID {
+			return nil, fmt.Errorf("monitor groups pagination cursor did not advance (%d)", *nextCursorID)
+		}
 		cursorID = nextCursorID
 	}
 
