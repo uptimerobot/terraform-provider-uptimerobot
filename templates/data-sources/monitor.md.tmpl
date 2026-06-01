@@ -1,0 +1,18 @@
+---
+page_title: "uptimerobot_monitor Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Looks up one existing UptimeRobot monitor.
+---
+
+# uptimerobot_monitor (Data Source)
+
+Looks up one existing UptimeRobot monitor by `id` or exact `name` without managing it. Monitor names are not guaranteed unique in UptimeRobot; if more than one monitor has the configured name, the data source returns an error and lists the matching IDs. Configure `id` to select one monitor unambiguously.
+
+Use this when monitors are managed in another Terraform state, created through the UI/API, or otherwise owned outside the current configuration. The data source exposes non-secret monitor metadata, including tag names, so existing monitors can be attached to public status pages or grouped in Terraform expressions without importing them as resources.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_monitor/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}

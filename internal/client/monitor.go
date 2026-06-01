@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -229,6 +232,14 @@ type UptimeRecord struct {
 	Uptime    float64 `json:"uptime"`
 }
 
+// MonitorListResponse represents a paginated monitor list response.
+type MonitorListResponse struct {
+	Data         []Monitor `json:"data"`
+	Monitors     []Monitor `json:"monitors"`
+	NextCursorID *int64    `json:"nextCursorId"`
+	NextLink     *string   `json:"nextLink"`
+}
+
 // CreateMonitor creates a new monitor.
 func (c *Client) CreateMonitor(ctx context.Context, req *CreateMonitorRequest) (*Monitor, error) {
 	base := NewBaseCRUDOperations(c, "/monitors")
@@ -273,21 +284,87 @@ func (c *Client) GetMonitor(ctx context.Context, id int64) (*Monitor, error) {
 	return &monitor, nil
 }
 
-// GetMonitors retrieves all monitors.
-func (c *Client) GetMonitors(ctx context.Context) ([]Monitor, error) {
-	resp, err := c.doRequest(ctx, "GET", "/monitors", nil)
+// ListMonitors lists monitors. If cursorID is nil, the first page is returned.
+func (c *Client) ListMonitors(ctx context.Context, cursorID *int64) (*MonitorListResponse, error) {
+	path := "/monitors"
+	if cursorID != nil {
+		path += "?cursor=" + strconv.FormatInt(*cursorID, 10)
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	var response struct {
-		Monitors []Monitor `json:"monitors"`
-	}
+	var response MonitorListResponse
 	if err := json.Unmarshal(resp, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal monitors response: %v", err)
 	}
+	if len(response.Data) == 0 && len(response.Monitors) > 0 {
+		response.Data = response.Monitors
+	}
 
-	return response.Monitors, nil
+	return &response, nil
+}
+
+// GetMonitors retrieves all monitors.
+func (c *Client) GetMonitors(ctx context.Context) ([]Monitor, error) {
+	var out []Monitor
+	var cursorID *int64
+
+	const maxPages = 1000
+	for page := 0; page < maxPages; page++ {
+		resp, err := c.ListMonitors(ctx, cursorID)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, resp.Data...)
+
+		nextCursorID, err := monitorCursorFromListResponse(resp)
+		if err != nil {
+			return nil, err
+		}
+		if nextCursorID == nil {
+			return out, nil
+		}
+		cursorID = nextCursorID
+	}
+
+	return nil, fmt.Errorf("monitors pagination exceeded %d pages", maxPages)
+}
+
+func monitorCursorFromListResponse(resp *MonitorListResponse) (*int64, error) {
+	if resp == nil {
+		return nil, nil
+	}
+	if resp.NextCursorID != nil {
+		return resp.NextCursorID, nil
+	}
+	return monitorCursorFromNextLink(resp.NextLink)
+}
+
+func monitorCursorFromNextLink(nextLink *string) (*int64, error) {
+	if nextLink == nil || strings.TrimSpace(*nextLink) == "" {
+		return nil, nil
+	}
+
+	parsed, err := url.Parse(*nextLink)
+	if err != nil {
+		return nil, fmt.Errorf("parse monitors nextLink %q: %w", *nextLink, err)
+	}
+
+	rawCursor := parsed.Query().Get("cursor")
+	if rawCursor == "" {
+		return nil, fmt.Errorf("monitors nextLink %q does not contain a cursor query parameter", *nextLink)
+	}
+
+	cursorID, err := strconv.ParseInt(rawCursor, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse monitors cursor %q: %w", rawCursor, err)
+	}
+
+	return &cursorID, nil
 }
 
 // UpdateMonitor updates an existing monitor.
