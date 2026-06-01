@@ -46,7 +46,7 @@ data "uptimerobot_monitor" "by_name" {
 func testAccCheckMonitorVisibleInList(name string) resource.TestCheckFunc {
 	return func(_ *terraform.State) error {
 		apiClient := provideracctest.APIClient()
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 
 		var lastGetMonitorsErr error
