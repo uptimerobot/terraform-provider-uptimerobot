@@ -206,6 +206,63 @@ func TestClient_GetMonitors_Paginates(t *testing.T) {
 	}
 }
 
+func TestClient_ListMonitorsByName_EncodesNameAndCursor(t *testing.T) {
+	t.Parallel()
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if got := req.Method + " " + req.URL.RequestURI(); got != "GET /monitors?cursor=101&name=api+prod" {
+				t.Fatalf("unexpected request %q", got)
+			}
+			return jsonResponse(http.StatusOK, `{"data":[{"id":102,"friendlyName":"api prod"}],"nextLink":null}`), nil
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	cursor := int64(101)
+	monitors, err := c.ListMonitorsByName(context.Background(), "api prod", &cursor)
+	if err != nil {
+		t.Fatalf("ListMonitorsByName returned error: %v", err)
+	}
+	if len(monitors.Data) != 1 || monitors.Data[0].ID != 102 {
+		t.Fatalf("unexpected monitors %#v", monitors.Data)
+	}
+}
+
+func TestClient_GetMonitorsByName_Paginates(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls = append(calls, req.Method+" "+req.URL.RequestURI())
+			switch req.URL.RequestURI() {
+			case "/monitors?name=api-prod":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":101,"friendlyName":"api-prod"}],"nextLink":"https://example.test/monitors?cursor=101"}`), nil
+			case "/monitors?cursor=101&name=api-prod":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":102,"friendlyName":"api-prod"}],"nextLink":null}`), nil
+			default:
+				t.Fatalf("unexpected request %q", req.URL.RequestURI())
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	monitors, err := c.GetMonitorsByName(context.Background(), "api-prod")
+	if err != nil {
+		t.Fatalf("GetMonitorsByName returned error: %v", err)
+	}
+	if len(monitors) != 2 || monitors[0].ID != 101 || monitors[1].ID != 102 {
+		t.Fatalf("unexpected monitors %#v", monitors)
+	}
+	if strings.Join(calls, ",") != "GET /monitors?name=api-prod,GET /monitors?cursor=101&name=api-prod" {
+		t.Fatalf("unexpected calls %#v", calls)
+	}
+}
+
 func TestClient_PauseMonitor_SendsPauseEndpoint(t *testing.T) {
 	t.Parallel()
 

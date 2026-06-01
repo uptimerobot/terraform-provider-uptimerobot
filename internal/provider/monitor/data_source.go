@@ -152,7 +152,7 @@ func (d *monitorDataSource) lookupMonitor(ctx context.Context, filters monitorFi
 		return monitor, nil
 	}
 
-	monitors, err := d.listMonitorsForLookup(ctx)
+	monitors, err := d.listMonitorsForLookup(ctx, filters)
 	if err != nil {
 		return nil, fmt.Errorf("could not list monitors: %w", err)
 	}
@@ -177,12 +177,12 @@ func (d *monitorDataSource) lookupMonitor(ctx context.Context, filters monitorFi
 	}
 }
 
-func (d *monitorDataSource) listMonitorsForLookup(ctx context.Context) ([]client.Monitor, error) {
+func (d *monitorDataSource) listMonitorsForLookup(ctx context.Context, filters monitorFilters) ([]client.Monitor, error) {
 	var lastErr error
 	maxAttempts := len(monitorListLookupBackoffs) + 1
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		monitors, err := d.client.GetMonitors(ctx)
+		monitors, err := d.getMonitorsForLookup(ctx, filters)
 		if err == nil {
 			return monitors, nil
 		}
@@ -200,6 +200,13 @@ func (d *monitorDataSource) listMonitorsForLookup(ctx context.Context) ([]client
 	}
 
 	return nil, lastErr
+}
+
+func (d *monitorDataSource) getMonitorsForLookup(ctx context.Context, filters monitorFilters) ([]client.Monitor, error) {
+	if filters.Name != "" {
+		return d.client.GetMonitorsByName(ctx, filters.Name)
+	}
+	return d.client.GetMonitors(ctx)
 }
 
 func shouldRetryMonitorListLookup(err error, attempt, maxAttempts int) bool {
