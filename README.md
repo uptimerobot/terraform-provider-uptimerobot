@@ -116,6 +116,7 @@ Detailed documentation for the data sources supported by this provider can be fo
 - [uptimerobot_monitor](docs/data-sources/monitor.md)
 - [uptimerobot_monitor_group](docs/data-sources/monitor_group.md)
 - [uptimerobot_psp](docs/data-sources/psp.md)
+- [uptimerobot_psp_announcement](docs/data-sources/psp_announcement.md)
 - [uptimerobot_tag](docs/data-sources/tag.md)
 - [uptimerobot_tags](docs/data-sources/tags.md)
 

@@ -6,6 +6,7 @@
 - Added `uptimerobot_monitor` data source for looking up existing monitors by ID or exact name, including non-secret metadata such as tags and group ID.
 - Added `uptimerobot_monitor_group` data source for looking up existing monitor groups by ID or exact name.
 - Added `uptimerobot_psp` data source for looking up existing public status pages by ID or exact name, including readable PSP metadata and custom settings.
+- Added `uptimerobot_psp_announcement` data source for looking up existing public status page announcements by PSP ID plus announcement ID or exact title.
 
 ## 1.7.1 — 2026-05-18
 
