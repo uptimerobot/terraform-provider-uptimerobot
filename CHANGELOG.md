@@ -8,6 +8,10 @@
 - Added `uptimerobot_psp` data source for looking up existing public status pages by ID or exact name, including readable PSP metadata and custom settings.
 - Added `uptimerobot_psp_announcement` data source for looking up existing public status page announcements by PSP ID plus announcement ID or exact title.
 
+### Fixed
+
+- Hardened data source lookups to reject non-positive IDs and fail fast on repeated pagination cursors.
+
 ## 1.7.1 — 2026-05-18
 
 ### Changed
