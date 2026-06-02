@@ -1,11 +1,14 @@
 package monitor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -120,6 +123,47 @@ func TestShouldRetryMonitorListLookup(t *testing.T) {
 				t.Fatalf("shouldRetryMonitorListLookup() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestMonitorDataSourceLookupRetriesEmptyNameResults(t *testing.T) {
+	oldBackoffs := monitorListLookupBackoffs
+	monitorListLookupBackoffs = []time.Duration{time.Millisecond}
+	t.Cleanup(func() {
+		monitorListLookupBackoffs = oldBackoffs
+	})
+
+	var listCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.RequestURI() {
+		case "/monitors?name=eventual":
+			listCalls++
+			if listCalls == 1 {
+				_, _ = w.Write([]byte(`{"data":[],"nextCursorId":null}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"id":101,"friendlyName":"eventual","type":"HTTP","url":"https://example.com","status":"UP"}],"nextCursorId":null}`))
+		case "/monitors/101":
+			_, _ = w.Write([]byte(`{"id":101,"friendlyName":"eventual","type":"HTTP","url":"https://example.com","status":"UP"}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.RequestURI())
+		}
+	}))
+	defer srv.Close()
+
+	apiClient := client.NewClient("test-key")
+	apiClient.SetBaseURL(srv.URL)
+	dataSource := monitorDataSource{client: apiClient}
+
+	monitor, err := dataSource.lookupMonitor(context.Background(), monitorFilters{Name: "eventual"})
+	if err != nil {
+		t.Fatalf("lookupMonitor returned error: %v", err)
+	}
+	if monitor.ID != 101 {
+		t.Fatalf("unexpected monitor %#v", monitor)
+	}
+	if listCalls != 2 {
+		t.Fatalf("expected two list calls, got %d", listCalls)
 	}
 }
 

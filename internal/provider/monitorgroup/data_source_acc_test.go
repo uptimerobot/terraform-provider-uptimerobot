@@ -37,8 +37,16 @@ data "uptimerobot_monitor_group" "by_name" {
 `
 }
 
-func testAccCheckMonitorGroupVisibleInList(name string) resource.TestCheckFunc {
-	return func(_ *terraform.State) error {
+func testAccCheckMonitorGroupVisibleInList(resourceName string) resource.TestCheckFunc {
+	return func(state *terraform.State) error {
+		rs, ok := state.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("resource %q not found in state", resourceName)
+		}
+		if rs.Primary.ID == "" {
+			return fmt.Errorf("resource %q has empty ID in state", resourceName)
+		}
+
 		apiClient := provideracctest.APIClient()
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
@@ -50,7 +58,7 @@ func testAccCheckMonitorGroupVisibleInList(name string) resource.TestCheckFunc {
 				lastListErr = err
 			} else {
 				for _, group := range groups {
-					if group.Name == name {
+					if fmt.Sprintf("%d", group.ID) == rs.Primary.ID {
 						return nil
 					}
 				}
@@ -59,9 +67,9 @@ func testAccCheckMonitorGroupVisibleInList(name string) resource.TestCheckFunc {
 			select {
 			case <-ctx.Done():
 				if lastListErr != nil {
-					return fmt.Errorf("monitor group %q was not visible in list endpoint before ctx.Done; last apiClient.ListAllMonitorGroups error: %v: %w", name, lastListErr, ctx.Err())
+					return fmt.Errorf("monitor group ID %s was not visible in list endpoint before ctx.Done; last apiClient.ListAllMonitorGroups error: %v: %w", rs.Primary.ID, lastListErr, ctx.Err())
 				}
-				return fmt.Errorf("monitor group %q was not visible in list endpoint before timeout: %w", name, ctx.Err())
+				return fmt.Errorf("monitor group ID %s was not visible in list endpoint before timeout: %w", rs.Primary.ID, ctx.Err())
 			case <-time.After(2 * time.Second):
 			}
 		}
@@ -80,7 +88,7 @@ func TestAccMonitorGroupDataSource(t *testing.T) {
 				Config: testAccMonitorGroupDataSourceResourceConfig(name),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor_group.test", "name", name),
-					testAccCheckMonitorGroupVisibleInList(name),
+					testAccCheckMonitorGroupVisibleInList("uptimerobot_monitor_group.test"),
 				),
 			},
 			{

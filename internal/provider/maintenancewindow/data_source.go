@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -21,6 +22,14 @@ var (
 	_ datasource.DataSource              = &maintenanceWindowDataSource{}
 	_ datasource.DataSourceWithConfigure = &maintenanceWindowDataSource{}
 )
+
+var maintenanceWindowListLookupBackoffs = []time.Duration{
+	2 * time.Second,
+	4 * time.Second,
+	8 * time.Second,
+	15 * time.Second,
+	30 * time.Second,
+}
 
 // NewDataSource returns the maintenance window lookup data source.
 func NewDataSource() datasource.DataSource {
@@ -153,7 +162,7 @@ func (d *maintenanceWindowDataSource) lookupMaintenanceWindow(ctx context.Contex
 		return maintenanceWindow, nil
 	}
 
-	maintenanceWindows, err := d.client.ListAllMaintenanceWindows(ctx)
+	maintenanceWindows, err := d.listMaintenanceWindowsForLookup(ctx, filters)
 	if err != nil {
 		return nil, fmt.Errorf("could not list maintenance windows: %w", err)
 	}
@@ -176,6 +185,28 @@ func (d *maintenanceWindowDataSource) lookupMaintenanceWindow(ctx context.Contex
 			maintenanceWindowIDs(matches),
 		)
 	}
+}
+
+func (d *maintenanceWindowDataSource) listMaintenanceWindowsForLookup(ctx context.Context, filters maintenanceWindowFilters) ([]client.MaintenanceWindow, error) {
+	maxAttempts := len(maintenanceWindowListLookupBackoffs) + 1
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		maintenanceWindows, err := d.client.ListAllMaintenanceWindows(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if filters.Name == "" || len(filterMaintenanceWindows(maintenanceWindows, filters)) > 0 || attempt == maxAttempts-1 {
+			return maintenanceWindows, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(maintenanceWindowListLookupBackoffs[attempt]):
+		}
+	}
+
+	return nil, fmt.Errorf("maintenance window lookup retry exhausted")
 }
 
 func maintenanceWindowLookupFilters(config maintenanceWindowDataSourceModel) (maintenanceWindowFilters, error) {

@@ -1,6 +1,9 @@
 package monitorgroup
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -45,6 +48,32 @@ func TestFilterMonitorGroupsByExactName(t *testing.T) {
 	}
 	if matches[0].ID != 101 || matches[1].ID != 103 {
 		t.Fatalf("unexpected matches %#v", matches)
+	}
+}
+
+func TestMonitorGroupLookupRejectsNameChangedAfterList(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.RequestURI() {
+		case "/monitor-groups":
+			_, _ = w.Write([]byte(`{"data":[{"id":101,"name":"Production"}],"nextCursorId":null}`))
+		case "/monitor-groups/101":
+			_, _ = w.Write([]byte(`{"id":101,"name":"Renamed"}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.RequestURI())
+		}
+	}))
+	defer srv.Close()
+
+	apiClient := client.NewClient("test-key")
+	apiClient.SetBaseURL(srv.URL)
+	dataSource := monitorGroupDataSource{client: apiClient}
+
+	_, err := dataSource.lookupMonitorGroup(context.Background(), monitorGroupFilters{Name: "Production"})
+	if err == nil {
+		t.Fatal("expected renamed group error, got nil")
+	}
+	if !strings.Contains(err.Error(), `changed name during lookup`) {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

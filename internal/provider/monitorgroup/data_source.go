@@ -140,6 +140,9 @@ func (d *monitorGroupDataSource) lookupMonitorGroup(ctx context.Context, filters
 		if err != nil {
 			return nil, fmt.Errorf("could not read monitor group ID %d after name lookup: %w", matches[0].ID, err)
 		}
+		if group.Name != filters.Name {
+			return nil, fmt.Errorf("monitor group ID %d changed name during lookup: expected %q, got %q", group.ID, filters.Name, group.Name)
+		}
 		return group, nil
 	default:
 		return nil, fmt.Errorf(

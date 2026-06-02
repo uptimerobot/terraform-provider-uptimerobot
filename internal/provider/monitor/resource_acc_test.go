@@ -174,25 +174,42 @@ func testAccCheckMonitorCustomFields(resourceName string, expected map[string]st
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 
-		monitor, err := apiClient.GetMonitor(ctx, id)
-		if err != nil {
-			return fmt.Errorf("could not read monitor %d: %w", id, err)
-		}
+		var lastCustomFields map[string]string
+		var lastReadErr error
+		for {
+			monitor, err := apiClient.GetMonitor(ctx, id)
+			if err != nil {
+				lastReadErr = err
+			} else {
+				lastReadErr = nil
+				lastCustomFields = monitor.CustomFields
+				if testAccCustomFieldsMatch(monitor.CustomFields, expected) {
+					return nil
+				}
+			}
 
-		if len(monitor.CustomFields) != len(expected) {
-			return fmt.Errorf("expected custom_fields %#v, got %#v", expected, monitor.CustomFields)
-		}
-		for k, want := range expected {
-			got, ok := monitor.CustomFields[k]
-			if !ok {
-				return fmt.Errorf("expected custom_fields key %q to be present, got %#v", k, monitor.CustomFields)
-			}
-			if got != want {
-				return fmt.Errorf("expected custom_fields[%q] = %q, got %q", k, want, got)
+			select {
+			case <-ctx.Done():
+				if lastReadErr != nil {
+					return fmt.Errorf("could not read monitor %d before timeout: %v: %w", id, lastReadErr, ctx.Err())
+				}
+				return fmt.Errorf("expected custom_fields %#v, got %#v before timeout: %w", expected, lastCustomFields, ctx.Err())
+			case <-time.After(2 * time.Second):
 			}
 		}
-		return nil
 	}
+}
+
+func testAccCustomFieldsMatch(got, expected map[string]string) bool {
+	if len(got) != len(expected) {
+		return false
+	}
+	for k, want := range expected {
+		if got[k] != want {
+			return false
+		}
+	}
+	return true
 }
 
 // nolint:unparam // kept for symmetry with other helpers & future reuse

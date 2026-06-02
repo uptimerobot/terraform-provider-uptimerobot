@@ -184,6 +184,14 @@ func (d *monitorDataSource) listMonitorsForLookup(ctx context.Context, filters m
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		monitors, err := d.getMonitorsForLookup(ctx, filters)
 		if err == nil {
+			if filters.Name != "" && len(filterMonitors(monitors, filters)) == 0 && attempt < maxAttempts-1 {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(monitorListLookupBackoffs[attempt]):
+				}
+				continue
+			}
 			return monitors, nil
 		}
 

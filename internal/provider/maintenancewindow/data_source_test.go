@@ -1,8 +1,12 @@
 package maintenancewindow
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -45,6 +49,47 @@ func TestFilterMaintenanceWindowsByExactName(t *testing.T) {
 	}
 	if matches[0].ID != 101 || matches[1].ID != 103 {
 		t.Fatalf("unexpected matches %#v", matches)
+	}
+}
+
+func TestMaintenanceWindowDataSourceLookupRetriesEmptyNameResults(t *testing.T) {
+	oldBackoffs := maintenanceWindowListLookupBackoffs
+	maintenanceWindowListLookupBackoffs = []time.Duration{time.Millisecond}
+	t.Cleanup(func() {
+		maintenanceWindowListLookupBackoffs = oldBackoffs
+	})
+
+	var listCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.RequestURI() {
+		case "/maintenance-windows":
+			listCalls++
+			if listCalls == 1 {
+				_, _ = w.Write([]byte(`{"data":[],"nextCursorId":null}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"id":101,"name":"eventual","interval":"weekly","time":"02:00:00","duration":30,"autoAddMonitors":false,"days":[7],"status":"active"}],"nextCursorId":null}`))
+		case "/maintenance-windows/101":
+			_, _ = w.Write([]byte(`{"id":101,"name":"eventual","interval":"weekly","time":"02:00:00","duration":30,"autoAddMonitors":false,"days":[7],"status":"active"}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.RequestURI())
+		}
+	}))
+	defer srv.Close()
+
+	apiClient := client.NewClient("test-key")
+	apiClient.SetBaseURL(srv.URL)
+	dataSource := maintenanceWindowDataSource{client: apiClient}
+
+	maintenanceWindow, err := dataSource.lookupMaintenanceWindow(context.Background(), maintenanceWindowFilters{Name: "eventual"})
+	if err != nil {
+		t.Fatalf("lookupMaintenanceWindow returned error: %v", err)
+	}
+	if maintenanceWindow.ID != 101 {
+		t.Fatalf("unexpected maintenance window %#v", maintenanceWindow)
+	}
+	if listCalls != 2 {
+		t.Fatalf("expected two list calls, got %d", listCalls)
 	}
 }
 
