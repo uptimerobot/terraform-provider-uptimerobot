@@ -68,3 +68,140 @@ func TestClient_UpdatePSPManagedFields(t *testing.T) {
 		t.Fatal("expected subscription to be true")
 	}
 }
+
+func TestClient_ListAllPSPs_PaginatesWithNextLink(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls = append(calls, req.Method+" "+req.URL.RequestURI())
+			switch req.URL.RequestURI() {
+			case "/psps":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":101,"friendlyName":"First"}],"nextLink":"https://api.uptimerobot.com/v3/psps?cursor=101"}`), nil
+			case "/psps?cursor=101":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":102,"friendlyName":"Second"}],"nextLink":null}`), nil
+			default:
+				t.Fatalf("unexpected request %q", req.URL.RequestURI())
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	psps, err := c.ListAllPSPs(context.Background())
+	if err != nil {
+		t.Fatalf("ListAllPSPs returned error: %v", err)
+	}
+	if len(psps) != 2 || psps[0].ID != 101 || psps[1].ID != 102 {
+		t.Fatalf("unexpected PSPs %#v", psps)
+	}
+	if strings.Join(calls, ",") != "GET /psps,GET /psps?cursor=101" {
+		t.Fatalf("unexpected calls %#v", calls)
+	}
+}
+
+func TestClient_ListAllPSPs_UsesLegacyPSPsKey(t *testing.T) {
+	t.Parallel()
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if got := req.Method + " " + req.URL.RequestURI(); got != "GET /psps" {
+				t.Fatalf("unexpected request %s", got)
+			}
+			return jsonResponse(http.StatusOK, `{"psps":[{"id":101,"friendlyName":"First"}],"nextCursorId":null}`), nil
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	psps, err := c.ListAllPSPs(context.Background())
+	if err != nil {
+		t.Fatalf("ListAllPSPs returned error: %v", err)
+	}
+	if len(psps) != 1 || psps[0].ID != 101 || psps[0].Name != "First" {
+		t.Fatalf("unexpected PSPs %#v", psps)
+	}
+}
+
+func TestClient_ListAllPSPs_RejectsNonAdvancingCursor(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls = append(calls, req.Method+" "+req.URL.RequestURI())
+			switch req.URL.RequestURI() {
+			case "/psps":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":101,"friendlyName":"First"}],"nextCursorId":101}`), nil
+			case "/psps?cursor=101":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":101,"friendlyName":"First"}],"nextCursorId":101}`), nil
+			default:
+				t.Fatalf("unexpected request %q", req.URL.RequestURI())
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	_, err := c.ListAllPSPs(context.Background())
+	if err == nil {
+		t.Fatal("expected non-advancing cursor error, got nil")
+	}
+	if !strings.Contains(err.Error(), "cursor repeated (101)") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Join(calls, ",") != "GET /psps,GET /psps?cursor=101" {
+		t.Fatalf("unexpected calls %#v", calls)
+	}
+}
+
+func TestClient_ListAllPSPs_RejectsCursorCycle(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls = append(calls, req.Method+" "+req.URL.RequestURI())
+			switch req.URL.RequestURI() {
+			case "/psps":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":101,"friendlyName":"First"}],"nextCursorId":101}`), nil
+			case "/psps?cursor=101":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":102,"friendlyName":"Second"}],"nextCursorId":202}`), nil
+			case "/psps?cursor=202":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":103,"friendlyName":"Third"}],"nextCursorId":101}`), nil
+			default:
+				t.Fatalf("unexpected request %q", req.URL.RequestURI())
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	_, err := c.ListAllPSPs(context.Background())
+	if err == nil {
+		t.Fatal("expected repeated cursor error, got nil")
+	}
+	if !strings.Contains(err.Error(), "cursor repeated (101)") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Join(calls, ",") != "GET /psps,GET /psps?cursor=101,GET /psps?cursor=202" {
+		t.Fatalf("unexpected calls %#v", calls)
+	}
+}
+
+func TestPSPCursorFromNextLink_RejectsMissingCursor(t *testing.T) {
+	t.Parallel()
+
+	nextLink := "https://api.uptimerobot.com/v3/psps?page=2"
+	_, err := pspCursorFromNextLink(&nextLink)
+	if err == nil {
+		t.Fatal("expected missing cursor error, got nil")
+	}
+	if !strings.Contains(err.Error(), "does not contain a cursor") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

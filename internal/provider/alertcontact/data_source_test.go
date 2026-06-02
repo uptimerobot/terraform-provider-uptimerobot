@@ -133,6 +133,16 @@ func TestAlertContactLookupFiltersValidateID(t *testing.T) {
 	if !strings.Contains(err.Error(), `could not parse alert contact id "abc"`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	_, err = alertContactLookupFilters(alertContactDataSourceModel{
+		ID: stringState("0"),
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "alert contact id must be positive, got 0") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestAlertContactIDsSortedNumerically(t *testing.T) {

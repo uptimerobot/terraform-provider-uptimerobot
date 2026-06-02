@@ -72,3 +72,45 @@ func TestClient_ListAllTags_Paginates(t *testing.T) {
 		t.Fatalf("unexpected requests:\n%s", strings.Join(seen, "\n"))
 	}
 }
+
+func TestClient_ListAllTags_RejectsCursorCycle(t *testing.T) {
+	t.Parallel()
+
+	var seen []string
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			seen = append(seen, req.Method+" "+req.URL.RequestURI())
+			switch req.URL.RequestURI() {
+			case "/tags":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":101,"name":"first"}],"nextCursorId":101}`), nil
+			case "/tags?cursor=101":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":102,"name":"second"}],"nextCursorId":202}`), nil
+			case "/tags?cursor=202":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":103,"name":"third"}],"nextCursorId":101}`), nil
+			default:
+				t.Fatalf("unexpected request %s %s", req.Method, req.URL.RequestURI())
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	_, err := c.ListAllTags(context.Background())
+	if err == nil {
+		t.Fatal("expected repeated cursor error, got nil")
+	}
+	if !strings.Contains(err.Error(), "cursor repeated (101)") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{
+		"GET /tags",
+		"GET /tags?cursor=101",
+		"GET /tags?cursor=202",
+	}
+	if strings.Join(seen, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("unexpected requests:\n%s", strings.Join(seen, "\n"))
+	}
+}

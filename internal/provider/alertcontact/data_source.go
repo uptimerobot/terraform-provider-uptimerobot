@@ -309,8 +309,12 @@ func alertContactLookupFilters(config alertContactDataSourceModel) (alertContact
 	}
 
 	if filters.ID != "" {
-		if _, err := strconv.ParseInt(filters.ID, 10, 64); err != nil {
+		id, err := strconv.ParseInt(filters.ID, 10, 64)
+		if err != nil {
 			return alertContactFilters{}, fmt.Errorf("could not parse alert contact id %q: %w", filters.ID, err)
+		}
+		if id <= 0 {
+			return alertContactFilters{}, fmt.Errorf("alert contact id must be positive, got %d", id)
 		}
 	}
 	if filters.ID == "" && filters.Name == "" && filters.Type == "" && filters.Value == "" && filters.Status == "" {

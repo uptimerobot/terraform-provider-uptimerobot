@@ -39,6 +39,12 @@ type integrationDataSourceModel struct {
 	SSLExpirationReminder  types.Bool   `tfsdk:"ssl_expiration_reminder"`
 }
 
+type integrationLookupSelectors struct {
+	ID   string
+	Name string
+	Type string
+}
+
 func (d *integrationDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	d.client = providerclient.FromDataSourceConfigure(req, resp)
 }
@@ -105,33 +111,27 @@ func (d *integrationDataSource) Read(ctx context.Context, req datasource.ReadReq
 }
 
 func (d *integrationDataSource) lookupIntegration(ctx context.Context, config integrationDataSourceModel) (*client.Integration, error) {
+	selectors, err := integrationLookupSelectorsFromConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
 	if d.client == nil {
 		return nil, fmt.Errorf("provider client is not configured")
 	}
 
-	lookupID := valueString(config.ID)
-	lookupName := valueString(config.Name)
-	lookupType := valueString(config.Type)
-
-	if lookupID != "" {
-		id, err := strconv.ParseInt(lookupID, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("could not parse integration id %q: %w", lookupID, err)
-		}
+	if selectors.ID != "" {
+		id, _ := strconv.ParseInt(selectors.ID, 10, 64)
 
 		integration, err := d.client.GetIntegration(ctx, id)
 		if err != nil {
-			return nil, fmt.Errorf("could not read integration ID %q: %w", lookupID, err)
+			return nil, fmt.Errorf("could not read integration ID %q: %w", selectors.ID, err)
 		}
 
-		if err := validateIntegrationLookup(integration, lookupName, lookupType); err != nil {
+		if err := validateIntegrationLookup(integration, selectors.Name, selectors.Type); err != nil {
 			return nil, err
 		}
 		return integration, nil
-	}
-
-	if lookupName == "" || lookupType == "" {
-		return nil, fmt.Errorf("either id or both name and type must be configured")
 	}
 
 	integrations, err := d.client.ListAllIntegrations(ctx)
@@ -139,21 +139,46 @@ func (d *integrationDataSource) lookupIntegration(ctx context.Context, config in
 		return nil, fmt.Errorf("could not list integrations: %w", err)
 	}
 
-	matches := filterIntegrations(integrations, lookupName, lookupType)
+	matches := filterIntegrations(integrations, selectors.Name, selectors.Type)
 	switch len(matches) {
 	case 0:
-		return nil, fmt.Errorf("no integration found with name %q and type %q", lookupName, lookupType)
+		return nil, fmt.Errorf("no integration found with name %q and type %q", selectors.Name, selectors.Type)
 	case 1:
 		return &matches[0], nil
 	default:
 		return nil, fmt.Errorf(
 			"found %d integrations with name %q and type %q: %s; configure id to select one",
 			len(matches),
-			lookupName,
-			lookupType,
+			selectors.Name,
+			selectors.Type,
 			integrationIDs(matches),
 		)
 	}
+}
+
+func integrationLookupSelectorsFromConfig(config integrationDataSourceModel) (integrationLookupSelectors, error) {
+	selectors := integrationLookupSelectors{
+		ID:   valueString(config.ID),
+		Name: valueString(config.Name),
+		Type: valueString(config.Type),
+	}
+
+	if selectors.ID != "" {
+		id, err := strconv.ParseInt(selectors.ID, 10, 64)
+		if err != nil {
+			return integrationLookupSelectors{}, fmt.Errorf("could not parse integration id %q: %w", selectors.ID, err)
+		}
+		if id <= 0 {
+			return integrationLookupSelectors{}, fmt.Errorf("integration id must be positive, got %d", id)
+		}
+		return selectors, nil
+	}
+
+	if selectors.Name == "" || selectors.Type == "" {
+		return integrationLookupSelectors{}, fmt.Errorf("either id or both name and type must be configured")
+	}
+
+	return selectors, nil
 }
 
 func valueString(value types.String) string {

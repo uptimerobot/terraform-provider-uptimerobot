@@ -43,6 +43,7 @@ func (c *Client) ListTags(ctx context.Context, cursorID *int64) (*TagListRespons
 func (c *Client) ListAllTags(ctx context.Context) ([]UserTag, error) {
 	var out []UserTag
 	var cursorID *int64
+	seenCursors := make(map[int64]struct{})
 
 	const maxPages = 1000
 	for page := 0; page < maxPages; page++ {
@@ -55,6 +56,10 @@ func (c *Client) ListAllTags(ctx context.Context) ([]UserTag, error) {
 		if resp.NextCursorID == nil {
 			return out, nil
 		}
+		if _, seen := seenCursors[*resp.NextCursorID]; seen {
+			return nil, fmt.Errorf("tags pagination cursor repeated (%d)", *resp.NextCursorID)
+		}
+		seenCursors[*resp.NextCursorID] = struct{}{}
 		cursorID = resp.NextCursorID
 	}
 

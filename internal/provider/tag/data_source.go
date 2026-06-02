@@ -222,8 +222,12 @@ func tagLookupFilters(config tagDataSourceModel) (tagFilters, error) {
 	}
 
 	if filters.ID != "" {
-		if _, err := strconv.ParseInt(filters.ID, 10, 64); err != nil {
+		id, err := strconv.ParseInt(filters.ID, 10, 64)
+		if err != nil {
 			return tagFilters{}, fmt.Errorf("could not parse tag id %q: %w", filters.ID, err)
+		}
+		if id <= 0 {
+			return tagFilters{}, fmt.Errorf("tag id must be positive, got %d", id)
 		}
 	}
 	if filters.ID == "" && filters.Name == "" {

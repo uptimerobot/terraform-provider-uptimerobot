@@ -150,6 +150,154 @@ func TestClient_GetMonitor_FallbackListRequestFailureReturnsExplicitError(t *tes
 	}
 }
 
+func TestClient_GetMonitors_AcceptsDataResponse(t *testing.T) {
+	t.Parallel()
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if got := req.Method + " " + req.URL.RequestURI(); got != "GET /monitors" {
+				t.Fatalf("unexpected request %q", got)
+			}
+			return jsonResponse(http.StatusOK, `{"data":[{"id":71234,"friendlyName":"live","type":"HTTP","url":"https://example.com","interval":300,"status":"STARTED"}]}`), nil
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	monitors, err := c.GetMonitors(context.Background())
+	if err != nil {
+		t.Fatalf("GetMonitors returned error: %v", err)
+	}
+	if len(monitors) != 1 || monitors[0].ID != 71234 || monitors[0].Name != "live" {
+		t.Fatalf("unexpected monitors %#v", monitors)
+	}
+}
+
+func TestClient_GetMonitors_Paginates(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls = append(calls, req.Method+" "+req.URL.RequestURI())
+			switch req.URL.RequestURI() {
+			case "/monitors":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":101,"friendlyName":"first"}],"nextLink":"https://example.test/monitors?cursor=101"}`), nil
+			case "/monitors?cursor=101":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":102,"friendlyName":"second"}],"nextLink":null}`), nil
+			default:
+				t.Fatalf("unexpected request %q", req.URL.RequestURI())
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	monitors, err := c.GetMonitors(context.Background())
+	if err != nil {
+		t.Fatalf("GetMonitors returned error: %v", err)
+	}
+	if len(monitors) != 2 || monitors[0].ID != 101 || monitors[1].ID != 102 {
+		t.Fatalf("unexpected monitors %#v", monitors)
+	}
+	if strings.Join(calls, ",") != "GET /monitors,GET /monitors?cursor=101" {
+		t.Fatalf("unexpected calls %#v", calls)
+	}
+}
+
+func TestClient_GetMonitors_RejectsCursorCycle(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls = append(calls, req.Method+" "+req.URL.RequestURI())
+			switch req.URL.RequestURI() {
+			case "/monitors":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":101,"friendlyName":"first"}],"nextCursorId":101}`), nil
+			case "/monitors?cursor=101":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":102,"friendlyName":"second"}],"nextCursorId":202}`), nil
+			case "/monitors?cursor=202":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":103,"friendlyName":"third"}],"nextCursorId":101}`), nil
+			default:
+				t.Fatalf("unexpected request %q", req.URL.RequestURI())
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	_, err := c.GetMonitors(context.Background())
+	if err == nil {
+		t.Fatal("expected repeated cursor error, got nil")
+	}
+	if !strings.Contains(err.Error(), "cursor repeated (101)") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Join(calls, ",") != "GET /monitors,GET /monitors?cursor=101,GET /monitors?cursor=202" {
+		t.Fatalf("unexpected calls %#v", calls)
+	}
+}
+
+func TestClient_ListMonitorsByName_EncodesNameAndCursor(t *testing.T) {
+	t.Parallel()
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if got := req.Method + " " + req.URL.RequestURI(); got != "GET /monitors?cursor=101&name=api+prod" {
+				t.Fatalf("unexpected request %q", got)
+			}
+			return jsonResponse(http.StatusOK, `{"data":[{"id":102,"friendlyName":"api prod"}],"nextLink":null}`), nil
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	cursor := int64(101)
+	monitors, err := c.ListMonitorsByName(context.Background(), "api prod", &cursor)
+	if err != nil {
+		t.Fatalf("ListMonitorsByName returned error: %v", err)
+	}
+	if len(monitors.Data) != 1 || monitors.Data[0].ID != 102 {
+		t.Fatalf("unexpected monitors %#v", monitors.Data)
+	}
+}
+
+func TestClient_GetMonitorsByName_Paginates(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls = append(calls, req.Method+" "+req.URL.RequestURI())
+			switch req.URL.RequestURI() {
+			case "/monitors?name=api-prod":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":101,"friendlyName":"api-prod"}],"nextLink":"https://example.test/monitors?cursor=101"}`), nil
+			case "/monitors?cursor=101&name=api-prod":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":102,"friendlyName":"api-prod"}],"nextLink":null}`), nil
+			default:
+				t.Fatalf("unexpected request %q", req.URL.RequestURI())
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	monitors, err := c.GetMonitorsByName(context.Background(), "api-prod")
+	if err != nil {
+		t.Fatalf("GetMonitorsByName returned error: %v", err)
+	}
+	if len(monitors) != 2 || monitors[0].ID != 101 || monitors[1].ID != 102 {
+		t.Fatalf("unexpected monitors %#v", monitors)
+	}
+	if strings.Join(calls, ",") != "GET /monitors?name=api-prod,GET /monitors?cursor=101&name=api-prod" {
+		t.Fatalf("unexpected calls %#v", calls)
+	}
+}
+
 func TestClient_PauseMonitor_SendsPauseEndpoint(t *testing.T) {
 	t.Parallel()
 

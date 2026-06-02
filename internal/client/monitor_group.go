@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -18,8 +20,9 @@ type MonitorGroup struct {
 
 // MonitorGroupListResponse represents a paginated monitor group list response.
 type MonitorGroupListResponse struct {
-	Data     []MonitorGroup `json:"data"`
-	NextLink *string        `json:"nextLink"`
+	Data         []MonitorGroup `json:"data"`
+	NextCursorID *int64         `json:"nextCursorId"`
+	NextLink     *string        `json:"nextLink"`
 }
 
 // CreateMonitorGroupRequest represents the request to create a monitor group.
@@ -69,6 +72,71 @@ func (c *Client) ListMonitorGroups(ctx context.Context, cursorID *int64) (*Monit
 		return nil, err
 	}
 	return &groups, nil
+}
+
+// ListAllMonitorGroups follows pagination and returns all monitor groups visible to the API key.
+func (c *Client) ListAllMonitorGroups(ctx context.Context) ([]MonitorGroup, error) {
+	var out []MonitorGroup
+	var cursorID *int64
+	seenCursors := make(map[int64]struct{})
+
+	const maxPages = 1000
+	for page := 0; page < maxPages; page++ {
+		resp, err := c.ListMonitorGroups(ctx, cursorID)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, resp.Data...)
+
+		nextCursorID, err := monitorGroupCursorFromListResponse(resp)
+		if err != nil {
+			return nil, err
+		}
+		if nextCursorID == nil {
+			return out, nil
+		}
+		if _, seen := seenCursors[*nextCursorID]; seen {
+			return nil, fmt.Errorf("monitor groups pagination cursor repeated (%d)", *nextCursorID)
+		}
+		seenCursors[*nextCursorID] = struct{}{}
+		cursorID = nextCursorID
+	}
+
+	return nil, fmt.Errorf("monitor groups pagination exceeded %d pages", maxPages)
+}
+
+func monitorGroupCursorFromListResponse(resp *MonitorGroupListResponse) (*int64, error) {
+	if resp == nil {
+		return nil, nil
+	}
+	if resp.NextCursorID != nil {
+		return resp.NextCursorID, nil
+	}
+	return monitorGroupCursorFromNextLink(resp.NextLink)
+}
+
+func monitorGroupCursorFromNextLink(nextLink *string) (*int64, error) {
+	if nextLink == nil || strings.TrimSpace(*nextLink) == "" {
+		return nil, nil
+	}
+
+	parsed, err := url.Parse(*nextLink)
+	if err != nil {
+		return nil, fmt.Errorf("parse monitor groups nextLink %q: %w", *nextLink, err)
+	}
+
+	rawCursor := parsed.Query().Get("cursor")
+	if rawCursor == "" {
+		return nil, fmt.Errorf("monitor groups nextLink %q does not contain a cursor query parameter", *nextLink)
+	}
+
+	cursorID, err := strconv.ParseInt(rawCursor, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse monitor groups cursor %q: %w", rawCursor, err)
+	}
+
+	return &cursorID, nil
 }
 
 // UpdateMonitorGroup updates an existing monitor group.

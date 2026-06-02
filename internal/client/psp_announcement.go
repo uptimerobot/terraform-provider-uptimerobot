@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 )
 
 // PSPAnnouncement represents a public status page announcement.
@@ -23,8 +26,9 @@ type PSPAnnouncement struct {
 
 // PSPAnnouncementListResponse represents a page of PSP announcements.
 type PSPAnnouncementListResponse struct {
-	NextLink *string           `json:"nextLink"`
-	Data     []PSPAnnouncement `json:"data"`
+	NextLink     *string           `json:"nextLink"`
+	NextCursorID *int64            `json:"nextCursorId"`
+	Data         []PSPAnnouncement `json:"data"`
 }
 
 // CreatePSPAnnouncementRequest represents the request to create a PSP announcement.
@@ -76,6 +80,71 @@ func (c *Client) ListPSPAnnouncements(ctx context.Context, pspID int64, cursorID
 		return nil, fmt.Errorf("failed to unmarshal PSP announcements response: %w", err)
 	}
 	return &announcements, nil
+}
+
+// ListAllPSPAnnouncements follows pagination and returns all announcements for a PSP.
+func (c *Client) ListAllPSPAnnouncements(ctx context.Context, pspID int64) ([]PSPAnnouncement, error) {
+	var out []PSPAnnouncement
+	var cursorID *int64
+	seenCursors := make(map[int64]struct{})
+
+	const maxPages = 1000
+	for page := 0; page < maxPages; page++ {
+		resp, err := c.ListPSPAnnouncements(ctx, pspID, cursorID)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, resp.Data...)
+
+		nextCursorID, err := pspAnnouncementCursorFromListResponse(resp)
+		if err != nil {
+			return nil, err
+		}
+		if nextCursorID == nil {
+			return out, nil
+		}
+		if _, seen := seenCursors[*nextCursorID]; seen {
+			return nil, fmt.Errorf("PSP announcements pagination cursor repeated (%d)", *nextCursorID)
+		}
+		seenCursors[*nextCursorID] = struct{}{}
+		cursorID = nextCursorID
+	}
+
+	return nil, fmt.Errorf("PSP announcements pagination exceeded %d pages", maxPages)
+}
+
+func pspAnnouncementCursorFromListResponse(resp *PSPAnnouncementListResponse) (*int64, error) {
+	if resp == nil {
+		return nil, nil
+	}
+	if resp.NextCursorID != nil {
+		return resp.NextCursorID, nil
+	}
+	return pspAnnouncementCursorFromNextLink(resp.NextLink)
+}
+
+func pspAnnouncementCursorFromNextLink(nextLink *string) (*int64, error) {
+	if nextLink == nil || strings.TrimSpace(*nextLink) == "" {
+		return nil, nil
+	}
+
+	parsed, err := url.Parse(*nextLink)
+	if err != nil {
+		return nil, fmt.Errorf("parse PSP announcements nextLink %q: %w", *nextLink, err)
+	}
+
+	rawCursor := parsed.Query().Get("cursor")
+	if rawCursor == "" {
+		return nil, fmt.Errorf("PSP announcements nextLink %q does not contain a cursor query parameter", *nextLink)
+	}
+
+	cursorID, err := strconv.ParseInt(rawCursor, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse PSP announcements cursor %q: %w", rawCursor, err)
+	}
+
+	return &cursorID, nil
 }
 
 // GetPSPAnnouncement retrieves a PSP announcement by ID.
