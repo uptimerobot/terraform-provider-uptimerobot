@@ -215,8 +215,12 @@ func pspAnnouncementLookupFilters(config pspAnnouncementDataSourceModel) (pspAnn
 		return pspAnnouncementFilters{}, fmt.Errorf("configure id or title")
 	}
 	if filters.ID != "" {
-		if _, err := strconv.ParseInt(filters.ID, 10, 64); err != nil {
+		id, err := strconv.ParseInt(filters.ID, 10, 64)
+		if err != nil {
 			return pspAnnouncementFilters{}, fmt.Errorf("could not parse PSP announcement id %q: %w", filters.ID, err)
+		}
+		if id <= 0 {
+			return pspAnnouncementFilters{}, fmt.Errorf("PSP announcement id must be greater than zero")
 		}
 	}
 

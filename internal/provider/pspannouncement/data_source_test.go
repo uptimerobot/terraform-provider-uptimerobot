@@ -31,6 +31,17 @@ func TestPSPAnnouncementLookupFiltersRequireSelectorsAndValidateID(t *testing.T)
 	} else if !strings.Contains(err.Error(), `could not parse PSP announcement id "not-a-number"`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	for _, id := range []string{"0", "-1"} {
+		if _, err := pspAnnouncementLookupFilters(pspAnnouncementDataSourceModel{
+			PSPID: types.Int64Value(42),
+			ID:    types.StringValue(id),
+		}); err == nil {
+			t.Fatalf("expected non-positive ID error for %q, got nil", id)
+		} else if !strings.Contains(err.Error(), "PSP announcement id must be greater than zero") {
+			t.Fatalf("unexpected error for %q: %v", id, err)
+		}
+	}
 }
 
 func TestFilterPSPAnnouncementsByExactTitle(t *testing.T) {

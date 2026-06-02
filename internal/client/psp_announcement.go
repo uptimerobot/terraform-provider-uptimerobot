@@ -86,6 +86,7 @@ func (c *Client) ListPSPAnnouncements(ctx context.Context, pspID int64, cursorID
 func (c *Client) ListAllPSPAnnouncements(ctx context.Context, pspID int64) ([]PSPAnnouncement, error) {
 	var out []PSPAnnouncement
 	var cursorID *int64
+	seenCursors := make(map[int64]struct{})
 
 	const maxPages = 1000
 	for page := 0; page < maxPages; page++ {
@@ -103,9 +104,10 @@ func (c *Client) ListAllPSPAnnouncements(ctx context.Context, pspID int64) ([]PS
 		if nextCursorID == nil {
 			return out, nil
 		}
-		if cursorID != nil && *nextCursorID == *cursorID {
-			return nil, fmt.Errorf("PSP announcements pagination cursor did not advance (%d)", *nextCursorID)
+		if _, seen := seenCursors[*nextCursorID]; seen {
+			return nil, fmt.Errorf("PSP announcements pagination cursor repeated (%d)", *nextCursorID)
 		}
+		seenCursors[*nextCursorID] = struct{}{}
 		cursorID = nextCursorID
 	}
 
