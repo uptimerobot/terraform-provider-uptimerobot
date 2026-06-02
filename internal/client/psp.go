@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +34,14 @@ type PSP struct {
 	PinnedAnnouncementID       *int64              `json:"pinnedAnnouncementId,omitempty"`
 	Sort                       *int                `json:"sort,omitempty"`
 	CustomSettings             *CustomSettingsResp `json:"customSettings,omitempty"`
+}
+
+// PSPListResponse represents a paginated Public Status Page list response.
+type PSPListResponse struct {
+	Data         []PSP   `json:"data"`
+	PSPs         []PSP   `json:"psps"`
+	NextCursorID *int64  `json:"nextCursorId"`
+	NextLink     *string `json:"nextLink"`
 }
 
 // CustomSettings represents the custom settings for a PSP.
@@ -244,6 +253,92 @@ func (c *Client) GetPSP(ctx context.Context, id int64) (*PSP, error) {
 		return nil, err
 	}
 	return &psp, nil
+}
+
+// ListPSPs lists PSPs. If cursorID is nil, the first page is returned.
+func (c *Client) ListPSPs(ctx context.Context, cursorID *int64) (*PSPListResponse, error) {
+	path := "/psps"
+	if cursorID != nil {
+		path += "?cursor=" + strconv.FormatInt(*cursorID, 10)
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response PSPListResponse
+	if err := json.Unmarshal(resp, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal PSPs response: %w", err)
+	}
+	if len(response.Data) == 0 && len(response.PSPs) > 0 {
+		response.Data = response.PSPs
+	}
+
+	return &response, nil
+}
+
+// ListAllPSPs follows pagination and returns all PSPs visible to the API key.
+func (c *Client) ListAllPSPs(ctx context.Context) ([]PSP, error) {
+	var out []PSP
+	var cursorID *int64
+
+	const maxPages = 1000
+	for page := 0; page < maxPages; page++ {
+		resp, err := c.ListPSPs(ctx, cursorID)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, resp.Data...)
+
+		nextCursorID, err := pspCursorFromListResponse(resp)
+		if err != nil {
+			return nil, err
+		}
+		if nextCursorID == nil {
+			return out, nil
+		}
+		if cursorID != nil && *nextCursorID == *cursorID {
+			return nil, fmt.Errorf("PSPs pagination cursor did not advance (%d)", *nextCursorID)
+		}
+		cursorID = nextCursorID
+	}
+
+	return nil, fmt.Errorf("PSPs pagination exceeded %d pages", maxPages)
+}
+
+func pspCursorFromListResponse(resp *PSPListResponse) (*int64, error) {
+	if resp == nil {
+		return nil, nil
+	}
+	if resp.NextCursorID != nil {
+		return resp.NextCursorID, nil
+	}
+	return pspCursorFromNextLink(resp.NextLink)
+}
+
+func pspCursorFromNextLink(nextLink *string) (*int64, error) {
+	if nextLink == nil || strings.TrimSpace(*nextLink) == "" {
+		return nil, nil
+	}
+
+	parsed, err := url.Parse(*nextLink)
+	if err != nil {
+		return nil, fmt.Errorf("parse PSPs nextLink %q: %w", *nextLink, err)
+	}
+
+	rawCursor := parsed.Query().Get("cursor")
+	if rawCursor == "" {
+		return nil, fmt.Errorf("PSPs nextLink %q does not contain a cursor query parameter", *nextLink)
+	}
+
+	cursorID, err := strconv.ParseInt(rawCursor, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse PSPs cursor %q: %w", rawCursor, err)
+	}
+
+	return &cursorID, nil
 }
 
 // UpdatePSP updates an existing PSP.

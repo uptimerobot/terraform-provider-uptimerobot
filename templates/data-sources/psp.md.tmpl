@@ -1,0 +1,20 @@
+---
+page_title: "uptimerobot_psp Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Looks up one existing UptimeRobot Public Status Page (PSP).
+---
+
+# uptimerobot_psp (Data Source)
+
+Looks up one existing UptimeRobot Public Status Page (PSP) by `id` or exact `name` without managing it. PSP names are not guaranteed unique in UptimeRobot; if more than one PSP has the configured name, the data source returns an error and lists the matching IDs. Configure `id` to select one PSP unambiguously.
+
+Use this when a status page is managed in another Terraform state, created through the UI/API, or otherwise owned outside the current configuration. The data source exposes read-only PSP metadata and settings so existing status pages can be referenced from related resources such as `uptimerobot_psp_announcement`.
+
+The UptimeRobot API does not return PSP passwords. Use `is_password_set` to determine whether password protection is enabled.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_psp/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}
