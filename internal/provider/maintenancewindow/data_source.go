@@ -188,14 +188,12 @@ func (d *maintenanceWindowDataSource) lookupMaintenanceWindow(ctx context.Contex
 }
 
 func (d *maintenanceWindowDataSource) listMaintenanceWindowsForLookup(ctx context.Context, filters maintenanceWindowFilters) ([]client.MaintenanceWindow, error) {
-	maxAttempts := len(maintenanceWindowListLookupBackoffs) + 1
-
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for attempt := 0; ; attempt++ {
 		maintenanceWindows, err := d.client.ListAllMaintenanceWindows(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if filters.Name == "" || len(filterMaintenanceWindows(maintenanceWindows, filters)) > 0 || attempt == maxAttempts-1 {
+		if filters.Name == "" || len(filterMaintenanceWindows(maintenanceWindows, filters)) > 0 || attempt == len(maintenanceWindowListLookupBackoffs) {
 			return maintenanceWindows, nil
 		}
 
@@ -205,8 +203,6 @@ func (d *maintenanceWindowDataSource) listMaintenanceWindowsForLookup(ctx contex
 		case <-time.After(maintenanceWindowListLookupBackoffs[attempt]):
 		}
 	}
-
-	return nil, fmt.Errorf("maintenance window lookup retry exhausted")
 }
 
 func maintenanceWindowLookupFilters(config maintenanceWindowDataSourceModel) (maintenanceWindowFilters, error) {
