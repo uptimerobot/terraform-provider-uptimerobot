@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 1.8.0 — 2026-06-02
+
 ### Added
 
 - Added `uptimerobot_maintenance_window` data source for looking up existing maintenance windows by ID or exact name.
