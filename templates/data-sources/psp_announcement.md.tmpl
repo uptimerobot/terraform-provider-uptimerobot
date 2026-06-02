@@ -1,0 +1,18 @@
+---
+page_title: "uptimerobot_psp_announcement Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Looks up one existing UptimeRobot public status page announcement.
+---
+
+# uptimerobot_psp_announcement (Data Source)
+
+Looks up one existing UptimeRobot public status page announcement by `psp_id` plus either `id` or exact `title` without managing it. Announcement titles are not guaranteed unique within a PSP; if more than one announcement has the configured title, the data source returns an error and lists the matching IDs. Configure `id` to select one announcement unambiguously.
+
+Use this when announcements are managed in another Terraform state, created through the UI/API, or otherwise owned outside the current configuration. The data source exposes readable announcement metadata and whether the announcement is currently pinned on its public status page.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_psp_announcement/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}
