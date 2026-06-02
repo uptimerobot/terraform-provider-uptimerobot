@@ -211,6 +211,7 @@ func (c *Client) ListIntegrations(ctx context.Context, cursorID *int64) (*Integr
 func (c *Client) ListAllIntegrations(ctx context.Context) ([]Integration, error) {
 	var out []Integration
 	var cursorID *int64
+	seenCursors := make(map[int64]struct{})
 
 	const maxPages = 1000
 	for page := 0; page < maxPages; page++ {
@@ -228,6 +229,10 @@ func (c *Client) ListAllIntegrations(ctx context.Context) ([]Integration, error)
 		if nextCursorID == nil {
 			return out, nil
 		}
+		if _, seen := seenCursors[*nextCursorID]; seen {
+			return nil, fmt.Errorf("integrations pagination cursor repeated (%d)", *nextCursorID)
+		}
+		seenCursors[*nextCursorID] = struct{}{}
 		cursorID = nextCursorID
 	}
 

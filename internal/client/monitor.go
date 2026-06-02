@@ -338,6 +338,7 @@ func (c *Client) GetMonitorsByName(ctx context.Context, name string) ([]Monitor,
 func (c *Client) getMonitorPages(ctx context.Context, listPage func(context.Context, *int64) (*MonitorListResponse, error)) ([]Monitor, error) {
 	var out []Monitor
 	var cursorID *int64
+	seenCursors := make(map[int64]struct{})
 
 	const maxPages = 1000
 	for page := 0; page < maxPages; page++ {
@@ -355,6 +356,10 @@ func (c *Client) getMonitorPages(ctx context.Context, listPage func(context.Cont
 		if nextCursorID == nil {
 			return out, nil
 		}
+		if _, seen := seenCursors[*nextCursorID]; seen {
+			return nil, fmt.Errorf("monitors pagination cursor repeated (%d)", *nextCursorID)
+		}
+		seenCursors[*nextCursorID] = struct{}{}
 		cursorID = nextCursorID
 	}
 

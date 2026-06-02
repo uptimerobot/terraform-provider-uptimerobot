@@ -76,6 +76,48 @@ func TestClient_ListAllMaintenanceWindows_PaginatesWithNextLink(t *testing.T) {
 	}
 }
 
+func TestClient_ListAllMaintenanceWindows_RejectsCursorCycle(t *testing.T) {
+	t.Parallel()
+
+	var seen []string
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			seen = append(seen, req.Method+" "+req.URL.RequestURI())
+			switch req.URL.RequestURI() {
+			case "/maintenance-windows":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":101,"name":"First","interval":"weekly","time":"02:00:00","duration":60,"autoAddMonitors":false,"days":[2],"status":"active"}],"nextCursorId":101}`), nil
+			case "/maintenance-windows?cursor=101":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":102,"name":"Second","interval":"daily","time":"03:00:00","duration":30,"autoAddMonitors":true,"days":[],"status":"active"}],"nextCursorId":202}`), nil
+			case "/maintenance-windows?cursor=202":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":103,"name":"Third","interval":"daily","time":"04:00:00","duration":30,"autoAddMonitors":true,"days":[],"status":"active"}],"nextCursorId":101}`), nil
+			default:
+				t.Fatalf("unexpected request %s %s", req.Method, req.URL.RequestURI())
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	_, err := c.ListAllMaintenanceWindows(context.Background())
+	if err == nil {
+		t.Fatal("expected repeated cursor error, got nil")
+	}
+	if !strings.Contains(err.Error(), "cursor repeated (101)") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{
+		"GET /maintenance-windows",
+		"GET /maintenance-windows?cursor=101",
+		"GET /maintenance-windows?cursor=202",
+	}
+	if strings.Join(seen, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("unexpected requests:\n%s", strings.Join(seen, "\n"))
+	}
+}
+
 func TestClient_ListMaintenanceWindows_LegacyResponseKey(t *testing.T) {
 	t.Parallel()
 

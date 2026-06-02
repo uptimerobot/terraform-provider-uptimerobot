@@ -22,6 +22,12 @@ func TestMonitorGroupLookupFiltersRequireSelectorAndValidateID(t *testing.T) {
 	} else if !strings.Contains(err.Error(), `could not parse monitor group id "not-a-number"`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	if _, err := monitorGroupLookupFilters(monitorGroupDataSourceModel{ID: types.StringValue("-1")}); err == nil {
+		t.Fatal("expected non-positive ID error, got nil")
+	} else if !strings.Contains(err.Error(), "monitor group id must be positive, got -1") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestFilterMonitorGroupsByExactName(t *testing.T) {

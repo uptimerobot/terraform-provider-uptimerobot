@@ -161,8 +161,12 @@ func monitorGroupLookupFilters(config monitorGroupDataSourceModel) (monitorGroup
 		return monitorGroupFilters{}, fmt.Errorf("configure id or name")
 	}
 	if filters.ID != "" {
-		if _, err := strconv.ParseInt(filters.ID, 10, 64); err != nil {
+		id, err := strconv.ParseInt(filters.ID, 10, 64)
+		if err != nil {
 			return monitorGroupFilters{}, fmt.Errorf("could not parse monitor group id %q: %w", filters.ID, err)
+		}
+		if id <= 0 {
+			return monitorGroupFilters{}, fmt.Errorf("monitor group id must be positive, got %d", id)
 		}
 	}
 

@@ -22,6 +22,12 @@ func TestMaintenanceWindowLookupFiltersRequireSelectorAndValidateID(t *testing.T
 	} else if !strings.Contains(err.Error(), `could not parse maintenance window id "not-a-number"`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	if _, err := maintenanceWindowLookupFilters(maintenanceWindowDataSourceModel{ID: types.StringValue("0")}); err == nil {
+		t.Fatal("expected non-positive ID error, got nil")
+	} else if !strings.Contains(err.Error(), "maintenance window id must be positive, got 0") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestFilterMaintenanceWindowsByExactName(t *testing.T) {

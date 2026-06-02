@@ -23,6 +23,12 @@ func TestPSPLookupFiltersRequireSelectorAndValidateID(t *testing.T) {
 	} else if !strings.Contains(err.Error(), `could not parse PSP id "not-a-number"`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	if _, err := pspLookupFilters(pspDataSourceModel{ID: types.StringValue("0")}); err == nil {
+		t.Fatal("expected non-positive ID error, got nil")
+	} else if !strings.Contains(err.Error(), "PSP id must be positive, got 0") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestFilterPSPsByExactName(t *testing.T) {

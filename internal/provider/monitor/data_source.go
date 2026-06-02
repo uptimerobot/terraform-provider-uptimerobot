@@ -223,8 +223,12 @@ func monitorLookupFilters(config monitorDataSourceModel) (monitorFilters, error)
 		return monitorFilters{}, fmt.Errorf("configure id or name")
 	}
 	if filters.ID != "" {
-		if _, err := strconv.ParseInt(filters.ID, 10, 64); err != nil {
+		id, err := strconv.ParseInt(filters.ID, 10, 64)
+		if err != nil {
 			return monitorFilters{}, fmt.Errorf("could not parse monitor id %q: %w", filters.ID, err)
+		}
+		if id <= 0 {
+			return monitorFilters{}, fmt.Errorf("monitor id must be positive, got %d", id)
 		}
 	}
 

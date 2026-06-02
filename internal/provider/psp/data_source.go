@@ -338,8 +338,12 @@ func pspLookupFilters(config pspDataSourceModel) (pspFilters, error) {
 		return pspFilters{}, fmt.Errorf("configure id or name")
 	}
 	if filters.ID != "" {
-		if _, err := strconv.ParseInt(filters.ID, 10, 64); err != nil {
+		id, err := strconv.ParseInt(filters.ID, 10, 64)
+		if err != nil {
 			return pspFilters{}, fmt.Errorf("could not parse PSP id %q: %w", filters.ID, err)
+		}
+		if id <= 0 {
+			return pspFilters{}, fmt.Errorf("PSP id must be positive, got %d", id)
 		}
 	}
 

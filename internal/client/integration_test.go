@@ -73,6 +73,48 @@ func TestClient_ListAllIntegrations_Paginates(t *testing.T) {
 	}
 }
 
+func TestClient_ListAllIntegrations_RejectsCursorCycle(t *testing.T) {
+	t.Parallel()
+
+	var seen []string
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			seen = append(seen, req.Method+" "+req.URL.RequestURI())
+			switch req.URL.RequestURI() {
+			case "/integrations":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":101,"friendlyName":"First","type":"Slack","status":"Active","enableNotificationsFor":"Down","sslExpirationReminder":false}],"nextLink":"https://api.uptimerobot.com/v3/integrations?cursor=101"}`), nil
+			case "/integrations?cursor=101":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":102,"friendlyName":"Second","type":"Webhook","status":"Paused","enableNotificationsFor":"UpAndDown","sslExpirationReminder":true}],"nextLink":"https://api.uptimerobot.com/v3/integrations?cursor=202"}`), nil
+			case "/integrations?cursor=202":
+				return jsonResponse(http.StatusOK, `{"data":[{"id":103,"friendlyName":"Third","type":"Slack","status":"Active","enableNotificationsFor":"Down","sslExpirationReminder":false}],"nextLink":"https://api.uptimerobot.com/v3/integrations?cursor=101"}`), nil
+			default:
+				t.Fatalf("unexpected request %s %s", req.Method, req.URL.RequestURI())
+				return nil, nil
+			}
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	_, err := c.ListAllIntegrations(context.Background())
+	if err == nil {
+		t.Fatal("expected repeated cursor error, got nil")
+	}
+	if !strings.Contains(err.Error(), "cursor repeated (101)") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{
+		"GET /integrations",
+		"GET /integrations?cursor=101",
+		"GET /integrations?cursor=202",
+	}
+	if strings.Join(seen, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("unexpected requests:\n%s", strings.Join(seen, "\n"))
+	}
+}
+
 func TestIntegrationCursorFromNextLink_RejectsMissingCursor(t *testing.T) {
 	t.Parallel()
 

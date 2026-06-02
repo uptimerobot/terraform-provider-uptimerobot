@@ -102,6 +102,7 @@ func (c *Client) ListMaintenanceWindows(ctx context.Context, cursorID *int64) (*
 func (c *Client) ListAllMaintenanceWindows(ctx context.Context) ([]MaintenanceWindow, error) {
 	var out []MaintenanceWindow
 	var cursorID *int64
+	seenCursors := make(map[int64]struct{})
 
 	const maxPages = 1000
 	for page := 0; page < maxPages; page++ {
@@ -119,6 +120,10 @@ func (c *Client) ListAllMaintenanceWindows(ctx context.Context) ([]MaintenanceWi
 		if nextCursorID == nil {
 			return out, nil
 		}
+		if _, seen := seenCursors[*nextCursorID]; seen {
+			return nil, fmt.Errorf("maintenance windows pagination cursor repeated (%d)", *nextCursorID)
+		}
+		seenCursors[*nextCursorID] = struct{}{}
 		cursorID = nextCursorID
 	}
 

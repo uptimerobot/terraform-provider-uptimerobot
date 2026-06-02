@@ -40,6 +40,12 @@ func TestTagLookupFiltersRequireSelectorAndValidateID(t *testing.T) {
 	} else if !strings.Contains(err.Error(), `could not parse tag id "not-a-number"`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	if _, err := tagLookupFilters(tagDataSourceModel{ID: types.StringValue("0")}); err == nil {
+		t.Fatal("expected non-positive ID error, got nil")
+	} else if !strings.Contains(err.Error(), "tag id must be positive, got 0") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestFlattenTagsSortsByID(t *testing.T) {

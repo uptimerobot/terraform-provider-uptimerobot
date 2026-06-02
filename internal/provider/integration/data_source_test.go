@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -23,6 +24,28 @@ func TestFilterIntegrationsExactNameAndCanonicalType(t *testing.T) {
 	}
 	if matches[0].ID != 104 {
 		t.Fatalf("expected ID 104, got %#v", matches[0])
+	}
+}
+
+func TestIntegrationLookupSelectorsRequireSelectorAndValidateID(t *testing.T) {
+	t.Parallel()
+
+	if _, err := integrationLookupSelectorsFromConfig(integrationDataSourceModel{}); err == nil {
+		t.Fatal("expected missing selector error, got nil")
+	} else if !strings.Contains(err.Error(), "either id or both name and type must be configured") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, err := integrationLookupSelectorsFromConfig(integrationDataSourceModel{ID: types.StringValue("not-a-number")}); err == nil {
+		t.Fatal("expected invalid ID error, got nil")
+	} else if !strings.Contains(err.Error(), `could not parse integration id "not-a-number"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, err := integrationLookupSelectorsFromConfig(integrationDataSourceModel{ID: types.StringValue("-1")}); err == nil {
+		t.Fatal("expected non-positive ID error, got nil")
+	} else if !strings.Contains(err.Error(), "integration id must be positive, got -1") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

@@ -282,6 +282,7 @@ func (c *Client) ListPSPs(ctx context.Context, cursorID *int64) (*PSPListRespons
 func (c *Client) ListAllPSPs(ctx context.Context) ([]PSP, error) {
 	var out []PSP
 	var cursorID *int64
+	seenCursors := make(map[int64]struct{})
 
 	const maxPages = 1000
 	for page := 0; page < maxPages; page++ {
@@ -299,9 +300,10 @@ func (c *Client) ListAllPSPs(ctx context.Context) ([]PSP, error) {
 		if nextCursorID == nil {
 			return out, nil
 		}
-		if cursorID != nil && *nextCursorID == *cursorID {
-			return nil, fmt.Errorf("PSPs pagination cursor did not advance (%d)", *nextCursorID)
+		if _, seen := seenCursors[*nextCursorID]; seen {
+			return nil, fmt.Errorf("PSPs pagination cursor repeated (%d)", *nextCursorID)
 		}
+		seenCursors[*nextCursorID] = struct{}{}
 		cursorID = nextCursorID
 	}
 

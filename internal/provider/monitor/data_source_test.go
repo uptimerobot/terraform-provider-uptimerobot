@@ -25,6 +25,12 @@ func TestMonitorLookupFiltersRequireSelectorAndValidateID(t *testing.T) {
 	} else if !strings.Contains(err.Error(), `could not parse monitor id "not-a-number"`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	if _, err := monitorLookupFilters(monitorDataSourceModel{ID: types.StringValue("0")}); err == nil {
+		t.Fatal("expected non-positive ID error, got nil")
+	} else if !strings.Contains(err.Error(), "monitor id must be positive, got 0") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestFilterMonitorsByExactName(t *testing.T) {

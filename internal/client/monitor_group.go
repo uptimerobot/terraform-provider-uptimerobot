@@ -78,6 +78,7 @@ func (c *Client) ListMonitorGroups(ctx context.Context, cursorID *int64) (*Monit
 func (c *Client) ListAllMonitorGroups(ctx context.Context) ([]MonitorGroup, error) {
 	var out []MonitorGroup
 	var cursorID *int64
+	seenCursors := make(map[int64]struct{})
 
 	const maxPages = 1000
 	for page := 0; page < maxPages; page++ {
@@ -95,9 +96,10 @@ func (c *Client) ListAllMonitorGroups(ctx context.Context) ([]MonitorGroup, erro
 		if nextCursorID == nil {
 			return out, nil
 		}
-		if cursorID != nil && *nextCursorID == *cursorID {
-			return nil, fmt.Errorf("monitor groups pagination cursor did not advance (%d)", *nextCursorID)
+		if _, seen := seenCursors[*nextCursorID]; seen {
+			return nil, fmt.Errorf("monitor groups pagination cursor repeated (%d)", *nextCursorID)
 		}
+		seenCursors[*nextCursorID] = struct{}{}
 		cursorID = nextCursorID
 	}
 
