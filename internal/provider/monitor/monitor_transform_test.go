@@ -293,6 +293,130 @@ func TestBuildUpdateRequest_CustomFieldsSemantics(t *testing.T) {
 	})
 }
 
+func TestBuildUpdateRequest_CustomHTTPHeadersSemantics(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	basePlan := monitorResourceModel{
+		Type:     types.StringValue(MonitorTypeHTTP),
+		Name:     types.StringValue("headers"),
+		URL:      types.StringValue("https://example.com"),
+		Interval: types.Int64Value(300),
+		Config:   types.ObjectNull(configObjectType().AttrTypes),
+	}
+	headerMap := func(values map[string]string) types.Map {
+		attrs := make(map[string]attr.Value, len(values))
+		for k, v := range values {
+			attrs[k] = types.StringValue(v)
+		}
+		return types.MapValueMust(types.StringType, attrs)
+	}
+
+	tests := []struct {
+		name         string
+		planHeaders  types.Map
+		stateHeaders types.Map
+		wantSent     bool
+		want         map[string]string
+	}{
+		{
+			name:         "unchanged managed headers omit",
+			planHeaders:  headerMap(map[string]string{"x-monitor-token": ""}),
+			stateHeaders: headerMap(map[string]string{"x-monitor-token": ""}),
+			wantSent:     false,
+		},
+		{
+			name:         "unchanged header key case omits",
+			planHeaders:  headerMap(map[string]string{"X-Monitor-Token": ""}),
+			stateHeaders: headerMap(map[string]string{"x-monitor-token": ""}),
+			wantSent:     false,
+		},
+		{
+			name:         "changed header value sends",
+			planHeaders:  headerMap(map[string]string{"x-monitor-token": "two"}),
+			stateHeaders: headerMap(map[string]string{"x-monitor-token": "one"}),
+			wantSent:     true,
+			want:         map[string]string{"x-monitor-token": "two"},
+		},
+		{
+			name:         "content type change sends",
+			planHeaders:  headerMap(map[string]string{"content-type": "application/x-www-form-urlencoded"}),
+			stateHeaders: headerMap(map[string]string{"content-type": "application/json"}),
+			wantSent:     true,
+			want:         map[string]string{"content-type": "application/x-www-form-urlencoded"},
+		},
+		{
+			name:         "null with prior managed headers clears",
+			planHeaders:  types.MapNull(types.StringType),
+			stateHeaders: headerMap(map[string]string{"x-monitor-token": "one"}),
+			wantSent:     true,
+			want:         map[string]string{},
+		},
+		{
+			name:         "null without prior managed headers omits",
+			planHeaders:  types.MapNull(types.StringType),
+			stateHeaders: types.MapNull(types.StringType),
+			wantSent:     false,
+		},
+		{
+			name:         "empty map with prior managed headers clears",
+			planHeaders:  headerMap(map[string]string{}),
+			stateHeaders: headerMap(map[string]string{"x-monitor-token": "one"}),
+			wantSent:     true,
+			want:         map[string]string{},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			plan := basePlan
+			plan.CustomHTTPHeaders = tt.planHeaders
+			state := monitorResourceModel{CustomHTTPHeaders: tt.stateHeaders}
+			resp := &resource.UpdateResponse{}
+
+			req, _ := buildUpdateRequest(ctx, plan, state, true, true, resp)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+			}
+			if !tt.wantSent {
+				if req.CustomHTTPHeaders != nil {
+					t.Fatalf("expected custom_http_headers to be omitted, got %#v", *req.CustomHTTPHeaders)
+				}
+				return
+			}
+			if req.CustomHTTPHeaders == nil {
+				t.Fatalf("expected custom_http_headers payload")
+			}
+			if !equalStringMap(*req.CustomHTTPHeaders, tt.want) {
+				t.Fatalf("unexpected custom_http_headers payload: got %#v want %#v", *req.CustomHTTPHeaders, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeHeadersForUpdateDecision_CaseFoldCollisions(t *testing.T) {
+	t.Parallel()
+
+	got := normalizeHeadersForUpdateDecision(map[string]string{
+		"X-Monitor-Token": "two",
+		"x-monitor-token": "one",
+	})
+
+	if got["x-monitor-token"] != `["one","two"]` {
+		t.Fatalf("expected sorted collision representation, got %#v", got)
+	}
+
+	got = normalizeHeadersForUpdateDecision(map[string]string{
+		"X-Monitor-Token": "one",
+	})
+	if got["x-monitor-token"] != "one" {
+		t.Fatalf("expected single value to stay unchanged, got %#v", got)
+	}
+}
+
 func TestPlanAlertContactsComparable_SkipsComparisonForIncompleteContact(t *testing.T) {
 	t.Parallel()
 

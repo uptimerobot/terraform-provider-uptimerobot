@@ -893,6 +893,36 @@ func headersFromAPIForState(in map[string]string) map[string]string {
 	return m
 }
 
+func normalizeHeadersForUpdateDecision(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	grouped := make(map[string][]string, len(in))
+	for k, v := range in {
+		k = strings.ToLower(strings.TrimSpace(k))
+		if k == "" {
+			continue
+		}
+		grouped[k] = append(grouped[k], v)
+	}
+
+	out := make(map[string]string, len(grouped))
+	for k, values := range grouped {
+		if len(values) == 1 {
+			out[k] = values[0]
+			continue
+		}
+		slices.Sort(values)
+		encoded, err := json.Marshal(values)
+		if err != nil {
+			out[k] = strings.Join(values, "\x00")
+			continue
+		}
+		out[k] = string(encoded)
+	}
+	return out
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if v != "" {
