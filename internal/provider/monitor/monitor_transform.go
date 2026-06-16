@@ -893,6 +893,21 @@ func headersFromAPIForState(in map[string]string) map[string]string {
 	return m
 }
 
+func normalizeHeadersForUpdateDecision(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		k = strings.ToLower(strings.TrimSpace(k))
+		if k == "" {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if v != "" {

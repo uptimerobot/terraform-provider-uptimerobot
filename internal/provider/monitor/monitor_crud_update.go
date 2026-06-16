@@ -328,7 +328,7 @@ func buildUpdateRequest(
 	}
 
 	// headers
-	setHeadersOnUpdate(ctx, plan, req, resp)
+	setHeadersOnUpdate(ctx, plan, state, req, resp)
 	if resp.Diagnostics.HasError() {
 		return nil, ""
 	}
@@ -511,19 +511,35 @@ func setSuccessCodesOnUpdate(ctx context.Context, plan monitorResourceModel, req
 	}
 }
 
-func setHeadersOnUpdate(ctx context.Context, plan monitorResourceModel, req *client.UpdateMonitorRequest, resp *resource.UpdateResponse) {
+func setHeadersOnUpdate(ctx context.Context, plan, state monitorResourceModel, req *client.UpdateMonitorRequest, resp *resource.UpdateResponse) {
 	if plan.CustomHTTPHeaders.IsUnknown() {
 		return // omit and preserve on server
 	}
 	if plan.CustomHTTPHeaders.IsNull() {
+		if state.CustomHTTPHeaders.IsNull() || state.CustomHTTPHeaders.IsUnknown() {
+			return // omitted and previously unmanaged: preserve remote
+		}
 		empty := map[string]string{}
 		req.CustomHTTPHeaders = &empty // clear
 		return
 	}
-	m, d := mapFromAttr(ctx, plan.CustomHTTPHeaders)
+	m, d := stringMapFromAttrPreserveEmpty(ctx, plan.CustomHTTPHeaders)
 	resp.Diagnostics.Append(d...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	if !state.CustomHTTPHeaders.IsNull() && !state.CustomHTTPHeaders.IsUnknown() {
+		prior, d := stringMapFromAttrPreserveEmpty(ctx, state.CustomHTTPHeaders)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if equalStringMap(
+			normalizeHeadersForUpdateDecision(m),
+			normalizeHeadersForUpdateDecision(prior),
+		) {
+			return // unchanged: omit and preserve remote, including ignore_changes cases
+		}
 	}
 	req.CustomHTTPHeaders = &m
 }
