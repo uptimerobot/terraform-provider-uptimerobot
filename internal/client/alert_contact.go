@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // UserAlertContact represents a personal alert contact returned by /user/alert-contacts.
@@ -28,6 +29,29 @@ type UserAlertContact struct {
 type AlertContactConfig struct {
 	AndroidPushUpChannel   string `json:"android_push_up_channel,omitempty"`
 	AndroidPushDownChannel string `json:"android_push_down_channel,omitempty"`
+}
+
+// CreateAlertContactRequest represents a personal alert contact create request.
+type CreateAlertContactRequest struct {
+	Type                    string              `json:"type"`
+	FriendlyName            string              `json:"friendlyName,omitempty"`
+	EnableNotificationsFor  string              `json:"enableNotificationsFor,omitempty"`
+	Value                   string              `json:"value,omitempty"`
+	DeviceName              string              `json:"deviceName,omitempty"`
+	OneSignalSubscriptionID string              `json:"oneSignalSubscriptionId,omitempty"`
+	OneSignalUserID         string              `json:"oneSignalUserId,omitempty"`
+	DeviceFingerprint       string              `json:"deviceFingerprint,omitempty"`
+	PushToken               string              `json:"pushToken,omitempty"`
+	Platform                string              `json:"platform,omitempty"`
+	Config                  *AlertContactConfig `json:"config,omitempty"`
+}
+
+// UpdateAlertContactRequest represents a personal alert contact update request.
+type UpdateAlertContactRequest struct {
+	FriendlyName           *string `json:"friendlyName,omitempty"`
+	EnableNotificationsFor *string `json:"enableNotificationsFor,omitempty"`
+	SSLExpirationReminder  *bool   `json:"sslExpirationReminder,omitempty"`
+	IsActive               *bool   `json:"isActive,omitempty"`
 }
 
 type alertContactRaw struct {
@@ -217,6 +241,46 @@ func (c *Client) ListAlertContacts(ctx context.Context) ([]UserAlertContact, err
 	}
 
 	return contacts, nil
+}
+
+// CreateAlertContact creates a personal alert contact.
+func (c *Client) CreateAlertContact(ctx context.Context, req *CreateAlertContactRequest) (*UserAlertContact, error) {
+	base := NewBaseCRUDOperations(c, "/alert-contacts")
+	var contact UserAlertContact
+	if err := base.doCreate(ctx, req, &contact); err != nil {
+		return nil, err
+	}
+	return &contact, nil
+}
+
+// GetAlertContact retrieves a personal alert contact by ID.
+func (c *Client) GetAlertContact(ctx context.Context, id int64) (*UserAlertContact, error) {
+	base := NewBaseCRUDOperations(c, "/alert-contacts")
+	var contact UserAlertContact
+	if err := base.doGet(ctx, id, &contact); err != nil {
+		return nil, err
+	}
+	return &contact, nil
+}
+
+// UpdateAlertContact updates a personal alert contact.
+func (c *Client) UpdateAlertContact(ctx context.Context, id int64, req *UpdateAlertContactRequest) (*UserAlertContact, error) {
+	base := NewBaseCRUDOperations(c, "/alert-contacts")
+	var contact UserAlertContact
+	if err := base.doUpdate(ctx, id, req, &contact); err != nil {
+		return nil, err
+	}
+	return &contact, nil
+}
+
+// DeleteAlertContact deletes a personal alert contact.
+func (c *Client) DeleteAlertContact(ctx context.Context, id int64) error {
+	return NewBaseCRUDOperations(c, "/alert-contacts").doDelete(ctx, id)
+}
+
+// WaitAlertContactDeleted waits until GET /alert-contacts/{id} returns 404 or 410.
+func (c *Client) WaitAlertContactDeleted(ctx context.Context, id int64, timeout time.Duration) error {
+	return NewBaseCRUDOperations(c, "/alert-contacts").waitDeleted(ctx, id, timeout)
 }
 
 // ListAllAlertContacts retrieves personal, notify-only, and organization member alert contacts.
