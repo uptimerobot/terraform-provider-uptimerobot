@@ -397,6 +397,26 @@ func TestBuildUpdateRequest_CustomHTTPHeadersSemantics(t *testing.T) {
 	}
 }
 
+func TestNormalizeHeadersForUpdateDecision_CaseFoldCollisions(t *testing.T) {
+	t.Parallel()
+
+	got := normalizeHeadersForUpdateDecision(map[string]string{
+		"X-Monitor-Token": "two",
+		"x-monitor-token": "one",
+	})
+
+	if got["x-monitor-token"] != `["one","two"]` {
+		t.Fatalf("expected sorted collision representation, got %#v", got)
+	}
+
+	got = normalizeHeadersForUpdateDecision(map[string]string{
+		"X-Monitor-Token": "one",
+	})
+	if got["x-monitor-token"] != "one" {
+		t.Fatalf("expected single value to stay unchanged, got %#v", got)
+	}
+}
+
 func TestPlanAlertContactsComparable_SkipsComparisonForIncompleteContact(t *testing.T) {
 	t.Parallel()
 
