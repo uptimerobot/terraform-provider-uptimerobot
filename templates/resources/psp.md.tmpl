@@ -19,6 +19,10 @@ description: |-
 
 {{tffile "examples/resources/uptimerobot_psp/custom_domain.tf"}}
 
+### Status Page with Tag-Based Monitor Selection
+
+{{tffile "examples/resources/uptimerobot_psp/tag_ids.tf"}}
+
 ### Password Protected Status Page
 
 {{tffile "examples/resources/uptimerobot_psp/password_protected.tf"}}
@@ -46,6 +50,8 @@ You can include specific monitors in your status page by providing their IDs in 
 - Show only public-facing services
 - Create different status pages for different audiences
 - Group related services together
+
+You can also include monitors by tag with `tag_ids`. The UptimeRobot API resolves matching monitors server-side, and `tag_ids` are additive with `monitor_ids`.
 
 Use `monitor_sort` to control how monitors are ordered on the public status page. Supported values are:
 - `friendly_name_asc`

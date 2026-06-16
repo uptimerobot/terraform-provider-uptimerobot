@@ -18,6 +18,7 @@ type PSP struct {
 	CustomDomain               *string             `json:"customDomain,omitempty"`
 	IsPasswordSet              bool                `json:"isPasswordSet"`
 	MonitorIDs                 []int64             `json:"monitorIds,omitempty"`
+	TagIDs                     []int64             `json:"tagIds,omitempty"`
 	MonitorsCount              *int                `json:"monitorsCount,omitempty"`
 	Status                     string              `json:"status"`
 	URLKey                     string              `json:"urlKey"`
@@ -90,6 +91,7 @@ type CreatePSPRequest struct {
 	CustomDomain               *string         `json:"customDomain,omitempty"`
 	Password                   *string         `json:"password,omitempty"`
 	MonitorIDs                 *[]int64        `json:"monitorIds,omitempty"`
+	TagIDs                     *[]int64        `json:"tagIds,omitempty"`
 	Status                     *string         `json:"status,omitempty"`
 	GACode                     *string         `json:"gaCode,omitempty"`
 	ShareAnalyticsConsent      bool            `json:"shareAnalyticsConsent"`
@@ -138,6 +140,7 @@ type UpdatePSPRequest struct {
 	CustomDomain               *string         `json:"customDomain,omitempty"`
 	Password                   *string         `json:"password,omitempty"`
 	MonitorIDs                 *[]int64        `json:"monitorIds,omitempty"`
+	TagIDs                     *[]int64        `json:"tagIds,omitempty"`
 	Status                     *string         `json:"status,omitempty"`
 	HomepageLink               *string         `json:"homepageLink,omitempty"`
 	GACode                     *string         `json:"gaCode,omitempty"`

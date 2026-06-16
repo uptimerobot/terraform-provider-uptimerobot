@@ -81,6 +81,7 @@ func TestPSPDataSourceStateMapsFields(t *testing.T) {
 		CustomDomain:               &customDomain,
 		IsPasswordSet:              true,
 		MonitorIDs:                 []int64{11, 22},
+		TagIDs:                     []int64{33, 44},
 		MonitorsCount:              &monitorsCount,
 		Status:                     "ENABLED",
 		URLKey:                     "abc123",
@@ -139,6 +140,14 @@ func TestPSPDataSourceStateMapsFields(t *testing.T) {
 	}
 	if len(monitorIDs) != 2 || monitorIDs[0] != 11 || monitorIDs[1] != 22 {
 		t.Fatalf("unexpected monitor IDs %#v", monitorIDs)
+	}
+	var tagIDs []int64
+	diags = state.TagIDs.ElementsAs(context.Background(), &tagIDs, false)
+	if diags.HasError() {
+		t.Fatalf("unexpected tag ID diagnostics: %v", diags)
+	}
+	if len(tagIDs) != 2 || tagIDs[0] != 33 || tagIDs[1] != 44 {
+		t.Fatalf("unexpected tag IDs %#v", tagIDs)
 	}
 	if state.CustomSettings == nil || state.CustomSettings.Colors == nil || state.CustomSettings.Colors.Main.ValueString() != mainColor {
 		t.Fatalf("unexpected custom settings %#v", state.CustomSettings)

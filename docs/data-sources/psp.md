@@ -59,6 +59,7 @@ output "status_page_url_key" {
 - `show_cookie_bar` (Boolean) Whether the cookie bar is shown.
 - `status` (String) Status of the PSP returned by the API.
 - `subscription` (Boolean) Whether public subscriptions are enabled.
+- `tag_ids` (Set of Number) Monitor tag IDs assigned to the PSP.
 - `url_key` (String) URL key for the PSP.
 - `use_small_cookie_consent_modal` (Boolean) Whether the small cookie consent modal is enabled.
 

@@ -570,6 +570,72 @@ func TestPSPRequest_MonitorSort_JSON(t *testing.T) {
 	}
 }
 
+func TestPSPRequest_TagIDs_JSON(t *testing.T) {
+	createReq := CreatePSPRequest{Name: "psp"}
+	raw, err := json.Marshal(createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var createMap map[string]any
+	if err := json.Unmarshal(raw, &createMap); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := createMap["tagIds"]; ok {
+		t.Fatalf("tagIds should be omitted when nil, got %s", raw)
+	}
+
+	tagIDs := []int64{10, 20}
+	createReq.TagIDs = &tagIDs
+	raw, err = json.Marshal(createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createMap = map[string]any{}
+	if err := json.Unmarshal(raw, &createMap); err != nil {
+		t.Fatal(err)
+	}
+	gotCreateTagIDs, ok := createMap["tagIds"].([]any)
+	if !ok || len(gotCreateTagIDs) != 2 {
+		t.Fatalf("expected tagIds=[10,20] in create request, got %#v", createMap["tagIds"])
+	}
+	firstTagID, ok := gotCreateTagIDs[0].(float64)
+	if !ok || int(firstTagID) != 10 {
+		t.Fatalf("expected first tag ID to be 10, got %#v", gotCreateTagIDs[0])
+	}
+	secondTagID, ok := gotCreateTagIDs[1].(float64)
+	if !ok || int(secondTagID) != 20 {
+		t.Fatalf("expected second tag ID to be 20, got %#v", gotCreateTagIDs[1])
+	}
+
+	updateReq := UpdatePSPRequest{Name: "psp"}
+	raw, err = json.Marshal(updateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var updateMap map[string]any
+	if err := json.Unmarshal(raw, &updateMap); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := updateMap["tagIds"]; ok {
+		t.Fatalf("tagIds should be omitted in update when nil, got %s", raw)
+	}
+
+	emptyTagIDs := []int64{}
+	updateReq.TagIDs = &emptyTagIDs
+	raw, err = json.Marshal(updateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updateMap = map[string]any{}
+	if err := json.Unmarshal(raw, &updateMap); err != nil {
+		t.Fatal(err)
+	}
+	gotUpdateTagIDs, ok := updateMap["tagIds"].([]any)
+	if !ok || len(gotUpdateTagIDs) != 0 {
+		t.Fatalf("expected empty tagIds array in update request, got %#v", updateMap["tagIds"])
+	}
+}
+
 func TestCreatePSPRequest_Marshal_CustomSettingsEmptyObjects(t *testing.T) {
 	req := &CreatePSPRequest{
 		Name:           "my-psp",
