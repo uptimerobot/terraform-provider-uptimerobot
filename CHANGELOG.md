@@ -4,6 +4,17 @@
 
 - Added `uptimerobot_alert_contact` resource for managing personal email and mobile app push alert contacts through API v3.
 
+## 1.8.1 — 2026-06-16
+
+### Changed
+
+- Updated Go dependencies.
+
+### Fixed
+
+- Fixed `uptimerobot_monitor` updates to preserve unchanged `custom_http_headers`.
+- Made `custom_http_headers` update comparison deterministic when header names differ only by case.
+
 ## 1.8.0 — 2026-06-02
 
 ### Added
