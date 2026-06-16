@@ -20,6 +20,7 @@ Manages a personal UptimeRobot alert contact. Email and mobile app push contacts
 ## Example Usage
 
 ### Email Alert Contact
+
 ```terraform
 resource "uptimerobot_alert_contact" "team_email" {
   name                    = "Team Email"
@@ -37,6 +38,7 @@ variable "team_alert_email" {
 ```
 
 ### Android Push Alert Contact
+
 ```terraform
 resource "uptimerobot_alert_contact" "android_phone" {
   name                    = "On-call Android"
@@ -80,6 +82,7 @@ variable "android_push_token" {
 ```
 
 ### iOS Push Alert Contact
+
 ```terraform
 resource "uptimerobot_alert_contact" "ios_phone" {
   name                    = "On-call iPhone"

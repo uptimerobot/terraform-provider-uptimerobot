@@ -38,6 +38,8 @@ func TestAlertContactResource_Schema(t *testing.T) {
 		"notification_events",
 		"ssl_expiration_reminder",
 		"status",
+		"mobile_provider_id",
+		"org_alert_contact_id",
 		"one_signal_subscription_id",
 		"one_signal_user_id",
 		"device_fingerprint",
@@ -98,6 +100,33 @@ func TestBuildCreateAlertContactRequestMobile(t *testing.T) {
 	}
 	if req.Config == nil || req.Config.AndroidPushUpChannel != "up" || req.Config.AndroidPushDownChannel != "down" {
 		t.Fatalf("unexpected mobile config: %#v", req.Config)
+	}
+}
+
+func TestBuildCreateAlertContactRequestMobileOld(t *testing.T) {
+	t.Parallel()
+
+	req := buildCreateAlertContactRequest(alertContactResourceModel{
+		Name:                    types.StringValue("iPhone"),
+		Type:                    types.StringValue("mobile_app_old"),
+		NotificationEvents:      types.StringValue("down"),
+		OneSignalSubscriptionID: types.StringValue("sub-ios"),
+		OneSignalUserID:         types.StringValue("user-ios"),
+		DeviceFingerprint:       types.StringValue("fingerprint-ios"),
+		PushToken:               types.StringValue("push-ios"),
+	})
+
+	if req.Type != "MobileAppOld" || req.Platform != "ios" {
+		t.Fatalf("unexpected iOS type/platform: %#v", req)
+	}
+	if req.DeviceName != "iPhone" || req.OneSignalSubscriptionID != "sub-ios" || req.OneSignalUserID != "user-ios" {
+		t.Fatalf("unexpected iOS request: %#v", req)
+	}
+	if req.DeviceFingerprint != "fingerprint-ios" || req.PushToken != "push-ios" {
+		t.Fatalf("unexpected iOS identity fields: %#v", req)
+	}
+	if req.Config != nil {
+		t.Fatalf("expected no Android config for iOS contact, got %#v", req.Config)
 	}
 }
 

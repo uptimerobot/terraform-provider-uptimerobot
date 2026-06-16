@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestClient_ListAlertContacts(t *testing.T) {
@@ -75,6 +76,9 @@ func TestClient_CreateAlertContact(t *testing.T) {
 			}
 			if body["oneSignalSubscriptionId"] != "sub-1" || body["deviceFingerprint"] != "fingerprint-1" {
 				t.Fatalf("unexpected push identity body: %#v", body)
+			}
+			if body["oneSignalUserId"] != "user-1" || body["pushToken"] != "push-token" {
+				t.Fatalf("unexpected mobile identifiers body: %#v", body)
 			}
 			config, ok := body["config"].(map[string]interface{})
 			if !ok || config["android_push_down_channel"] != "down" {
@@ -195,6 +199,33 @@ func TestClient_GetUpdateDeleteAlertContact(t *testing.T) {
 	}
 	if !sawGet || !sawPatch || !sawDelete {
 		t.Fatalf("not all expected requests were seen: get=%v patch=%v delete=%v", sawGet, sawPatch, sawDelete)
+	}
+}
+
+func TestClient_WaitAlertContactDeleted(t *testing.T) {
+	t.Parallel()
+
+	var getCount int
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if got := req.Method + " " + req.URL.RequestURI(); got != "GET /alert-contacts/101" {
+				t.Fatalf("unexpected request %s", got)
+			}
+			getCount++
+			if getCount < 2 {
+				return jsonResponse(http.StatusOK, `{"id":101}`), nil
+			}
+			return jsonResponse(http.StatusNotFound, `{}`), nil
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	if err := c.WaitAlertContactDeleted(context.Background(), 101, 2*time.Second); err != nil {
+		t.Fatalf("WaitAlertContactDeleted returned error: %v", err)
+	}
+	if getCount != 2 {
+		t.Fatalf("expected 2 GET attempts, got %d", getCount)
 	}
 }
 
