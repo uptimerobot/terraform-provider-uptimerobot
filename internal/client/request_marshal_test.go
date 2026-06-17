@@ -489,7 +489,13 @@ func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	if v, ok := createMap["autoAddMonitors"].(bool); !ok || v {
 		t.Fatalf("expected autoAddMonitors=false in create request, got %#v", createMap["autoAddMonitors"])
 	}
-	if ids, ok := createMap["monitorIds"].([]any); !ok || len(ids) != 2 || ids[0].(float64) != 123 || ids[1].(float64) != 456 {
+	ids, ok := createMap["monitorIds"].([]any)
+	if !ok || len(ids) != 2 {
+		t.Fatalf("expected monitorIds in create request, got %#v", createMap["monitorIds"])
+	}
+	firstID, firstOK := ids[0].(float64)
+	secondID, secondOK := ids[1].(float64)
+	if !firstOK || !secondOK || firstID != 123 || secondID != 456 {
 		t.Fatalf("expected monitorIds in create request, got %#v", createMap["monitorIds"])
 	}
 
