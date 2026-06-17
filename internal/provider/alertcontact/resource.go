@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -43,6 +44,7 @@ type alertContactResourceModel struct {
 	Value                   types.String `tfsdk:"value"`
 	NotificationEvents      types.String `tfsdk:"notification_events"`
 	SSLExpirationReminder   types.Bool   `tfsdk:"ssl_expiration_reminder"`
+	IsActive                types.Bool   `tfsdk:"is_active"`
 	Status                  types.String `tfsdk:"status"`
 	MobileProviderID        types.Int64  `tfsdk:"mobile_provider_id"`
 	OrgAlertContactID       types.Int64  `tfsdk:"org_alert_contact_id"`
@@ -111,6 +113,14 @@ func (r *alertContactResource) Schema(_ context.Context, _ resource.SchemaReques
 				Computed:            true,
 				MarkdownDescription: "Whether SSL expiration reminders are enabled for this alert contact.",
 				Default:             booldefault.StaticBool(false),
+			},
+			"is_active": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Whether the alert contact is active. Set to `false` to pause notifications for this contact without deleting it.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"status": schema.StringAttribute{
 				Computed:            true,
@@ -379,10 +389,29 @@ func buildUpdateAlertContactRequest(plan alertContactResourceModel) *client.Upda
 	name := valueString(plan.Name)
 	events := alertContactNotificationEventsToAPI(valueString(plan.NotificationEvents))
 	ssl := plan.SSLExpirationReminder.ValueBool()
-	return &client.UpdateAlertContactRequest{
+	req := &client.UpdateAlertContactRequest{
 		FriendlyName:           &name,
 		EnableNotificationsFor: &events,
 		SSLExpirationReminder:  &ssl,
+	}
+	if !plan.IsActive.IsNull() && !plan.IsActive.IsUnknown() {
+		isActive := plan.IsActive.ValueBool()
+		req.IsActive = &isActive
+	}
+	return req
+}
+
+func alertContactIsActiveState(status string, prev types.Bool) types.Bool {
+	switch normalizeAlertContactStatus(status) {
+	case "active":
+		return types.BoolValue(true)
+	case "paused", "not_activated", "to_migrate":
+		return types.BoolValue(false)
+	default:
+		if !prev.IsNull() && !prev.IsUnknown() {
+			return prev
+		}
+		return types.BoolNull()
 	}
 }
 
@@ -394,6 +423,7 @@ func alertContactResourceState(contact client.UserAlertContact, prev alertContac
 		Type:                    types.StringValue(alertType),
 		NotificationEvents:      notificationEventsState(contact.EnableNotificationsFor, prev.NotificationEvents),
 		SSLExpirationReminder:   types.BoolValue(contact.SSLExpirationReminder),
+		IsActive:                alertContactIsActiveState(contact.Status, prev.IsActive),
 		Status:                  stringState(normalizeAlertContactStatus(contact.Status)),
 		MobileProviderID:        int64PtrState(contact.MobileProviderID),
 		OrgAlertContactID:       int64PtrState(contact.OrgAlertContactID),

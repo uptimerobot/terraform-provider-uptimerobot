@@ -15,6 +15,7 @@ Manages a personal UptimeRobot alert contact. Email and mobile app push contacts
 - `mobile_app_old` corresponds to iOS push contacts and `mobile_app` corresponds to Android push contacts.
 - `pro_sms` and `voice` contacts can be discovered with alert-contact data sources, but they require dashboard phone verification and cannot be created through this resource.
 - Mobile push identity fields are required when creating mobile contacts. The public API does not return `one_signal_user_id` or `device_fingerprint` after creation, so imported mobile contacts leave those fields unset until configured.
+- Use `is_active = false` to pause an alert contact without deleting it.
 - Delay and repeat settings are monitor assignment settings. Configure them with `threshold` and `recurrence` inside `uptimerobot_monitor.assigned_alert_contacts`.
 
 ## Example Usage
@@ -28,6 +29,7 @@ resource "uptimerobot_alert_contact" "team_email" {
   value                   = var.team_alert_email
   notification_events     = "down"
   ssl_expiration_reminder = true
+  is_active               = true
 }
 
 variable "team_alert_email" {
@@ -143,6 +145,7 @@ terraform import uptimerobot_alert_contact.team_email 123456
 - `android_push_down_channel` (String) Android push channel used for down notifications. Only valid for `mobile_app` contacts.
 - `android_push_up_channel` (String) Android push channel used for up notifications. Only valid for `mobile_app` contacts.
 - `device_fingerprint` (String, Sensitive) Device fingerprint. Required when creating `mobile_app_old` or `mobile_app` contacts. The public API does not return this value after creation, so imported resources leave it unset.
+- `is_active` (Boolean) Whether the alert contact is active. Set to `false` to pause notifications for this contact without deleting it.
 - `notification_events` (String) Notification event setting: `up_and_down`, `down`, `up`, or `none`.
 - `one_signal_subscription_id` (String, Sensitive) OneSignal subscription ID. Required when creating `mobile_app_old` or `mobile_app` contacts.
 - `one_signal_user_id` (String, Sensitive) OneSignal user ID. Required when creating `mobile_app_old` or `mobile_app` contacts. The public API does not return this value after creation, so imported resources leave it unset.

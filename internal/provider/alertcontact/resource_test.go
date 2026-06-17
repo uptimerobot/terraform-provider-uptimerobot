@@ -37,6 +37,7 @@ func TestAlertContactResource_Schema(t *testing.T) {
 		"value",
 		"notification_events",
 		"ssl_expiration_reminder",
+		"is_active",
 		"status",
 		"mobile_provider_id",
 		"org_alert_contact_id",
@@ -130,6 +131,39 @@ func TestBuildCreateAlertContactRequestMobileOld(t *testing.T) {
 	}
 }
 
+func TestBuildUpdateAlertContactRequestIsActive(t *testing.T) {
+	t.Parallel()
+
+	base := alertContactResourceModel{
+		Name:                  types.StringValue("Work email"),
+		NotificationEvents:    types.StringValue("down"),
+		SSLExpirationReminder: types.BoolValue(true),
+	}
+
+	inactivePlan := base
+	inactivePlan.IsActive = types.BoolValue(false)
+	inactiveReq := buildUpdateAlertContactRequest(inactivePlan)
+	if inactiveReq.IsActive == nil || *inactiveReq.IsActive {
+		t.Fatalf("expected inactive update request, got %#v", inactiveReq.IsActive)
+	}
+
+	activePlan := base
+	activePlan.IsActive = types.BoolValue(true)
+	activeReq := buildUpdateAlertContactRequest(activePlan)
+	if activeReq.IsActive == nil || !*activeReq.IsActive {
+		t.Fatalf("expected active update request, got %#v", activeReq.IsActive)
+	}
+
+	for _, isActive := range []types.Bool{types.BoolNull(), types.BoolUnknown()} {
+		plan := base
+		plan.IsActive = isActive
+		req := buildUpdateAlertContactRequest(plan)
+		if req.IsActive != nil {
+			t.Fatalf("expected omitted active state for %#v, got %#v", isActive, req.IsActive)
+		}
+	}
+}
+
 func TestValidateAlertContactResourceCreate(t *testing.T) {
 	t.Parallel()
 
@@ -204,6 +238,45 @@ func TestAlertContactResourceStateMobilePreservesHiddenIdentity(t *testing.T) {
 	}
 	if state.AndroidPushDownChannel.ValueString() != "down" {
 		t.Fatalf("unexpected down channel %q", state.AndroidPushDownChannel.ValueString())
+	}
+	if !state.IsActive.ValueBool() {
+		t.Fatalf("expected active contact state, got %#v", state.IsActive)
+	}
+}
+
+func TestAlertContactIsActiveState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		status   string
+		prev     types.Bool
+		want     bool
+		wantNull bool
+	}{
+		{name: "active", status: "Active", want: true},
+		{name: "paused", status: "Paused", want: false},
+		{name: "not activated", status: "NotActivated", want: false},
+		{name: "to migrate", status: "ToMigrate", want: false},
+		{name: "unknown preserves previous", status: "Unexpected", prev: types.BoolValue(true), want: true},
+		{name: "unknown without previous", status: "Unexpected", wantNull: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := alertContactIsActiveState(tt.status, tt.prev)
+			if tt.wantNull {
+				if !got.IsNull() {
+					t.Fatalf("expected null active state, got %#v", got)
+				}
+				return
+			}
+			if got.IsNull() || got.IsUnknown() || got.ValueBool() != tt.want {
+				t.Fatalf("expected active state %v, got %#v", tt.want, got)
+			}
+		})
 	}
 }
 
