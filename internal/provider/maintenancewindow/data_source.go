@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	datasourceschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -48,6 +49,7 @@ type maintenanceWindowDataSourceModel struct {
 	Time            types.String `tfsdk:"time"`
 	Duration        types.Int64  `tfsdk:"duration"`
 	AutoAddMonitors types.Bool   `tfsdk:"auto_add_monitors"`
+	MonitorIDs      types.Set    `tfsdk:"monitor_ids"`
 	Days            types.Set    `tfsdk:"days"`
 	Status          types.String `tfsdk:"status"`
 }
@@ -105,6 +107,11 @@ func (d *maintenanceWindowDataSource) Schema(_ context.Context, _ datasource.Sch
 				Computed:            true,
 				MarkdownDescription: "Whether new monitors are automatically added to the maintenance window.",
 			},
+			"monitor_ids": datasourceschema.SetAttribute{
+				Computed:            true,
+				ElementType:         types.Int64Type,
+				MarkdownDescription: "Monitor IDs assigned to the maintenance window. A value of `0` means all monitors are automatically added.",
+			},
 			"days": datasourceschema.SetAttribute{
 				Computed:            true,
 				ElementType:         types.Int64Type,
@@ -141,7 +148,11 @@ func (d *maintenanceWindowDataSource) Read(ctx context.Context, req datasource.R
 		return
 	}
 
-	state := maintenanceWindowState(maintenanceWindow)
+	state, diags := maintenanceWindowState(ctx, maintenanceWindow)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -259,11 +270,15 @@ func maintenanceWindowIDs(maintenanceWindows []client.MaintenanceWindow) string 
 	return strings.Join(formattedIDs, ", ")
 }
 
-func maintenanceWindowState(maintenanceWindow *client.MaintenanceWindow) maintenanceWindowDataSourceModel {
+func maintenanceWindowState(ctx context.Context, maintenanceWindow *client.MaintenanceWindow) (maintenanceWindowDataSourceModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
 	date := types.StringNull()
 	if maintenanceWindow.Date != nil {
 		date = types.StringValue(*maintenanceWindow.Date)
 	}
+	monitorIDs, setDiags := maintenanceWindowMonitorIDsSet(ctx, maintenanceWindow.MonitorIDs)
+	diags.Append(setDiags...)
 
 	return maintenanceWindowDataSourceModel{
 		ID:              types.StringValue(strconv.FormatInt(maintenanceWindow.ID, 10)),
@@ -273,9 +288,10 @@ func maintenanceWindowState(maintenanceWindow *client.MaintenanceWindow) mainten
 		Time:            types.StringValue(maintenanceWindow.Time),
 		Duration:        types.Int64Value(int64(maintenanceWindow.Duration)),
 		AutoAddMonitors: types.BoolValue(maintenanceWindow.AutoAddMonitors),
+		MonitorIDs:      monitorIDs,
 		Days:            maintenanceWindowDaysSet(maintenanceWindow.Days),
 		Status:          types.StringValue(maintenanceWindow.Status),
-	}
+	}, diags
 }
 
 func maintenanceWindowDaysSet(days []int64) types.Set {

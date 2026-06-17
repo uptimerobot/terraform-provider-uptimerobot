@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -38,6 +39,7 @@ var (
 	_ resource.Resource                   = &maintenanceWindowResource{}
 	_ resource.ResourceWithConfigure      = &maintenanceWindowResource{}
 	_ resource.ResourceWithImportState    = &maintenanceWindowResource{}
+	_ resource.ResourceWithModifyPlan     = &maintenanceWindowResource{}
 	_ resource.ResourceWithValidateConfig = &maintenanceWindowResource{}
 	_ resource.ResourceWithUpgradeState   = &maintenanceWindowResource{}
 )
@@ -61,6 +63,7 @@ type maintenanceWindowResourceModel struct {
 	Time            types.String `tfsdk:"time"`
 	Duration        types.Int64  `tfsdk:"duration"`
 	AutoAddMonitors types.Bool   `tfsdk:"auto_add_monitors"`
+	MonitorIDs      types.Set    `tfsdk:"monitor_ids"`
 	Days            types.Set    `tfsdk:"days"`
 	Status          types.String `tfsdk:"status"`
 }
@@ -131,6 +134,15 @@ func (r *maintenanceWindowResource) Schema(_ context.Context, _ resource.SchemaR
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"monitor_ids": schema.SetAttribute{
+				Description: "Set of monitor IDs assigned to the maintenance window. Use [0] to auto-add all monitors.",
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.Int64Type,
+				Validators: []validator.Set{
+					setvalidator.ValueInt64sAre(int64validator.AtLeast(0)),
+				},
+			},
 			"days": schema.SetAttribute{
 				Description: "Only for interval = \"weekly\" or \"monthly\". " +
 					"Weekly: 1=Mon..7=Sun. Monthly: 1..31, or -1 (last day of month)." +
@@ -173,7 +185,7 @@ func (r *maintenanceWindowResource) ValidateConfig(
 
 	validateRuleDaysRequiredForWeeklyMonthly(ctx, cfg, resp)
 	validateRuleDaysNotAllowedForOnceDaily(ctx, cfg, resp)
-
+	validateRuleMonitorIDsAutoAddConflict(ctx, cfg, resp)
 }
 
 func validateRuleDaysRequiredForWeeklyMonthly(
@@ -252,6 +264,55 @@ func validateRuleDaysNotAllowedForOnceDaily(
 	}
 }
 
+func validateRuleMonitorIDsAutoAddConflict(
+	ctx context.Context,
+	cfg maintenanceWindowResourceModel,
+	resp *resource.ValidateConfigResponse,
+) {
+	if cfg.MonitorIDs.IsNull() || cfg.MonitorIDs.IsUnknown() {
+		return
+	}
+
+	monitorIDs, diags := maintenanceWindowMonitorIDsFromSet(ctx, cfg.MonitorIDs)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if maintenanceWindowMonitorIDsContainAutoAdd(monitorIDs) && len(monitorIDs) > 1 {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("monitor_ids"),
+			"Invalid monitor_ids",
+			`"monitor_ids" can contain either specific monitor IDs or [0] to auto-add all monitors, but not both.`,
+		)
+		return
+	}
+
+	if cfg.AutoAddMonitors.IsNull() || cfg.AutoAddMonitors.IsUnknown() {
+		return
+	}
+
+	autoAddMonitors := cfg.AutoAddMonitors.ValueBool()
+	if autoAddMonitors {
+		if len(monitorIDs) == 0 || !maintenanceWindowMonitorIDsAutoAdd(monitorIDs) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("monitor_ids"),
+				"monitor_ids conflicts with auto_add_monitors",
+				`When "auto_add_monitors" is true, omit "monitor_ids" or set it to [0].`,
+			)
+		}
+		return
+	}
+
+	if maintenanceWindowMonitorIDsAutoAdd(monitorIDs) {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("auto_add_monitors"),
+			"auto_add_monitors conflicts with monitor_ids",
+			`When "monitor_ids" is [0], omit "auto_add_monitors" or set it to true.`,
+		)
+	}
+}
+
 func (r *maintenanceWindowResource) ModifyPlan(
 	ctx context.Context,
 	req resource.ModifyPlanRequest,
@@ -267,14 +328,31 @@ func (r *maintenanceWindowResource) ModifyPlan(
 		return
 	}
 
-	// Put in a separate function Interval segment to not exit earlier when modify plan increase in functionality
-	if plan.Interval.IsUnknown() || plan.Interval.IsNull() {
+	var config maintenanceWindowResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	switch strings.ToLower(plan.Interval.ValueString()) {
-	case intervalDaily, intervalOnce:
-		resp.Plan.SetAttribute(ctx, path.Root("days"), types.SetNull(types.Int64Type))
+	if !config.MonitorIDs.IsNull() && !config.MonitorIDs.IsUnknown() {
+		monitorIDs, diags := maintenanceWindowMonitorIDsFromSet(ctx, config.MonitorIDs)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		autoAddMonitors := maintenanceWindowMonitorIDsAutoAdd(monitorIDs)
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("auto_add_monitors"), types.BoolValue(autoAddMonitors))...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	if !plan.Interval.IsUnknown() && !plan.Interval.IsNull() {
+		switch strings.ToLower(plan.Interval.ValueString()) {
+		case intervalDaily, intervalOnce:
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("days"), types.SetNull(types.Int64Type))...)
+		}
 	}
 }
 
@@ -306,6 +384,22 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 	if !plan.AutoAddMonitors.IsNull() && !plan.AutoAddMonitors.IsUnknown() {
 		v := plan.AutoAddMonitors.ValueBool()
 		mw.AutoAddMonitors = &v
+	}
+
+	if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
+		monitorIDs, d := maintenanceWindowMonitorIDsFromSet(ctx, plan.MonitorIDs)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		mw.MonitorIDs = &monitorIDs
+		if maintenanceWindowMonitorIDsAutoAdd(monitorIDs) {
+			v := true
+			mw.AutoAddMonitors = &v
+		} else if plan.AutoAddMonitors.IsNull() || plan.AutoAddMonitors.IsUnknown() {
+			v := false
+			mw.AutoAddMonitors = &v
+		}
 	}
 
 	// Add date if it's set
@@ -374,6 +468,12 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 	}
 
 	plan.AutoAddMonitors = types.BoolValue(newMW.AutoAddMonitors)
+	monitorIDs, d := maintenanceWindowMonitorIDsSet(ctx, newMW.MonitorIDs)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.MonitorIDs = monitorIDs
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -464,6 +564,12 @@ func (r *maintenanceWindowResource) Read(ctx context.Context, req resource.ReadR
 	state.Duration = types.Int64Value(int64(mw.Duration))
 
 	state.AutoAddMonitors = types.BoolValue(mw.AutoAddMonitors)
+	monitorIDs, d := maintenanceWindowMonitorIDsSet(ctx, mw.MonitorIDs)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state.MonitorIDs = monitorIDs
 
 	// Set additional computed values if available
 	if mw.Status != "" {
@@ -506,6 +612,13 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
+	var config maintenanceWindowResourceModel
+	diags = req.Config.Get(ctx, &config)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	id, err := strconv.ParseInt(plan.ID.ValueString(), 10, 64)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -523,6 +636,7 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		Duration: int(plan.Duration.ValueInt64()),
 	}
 	var expectedDays []int64
+	var expectedMonitorIDs []int64
 	var expectedAutoAddMonitors *bool
 	shouldWait := false
 
@@ -532,6 +646,19 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		updateReq.AutoAddMonitors = &v
 		expectedAutoAddMonitors = &v
 		shouldWait = true
+	}
+
+	monitorIDsExpected, monitorIDsAutoAdd, monitorIDsWait, d := applyMaintenanceWindowMonitorIDsUpdate(ctx, plan, config, updateReq)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if monitorIDsWait {
+		expectedMonitorIDs = monitorIDsExpected
+		shouldWait = true
+	}
+	if monitorIDsAutoAdd != nil {
+		expectedAutoAddMonitors = monitorIDsAutoAdd
 	}
 
 	// Add date if it's set
@@ -575,7 +702,7 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 
 	var settled *client.MaintenanceWindow
 	if shouldWait {
-		settled, err = waitMaintenanceWindowSettled(ctx, r.client, id, iv, expectedDays, expectedAutoAddMonitors)
+		settled, err = waitMaintenanceWindowSettled(ctx, r.client, id, iv, expectedDays, expectedMonitorIDs, expectedAutoAddMonitors)
 		if err != nil {
 			resp.Diagnostics.AddError("Maintenance window did not settle", err.Error())
 			return
@@ -600,6 +727,12 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	plan.Time = types.StringValue(latest.Time)
 	plan.Duration = types.Int64Value(int64(latest.Duration))
 	plan.AutoAddMonitors = types.BoolValue(latest.AutoAddMonitors)
+	monitorIDs, d := maintenanceWindowMonitorIDsSet(ctx, latest.MonitorIDs)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.MonitorIDs = monitorIDs
 
 	if latest.Status != "" {
 		plan.Status = types.StringValue(latest.Status)
@@ -640,11 +773,14 @@ func waitMaintenanceWindowSettled(
 	id int64,
 	expectedInterval string,
 	expectedDays []int64,
+	expectedMonitorIDs []int64,
 	expectedAutoAddMonitors *bool,
 ) (*client.MaintenanceWindow, error) {
 	want := normalizeDays(expectedDays)
+	wantMonitorIDs := normalizeMonitorIDs(expectedMonitorIDs)
 	wantInterval := strings.ToLower(expectedInterval)
 	var lastGot []int64
+	var lastMonitorIDs []int64
 	var lastInterval string
 	var lastAutoAddMonitors bool
 	var lastMW *client.MaintenanceWindow
@@ -659,10 +795,12 @@ func waitMaintenanceWindowSettled(
 		lastMW = mw
 		lastInterval = strings.ToLower(mw.Interval)
 		lastGot = normalizeDays(mw.Days)
+		lastMonitorIDs = normalizeMonitorIDs(mw.MonitorIDs)
 		lastAutoAddMonitors = mw.AutoAddMonitors
 
 		autoAddMatches := expectedAutoAddMonitors == nil || mw.AutoAddMonitors == *expectedAutoAddMonitors
-		if lastInterval == wantInterval && equalInt64Sets(want, lastGot) && autoAddMatches {
+		monitorIDsMatch := expectedMonitorIDs == nil || equalInt64Sets(wantMonitorIDs, lastMonitorIDs)
+		if lastInterval == wantInterval && equalInt64Sets(want, lastGot) && monitorIDsMatch && autoAddMatches {
 			consecutiveMatches++
 			if consecutiveMatches >= requiredConsecutiveMatches {
 				return mw, nil
@@ -680,13 +818,19 @@ func waitMaintenanceWindowSettled(
 	if expectedAutoAddMonitors != nil {
 		wantAutoAdd = strconv.FormatBool(*expectedAutoAddMonitors)
 	}
+	wantMonitorIDsText := "<ignored>"
+	if expectedMonitorIDs != nil {
+		wantMonitorIDsText = fmt.Sprint(wantMonitorIDs)
+	}
 	return lastMW, fmt.Errorf(
-		"maintenance window did not settle: want interval=%s days=%v auto_add_monitors=%s got interval=%s days=%v auto_add_monitors=%t",
+		"maintenance window did not settle: want interval=%s days=%v monitor_ids=%s auto_add_monitors=%s got interval=%s days=%v monitor_ids=%v auto_add_monitors=%t",
 		wantInterval,
 		want,
+		wantMonitorIDsText,
 		wantAutoAdd,
 		lastInterval,
 		lastGot,
+		lastMonitorIDs,
 		lastAutoAddMonitors,
 	)
 }
@@ -723,13 +867,23 @@ func (r *maintenanceWindowResource) stabilizeMaintenanceWindowReadSnapshot(
 		wantDays = nil
 	}
 
+	var wantMonitorIDs []int64
+	if !state.MonitorIDs.IsNull() && !state.MonitorIDs.IsUnknown() {
+		var monitorIDs []int64
+		if diags := state.MonitorIDs.ElementsAs(ctx, &monitorIDs, false); !diags.HasError() {
+			wantMonitorIDs = normalizeMonitorIDs(monitorIDs)
+		}
+	}
+
 	gotInterval := strings.ToLower(strings.TrimSpace(got.Interval))
 	gotDays := normalizeDays(got.Days)
-	if gotInterval == wantInterval && equalInt64Sets(wantDays, gotDays) {
+	gotMonitorIDs := normalizeMonitorIDs(got.MonitorIDs)
+	monitorIDsMatch := wantMonitorIDs == nil || equalInt64Sets(wantMonitorIDs, gotMonitorIDs)
+	if gotInterval == wantInterval && equalInt64Sets(wantDays, gotDays) && monitorIDsMatch {
 		return got
 	}
 
-	settled, err := waitMaintenanceWindowSettled(ctx, r.client, id, wantInterval, wantDays, nil)
+	settled, err := waitMaintenanceWindowSettled(ctx, r.client, id, wantInterval, wantDays, wantMonitorIDs, nil)
 	if err == nil && settled != nil {
 		return settled
 	}
@@ -746,6 +900,89 @@ func normalizeDays(days []int64) []int64 {
 	cp := append([]int64(nil), days...)
 	slices.Sort(cp)
 	return cp
+}
+
+func normalizeMonitorIDs(monitorIDs []int64) []int64 {
+	if monitorIDs == nil {
+		return nil
+	}
+	cp := append([]int64{}, monitorIDs...)
+	slices.Sort(cp)
+	cp = slices.Compact(cp)
+	if len(cp) == 0 {
+		return []int64{}
+	}
+	return cp
+}
+
+func applyMaintenanceWindowMonitorIDsUpdate(
+	ctx context.Context,
+	plan maintenanceWindowResourceModel,
+	config maintenanceWindowResourceModel,
+	updateReq *client.UpdateMaintenanceWindowRequest,
+) ([]int64, *bool, bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if config.MonitorIDs.IsNull() || config.MonitorIDs.IsUnknown() {
+		return nil, nil, false, diags
+	}
+
+	if plan.MonitorIDs.IsNull() || plan.MonitorIDs.IsUnknown() {
+		diags.AddError(
+			"Invalid monitor_ids plan",
+			"Expected monitor_ids to be known because it is present in configuration. Please report this issue to the provider developers.",
+		)
+		return nil, nil, false, diags
+	}
+
+	monitorIDs, d := maintenanceWindowMonitorIDsFromSet(ctx, plan.MonitorIDs)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, nil, false, diags
+	}
+
+	updateReq.MonitorIDs = &monitorIDs
+	expectedMonitorIDs := append([]int64{}, monitorIDs...)
+	var expectedAutoAddMonitors *bool
+	if maintenanceWindowMonitorIDsAutoAdd(monitorIDs) {
+		v := true
+		updateReq.AutoAddMonitors = &v
+		expectedAutoAddMonitors = &v
+	} else if plan.AutoAddMonitors.IsNull() || plan.AutoAddMonitors.IsUnknown() {
+		v := false
+		updateReq.AutoAddMonitors = &v
+		expectedAutoAddMonitors = &v
+	}
+
+	return expectedMonitorIDs, expectedAutoAddMonitors, true, diags
+}
+
+func maintenanceWindowMonitorIDsFromSet(ctx context.Context, value types.Set) ([]int64, diag.Diagnostics) {
+	var monitorIDs []int64
+	diags := value.ElementsAs(ctx, &monitorIDs, false)
+	if diags.HasError() {
+		return nil, diags
+	}
+	normalized := normalizeMonitorIDs(monitorIDs)
+	if normalized == nil {
+		normalized = []int64{}
+	}
+	return normalized, diags
+}
+
+func maintenanceWindowMonitorIDsSet(ctx context.Context, monitorIDs []int64) (types.Set, diag.Diagnostics) {
+	normalized := normalizeMonitorIDs(monitorIDs)
+	if normalized == nil {
+		normalized = []int64{}
+	}
+	return types.SetValueFrom(ctx, types.Int64Type, normalized)
+}
+
+func maintenanceWindowMonitorIDsContainAutoAdd(monitorIDs []int64) bool {
+	return slices.Contains(monitorIDs, int64(0))
+}
+
+func maintenanceWindowMonitorIDsAutoAdd(monitorIDs []int64) bool {
+	return len(monitorIDs) == 1 && monitorIDs[0] == 0
 }
 
 func equalInt64Sets(a, b []int64) bool {

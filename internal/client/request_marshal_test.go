@@ -470,9 +470,14 @@ func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	if _, ok := createMap["autoAddMonitors"]; ok {
 		t.Fatalf("autoAddMonitors should be omitted when nil, got %s", raw)
 	}
+	if _, ok := createMap["monitorIds"]; ok {
+		t.Fatalf("monitorIds should be omitted when nil, got %s", raw)
+	}
 
 	f := false
 	createReq.AutoAddMonitors = &f
+	createMonitorIDs := []int64{123, 456}
+	createReq.MonitorIDs = &createMonitorIDs
 	raw, err = json.Marshal(createReq)
 	if err != nil {
 		t.Fatal(err)
@@ -483,6 +488,15 @@ func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	}
 	if v, ok := createMap["autoAddMonitors"].(bool); !ok || v {
 		t.Fatalf("expected autoAddMonitors=false in create request, got %#v", createMap["autoAddMonitors"])
+	}
+	ids, ok := createMap["monitorIds"].([]any)
+	if !ok || len(ids) != 2 {
+		t.Fatalf("expected monitorIds in create request, got %#v", createMap["monitorIds"])
+	}
+	firstID, firstOK := ids[0].(float64)
+	secondID, secondOK := ids[1].(float64)
+	if !firstOK || !secondOK || firstID != 123 || secondID != 456 {
+		t.Fatalf("expected monitorIds in create request, got %#v", createMap["monitorIds"])
 	}
 
 	updateReq := UpdateMaintenanceWindowRequest{
@@ -499,9 +513,14 @@ func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	if _, ok := updateMap["autoAddMonitors"]; ok {
 		t.Fatalf("autoAddMonitors should be omitted in update when nil, got %s", raw)
 	}
+	if _, ok := updateMap["monitorIds"]; ok {
+		t.Fatalf("monitorIds should be omitted in update when nil, got %s", raw)
+	}
 
 	tVal := true
 	updateReq.AutoAddMonitors = &tVal
+	updateMonitorIDs := []int64{}
+	updateReq.MonitorIDs = &updateMonitorIDs
 	raw, err = json.Marshal(updateReq)
 	if err != nil {
 		t.Fatal(err)
@@ -512,6 +531,9 @@ func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	}
 	if v, ok := updateMap["autoAddMonitors"].(bool); !ok || !v {
 		t.Fatalf("expected autoAddMonitors=true in update request, got %#v", updateMap["autoAddMonitors"])
+	}
+	if ids, ok := updateMap["monitorIds"].([]any); !ok || len(ids) != 0 {
+		t.Fatalf("expected empty monitorIds in update request, got %#v", updateMap["monitorIds"])
 	}
 }
 

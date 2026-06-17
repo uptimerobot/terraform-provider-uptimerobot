@@ -111,7 +111,7 @@ func TestMaintenanceWindowDataSourceStateMapsFields(t *testing.T) {
 	t.Parallel()
 
 	date := "2026-06-15"
-	state := maintenanceWindowState(&client.MaintenanceWindow{
+	state, stateDiags := maintenanceWindowState(t.Context(), &client.MaintenanceWindow{
 		ID:              101,
 		Name:            "Deploy Window",
 		Interval:        "monthly",
@@ -119,9 +119,13 @@ func TestMaintenanceWindowDataSourceStateMapsFields(t *testing.T) {
 		Time:            "02:30:00",
 		Duration:        90,
 		AutoAddMonitors: true,
+		MonitorIDs:      []int64{22, 11},
 		Days:            []int64{7, 2, 4},
 		Status:          "active",
 	})
+	if stateDiags.HasError() {
+		t.Fatalf("unexpected state diagnostics: %v", stateDiags.Errors())
+	}
 
 	if state.ID.ValueString() != "101" {
 		t.Fatalf("unexpected ID %q", state.ID.ValueString())
@@ -144,11 +148,28 @@ func TestMaintenanceWindowDataSourceStateMapsFields(t *testing.T) {
 	if !state.AutoAddMonitors.ValueBool() {
 		t.Fatal("expected auto_add_monitors to be true")
 	}
+	var monitorIDs []int64
+	diags := state.MonitorIDs.ElementsAs(t.Context(), &monitorIDs, false)
+	if diags.HasError() {
+		t.Fatalf("unexpected monitor ID diagnostics: %v", diags.Errors())
+	}
+	gotMonitorIDs := make(map[int64]struct{}, len(monitorIDs))
+	for _, id := range monitorIDs {
+		gotMonitorIDs[id] = struct{}{}
+	}
+	for _, want := range []int64{11, 22} {
+		if _, ok := gotMonitorIDs[want]; !ok {
+			t.Fatalf("expected monitor ID %d in %#v", want, monitorIDs)
+		}
+	}
+	if len(gotMonitorIDs) != 2 {
+		t.Fatalf("unexpected monitor IDs %#v", monitorIDs)
+	}
 	if state.Status.ValueString() != "active" {
 		t.Fatalf("unexpected status %q", state.Status.ValueString())
 	}
 	var days []int64
-	diags := state.Days.ElementsAs(t.Context(), &days, false)
+	diags = state.Days.ElementsAs(t.Context(), &days, false)
 	if diags.HasError() {
 		t.Fatalf("unexpected day diagnostics: %v", diags.Errors())
 	}
@@ -169,7 +190,7 @@ func TestMaintenanceWindowDataSourceStateMapsFields(t *testing.T) {
 func TestMaintenanceWindowDataSourceStateNullDateAndDays(t *testing.T) {
 	t.Parallel()
 
-	state := maintenanceWindowState(&client.MaintenanceWindow{
+	state, stateDiags := maintenanceWindowState(t.Context(), &client.MaintenanceWindow{
 		ID:       101,
 		Name:     "Daily",
 		Interval: "daily",
@@ -177,11 +198,20 @@ func TestMaintenanceWindowDataSourceStateNullDateAndDays(t *testing.T) {
 		Duration: 30,
 		Status:   "active",
 	})
+	if stateDiags.HasError() {
+		t.Fatalf("unexpected state diagnostics: %v", stateDiags.Errors())
+	}
 
 	if !state.Date.IsNull() {
 		t.Fatalf("expected null date, got %#v", state.Date)
 	}
 	if !state.Days.IsNull() {
 		t.Fatalf("expected null days, got %#v", state.Days)
+	}
+	if state.MonitorIDs.IsNull() {
+		t.Fatal("expected empty monitor_ids set, got null")
+	}
+	if len(state.MonitorIDs.Elements()) != 0 {
+		t.Fatalf("expected empty monitor_ids set, got %#v", state.MonitorIDs.Elements())
 	}
 }
