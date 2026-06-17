@@ -47,6 +47,25 @@ func TestEqualInt64Sets(t *testing.T) {
 	}
 }
 
+func TestNormalizeMonitorIDs(t *testing.T) {
+	t.Parallel()
+
+	in := []int64{3, 1, 3, 2}
+	got := normalizeMonitorIDs(in)
+	if !slices.Equal(got, []int64{1, 2, 3}) {
+		t.Fatalf("normalizeMonitorIDs mismatch: got=%v", got)
+	}
+
+	in[0] = 99
+	if !slices.Equal(got, []int64{1, 2, 3}) {
+		t.Fatalf("normalizeMonitorIDs should return a copy, got=%v", got)
+	}
+
+	if got := normalizeMonitorIDs(nil); got != nil {
+		t.Fatalf("normalizeMonitorIDs(nil) should be nil, got=%v", got)
+	}
+}
+
 func TestValidateRuleDaysRequiredForWeeklyMonthly(t *testing.T) {
 	t.Parallel()
 
@@ -156,6 +175,114 @@ func TestValidateRuleDaysNotAllowedForOnceDaily(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateRuleMonitorIDsAutoAddConflict(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	tests := []struct {
+		name    string
+		cfg     maintenanceWindowResourceModel
+		wantErr bool
+	}{
+		{
+			name: "auto_marker_with_specific_ids_errors",
+			cfg: maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolNull(),
+				MonitorIDs:      setInt64(0, 123),
+			},
+			wantErr: true,
+		},
+		{
+			name: "auto_add_true_with_specific_ids_errors",
+			cfg: maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolValue(true),
+				MonitorIDs:      setInt64(123),
+			},
+			wantErr: true,
+		},
+		{
+			name: "auto_add_true_with_empty_monitor_ids_errors",
+			cfg: maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolValue(true),
+				MonitorIDs:      setInt64(),
+			},
+			wantErr: true,
+		},
+		{
+			name: "auto_add_false_with_auto_marker_errors",
+			cfg: maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolValue(false),
+				MonitorIDs:      setInt64(0),
+			},
+			wantErr: true,
+		},
+		{
+			name: "auto_add_true_with_auto_marker_ok",
+			cfg: maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolValue(true),
+				MonitorIDs:      setInt64(0),
+			},
+		},
+		{
+			name: "auto_add_omitted_with_auto_marker_ok",
+			cfg: maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolNull(),
+				MonitorIDs:      setInt64(0),
+			},
+		},
+		{
+			name: "auto_add_false_with_empty_monitor_ids_ok",
+			cfg: maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolValue(false),
+				MonitorIDs:      setInt64(),
+			},
+		},
+		{
+			name: "auto_add_omitted_with_specific_ids_ok",
+			cfg: maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolNull(),
+				MonitorIDs:      setInt64(123, 456),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			resp := &resource.ValidateConfigResponse{}
+			validateRuleMonitorIDsAutoAddConflict(ctx, tt.cfg, resp)
+			if resp.Diagnostics.HasError() != tt.wantErr {
+				t.Fatalf("unexpected error state: wantErr=%v diags=%v", tt.wantErr, resp.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestMaintenanceWindowMonitorIDsFromSetEmptyReturnsEmptySlice(t *testing.T) {
+	t.Parallel()
+
+	monitorIDs, diags := maintenanceWindowMonitorIDsFromSet(context.Background(), setInt64())
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags.Errors())
+	}
+	if monitorIDs == nil {
+		t.Fatal("expected non-nil empty slice")
+	}
+	if len(monitorIDs) != 0 {
+		t.Fatalf("expected empty slice, got %#v", monitorIDs)
+	}
+}
+
+func setInt64(values ...int64) types.Set {
+	elements := make([]attr.Value, 0, len(values))
+	for _, value := range values {
+		elements = append(elements, types.Int64Value(value))
+	}
+	return types.SetValueMust(types.Int64Type, elements)
 }
 
 func TestShouldRetryCreateMaintenanceWindow(t *testing.T) {

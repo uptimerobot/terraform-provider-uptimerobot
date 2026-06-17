@@ -16,7 +16,7 @@ func TestClient_ListMaintenanceWindows_WithCursor(t *testing.T) {
 			if got := req.Method + " " + req.URL.RequestURI(); got != "GET /maintenance-windows?cursor=55" {
 				t.Fatalf("unexpected request %s", got)
 			}
-			return jsonResponse(http.StatusOK, `{"data":[{"id":56,"name":"Next","interval":"weekly","time":"02:00:00","duration":60,"autoAddMonitors":false,"days":[2],"status":"active"}]}`), nil
+			return jsonResponse(http.StatusOK, `{"data":[{"id":56,"name":"Next","interval":"weekly","time":"02:00:00","duration":60,"autoAddMonitors":false,"monitorIds":[11,22],"days":[2],"status":"active"}]}`), nil
 		}),
 	}
 	c.SetBaseURL("https://example.test")
@@ -28,6 +28,9 @@ func TestClient_ListMaintenanceWindows_WithCursor(t *testing.T) {
 	}
 	if len(windows.Data) != 1 || windows.Data[0].ID != 56 || windows.Data[0].Name != "Next" {
 		t.Fatalf("unexpected list response: %#v", windows)
+	}
+	if len(windows.Data[0].MonitorIDs) != 2 || windows.Data[0].MonitorIDs[0] != 11 || windows.Data[0].MonitorIDs[1] != 22 {
+		t.Fatalf("unexpected monitor IDs: %#v", windows.Data[0].MonitorIDs)
 	}
 	if windows.NextLink != nil {
 		t.Fatalf("expected nil next link, got %q", *windows.NextLink)

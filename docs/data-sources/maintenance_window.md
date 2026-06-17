@@ -45,5 +45,6 @@ resource "uptimerobot_monitor" "website" {
 - `days` (Set of Number) Days assigned to weekly or monthly maintenance windows. Weekly: 1=Mon..7=Sun. Monthly: 1..31, or -1 for the last day of the month.
 - `duration` (Number) Duration of the maintenance window in minutes.
 - `interval` (String) The maintenance window interval returned by the API (`once`, `daily`, `weekly`, or `monthly`).
+- `monitor_ids` (Set of Number) Monitor IDs assigned to the maintenance window. A value of `0` means all monitors are automatically added.
 - `status` (String) Status of the maintenance window returned by the API.
 - `time` (String) The maintenance window start time in `HH:mm:ss` format.
