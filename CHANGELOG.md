@@ -4,6 +4,7 @@
 
 - Added `uptimerobot_alert_contact` resource for managing personal email and mobile app push alert contacts through API v3.
 - Added `tag_ids` support to `uptimerobot_psp` for tag-based public status page monitor selection.
+- Added `monitor_ids` support to `uptimerobot_maintenance_window` for assigning maintenance windows to specific monitors.
 
 ## 1.8.1 — 2026-06-16
 
