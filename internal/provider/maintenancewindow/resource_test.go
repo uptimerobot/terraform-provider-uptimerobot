@@ -64,6 +64,14 @@ func TestNormalizeMonitorIDs(t *testing.T) {
 	if got := normalizeMonitorIDs(nil); got != nil {
 		t.Fatalf("normalizeMonitorIDs(nil) should be nil, got=%v", got)
 	}
+
+	empty := normalizeMonitorIDs([]int64{})
+	if empty == nil {
+		t.Fatal("normalizeMonitorIDs should preserve explicit empty slices")
+	}
+	if len(empty) != 0 {
+		t.Fatalf("expected empty monitor IDs, got=%v", empty)
+	}
 }
 
 func TestValidateRuleDaysRequiredForWeeklyMonthly(t *testing.T) {
@@ -186,6 +194,13 @@ func TestValidateRuleMonitorIDsAutoAddConflict(t *testing.T) {
 		cfg     maintenanceWindowResourceModel
 		wantErr bool
 	}{
+		{
+			name: "auto_add_true_with_null_monitor_ids_ok",
+			cfg: maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolValue(true),
+				MonitorIDs:      types.SetNull(types.Int64Type),
+			},
+		},
 		{
 			name: "auto_marker_with_specific_ids_errors",
 			cfg: maintenanceWindowResourceModel{

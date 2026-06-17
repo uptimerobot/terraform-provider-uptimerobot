@@ -904,9 +904,16 @@ func normalizeDays(days []int64) []int64 {
 }
 
 func normalizeMonitorIDs(monitorIDs []int64) []int64 {
-	cp := append([]int64(nil), monitorIDs...)
+	if monitorIDs == nil {
+		return nil
+	}
+	cp := append([]int64{}, monitorIDs...)
 	slices.Sort(cp)
-	return slices.Compact(cp)
+	cp = slices.Compact(cp)
+	if len(cp) == 0 {
+		return []int64{}
+	}
+	return cp
 }
 
 func maintenanceWindowMonitorIDsFromSet(ctx context.Context, value types.Set) ([]int64, diag.Diagnostics) {
