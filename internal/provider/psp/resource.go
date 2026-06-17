@@ -50,6 +50,7 @@ type pspResourceModel struct {
 	Password                   types.String         `tfsdk:"password"`
 	IsPasswordSet              types.Bool           `tfsdk:"is_password_set"`
 	MonitorIDs                 types.Set            `tfsdk:"monitor_ids"`
+	TagIDs                     types.Set            `tfsdk:"tag_ids"`
 	MonitorSort                types.String         `tfsdk:"monitor_sort"`
 	MonitorsCount              types.Int64          `tfsdk:"monitors_count"`
 	Status                     types.String         `tfsdk:"status"`
@@ -579,6 +580,12 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Computed:    true,
 				ElementType: types.Int64Type,
 			},
+			"tag_ids": schema.SetAttribute{
+				Description: "Set of monitor tag IDs. PSP monitors are resolved server-side from the configured tags and are additive with monitor_ids.",
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.Int64Type,
+			},
 			"monitor_sort": schema.StringAttribute{
 				Description: "Sort order for monitors displayed on the PSP",
 				MarkdownDescription: "Sort order for monitors displayed on the PSP. Supported values are " +
@@ -911,6 +918,16 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 			return
 		}
 	}
+	hasTagPlan := !plan.TagIDs.IsNull() && !plan.TagIDs.IsUnknown()
+	var requestedTagIDs []int64
+	if hasTagPlan {
+		requestedTagIDs = []int64{}
+		diags := plan.TagIDs.ElementsAs(ctx, &requestedTagIDs, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
 	var expectedHomepageLink *string
 	if hasConfiguredString(plan.HomepageLink) {
 		value := plan.HomepageLink.ValueString()
@@ -951,6 +968,9 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	if hasMonitorPlan {
 		psp.MonitorIDs = &requestedMonitorIDs
+	}
+	if hasTagPlan {
+		psp.TagIDs = &requestedTagIDs
 	}
 
 	if !plan.Status.IsNull() && !plan.Status.IsUnknown() {
@@ -1176,6 +1196,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		newPSP.ID,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
+		requestedTagIDs,
 		expectedHomepageLink,
 		expectedSubscription,
 		expectedMonitorSort,
@@ -1204,6 +1225,24 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 			return // do NOT write a broken PSP to state with a mismatching value
 		}
 	}
+	if hasTagPlan {
+		title, detail, mismatch := r.buildTagIDMismatchError(ctx, requestedTagIDs, pspForState.TagIDs)
+		if mismatch {
+			if delErr := r.client.DeletePSP(ctx, pspForState.ID); delErr != nil && !client.IsNotFound(delErr) {
+				resp.Diagnostics.AddWarning(
+					"Failed to clean up PSP after tag_ids mismatch",
+					fmt.Sprintf(
+						"Attempted to delete PSP ID %d after tag_ids mismatch but got error: %v. "+
+							"You may need to delete it manually in the UptimeRobot UI.",
+						pspForState.ID, delErr,
+					),
+				)
+			}
+
+			resp.Diagnostics.AddError(title, detail)
+			return
+		}
+	}
 
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
@@ -1223,6 +1262,9 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		} else {
 			updatedPlan.MonitorIDs = types.SetValueMust(types.Int64Type, []attr.Value{})
 		}
+	}
+	if hasTagPlan {
+		updatedPlan.TagIDs = plan.TagIDs
 	}
 
 	if !managedColors && updatedPlan.CustomSettings != nil {
@@ -1299,6 +1341,14 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 			return
 		}
 	}
+	var expectedTagIDs []int64
+	if !state.TagIDs.IsNull() && !state.TagIDs.IsUnknown() {
+		diags := state.TagIDs.ElementsAs(ctx, &expectedTagIDs, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
 	var expectedHomepageLink *string
 	if !state.HomepageLink.IsNull() && !state.HomepageLink.IsUnknown() {
 		value := state.HomepageLink.ValueString()
@@ -1323,19 +1373,25 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		missing, extra := diffMonitorIDs(expectedMonitorIDs, psp.MonitorIDs)
 		monitorsMismatch = len(missing) > 0 || len(extra) > 0
 	}
+	tagsMismatch := false
+	if expectedTagIDs != nil {
+		missing, extra := diffTagIDs(expectedTagIDs, psp.TagIDs)
+		tagsMismatch = len(missing) > 0 || len(extra) > 0
+	}
 	homepageLinkMismatch := expectedHomepageLink != nil && !pspStringPtrMatches(psp.HomepageLink, expectedHomepageLink)
 	subscriptionMismatch := expectedSubscription != nil && psp.Subscription != *expectedSubscription
 	monitorSortMismatch := expectedMonitorSort != nil && psp.Sort != nil && *psp.Sort != *expectedMonitorSort
 
 	// PSP reads can be eventually consistent right after updates.
 	// If the API returns transient old values, re-poll briefly before accepting drift.
-	if !isImport && (nameMismatch || monitorsMismatch || homepageLinkMismatch || subscriptionMismatch || monitorSortMismatch) {
+	if !isImport && (nameMismatch || monitorsMismatch || tagsMismatch || homepageLinkMismatch || subscriptionMismatch || monitorSortMismatch) {
 		if settled, err := waitPSPSettled(
 			ctx,
 			r.client,
 			id,
 			expectedName,
 			expectedMonitorIDs,
+			expectedTagIDs,
 			expectedHomepageLink,
 			expectedSubscription,
 			expectedMonitorSort,
@@ -1420,6 +1476,16 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	var requestedMonitorIDs []int64
 	if hasMonitorPlan {
 		diags := plan.MonitorIDs.ElementsAs(ctx, &requestedMonitorIDs, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	hasTagPlan := !plan.TagIDs.IsNull() && !plan.TagIDs.IsUnknown()
+	var requestedTagIDs []int64
+	if hasTagPlan {
+		requestedTagIDs = []int64{}
+		diags := plan.TagIDs.ElementsAs(ctx, &requestedTagIDs, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -1514,6 +1580,9 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 
 	if hasMonitorPlan {
 		psp.MonitorIDs = &requestedMonitorIDs
+	}
+	if hasTagPlan {
+		psp.TagIDs = &requestedTagIDs
 	}
 
 	if !plan.PinnedAnnouncementID.IsNull() && !plan.PinnedAnnouncementID.IsUnknown() &&
@@ -1689,6 +1758,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		id,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
+		requestedTagIDs,
 		expectedHomepageLink,
 		expectedSubscription,
 		expectedMonitorSort,
@@ -1701,6 +1771,13 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 
 	if hasMonitorPlan {
 		title, detail, mismatch := r.buildMonitorIDMismatchError(ctx, requestedMonitorIDs, pspForState.MonitorIDs)
+		if mismatch {
+			resp.Diagnostics.AddError(title, detail)
+			return
+		}
+	}
+	if hasTagPlan {
+		title, detail, mismatch := r.buildTagIDMismatchError(ctx, requestedTagIDs, pspForState.TagIDs)
 		if mismatch {
 			resp.Diagnostics.AddError(title, detail)
 			return
@@ -1721,6 +1798,11 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		newState.MonitorIDs = plan.MonitorIDs
 	} else {
 		newState.MonitorIDs = state.MonitorIDs
+	}
+	if hasTagPlan {
+		newState.TagIDs = plan.TagIDs
+	} else {
+		newState.TagIDs = state.TagIDs
 	}
 
 	maskCustomSettingsFromPlan(&plan, &newState)
@@ -1776,6 +1858,7 @@ func waitPSPSettled(
 	id int64,
 	expectedName string,
 	expectedMonitorIDs []int64, // nil means omitted and should not be checked
+	expectedTagIDs []int64, // nil means omitted and should not be checked
 	expectedHomepageLink *string,
 	expectedSubscription *bool,
 	expectedMonitorSort *int,
@@ -1808,17 +1891,22 @@ func waitPSPSettled(
 
 			nameOK := (expectedName == "" || psp.Name == expectedName)
 			monitorsOK := true
+			tagsOK := true
 
 			if expectedMonitorIDs != nil {
 				missing, extra := diffMonitorIDs(expectedMonitorIDs, psp.MonitorIDs)
 				monitorsOK = (len(missing) == 0 && len(extra) == 0)
+			}
+			if expectedTagIDs != nil {
+				missing, extra := diffTagIDs(expectedTagIDs, psp.TagIDs)
+				tagsOK = (len(missing) == 0 && len(extra) == 0)
 			}
 
 			homepageLinkOK := pspStringPtrMatches(psp.HomepageLink, expectedHomepageLink)
 			subscriptionOK := expectedSubscription == nil || psp.Subscription == *expectedSubscription
 			monitorSortOK := pspMonitorSortPtrMatches(psp.Sort, expectedMonitorSort)
 
-			if nameOK && monitorsOK && homepageLinkOK && subscriptionOK && monitorSortOK {
+			if nameOK && monitorsOK && tagsOK && homepageLinkOK && subscriptionOK && monitorSortOK {
 				consecutiveMatches++
 				if consecutiveMatches >= requiredConsecutiveMatches {
 					return psp, nil
@@ -1868,6 +1956,17 @@ func pspMonitorSortPtrMatches(got *int, want *int) bool {
 	return *got == *want
 }
 
+func pspInt64SetValue(_ context.Context, ids []int64) types.Set {
+	if len(ids) == 0 {
+		return types.SetValueMust(types.Int64Type, []attr.Value{})
+	}
+	values := make([]attr.Value, 0, len(ids))
+	for _, id := range ids {
+		values = append(values, types.Int64Value(id))
+	}
+	return types.SetValueMust(types.Int64Type, values)
+}
+
 func AllPSPMonitorSorts() []string {
 	return []string{
 		"friendly_name_asc",
@@ -1910,12 +2009,13 @@ func terraformPSPMonitorSort(value *int) (string, bool) {
 	}
 }
 
-func pspToResourceData(_ context.Context, psp *client.PSP, plan *pspResourceModel) {
+func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceModel) {
 	plan.ID = types.StringValue(strconv.FormatInt(psp.ID, 10))
 	plan.Name = types.StringValue(psp.Name)
 	plan.Status = types.StringValue(psp.Status)
 	plan.URLKey = types.StringValue(psp.URLKey)
 	plan.IsPasswordSet = types.BoolValue(psp.IsPasswordSet)
+	plan.TagIDs = pspInt64SetValue(ctx, psp.TagIDs)
 
 	// Always set computed values, even if they're defaults from the API
 	plan.ShareAnalyticsConsent = types.BoolValue(psp.ShareAnalyticsConsent)
@@ -2198,6 +2298,14 @@ func (r *pspResource) UpgradeState(_ context.Context) map[int64]resource.StateUp
 
 // diffMonitorIDs returns which IDs are missing from the applied list and which are extra.
 func diffMonitorIDs(requested, applied []int64) (missing, extra []int64) {
+	return diffInt64IDs(requested, applied)
+}
+
+func diffTagIDs(requested, applied []int64) (missing, extra []int64) {
+	return diffInt64IDs(requested, applied)
+}
+
+func diffInt64IDs(requested, applied []int64) (missing, extra []int64) {
 	req := make(map[int64]struct{}, len(requested))
 	app := make(map[int64]struct{}, len(applied))
 
@@ -2269,4 +2377,61 @@ func (r *pspResource) buildMonitorIDMismatchError(
 	fmt.Fprintf(&b, "Please fix monitor_ids (for example, remove invalid IDs or create the missing monitors) and run apply again.")
 
 	return "PSP monitor_ids do not match configuration", b.String(), true
+}
+
+// buildTagIDMismatchError compares requested vs applied tag_ids. If possible,
+// it lists missing IDs that are not visible through the tags API.
+func (r *pspResource) buildTagIDMismatchError(
+	ctx context.Context,
+	requested, applied []int64,
+) (title, detail string, mismatch bool) {
+	missing, extra := diffTagIDs(requested, applied)
+	if len(missing) == 0 && len(extra) == 0 {
+		return "", "", false
+	}
+
+	var notFound []int64
+	var existsButNotAttached []int64
+	var validationErrors []string
+
+	if len(missing) > 0 {
+		tags, err := r.client.ListAllTags(ctx)
+		if err != nil {
+			validationErrors = append(validationErrors, fmt.Sprintf("list tags: %v", err))
+		} else {
+			visibleTags := make(map[int64]struct{}, len(tags))
+			for _, tag := range tags {
+				visibleTags[tag.ID] = struct{}{}
+			}
+			for _, id := range missing {
+				if _, ok := visibleTags[id]; ok {
+					existsButNotAttached = append(existsButNotAttached, id)
+				} else {
+					notFound = append(notFound, id)
+				}
+			}
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Requested tag_ids: %v\nApplied tag_ids:   %v\n", requested, applied)
+	if len(missing) > 0 {
+		fmt.Fprintf(&b, "Missing on PSP after apply: %v\n", missing)
+	}
+	if len(extra) > 0 {
+		fmt.Fprintf(&b, "Unexpected tag_ids reported by PSP API: %v\n", extra)
+	}
+	if len(notFound) > 0 {
+		fmt.Fprintf(&b, "\nThe following tag IDs are not visible through the UptimeRobot tags API: %v\n", notFound)
+	}
+	if len(existsButNotAttached) > 0 {
+		fmt.Fprintf(&b, "\nThe following tags exist but were not attached to the PSP: %v\n", existsButNotAttached)
+	}
+	if len(validationErrors) > 0 {
+		fmt.Fprintf(&b, "\nAdditional errors while validating tag_ids: %s\n", strings.Join(validationErrors, "; "))
+	}
+	fmt.Fprintf(&b, "\nThis mismatch would cause Terraform/state drift, so the provider is treating it as an error.\n")
+	fmt.Fprintf(&b, "Please fix tag_ids (for example, remove invalid IDs or create the missing tags) and run apply again.")
+
+	return "PSP tag_ids do not match configuration", b.String(), true
 }

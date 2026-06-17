@@ -80,6 +80,30 @@ func TestPSPToResourceDataMonitorSortOmitted(t *testing.T) {
 	}
 }
 
+func TestPSPToResourceDataTagIDs(t *testing.T) {
+	t.Parallel()
+
+	model := pspResourceModel{}
+	pspToResourceData(context.Background(), &client.PSP{
+		ID:                         123,
+		Name:                       "psp",
+		Status:                     "ENABLED",
+		URLKey:                     "abc123",
+		ShareAnalyticsConsent:      true,
+		UseSmallCookieConsentModal: false,
+		TagIDs:                     []int64{33, 44},
+	}, &model)
+
+	var tagIDs []int64
+	diags := model.TagIDs.ElementsAs(context.Background(), &tagIDs, false)
+	if diags.HasError() {
+		t.Fatalf("unexpected tag ID diagnostics: %v", diags)
+	}
+	if len(tagIDs) != 2 || tagIDs[0] != 33 || tagIDs[1] != 44 {
+		t.Fatalf("tag_ids = %#v, want [33 44]", tagIDs)
+	}
+}
+
 func TestPSPMonitorSortPtrMatchesTreatsMissingAPIAsUnverified(t *testing.T) {
 	t.Parallel()
 

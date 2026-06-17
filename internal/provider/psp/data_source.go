@@ -38,6 +38,7 @@ type pspDataSourceModel struct {
 	CustomDomain               types.String         `tfsdk:"custom_domain"`
 	IsPasswordSet              types.Bool           `tfsdk:"is_password_set"`
 	MonitorIDs                 types.Set            `tfsdk:"monitor_ids"`
+	TagIDs                     types.Set            `tfsdk:"tag_ids"`
 	MonitorSort                types.String         `tfsdk:"monitor_sort"`
 	MonitorsCount              types.Int64          `tfsdk:"monitors_count"`
 	Status                     types.String         `tfsdk:"status"`
@@ -99,6 +100,11 @@ func (d *pspDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, re
 				Computed:            true,
 				ElementType:         types.Int64Type,
 				MarkdownDescription: "Monitor IDs assigned to the PSP.",
+			},
+			"tag_ids": datasourceschema.SetAttribute{
+				Computed:            true,
+				ElementType:         types.Int64Type,
+				MarkdownDescription: "Monitor tag IDs assigned to the PSP.",
 			},
 			"monitor_sort": datasourceschema.StringAttribute{
 				Computed:            true,
@@ -390,6 +396,8 @@ func pspDataSourceState(ctx context.Context, statusPage *client.PSP) (pspDataSou
 
 	monitorIDs, setDiags := pspMonitorIDsSet(ctx, statusPage.MonitorIDs)
 	diags.Append(setDiags...)
+	tagIDs, setDiags := pspMonitorIDsSet(ctx, statusPage.TagIDs)
+	diags.Append(setDiags...)
 
 	return pspDataSourceModel{
 		ID:                         resourceState.ID,
@@ -397,6 +405,7 @@ func pspDataSourceState(ctx context.Context, statusPage *client.PSP) (pspDataSou
 		CustomDomain:               resourceState.CustomDomain,
 		IsPasswordSet:              resourceState.IsPasswordSet,
 		MonitorIDs:                 monitorIDs,
+		TagIDs:                     tagIDs,
 		MonitorSort:                resourceState.MonitorSort,
 		MonitorsCount:              resourceState.MonitorsCount,
 		Status:                     resourceState.Status,

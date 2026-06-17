@@ -67,6 +67,22 @@ resource "uptimerobot_psp" "custom_domain_status" {
 }
 ```
 
+### Status Page with Tag-Based Monitor Selection
+
+```terraform
+data "uptimerobot_tag" "production" {
+  name = "production"
+}
+
+resource "uptimerobot_psp" "production_status" {
+  name = "Production Services"
+
+  tag_ids = [
+    tonumber(data.uptimerobot_tag.production.id),
+  ]
+}
+```
+
 ### Password Protected Status Page
 
 ```terraform
@@ -174,6 +190,8 @@ You can include specific monitors in your status page by providing their IDs in 
 - Create different status pages for different audiences
 - Group related services together
 
+You can also include monitors by tag with `tag_ids`. The UptimeRobot API resolves matching monitors server-side, and `tag_ids` are additive with `monitor_ids`.
+
 Use `monitor_sort` to control how monitors are ordered on the public status page. Supported values are:
 - `friendly_name_asc`
 - `friendly_name_desc`
@@ -232,6 +250,7 @@ Set to an empty string (`""`) to clear the existing logo.
 - `show_cookie_bar` (Boolean) Whether to show cookie bar
 - `status` (String) Status of the PSP
 - `subscription` (Boolean) Whether subscription is enabled
+- `tag_ids` (Set of Number) Set of monitor tag IDs. PSP monitors are resolved server-side from the configured tags and are additive with monitor_ids.
 - `use_small_cookie_consent_modal` (Boolean) Whether to use small cookie consent modal
 
 ### Read-Only
