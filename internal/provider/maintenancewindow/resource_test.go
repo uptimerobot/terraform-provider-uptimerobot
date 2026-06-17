@@ -292,6 +292,159 @@ func TestMaintenanceWindowMonitorIDsFromSetEmptyReturnsEmptySlice(t *testing.T) 
 	}
 }
 
+func TestApplyMaintenanceWindowMonitorIDsUpdate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	t.Run("skips_omitted_config_with_stale_plan_values", func(t *testing.T) {
+		t.Parallel()
+
+		autoAdd := false
+		updateReq := &client.UpdateMaintenanceWindowRequest{
+			AutoAddMonitors: &autoAdd,
+		}
+		monitorIDs, expectedAutoAdd, shouldWait, diags := applyMaintenanceWindowMonitorIDsUpdate(
+			ctx,
+			maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolValue(false),
+				MonitorIDs:      setInt64(0),
+			},
+			maintenanceWindowResourceModel{
+				MonitorIDs: types.SetNull(types.Int64Type),
+			},
+			updateReq,
+		)
+
+		if diags.HasError() {
+			t.Fatalf("unexpected diagnostics: %v", diags.Errors())
+		}
+		if shouldWait {
+			t.Fatal("expected omitted monitor_ids config to skip waiting for monitor IDs")
+		}
+		if monitorIDs != nil {
+			t.Fatalf("expected no expected monitor IDs, got=%v", monitorIDs)
+		}
+		if updateReq.MonitorIDs != nil {
+			t.Fatalf("expected monitorIds payload to be omitted, got=%v", *updateReq.MonitorIDs)
+		}
+		if updateReq.AutoAddMonitors == nil || *updateReq.AutoAddMonitors {
+			t.Fatalf("expected existing auto_add_monitors=false to be preserved, got=%v", updateReq.AutoAddMonitors)
+		}
+		if expectedAutoAdd != nil {
+			t.Fatalf("expected monitor_ids helper not to override expected auto_add_monitors, got=%v", *expectedAutoAdd)
+		}
+	})
+
+	t.Run("sends_auto_add_marker_when_configured", func(t *testing.T) {
+		t.Parallel()
+
+		updateReq := &client.UpdateMaintenanceWindowRequest{}
+		monitorIDs, expectedAutoAdd, shouldWait, diags := applyMaintenanceWindowMonitorIDsUpdate(
+			ctx,
+			maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolNull(),
+				MonitorIDs:      setInt64(0),
+			},
+			maintenanceWindowResourceModel{
+				MonitorIDs: setInt64(0),
+			},
+			updateReq,
+		)
+
+		if diags.HasError() {
+			t.Fatalf("unexpected diagnostics: %v", diags.Errors())
+		}
+		if !shouldWait {
+			t.Fatal("expected configured monitor_ids to require settle wait")
+		}
+		if !slices.Equal(monitorIDs, []int64{0}) {
+			t.Fatalf("expected monitor IDs [0], got=%v", monitorIDs)
+		}
+		if updateReq.MonitorIDs == nil || !slices.Equal(*updateReq.MonitorIDs, []int64{0}) {
+			t.Fatalf("expected monitorIds payload [0], got=%v", updateReq.MonitorIDs)
+		}
+		if updateReq.AutoAddMonitors == nil || !*updateReq.AutoAddMonitors {
+			t.Fatalf("expected auto_add_monitors=true payload, got=%v", updateReq.AutoAddMonitors)
+		}
+		if expectedAutoAdd == nil || !*expectedAutoAdd {
+			t.Fatalf("expected auto_add_monitors=true settle target, got=%v", expectedAutoAdd)
+		}
+	})
+
+	t.Run("sends_specific_monitor_ids_when_configured", func(t *testing.T) {
+		t.Parallel()
+
+		updateReq := &client.UpdateMaintenanceWindowRequest{}
+		monitorIDs, expectedAutoAdd, shouldWait, diags := applyMaintenanceWindowMonitorIDsUpdate(
+			ctx,
+			maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolNull(),
+				MonitorIDs:      setInt64(456, 123),
+			},
+			maintenanceWindowResourceModel{
+				MonitorIDs: setInt64(456, 123),
+			},
+			updateReq,
+		)
+
+		if diags.HasError() {
+			t.Fatalf("unexpected diagnostics: %v", diags.Errors())
+		}
+		if !shouldWait {
+			t.Fatal("expected configured monitor_ids to require settle wait")
+		}
+		if !slices.Equal(monitorIDs, []int64{123, 456}) {
+			t.Fatalf("expected sorted monitor IDs, got=%v", monitorIDs)
+		}
+		if updateReq.MonitorIDs == nil || !slices.Equal(*updateReq.MonitorIDs, []int64{123, 456}) {
+			t.Fatalf("expected sorted monitorIds payload, got=%v", updateReq.MonitorIDs)
+		}
+		if updateReq.AutoAddMonitors == nil || *updateReq.AutoAddMonitors {
+			t.Fatalf("expected auto_add_monitors=false payload, got=%v", updateReq.AutoAddMonitors)
+		}
+		if expectedAutoAdd == nil || *expectedAutoAdd {
+			t.Fatalf("expected auto_add_monitors=false settle target, got=%v", expectedAutoAdd)
+		}
+	})
+
+	t.Run("preserves_explicit_empty_monitor_ids", func(t *testing.T) {
+		t.Parallel()
+
+		updateReq := &client.UpdateMaintenanceWindowRequest{}
+		monitorIDs, expectedAutoAdd, shouldWait, diags := applyMaintenanceWindowMonitorIDsUpdate(
+			ctx,
+			maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolNull(),
+				MonitorIDs:      setInt64(),
+			},
+			maintenanceWindowResourceModel{
+				MonitorIDs: setInt64(),
+			},
+			updateReq,
+		)
+
+		if diags.HasError() {
+			t.Fatalf("unexpected diagnostics: %v", diags.Errors())
+		}
+		if !shouldWait {
+			t.Fatal("expected configured monitor_ids to require settle wait")
+		}
+		if monitorIDs == nil || len(monitorIDs) != 0 {
+			t.Fatalf("expected non-nil empty monitor IDs, got=%#v", monitorIDs)
+		}
+		if updateReq.MonitorIDs == nil || len(*updateReq.MonitorIDs) != 0 {
+			t.Fatalf("expected empty monitorIds payload, got=%v", updateReq.MonitorIDs)
+		}
+		if updateReq.AutoAddMonitors == nil || *updateReq.AutoAddMonitors {
+			t.Fatalf("expected auto_add_monitors=false payload, got=%v", updateReq.AutoAddMonitors)
+		}
+		if expectedAutoAdd == nil || *expectedAutoAdd {
+			t.Fatalf("expected auto_add_monitors=false settle target, got=%v", expectedAutoAdd)
+		}
+	})
+}
+
 func setInt64(values ...int64) types.Set {
 	elements := make([]attr.Value, 0, len(values))
 	for _, value := range values {

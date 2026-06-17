@@ -612,6 +612,13 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
+	var config maintenanceWindowResourceModel
+	diags = req.Config.Get(ctx, &config)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	id, err := strconv.ParseInt(plan.ID.ValueString(), 10, 64)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -641,25 +648,17 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 		shouldWait = true
 	}
 
-	if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
-		monitorIDs, d := maintenanceWindowMonitorIDsFromSet(ctx, plan.MonitorIDs)
-		resp.Diagnostics.Append(d...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		updateReq.MonitorIDs = &monitorIDs
-		expectedMonitorIDs = append([]int64{}, monitorIDs...)
+	monitorIDsExpected, monitorIDsAutoAdd, monitorIDsWait, d := applyMaintenanceWindowMonitorIDsUpdate(ctx, plan, config, updateReq)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if monitorIDsWait {
+		expectedMonitorIDs = monitorIDsExpected
 		shouldWait = true
-
-		if maintenanceWindowMonitorIDsAutoAdd(monitorIDs) {
-			v := true
-			updateReq.AutoAddMonitors = &v
-			expectedAutoAddMonitors = &v
-		} else if plan.AutoAddMonitors.IsNull() || plan.AutoAddMonitors.IsUnknown() {
-			v := false
-			updateReq.AutoAddMonitors = &v
-			expectedAutoAddMonitors = &v
-		}
+	}
+	if monitorIDsAutoAdd != nil {
+		expectedAutoAddMonitors = monitorIDsAutoAdd
 	}
 
 	// Add date if it's set
@@ -914,6 +913,47 @@ func normalizeMonitorIDs(monitorIDs []int64) []int64 {
 		return []int64{}
 	}
 	return cp
+}
+
+func applyMaintenanceWindowMonitorIDsUpdate(
+	ctx context.Context,
+	plan maintenanceWindowResourceModel,
+	config maintenanceWindowResourceModel,
+	updateReq *client.UpdateMaintenanceWindowRequest,
+) ([]int64, *bool, bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if config.MonitorIDs.IsNull() || config.MonitorIDs.IsUnknown() {
+		return nil, nil, false, diags
+	}
+
+	if plan.MonitorIDs.IsNull() || plan.MonitorIDs.IsUnknown() {
+		diags.AddError(
+			"Invalid monitor_ids plan",
+			"Expected monitor_ids to be known because it is present in configuration. Please report this issue to the provider developers.",
+		)
+		return nil, nil, false, diags
+	}
+
+	monitorIDs, d := maintenanceWindowMonitorIDsFromSet(ctx, plan.MonitorIDs)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, nil, false, diags
+	}
+
+	updateReq.MonitorIDs = &monitorIDs
+	expectedMonitorIDs := append([]int64{}, monitorIDs...)
+	var expectedAutoAddMonitors *bool
+	if maintenanceWindowMonitorIDsAutoAdd(monitorIDs) {
+		v := true
+		updateReq.AutoAddMonitors = &v
+		expectedAutoAddMonitors = &v
+	} else if plan.AutoAddMonitors.IsNull() || plan.AutoAddMonitors.IsUnknown() {
+		v := false
+		updateReq.AutoAddMonitors = &v
+		expectedAutoAddMonitors = &v
+	}
+
+	return expectedMonitorIDs, expectedAutoAddMonitors, true, diags
 }
 
 func maintenanceWindowMonitorIDsFromSet(ctx context.Context, value types.Set) ([]int64, diag.Diagnostics) {
