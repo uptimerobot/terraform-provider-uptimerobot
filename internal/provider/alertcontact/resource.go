@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -43,6 +44,7 @@ type alertContactResourceModel struct {
 	Value                   types.String `tfsdk:"value"`
 	NotificationEvents      types.String `tfsdk:"notification_events"`
 	SSLExpirationReminder   types.Bool   `tfsdk:"ssl_expiration_reminder"`
+	IsActive                types.Bool   `tfsdk:"is_active"`
 	Status                  types.String `tfsdk:"status"`
 	MobileProviderID        types.Int64  `tfsdk:"mobile_provider_id"`
 	OrgAlertContactID       types.Int64  `tfsdk:"org_alert_contact_id"`
@@ -112,12 +114,17 @@ func (r *alertContactResource) Schema(_ context.Context, _ resource.SchemaReques
 				MarkdownDescription: "Whether SSL expiration reminders are enabled for this alert contact.",
 				Default:             booldefault.StaticBool(false),
 			},
+			"is_active": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Whether the alert contact is active. Set to `false` to pause notifications for this contact without deleting it.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"status": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The normalized alert contact status.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"mobile_provider_id": schema.Int64Attribute{
 				Computed:            true,
@@ -208,7 +215,7 @@ func (r *alertContactResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	updateReq := buildUpdateAlertContactRequest(plan)
+	updateReq := buildUpdateAlertContactRequest(plan, plan)
 	contact, err = r.client.UpdateAlertContact(ctx, contact.ID, updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating alert contact after create", "The alert contact was created but common settings could not be applied: "+err.Error())
@@ -251,8 +258,12 @@ func (r *alertContactResource) Read(ctx context.Context, req resource.ReadReques
 }
 
 func (r *alertContactResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan alertContactResourceModel
+	var plan, config alertContactResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -267,7 +278,7 @@ func (r *alertContactResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	contact, err := r.client.UpdateAlertContact(ctx, id, buildUpdateAlertContactRequest(plan))
+	contact, err := r.client.UpdateAlertContact(ctx, id, buildUpdateAlertContactRequest(plan, config))
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating alert contact", "Could not update alert contact, unexpected error: "+err.Error())
 		return
@@ -375,14 +386,33 @@ func buildCreateAlertContactRequest(plan alertContactResourceModel) *client.Crea
 	return req
 }
 
-func buildUpdateAlertContactRequest(plan alertContactResourceModel) *client.UpdateAlertContactRequest {
+func buildUpdateAlertContactRequest(plan alertContactResourceModel, config alertContactResourceModel) *client.UpdateAlertContactRequest {
 	name := valueString(plan.Name)
 	events := alertContactNotificationEventsToAPI(valueString(plan.NotificationEvents))
 	ssl := plan.SSLExpirationReminder.ValueBool()
-	return &client.UpdateAlertContactRequest{
+	req := &client.UpdateAlertContactRequest{
 		FriendlyName:           &name,
 		EnableNotificationsFor: &events,
 		SSLExpirationReminder:  &ssl,
+	}
+	if !config.IsActive.IsNull() && !config.IsActive.IsUnknown() {
+		isActive := config.IsActive.ValueBool()
+		req.IsActive = &isActive
+	}
+	return req
+}
+
+func alertContactIsActiveState(status string, prev types.Bool) types.Bool {
+	switch normalizeAlertContactStatus(status) {
+	case "active":
+		return types.BoolValue(true)
+	case "paused", "not_activated", "to_migrate":
+		return types.BoolValue(false)
+	default:
+		if !prev.IsNull() && !prev.IsUnknown() {
+			return prev
+		}
+		return types.BoolNull()
 	}
 }
 
@@ -394,6 +424,7 @@ func alertContactResourceState(contact client.UserAlertContact, prev alertContac
 		Type:                    types.StringValue(alertType),
 		NotificationEvents:      notificationEventsState(contact.EnableNotificationsFor, prev.NotificationEvents),
 		SSLExpirationReminder:   types.BoolValue(contact.SSLExpirationReminder),
+		IsActive:                alertContactIsActiveState(contact.Status, prev.IsActive),
 		Status:                  stringState(normalizeAlertContactStatus(contact.Status)),
 		MobileProviderID:        int64PtrState(contact.MobileProviderID),
 		OrgAlertContactID:       int64PtrState(contact.OrgAlertContactID),

@@ -15,6 +15,7 @@ description: |-
 - `mobile_app_old` corresponds to iOS push contacts and `mobile_app` corresponds to Android push contacts.
 - `pro_sms` and `voice` contacts can be discovered with alert-contact data sources, but they require dashboard phone verification and cannot be created through this resource.
 - Mobile push identity fields are required when creating mobile contacts. The public API does not return `one_signal_user_id` or `device_fingerprint` after creation, so imported mobile contacts leave those fields unset until configured.
+- Use `is_active = false` to pause an alert contact without deleting it.
 - Delay and repeat settings are monitor assignment settings. Configure them with `threshold` and `recurrence` inside `uptimerobot_monitor.assigned_alert_contacts`.
 
 ## Example Usage
