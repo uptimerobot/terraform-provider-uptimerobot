@@ -120,6 +120,9 @@ func TestPSPDataSourceStateMapsFields(t *testing.T) {
 	if !state.IsPasswordSet.ValueBool() {
 		t.Fatal("expected is_password_set to be true")
 	}
+	if state.AutoAddMonitors.ValueBool() {
+		t.Fatal("expected auto_add_monitors to be false")
+	}
 	if state.MonitorSort.ValueString() != "friendly_name_asc" {
 		t.Fatalf("unexpected monitor_sort %q", state.MonitorSort.ValueString())
 	}
@@ -154,5 +157,25 @@ func TestPSPDataSourceStateMapsFields(t *testing.T) {
 	}
 	if state.CustomSettings.Features == nil || !state.CustomSettings.Features.ShowBars.ValueBool() {
 		t.Fatalf("expected show_bars in custom settings, got %#v", state.CustomSettings)
+	}
+}
+
+func TestPSPDataSourceStateMapsAutoAddMonitors(t *testing.T) {
+	t.Parallel()
+
+	state, diags := pspDataSourceState(context.Background(), &client.PSP{
+		ID:                         101,
+		Name:                       "Production Status",
+		MonitorIDs:                 []int64{pspAutoAddMonitorID},
+		Status:                     "ENABLED",
+		URLKey:                     "abc123",
+		ShareAnalyticsConsent:      true,
+		UseSmallCookieConsentModal: true,
+	})
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !state.AutoAddMonitors.ValueBool() {
+		t.Fatal("expected auto_add_monitors to be true")
 	}
 }

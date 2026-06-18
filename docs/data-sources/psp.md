@@ -44,6 +44,7 @@ output "status_page_url_key" {
 
 ### Read-Only
 
+- `auto_add_monitors` (Boolean) Whether the PSP automatically includes all current and future monitors.
 - `custom_domain` (String) Custom domain configured for the PSP, or null when no custom domain is set.
 - `custom_settings` (Attributes) Custom settings for the PSP. (see [below for nested schema](#nestedatt--custom_settings))
 - `ga_code` (String) Google Analytics code configured for the PSP, or null when unset.

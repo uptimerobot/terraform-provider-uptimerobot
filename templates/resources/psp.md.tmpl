@@ -23,6 +23,10 @@ description: |-
 
 {{tffile "examples/resources/uptimerobot_psp/tag_ids.tf"}}
 
+### Status Page with Automatic Monitor Selection
+
+{{tffile "examples/resources/uptimerobot_psp/auto_add_monitors.tf"}}
+
 ### Password Protected Status Page
 
 {{tffile "examples/resources/uptimerobot_psp/password_protected.tf"}}
@@ -52,6 +56,8 @@ You can include specific monitors in your status page by providing their IDs in 
 - Group related services together
 
 You can also include monitors by tag with `tag_ids`. The UptimeRobot API resolves matching monitors server-side, and `tag_ids` are additive with `monitor_ids`.
+
+Set `auto_add_monitors = true` to automatically include all current and future monitors in the public status page. This uses the UptimeRobot API auto-add mode and should not be combined with explicit `monitor_ids`. Existing configurations that use `monitor_ids = [0]` for the API sentinel continue to work, but `auto_add_monitors` is preferred for new Terraform configuration.
 
 Use `monitor_sort` to control how monitors are ordered on the public status page. Supported values are:
 - `friendly_name_asc`
