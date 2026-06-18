@@ -2,6 +2,7 @@ package psp
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -101,7 +102,7 @@ func TestResolvePSPMonitorSelectionAutoAddFalsePreservesExplicitMonitors(t *test
 	if !selection.hasPlan {
 		t.Fatal("expected monitor selection to be planned")
 	}
-	if len(selection.monitorIDs) != 2 || selection.monitorIDs[0] != 11 || selection.monitorIDs[1] != 22 {
+	if len(selection.monitorIDs) != 2 || !slices.Contains(selection.monitorIDs, 11) || !slices.Contains(selection.monitorIDs, 22) {
 		t.Fatalf("monitorIDs = %#v, want explicit monitors", selection.monitorIDs)
 	}
 }

@@ -120,6 +120,9 @@ func TestPSPDataSourceStateMapsFields(t *testing.T) {
 	if !state.IsPasswordSet.ValueBool() {
 		t.Fatal("expected is_password_set to be true")
 	}
+	if state.AutoAddMonitors.IsNull() {
+		t.Fatal("expected auto_add_monitors to be non-null")
+	}
 	if state.AutoAddMonitors.ValueBool() {
 		t.Fatal("expected auto_add_monitors to be false")
 	}
