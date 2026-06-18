@@ -125,9 +125,6 @@ func (r *alertContactResource) Schema(_ context.Context, _ resource.SchemaReques
 			"status": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The normalized alert contact status.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"mobile_provider_id": schema.Int64Attribute{
 				Computed:            true,
@@ -218,7 +215,7 @@ func (r *alertContactResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	updateReq := buildUpdateAlertContactRequest(plan)
+	updateReq := buildUpdateAlertContactRequest(plan, plan)
 	contact, err = r.client.UpdateAlertContact(ctx, contact.ID, updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating alert contact after create", "The alert contact was created but common settings could not be applied: "+err.Error())
@@ -261,8 +258,12 @@ func (r *alertContactResource) Read(ctx context.Context, req resource.ReadReques
 }
 
 func (r *alertContactResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan alertContactResourceModel
+	var plan, config alertContactResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -277,7 +278,7 @@ func (r *alertContactResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	contact, err := r.client.UpdateAlertContact(ctx, id, buildUpdateAlertContactRequest(plan))
+	contact, err := r.client.UpdateAlertContact(ctx, id, buildUpdateAlertContactRequest(plan, config))
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating alert contact", "Could not update alert contact, unexpected error: "+err.Error())
 		return
@@ -385,7 +386,7 @@ func buildCreateAlertContactRequest(plan alertContactResourceModel) *client.Crea
 	return req
 }
 
-func buildUpdateAlertContactRequest(plan alertContactResourceModel) *client.UpdateAlertContactRequest {
+func buildUpdateAlertContactRequest(plan alertContactResourceModel, config alertContactResourceModel) *client.UpdateAlertContactRequest {
 	name := valueString(plan.Name)
 	events := alertContactNotificationEventsToAPI(valueString(plan.NotificationEvents))
 	ssl := plan.SSLExpirationReminder.ValueBool()
@@ -394,8 +395,8 @@ func buildUpdateAlertContactRequest(plan alertContactResourceModel) *client.Upda
 		EnableNotificationsFor: &events,
 		SSLExpirationReminder:  &ssl,
 	}
-	if !plan.IsActive.IsNull() && !plan.IsActive.IsUnknown() {
-		isActive := plan.IsActive.ValueBool()
+	if !config.IsActive.IsNull() && !config.IsActive.IsUnknown() {
+		isActive := config.IsActive.ValueBool()
 		req.IsActive = &isActive
 	}
 	return req

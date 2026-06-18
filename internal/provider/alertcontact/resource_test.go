@@ -141,23 +141,29 @@ func TestBuildUpdateAlertContactRequestIsActive(t *testing.T) {
 	}
 
 	inactivePlan := base
+	inactiveConfig := base
 	inactivePlan.IsActive = types.BoolValue(false)
-	inactiveReq := buildUpdateAlertContactRequest(inactivePlan)
+	inactiveConfig.IsActive = types.BoolValue(false)
+	inactiveReq := buildUpdateAlertContactRequest(inactivePlan, inactiveConfig)
 	if inactiveReq.IsActive == nil || *inactiveReq.IsActive {
 		t.Fatalf("expected inactive update request, got %#v", inactiveReq.IsActive)
 	}
 
 	activePlan := base
+	activeConfig := base
 	activePlan.IsActive = types.BoolValue(true)
-	activeReq := buildUpdateAlertContactRequest(activePlan)
+	activeConfig.IsActive = types.BoolValue(true)
+	activeReq := buildUpdateAlertContactRequest(activePlan, activeConfig)
 	if activeReq.IsActive == nil || !*activeReq.IsActive {
 		t.Fatalf("expected active update request, got %#v", activeReq.IsActive)
 	}
 
 	for _, isActive := range []types.Bool{types.BoolNull(), types.BoolUnknown()} {
 		plan := base
-		plan.IsActive = isActive
-		req := buildUpdateAlertContactRequest(plan)
+		config := base
+		plan.IsActive = types.BoolValue(true)
+		config.IsActive = isActive
+		req := buildUpdateAlertContactRequest(plan, config)
 		if req.IsActive != nil {
 			t.Fatalf("expected omitted active state for %#v, got %#v", isActive, req.IsActive)
 		}
