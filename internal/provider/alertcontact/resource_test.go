@@ -2,6 +2,9 @@ package alertcontact
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -202,6 +205,51 @@ func TestValidateAlertContactResourceCreate(t *testing.T) {
 	}, &okDiags)
 	if okDiags.HasError() {
 		t.Fatalf("unexpected diagnostics: %#v", okDiags)
+	}
+}
+
+func TestRollbackAlertContactAfterCreateUpdateFailureDeletesCreatedContact(t *testing.T) {
+	t.Parallel()
+
+	var deleteCalled bool
+	var getCalled bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "DELETE /alert-contacts/101":
+			deleteCalled = true
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{}`))
+		case "GET /alert-contacts/101":
+			getCalled = true
+			if !deleteCalled {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"id":101}`))
+				return
+			}
+			http.Error(w, `{"message":"not found"}`, http.StatusNotFound)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	apiClient := client.NewClient("test-key")
+	apiClient.SetBaseURL(srv.URL)
+
+	var diags diag.Diagnostics
+	rollbackAlertContactAfterCreateUpdateFailure(context.Background(), apiClient, 101, errors.New("update failed"), &diags)
+
+	if !deleteCalled {
+		t.Fatal("expected rollback delete to be called")
+	}
+	if !getCalled {
+		t.Fatal("expected rollback wait to confirm deletion")
+	}
+	if !diags.HasError() {
+		t.Fatal("expected diagnostic for original update failure")
+	}
+	if !strings.Contains(diags[0].Detail(), "rolled back by deleting the created contact") {
+		t.Fatalf("unexpected diagnostic: %#v", diags)
 	}
 }
 

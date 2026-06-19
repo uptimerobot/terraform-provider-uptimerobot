@@ -25,6 +25,13 @@ resource "uptimerobot_maintenance_window" "weekly_maintenance" {
   auto_add_monitors = true
 }
 
+resource "uptimerobot_monitor" "website" {
+  name     = "Example Website"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+}
+
 resource "uptimerobot_maintenance_window" "business_hours_maintenance" {
   name     = "Business Hours Maintenance"
   interval = "weekly"

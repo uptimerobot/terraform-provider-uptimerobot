@@ -218,7 +218,7 @@ func (r *alertContactResource) Create(ctx context.Context, req resource.CreateRe
 	updateReq := buildUpdateAlertContactRequest(plan, plan)
 	contact, err = r.client.UpdateAlertContact(ctx, contact.ID, updateReq)
 	if err != nil {
-		resp.Diagnostics.AddError("Error updating alert contact after create", "The alert contact was created but common settings could not be applied: "+err.Error())
+		rollbackAlertContactAfterCreateUpdateFailure(ctx, r.client, contact.ID, err, &resp.Diagnostics)
 		return
 	}
 
@@ -316,6 +316,32 @@ func (r *alertContactResource) Delete(ctx context.Context, req resource.DeleteRe
 
 func (r *alertContactResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func rollbackAlertContactAfterCreateUpdateFailure(ctx context.Context, apiClient *client.Client, id int64, updateErr error, diags interface {
+	AddError(string, string)
+}) {
+	rollbackErr := apiClient.DeleteAlertContact(ctx, id)
+	if rollbackErr != nil {
+		diags.AddError(
+			"Error updating alert contact after create",
+			fmt.Sprintf("The alert contact was created (id=%d), update failed, and rollback delete also failed: update=%v rollback=%v", id, updateErr, rollbackErr),
+		)
+		return
+	}
+
+	if waitErr := apiClient.WaitAlertContactDeleted(ctx, id, 30*time.Second); waitErr != nil {
+		diags.AddError(
+			"Error updating alert contact after create",
+			fmt.Sprintf("The alert contact was created (id=%d), update failed, rollback delete was requested, but deletion was not confirmed: update=%v rollback_wait=%v", id, updateErr, waitErr),
+		)
+		return
+	}
+
+	diags.AddError(
+		"Error updating alert contact after create",
+		"The alert contact was created but common settings could not be applied; the provider rolled back by deleting the created contact: "+updateErr.Error(),
+	)
 }
 
 func CreatableAlertContactTypes() []string {

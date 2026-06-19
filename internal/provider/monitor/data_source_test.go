@@ -40,6 +40,20 @@ func TestMonitorLookupFiltersRequireSelectorAndValidateID(t *testing.T) {
 	} else if !strings.Contains(err.Error(), "group_id must be zero or positive") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	filters, err := monitorLookupFilters(t.Context(), monitorDataSourceModel{
+		Name: types.StringValue("  api-prod  "),
+		URL:  types.StringValue("  https://example.com/health  "),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error for trimmed selectors: %v", err)
+	}
+	if filters.Name != "api-prod" {
+		t.Fatalf("expected trimmed name, got %q", filters.Name)
+	}
+	if filters.URL != "https://example.com/health" {
+		t.Fatalf("expected trimmed url, got %q", filters.URL)
+	}
 }
 
 func TestFilterMonitorsByStableFilters(t *testing.T) {

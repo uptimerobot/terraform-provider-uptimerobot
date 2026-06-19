@@ -499,7 +499,7 @@ func monitorValueString(value types.String) string {
 	if value.IsNull() || value.IsUnknown() {
 		return ""
 	}
-	return value.ValueString()
+	return strings.TrimSpace(value.ValueString())
 }
 
 func monitorStringSet(ctx context.Context, value types.Set, name string) ([]string, error) {

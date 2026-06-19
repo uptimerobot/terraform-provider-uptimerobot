@@ -399,9 +399,9 @@ func pspDataSourceState(ctx context.Context, statusPage *client.PSP) (pspDataSou
 	resourceState := pspResourceModel{}
 	pspToResourceData(ctx, statusPage, &resourceState)
 
-	monitorIDs, setDiags := pspMonitorIDsSet(ctx, statusPage.MonitorIDs)
+	monitorIDs, setDiags := pspIDSet(ctx, statusPage.MonitorIDs)
 	diags.Append(setDiags...)
-	tagIDs, setDiags := pspMonitorIDsSet(ctx, statusPage.TagIDs)
+	tagIDs, setDiags := pspIDSet(ctx, statusPage.TagIDs)
 	diags.Append(setDiags...)
 
 	return pspDataSourceModel{
@@ -429,9 +429,9 @@ func pspDataSourceState(ctx context.Context, statusPage *client.PSP) (pspDataSou
 	}, diags
 }
 
-func pspMonitorIDsSet(ctx context.Context, monitorIDs []int64) (types.Set, diag.Diagnostics) {
-	if len(monitorIDs) == 0 {
+func pspIDSet(ctx context.Context, ids []int64) (types.Set, diag.Diagnostics) {
+	if len(ids) == 0 {
 		return types.SetValueMust(types.Int64Type, []attr.Value{}), nil
 	}
-	return types.SetValueFrom(ctx, types.Int64Type, monitorIDs)
+	return types.SetValueFrom(ctx, types.Int64Type, ids)
 }

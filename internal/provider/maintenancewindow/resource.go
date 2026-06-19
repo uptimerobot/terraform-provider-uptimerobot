@@ -867,23 +867,13 @@ func (r *maintenanceWindowResource) stabilizeMaintenanceWindowReadSnapshot(
 		wantDays = nil
 	}
 
-	var wantMonitorIDs []int64
-	if !state.MonitorIDs.IsNull() && !state.MonitorIDs.IsUnknown() {
-		var monitorIDs []int64
-		if diags := state.MonitorIDs.ElementsAs(ctx, &monitorIDs, false); !diags.HasError() {
-			wantMonitorIDs = normalizeMonitorIDs(monitorIDs)
-		}
-	}
-
 	gotInterval := strings.ToLower(strings.TrimSpace(got.Interval))
 	gotDays := normalizeDays(got.Days)
-	gotMonitorIDs := normalizeMonitorIDs(got.MonitorIDs)
-	monitorIDsMatch := wantMonitorIDs == nil || equalInt64Sets(wantMonitorIDs, gotMonitorIDs)
-	if gotInterval == wantInterval && equalInt64Sets(wantDays, gotDays) && monitorIDsMatch {
+	if gotInterval == wantInterval && equalInt64Sets(wantDays, gotDays) {
 		return got
 	}
 
-	settled, err := waitMaintenanceWindowSettled(ctx, r.client, id, wantInterval, wantDays, wantMonitorIDs, nil)
+	settled, err := waitMaintenanceWindowSettled(ctx, r.client, id, wantInterval, wantDays, nil, nil)
 	if err == nil && settled != nil {
 		return settled
 	}
