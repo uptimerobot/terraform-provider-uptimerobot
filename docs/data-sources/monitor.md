@@ -44,7 +44,7 @@ output "api_monitor_tags" {
 
 - `custom_fields` (Map of String) Custom key-value metadata assigned to the monitor. When configured, all provided key-value pairs must match the selected monitor.
 - `group_id` (Number) Monitor group ID assigned to the monitor. The default group is `0`. When configured, it is used as a stable lookup filter.
-- `id` (String) The monitor ID. Configure this for an exact lookup, or omit it and configure `name`.
+- `id` (String) The monitor ID. Configure this for an exact lookup, or omit it and configure one or more stable filters (`name`, `url`, `tags`, `group_id`, or `custom_fields`).
 - `name` (String) The exact monitor name. Monitor names are not guaranteed unique; if multiple monitors match, configure `id` or additional filters.
 - `tags` (Set of String) Lowercase tag names assigned to the monitor. When configured, all listed tags must be present on the selected monitor.
 - `url` (String) The exact monitor URL or target returned by the API. When configured, it is used as a stable lookup filter.

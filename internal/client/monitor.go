@@ -311,11 +311,11 @@ func (c *Client) ListMonitorsFiltered(ctx context.Context, filters MonitorListFi
 	if cursorID != nil {
 		query.Set("cursor", strconv.FormatInt(*cursorID, 10))
 	}
-	if strings.TrimSpace(filters.Name) != "" {
-		query.Set("name", filters.Name)
+	if name := strings.TrimSpace(filters.Name); name != "" {
+		query.Set("name", name)
 	}
-	if strings.TrimSpace(filters.URL) != "" {
-		query.Set("url", filters.URL)
+	if urlValue := strings.TrimSpace(filters.URL); urlValue != "" {
+		query.Set("url", urlValue)
 	}
 	if tags := normalizedQueryStrings(filters.Tags); len(tags) > 0 {
 		query.Set("tags", strings.Join(tags, ","))

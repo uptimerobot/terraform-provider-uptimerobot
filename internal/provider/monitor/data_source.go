@@ -121,7 +121,7 @@ func (d *monitorDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 			"id": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The monitor ID. Configure this for an exact lookup, or omit it and configure `name`.",
+				MarkdownDescription: "The monitor ID. Configure this for an exact lookup, or omit it and configure one or more stable filters (`name`, `url`, `tags`, `group_id`, or `custom_fields`).",
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},

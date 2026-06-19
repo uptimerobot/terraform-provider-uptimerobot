@@ -304,8 +304,8 @@ func TestClient_ListMonitorsFiltered_EncodesStableFilters(t *testing.T) {
 	cursor := int64(101)
 	groupID := int64(7)
 	monitors, err := c.ListMonitorsFiltered(context.Background(), MonitorListFilters{
-		Name:    "api prod",
-		URL:     "https://example.com/health",
+		Name:    " api prod ",
+		URL:     " https://example.com/health ",
 		Tags:    []string{"production", "api", "api", " "},
 		GroupID: &groupID,
 		CustomFields: map[string]string{
