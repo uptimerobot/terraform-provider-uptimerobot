@@ -44,6 +44,7 @@ output "status_page_url_key" {
 
 ### Read-Only
 
+- `auto_add_monitors` (Boolean) Whether the PSP automatically includes all current and future monitors.
 - `custom_domain` (String) Custom domain configured for the PSP, or null when no custom domain is set.
 - `custom_settings` (Attributes) Custom settings for the PSP. (see [below for nested schema](#nestedatt--custom_settings))
 - `ga_code` (String) Google Analytics code configured for the PSP, or null when unset.
@@ -59,6 +60,7 @@ output "status_page_url_key" {
 - `show_cookie_bar` (Boolean) Whether the cookie bar is shown.
 - `status` (String) Status of the PSP returned by the API.
 - `subscription` (Boolean) Whether public subscriptions are enabled.
+- `tag_ids` (Set of Number) Monitor tag IDs assigned to the PSP.
 - `url_key` (String) URL key for the PSP.
 - `use_small_cookie_consent_modal` (Boolean) Whether the small cookie consent modal is enabled.
 

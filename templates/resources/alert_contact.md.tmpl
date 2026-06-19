@@ -1,0 +1,43 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Notes
+
+- This resource manages personal alert contacts through `/v3/alert-contacts`; third-party channels such as Slack, webhook, PagerDuty, Telegram, and Discord remain `uptimerobot_integration` resources.
+- `mobile_app_old` corresponds to iOS push contacts and `mobile_app` corresponds to Android push contacts.
+- `pro_sms` and `voice` contacts can be discovered with alert-contact data sources, but they require dashboard phone verification and cannot be created through this resource.
+- Mobile push identity fields are required when creating mobile contacts. The public API does not return `one_signal_user_id` or `device_fingerprint` after creation, so imported mobile contacts leave those fields unset until configured.
+- Use `is_active = false` to pause an alert contact without deleting it.
+- Delay and repeat settings are monitor assignment settings. Configure them with `threshold` and `recurrence` inside `uptimerobot_monitor.assigned_alert_contacts`.
+
+## Example Usage
+
+### Email Alert Contact
+
+{{tffile "examples/resources/uptimerobot_alert_contact/email.tf"}}
+
+### Android Push Alert Contact
+
+{{tffile "examples/resources/uptimerobot_alert_contact/android_push.tf"}}
+
+### iOS Push Alert Contact
+
+{{tffile "examples/resources/uptimerobot_alert_contact/ios_push.tf"}}
+
+## Import
+
+Existing personal alert contacts can be imported by numeric alert contact ID:
+
+```shell
+terraform import uptimerobot_alert_contact.team_email 123456
+```
+
+{{ .SchemaMarkdown | trimspace }}

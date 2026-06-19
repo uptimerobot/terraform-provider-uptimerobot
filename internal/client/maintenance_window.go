@@ -20,6 +20,7 @@ type MaintenanceWindow struct {
 	Time            string  `json:"time"`
 	Duration        int     `json:"duration"`
 	AutoAddMonitors bool    `json:"autoAddMonitors"`
+	MonitorIDs      []int64 `json:"monitorIds"`
 	Days            []int64 `json:"days"`
 	Status          string  `json:"status"`
 	Created         string  `json:"created"`
@@ -35,24 +36,26 @@ type MaintenanceWindowListResponse struct {
 
 // CreateMaintenanceWindowRequest represents the request to create a new maintenance window.
 type CreateMaintenanceWindowRequest struct {
-	Name            string  `json:"name"`
-	Interval        string  `json:"interval"`
-	Date            *string `json:"date,omitempty"`
-	Time            string  `json:"time"`
-	Duration        int     `json:"duration"`
-	AutoAddMonitors *bool   `json:"autoAddMonitors,omitempty"`
-	Days            []int64 `json:"days,omitempty"`
+	Name            string   `json:"name"`
+	Interval        string   `json:"interval"`
+	Date            *string  `json:"date,omitempty"`
+	Time            string   `json:"time"`
+	Duration        int      `json:"duration"`
+	AutoAddMonitors *bool    `json:"autoAddMonitors,omitempty"`
+	MonitorIDs      *[]int64 `json:"monitorIds,omitempty"`
+	Days            []int64  `json:"days,omitempty"`
 }
 
 // UpdateMaintenanceWindowRequest represents the request to update an existing maintenance window.
 type UpdateMaintenanceWindowRequest struct {
-	Name            string  `json:"name,omitempty"`
-	Interval        string  `json:"interval,omitempty"`
-	Date            *string `json:"date,omitempty"`
-	Time            string  `json:"time,omitempty"`
-	Duration        int     `json:"duration,omitempty"`
-	AutoAddMonitors *bool   `json:"autoAddMonitors,omitempty"`
-	Days            []int64 `json:"days,omitempty"`
+	Name            string   `json:"name,omitempty"`
+	Interval        string   `json:"interval,omitempty"`
+	Date            *string  `json:"date,omitempty"`
+	Time            string   `json:"time,omitempty"`
+	Duration        int      `json:"duration,omitempty"`
+	AutoAddMonitors *bool    `json:"autoAddMonitors,omitempty"`
+	MonitorIDs      *[]int64 `json:"monitorIds,omitempty"`
+	Days            []int64  `json:"days,omitempty"`
 }
 
 // CreateMaintenanceWindow creates a new maintenance window.

@@ -67,6 +67,32 @@ resource "uptimerobot_psp" "custom_domain_status" {
 }
 ```
 
+### Status Page with Tag-Based Monitor Selection
+
+```terraform
+data "uptimerobot_tag" "production" {
+  name = "production"
+}
+
+resource "uptimerobot_psp" "production_status" {
+  name = "Production Services"
+
+  tag_ids = [
+    tonumber(data.uptimerobot_tag.production.id),
+  ]
+}
+```
+
+### Status Page with Automatic Monitor Selection
+
+```terraform
+resource "uptimerobot_psp" "all_monitors" {
+  name              = "All Services Status"
+  auto_add_monitors = true
+  monitor_sort      = "status_down_up_paused"
+}
+```
+
 ### Password Protected Status Page
 
 ```terraform
@@ -174,6 +200,10 @@ You can include specific monitors in your status page by providing their IDs in 
 - Create different status pages for different audiences
 - Group related services together
 
+You can also include monitors by tag with `tag_ids`. The UptimeRobot API resolves matching monitors server-side, and `tag_ids` are additive with `monitor_ids`.
+
+Set `auto_add_monitors = true` to automatically include all current and future monitors in the public status page. This uses the UptimeRobot API auto-add mode and should not be combined with explicit `monitor_ids`. Existing configurations that use `monitor_ids = [0]` for the API sentinel continue to work, but `auto_add_monitors` is preferred for new Terraform configuration.
+
 Use `monitor_sort` to control how monitors are ordered on the public status page. Supported values are:
 - `friendly_name_asc`
 - `friendly_name_desc`
@@ -205,6 +235,7 @@ terraform import uptimerobot_psp.example 123456
 
 ### Optional
 
+- `auto_add_monitors` (Boolean) Whether the PSP automatically includes all current and future monitors. When set to `true`, the provider sends the UptimeRobot API auto-add sentinel and `monitor_ids` must not contain explicit monitor IDs.
 - `custom_domain` (String) Custom domain for the PSP
 - `custom_settings` (Attributes) Custom settings for the PSP (see [below for nested schema](#nestedatt--custom_settings))
 - `ga_code` (String) Google Analytics code
@@ -220,7 +251,7 @@ Set to an empty string (`""`) to clear the existing icon.
 This field accepts only local filesystem paths. If you need a remote file, download it first (for example in CI) and then pass the downloaded file path.
 
 Set to an empty string (`""`) to clear the existing logo.
-- `monitor_ids` (Set of Number) Set of monitor IDs
+- `monitor_ids` (Set of Number) Set of monitor IDs assigned to the PSP. Use `auto_add_monitors = true` to automatically include all current and future monitors. `monitor_ids = [0]` remains supported as the UptimeRobot API auto-add sentinel for backward compatibility.
 - `monitor_sort` (String) Sort order for monitors displayed on the PSP. Supported values are `friendly_name_asc`, `friendly_name_desc`, `status_up_down_paused`, and `status_down_up_paused`.
 - `no_index` (Boolean) Whether to prevent indexing
 - `password` (String, Sensitive) Password for accessing the PSP page.
@@ -232,6 +263,7 @@ Set to an empty string (`""`) to clear the existing logo.
 - `show_cookie_bar` (Boolean) Whether to show cookie bar
 - `status` (String) Status of the PSP
 - `subscription` (Boolean) Whether subscription is enabled
+- `tag_ids` (Set of Number) Set of monitor tag IDs. PSP monitors are resolved server-side from the configured tags and are additive with monitor_ids.
 - `use_small_cookie_consent_modal` (Boolean) Whether to use small cookie consent modal
 
 ### Read-Only

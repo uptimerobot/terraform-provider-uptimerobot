@@ -470,9 +470,14 @@ func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	if _, ok := createMap["autoAddMonitors"]; ok {
 		t.Fatalf("autoAddMonitors should be omitted when nil, got %s", raw)
 	}
+	if _, ok := createMap["monitorIds"]; ok {
+		t.Fatalf("monitorIds should be omitted when nil, got %s", raw)
+	}
 
 	f := false
 	createReq.AutoAddMonitors = &f
+	createMonitorIDs := []int64{123, 456}
+	createReq.MonitorIDs = &createMonitorIDs
 	raw, err = json.Marshal(createReq)
 	if err != nil {
 		t.Fatal(err)
@@ -483,6 +488,15 @@ func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	}
 	if v, ok := createMap["autoAddMonitors"].(bool); !ok || v {
 		t.Fatalf("expected autoAddMonitors=false in create request, got %#v", createMap["autoAddMonitors"])
+	}
+	ids, ok := createMap["monitorIds"].([]any)
+	if !ok || len(ids) != 2 {
+		t.Fatalf("expected monitorIds in create request, got %#v", createMap["monitorIds"])
+	}
+	firstID, firstOK := ids[0].(float64)
+	secondID, secondOK := ids[1].(float64)
+	if !firstOK || !secondOK || firstID != 123 || secondID != 456 {
+		t.Fatalf("expected monitorIds in create request, got %#v", createMap["monitorIds"])
 	}
 
 	updateReq := UpdateMaintenanceWindowRequest{
@@ -499,9 +513,14 @@ func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	if _, ok := updateMap["autoAddMonitors"]; ok {
 		t.Fatalf("autoAddMonitors should be omitted in update when nil, got %s", raw)
 	}
+	if _, ok := updateMap["monitorIds"]; ok {
+		t.Fatalf("monitorIds should be omitted in update when nil, got %s", raw)
+	}
 
 	tVal := true
 	updateReq.AutoAddMonitors = &tVal
+	updateMonitorIDs := []int64{}
+	updateReq.MonitorIDs = &updateMonitorIDs
 	raw, err = json.Marshal(updateReq)
 	if err != nil {
 		t.Fatal(err)
@@ -512,6 +531,9 @@ func TestMaintenanceWindowRequest_AutoAddMonitors_JSON(t *testing.T) {
 	}
 	if v, ok := updateMap["autoAddMonitors"].(bool); !ok || !v {
 		t.Fatalf("expected autoAddMonitors=true in update request, got %#v", updateMap["autoAddMonitors"])
+	}
+	if ids, ok := updateMap["monitorIds"].([]any); !ok || len(ids) != 0 {
+		t.Fatalf("expected empty monitorIds in update request, got %#v", updateMap["monitorIds"])
 	}
 }
 
@@ -567,6 +589,72 @@ func TestPSPRequest_MonitorSort_JSON(t *testing.T) {
 	}
 	if v, ok := updateMap["sort"].(float64); !ok || int(v) != sort {
 		t.Fatalf("expected sort=%d in update request, got %#v", sort, updateMap["sort"])
+	}
+}
+
+func TestPSPRequest_TagIDs_JSON(t *testing.T) {
+	createReq := CreatePSPRequest{Name: "psp"}
+	raw, err := json.Marshal(createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var createMap map[string]any
+	if err := json.Unmarshal(raw, &createMap); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := createMap["tagIds"]; ok {
+		t.Fatalf("tagIds should be omitted when nil, got %s", raw)
+	}
+
+	tagIDs := []int64{10, 20}
+	createReq.TagIDs = &tagIDs
+	raw, err = json.Marshal(createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createMap = map[string]any{}
+	if err := json.Unmarshal(raw, &createMap); err != nil {
+		t.Fatal(err)
+	}
+	gotCreateTagIDs, ok := createMap["tagIds"].([]any)
+	if !ok || len(gotCreateTagIDs) != 2 {
+		t.Fatalf("expected tagIds=[10,20] in create request, got %#v", createMap["tagIds"])
+	}
+	firstTagID, ok := gotCreateTagIDs[0].(float64)
+	if !ok || int(firstTagID) != 10 {
+		t.Fatalf("expected first tag ID to be 10, got %#v", gotCreateTagIDs[0])
+	}
+	secondTagID, ok := gotCreateTagIDs[1].(float64)
+	if !ok || int(secondTagID) != 20 {
+		t.Fatalf("expected second tag ID to be 20, got %#v", gotCreateTagIDs[1])
+	}
+
+	updateReq := UpdatePSPRequest{Name: "psp"}
+	raw, err = json.Marshal(updateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var updateMap map[string]any
+	if err := json.Unmarshal(raw, &updateMap); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := updateMap["tagIds"]; ok {
+		t.Fatalf("tagIds should be omitted in update when nil, got %s", raw)
+	}
+
+	emptyTagIDs := []int64{}
+	updateReq.TagIDs = &emptyTagIDs
+	raw, err = json.Marshal(updateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updateMap = map[string]any{}
+	if err := json.Unmarshal(raw, &updateMap); err != nil {
+		t.Fatal(err)
+	}
+	gotUpdateTagIDs, ok := updateMap["tagIds"].([]any)
+	if !ok || len(gotUpdateTagIDs) != 0 {
+		t.Fatalf("expected empty tagIds array in update request, got %#v", updateMap["tagIds"])
 	}
 }
 

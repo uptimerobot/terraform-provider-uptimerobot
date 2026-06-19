@@ -81,6 +81,7 @@ func TestPSPDataSourceStateMapsFields(t *testing.T) {
 		CustomDomain:               &customDomain,
 		IsPasswordSet:              true,
 		MonitorIDs:                 []int64{11, 22},
+		TagIDs:                     []int64{33, 44},
 		MonitorsCount:              &monitorsCount,
 		Status:                     "ENABLED",
 		URLKey:                     "abc123",
@@ -119,6 +120,12 @@ func TestPSPDataSourceStateMapsFields(t *testing.T) {
 	if !state.IsPasswordSet.ValueBool() {
 		t.Fatal("expected is_password_set to be true")
 	}
+	if state.AutoAddMonitors.IsNull() {
+		t.Fatal("expected auto_add_monitors to be non-null")
+	}
+	if state.AutoAddMonitors.ValueBool() {
+		t.Fatal("expected auto_add_monitors to be false")
+	}
 	if state.MonitorSort.ValueString() != "friendly_name_asc" {
 		t.Fatalf("unexpected monitor_sort %q", state.MonitorSort.ValueString())
 	}
@@ -140,10 +147,38 @@ func TestPSPDataSourceStateMapsFields(t *testing.T) {
 	if len(monitorIDs) != 2 || monitorIDs[0] != 11 || monitorIDs[1] != 22 {
 		t.Fatalf("unexpected monitor IDs %#v", monitorIDs)
 	}
+	var tagIDs []int64
+	diags = state.TagIDs.ElementsAs(context.Background(), &tagIDs, false)
+	if diags.HasError() {
+		t.Fatalf("unexpected tag ID diagnostics: %v", diags)
+	}
+	if len(tagIDs) != 2 || tagIDs[0] != 33 || tagIDs[1] != 44 {
+		t.Fatalf("unexpected tag IDs %#v", tagIDs)
+	}
 	if state.CustomSettings == nil || state.CustomSettings.Colors == nil || state.CustomSettings.Colors.Main.ValueString() != mainColor {
 		t.Fatalf("unexpected custom settings %#v", state.CustomSettings)
 	}
 	if state.CustomSettings.Features == nil || !state.CustomSettings.Features.ShowBars.ValueBool() {
 		t.Fatalf("expected show_bars in custom settings, got %#v", state.CustomSettings)
+	}
+}
+
+func TestPSPDataSourceStateMapsAutoAddMonitors(t *testing.T) {
+	t.Parallel()
+
+	state, diags := pspDataSourceState(context.Background(), &client.PSP{
+		ID:                         101,
+		Name:                       "Production Status",
+		MonitorIDs:                 []int64{pspAutoAddMonitorID},
+		Status:                     "ENABLED",
+		URLKey:                     "abc123",
+		ShareAnalyticsConsent:      true,
+		UseSmallCookieConsentModal: true,
+	})
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if !state.AutoAddMonitors.ValueBool() {
+		t.Fatal("expected auto_add_monitors to be true")
 	}
 }

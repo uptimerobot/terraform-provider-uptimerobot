@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -240,6 +241,15 @@ type MonitorListResponse struct {
 	NextLink     *string   `json:"nextLink"`
 }
 
+// MonitorListFilters contains stable filters supported by GET /monitors.
+type MonitorListFilters struct {
+	Name         string
+	URL          string
+	Tags         []string
+	GroupID      *int64
+	CustomFields map[string]string
+}
+
 // CreateMonitor creates a new monitor.
 func (c *Client) CreateMonitor(ctx context.Context, req *CreateMonitorRequest) (*Monitor, error) {
 	base := NewBaseCRUDOperations(c, "/monitors")
@@ -286,22 +296,35 @@ func (c *Client) GetMonitor(ctx context.Context, id int64) (*Monitor, error) {
 
 // ListMonitors lists monitors. If cursorID is nil, the first page is returned.
 func (c *Client) ListMonitors(ctx context.Context, cursorID *int64) (*MonitorListResponse, error) {
-	return c.listMonitors(ctx, cursorID, "")
+	return c.ListMonitorsFiltered(ctx, MonitorListFilters{}, cursorID)
 }
 
 // ListMonitorsByName lists monitors matching the API name filter. If cursorID is nil, the first page is returned.
 func (c *Client) ListMonitorsByName(ctx context.Context, name string, cursorID *int64) (*MonitorListResponse, error) {
-	return c.listMonitors(ctx, cursorID, name)
+	return c.ListMonitorsFiltered(ctx, MonitorListFilters{Name: name}, cursorID)
 }
 
-func (c *Client) listMonitors(ctx context.Context, cursorID *int64, name string) (*MonitorListResponse, error) {
+// ListMonitorsFiltered lists monitors matching API-side filters. If cursorID is nil, the first page is returned.
+func (c *Client) ListMonitorsFiltered(ctx context.Context, filters MonitorListFilters, cursorID *int64) (*MonitorListResponse, error) {
 	path := "/monitors"
 	query := url.Values{}
 	if cursorID != nil {
 		query.Set("cursor", strconv.FormatInt(*cursorID, 10))
 	}
-	if strings.TrimSpace(name) != "" {
+	if name := strings.TrimSpace(filters.Name); name != "" {
 		query.Set("name", name)
+	}
+	if urlValue := strings.TrimSpace(filters.URL); urlValue != "" {
+		query.Set("url", urlValue)
+	}
+	if tags := normalizedQueryStrings(filters.Tags); len(tags) > 0 {
+		query.Set("tags", strings.Join(tags, ","))
+	}
+	if filters.GroupID != nil {
+		query.Set("groupId", strconv.FormatInt(*filters.GroupID, 10))
+	}
+	for _, field := range normalizedCustomFieldQuery(filters.CustomFields) {
+		query.Add("customField", field)
 	}
 	if len(query) > 0 {
 		path += "?" + query.Encode()
@@ -325,14 +348,58 @@ func (c *Client) listMonitors(ctx context.Context, cursorID *int64, name string)
 
 // GetMonitors retrieves all monitors.
 func (c *Client) GetMonitors(ctx context.Context) ([]Monitor, error) {
-	return c.getMonitorPages(ctx, c.ListMonitors)
+	return c.GetMonitorsFiltered(ctx, MonitorListFilters{})
 }
 
 // GetMonitorsByName retrieves all monitors matching the API name filter.
 func (c *Client) GetMonitorsByName(ctx context.Context, name string) ([]Monitor, error) {
+	return c.GetMonitorsFiltered(ctx, MonitorListFilters{Name: name})
+}
+
+// GetMonitorsFiltered retrieves all monitors matching API-side filters.
+func (c *Client) GetMonitorsFiltered(ctx context.Context, filters MonitorListFilters) ([]Monitor, error) {
 	return c.getMonitorPages(ctx, func(ctx context.Context, cursorID *int64) (*MonitorListResponse, error) {
-		return c.ListMonitorsByName(ctx, name, cursorID)
+		return c.ListMonitorsFiltered(ctx, filters, cursorID)
 	})
+}
+
+func normalizedQueryStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func normalizedCustomFieldQuery(fields map[string]string) []string {
+	if len(fields) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, key+":"+fields[key])
+	}
+	return out
 }
 
 func (c *Client) getMonitorPages(ctx context.Context, listPage func(context.Context, *int64) (*MonitorListResponse, error)) ([]Monitor, error) {

@@ -116,6 +116,7 @@ func (p *UptimeRobotProvider) Resources(ctx context.Context) []func() resource.R
 		pspannouncement.NewResource,
 		maintenancewindow.NewResource,
 		integration.NewResource,
+		alertcontact.NewResource,
 	}
 }
 
@@ -129,6 +130,7 @@ func (p *UptimeRobotProvider) DataSources(ctx context.Context) []func() datasour
 		integration.NewDataSource,
 		maintenancewindow.NewDataSource,
 		monitor.NewDataSource,
+		monitor.NewListDataSource,
 		monitorgroup.NewDataSource,
 		psp.NewDataSource,
 		pspannouncement.NewDataSource,

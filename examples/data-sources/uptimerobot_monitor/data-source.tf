@@ -1,5 +1,12 @@
 data "uptimerobot_monitor" "api" {
-  name = "Production API"
+  name     = "Production API"
+  url      = "https://api.example.com/health"
+  tags     = ["production", "api"]
+  group_id = 0
+
+  custom_fields = {
+    environment = "production"
+  }
 }
 
 resource "uptimerobot_psp" "production" {

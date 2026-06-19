@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -49,7 +50,9 @@ type pspResourceModel struct {
 	CustomDomain               types.String         `tfsdk:"custom_domain"`
 	Password                   types.String         `tfsdk:"password"`
 	IsPasswordSet              types.Bool           `tfsdk:"is_password_set"`
+	AutoAddMonitors            types.Bool           `tfsdk:"auto_add_monitors"`
 	MonitorIDs                 types.Set            `tfsdk:"monitor_ids"`
+	TagIDs                     types.Set            `tfsdk:"tag_ids"`
 	MonitorSort                types.String         `tfsdk:"monitor_sort"`
 	MonitorsCount              types.Int64          `tfsdk:"monitors_count"`
 	Status                     types.String         `tfsdk:"status"`
@@ -66,6 +69,14 @@ type pspResourceModel struct {
 	ShowCookieBar              types.Bool           `tfsdk:"show_cookie_bar"`
 	PinnedAnnouncementID       types.Int64          `tfsdk:"pinned_announcement_id"`
 	CustomSettings             *customSettingsModel `tfsdk:"custom_settings"`
+}
+
+const pspAutoAddMonitorID int64 = 0
+
+type pspMonitorSelection struct {
+	hasPlan              bool
+	configuredMonitorIDs bool
+	monitorIDs           []int64
 }
 
 type customSettingsModel struct {
@@ -571,11 +582,24 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Description: "Whether a password is set for the PSP",
 				Computed:    true,
 			},
+			"auto_add_monitors": schema.BoolAttribute{
+				MarkdownDescription: "Whether the PSP automatically includes all current and future monitors. " +
+					"When set to `true`, the provider sends the UptimeRobot API auto-add sentinel and `monitor_ids` must not contain explicit monitor IDs.",
+				Optional: true,
+				Computed: true,
+			},
 			"monitor_ids": schema.SetAttribute{
-				Description: "Set of monitor IDs",
-				Optional:    true,
+				MarkdownDescription: "Set of monitor IDs assigned to the PSP. Use `auto_add_monitors = true` to automatically include all current and future monitors. " +
+					"`monitor_ids = [0]` remains supported as the UptimeRobot API auto-add sentinel for backward compatibility.",
+				Optional: true,
 				// Optional+Computed allows monitor IDs to be managed when configured,
 				// and observed from the API (including on import) when omitted.
+				Computed:    true,
+				ElementType: types.Int64Type,
+			},
+			"tag_ids": schema.SetAttribute{
+				Description: "Set of monitor tag IDs. PSP monitors are resolved server-side from the configured tags and are additive with monitor_ids.",
+				Optional:    true,
 				Computed:    true,
 				ElementType: types.Int64Type,
 			},
@@ -895,17 +919,31 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 
 func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	// Retrieve values from plan
-	var plan pspResourceModel
+	var plan, config pspResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	diags = req.Config.Get(ctx, &config)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	hasMonitorPlan := !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown()
-	var requestedMonitorIDs []int64
-	if hasMonitorPlan {
-		diags := plan.MonitorIDs.ElementsAs(ctx, &requestedMonitorIDs, false)
+	monitorSelection, diags := resolvePSPMonitorSelection(ctx, plan, config)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	hasMonitorPlan := monitorSelection.hasPlan
+	requestedMonitorIDs := monitorSelection.monitorIDs
+
+	hasTagPlan := !plan.TagIDs.IsNull() && !plan.TagIDs.IsUnknown()
+	var requestedTagIDs []int64
+	if hasTagPlan {
+		requestedTagIDs = []int64{}
+		diags := plan.TagIDs.ElementsAs(ctx, &requestedTagIDs, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -951,6 +989,9 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	if hasMonitorPlan {
 		psp.MonitorIDs = &requestedMonitorIDs
+	}
+	if hasTagPlan {
+		psp.TagIDs = &requestedTagIDs
 	}
 
 	if !plan.Status.IsNull() && !plan.Status.IsUnknown() {
@@ -1176,6 +1217,7 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		newPSP.ID,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
+		requestedTagIDs,
 		expectedHomepageLink,
 		expectedSubscription,
 		expectedMonitorSort,
@@ -1204,6 +1246,24 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 			return // do NOT write a broken PSP to state with a mismatching value
 		}
 	}
+	if hasTagPlan {
+		title, detail, mismatch := r.buildTagIDMismatchError(ctx, requestedTagIDs, pspForState.TagIDs)
+		if mismatch {
+			if delErr := r.client.DeletePSP(ctx, pspForState.ID); delErr != nil && !client.IsNotFound(delErr) {
+				resp.Diagnostics.AddWarning(
+					"Failed to clean up PSP after tag_ids mismatch",
+					fmt.Sprintf(
+						"Attempted to delete PSP ID %d after tag_ids mismatch but got error: %v. "+
+							"You may need to delete it manually in the UptimeRobot UI.",
+						pspForState.ID, delErr,
+					),
+				)
+			}
+
+			resp.Diagnostics.AddError(title, detail)
+			return
+		}
+	}
 
 	// Map response body to schema and populate Computed attribute values
 	var updatedPlan = plan
@@ -1211,7 +1271,11 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	updatedPlan.Name = plan.Name
 
 	if hasMonitorPlan {
-		updatedPlan.MonitorIDs = plan.MonitorIDs
+		if monitorSelection.configuredMonitorIDs {
+			updatedPlan.MonitorIDs = plan.MonitorIDs
+		} else {
+			updatedPlan.MonitorIDs = pspInt64SetValue(ctx, requestedMonitorIDs)
+		}
 	} else {
 		if len(pspForState.MonitorIDs) > 0 {
 			setVal, d := types.SetValueFrom(ctx, types.Int64Type, pspForState.MonitorIDs)
@@ -1223,6 +1287,13 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		} else {
 			updatedPlan.MonitorIDs = types.SetValueMust(types.Int64Type, []attr.Value{})
 		}
+	}
+	resp.Diagnostics.Append(syncPSPAutoAddMonitorsFromMonitorIDs(ctx, &updatedPlan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if hasTagPlan {
+		updatedPlan.TagIDs = plan.TagIDs
 	}
 
 	if !managedColors && updatedPlan.CustomSettings != nil {
@@ -1299,6 +1370,14 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 			return
 		}
 	}
+	var expectedTagIDs []int64
+	if !state.TagIDs.IsNull() && !state.TagIDs.IsUnknown() {
+		diags := state.TagIDs.ElementsAs(ctx, &expectedTagIDs, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
 	var expectedHomepageLink *string
 	if !state.HomepageLink.IsNull() && !state.HomepageLink.IsUnknown() {
 		value := state.HomepageLink.ValueString()
@@ -1323,19 +1402,25 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		missing, extra := diffMonitorIDs(expectedMonitorIDs, psp.MonitorIDs)
 		monitorsMismatch = len(missing) > 0 || len(extra) > 0
 	}
+	tagsMismatch := false
+	if expectedTagIDs != nil {
+		missing, extra := diffTagIDs(expectedTagIDs, psp.TagIDs)
+		tagsMismatch = len(missing) > 0 || len(extra) > 0
+	}
 	homepageLinkMismatch := expectedHomepageLink != nil && !pspStringPtrMatches(psp.HomepageLink, expectedHomepageLink)
 	subscriptionMismatch := expectedSubscription != nil && psp.Subscription != *expectedSubscription
 	monitorSortMismatch := expectedMonitorSort != nil && psp.Sort != nil && *psp.Sort != *expectedMonitorSort
 
 	// PSP reads can be eventually consistent right after updates.
 	// If the API returns transient old values, re-poll briefly before accepting drift.
-	if !isImport && (nameMismatch || monitorsMismatch || homepageLinkMismatch || subscriptionMismatch || monitorSortMismatch) {
+	if !isImport && (nameMismatch || monitorsMismatch || tagsMismatch || homepageLinkMismatch || subscriptionMismatch || monitorSortMismatch) {
 		if settled, err := waitPSPSettled(
 			ctx,
 			r.client,
 			id,
 			expectedName,
 			expectedMonitorIDs,
+			expectedTagIDs,
 			expectedHomepageLink,
 			expectedSubscription,
 			expectedMonitorSort,
@@ -1375,6 +1460,10 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		// regular read and API returned nothing preserve prior state to avoid drift
 		updatedState.MonitorIDs = state.MonitorIDs
 	}
+	resp.Diagnostics.Append(syncPSPAutoAddMonitorsFromMonitorIDs(ctx, &updatedState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	if !managedColors && updatedState.CustomSettings != nil {
 		updatedState.CustomSettings.Colors = nil
@@ -1406,7 +1495,7 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 
 func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	// Retrieve values from plan and state
-	var plan, state pspResourceModel
+	var plan, state, config pspResourceModel
 	if diags := req.Plan.Get(ctx, &plan); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
@@ -1415,11 +1504,24 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		resp.Diagnostics.Append(diags...)
 		return
 	}
+	if diags := req.Config.Get(ctx, &config); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
 
-	hasMonitorPlan := !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown()
-	var requestedMonitorIDs []int64
-	if hasMonitorPlan {
-		diags := plan.MonitorIDs.ElementsAs(ctx, &requestedMonitorIDs, false)
+	monitorSelection, diags := resolvePSPMonitorSelection(ctx, plan, config)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	hasMonitorPlan := monitorSelection.hasPlan
+	requestedMonitorIDs := monitorSelection.monitorIDs
+
+	hasTagPlan := !plan.TagIDs.IsNull() && !plan.TagIDs.IsUnknown()
+	var requestedTagIDs []int64
+	if hasTagPlan {
+		requestedTagIDs = []int64{}
+		diags := plan.TagIDs.ElementsAs(ctx, &requestedTagIDs, false)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -1514,6 +1616,9 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 
 	if hasMonitorPlan {
 		psp.MonitorIDs = &requestedMonitorIDs
+	}
+	if hasTagPlan {
+		psp.TagIDs = &requestedTagIDs
 	}
 
 	if !plan.PinnedAnnouncementID.IsNull() && !plan.PinnedAnnouncementID.IsUnknown() &&
@@ -1689,6 +1794,7 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		id,
 		plan.Name.ValueString(),
 		requestedMonitorIDs,
+		requestedTagIDs,
 		expectedHomepageLink,
 		expectedSubscription,
 		expectedMonitorSort,
@@ -1706,6 +1812,13 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 			return
 		}
 	}
+	if hasTagPlan {
+		title, detail, mismatch := r.buildTagIDMismatchError(ctx, requestedTagIDs, pspForState.TagIDs)
+		if mismatch {
+			resp.Diagnostics.AddError(title, detail)
+			return
+		}
+	}
 
 	var newState = plan
 	pspToResourceData(ctx, pspForState, &newState)
@@ -1718,9 +1831,22 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	if hasMonitorPlan {
-		newState.MonitorIDs = plan.MonitorIDs
+		if monitorSelection.configuredMonitorIDs {
+			newState.MonitorIDs = plan.MonitorIDs
+		} else {
+			newState.MonitorIDs = pspInt64SetValue(ctx, requestedMonitorIDs)
+		}
 	} else {
 		newState.MonitorIDs = state.MonitorIDs
+	}
+	resp.Diagnostics.Append(syncPSPAutoAddMonitorsFromMonitorIDs(ctx, &newState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if hasTagPlan {
+		newState.TagIDs = plan.TagIDs
+	} else {
+		newState.TagIDs = state.TagIDs
 	}
 
 	maskCustomSettingsFromPlan(&plan, &newState)
@@ -1776,6 +1902,7 @@ func waitPSPSettled(
 	id int64,
 	expectedName string,
 	expectedMonitorIDs []int64, // nil means omitted and should not be checked
+	expectedTagIDs []int64, // nil means omitted and should not be checked
 	expectedHomepageLink *string,
 	expectedSubscription *bool,
 	expectedMonitorSort *int,
@@ -1808,17 +1935,22 @@ func waitPSPSettled(
 
 			nameOK := (expectedName == "" || psp.Name == expectedName)
 			monitorsOK := true
+			tagsOK := true
 
 			if expectedMonitorIDs != nil {
 				missing, extra := diffMonitorIDs(expectedMonitorIDs, psp.MonitorIDs)
 				monitorsOK = (len(missing) == 0 && len(extra) == 0)
+			}
+			if expectedTagIDs != nil {
+				missing, extra := diffTagIDs(expectedTagIDs, psp.TagIDs)
+				tagsOK = (len(missing) == 0 && len(extra) == 0)
 			}
 
 			homepageLinkOK := pspStringPtrMatches(psp.HomepageLink, expectedHomepageLink)
 			subscriptionOK := expectedSubscription == nil || psp.Subscription == *expectedSubscription
 			monitorSortOK := pspMonitorSortPtrMatches(psp.Sort, expectedMonitorSort)
 
-			if nameOK && monitorsOK && homepageLinkOK && subscriptionOK && monitorSortOK {
+			if nameOK && monitorsOK && tagsOK && homepageLinkOK && subscriptionOK && monitorSortOK {
 				consecutiveMatches++
 				if consecutiveMatches >= requiredConsecutiveMatches {
 					return psp, nil
@@ -1868,6 +2000,156 @@ func pspMonitorSortPtrMatches(got *int, want *int) bool {
 	return *got == *want
 }
 
+func pspInt64SetValue(_ context.Context, ids []int64) types.Set {
+	if len(ids) == 0 {
+		return types.SetValueMust(types.Int64Type, []attr.Value{})
+	}
+	values := make([]attr.Value, 0, len(ids))
+	for _, id := range ids {
+		values = append(values, types.Int64Value(id))
+	}
+	return types.SetValueMust(types.Int64Type, values)
+}
+
+func pspInt64SetElements(ctx context.Context, set types.Set) ([]int64, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if set.IsNull() || set.IsUnknown() {
+		return nil, diags
+	}
+
+	var ids []int64
+	diags.Append(set.ElementsAs(ctx, &ids, false)...)
+	return ids, diags
+}
+
+func isPSPAutoAddMonitorIDs(ids []int64) bool {
+	return len(ids) == 1 && ids[0] == pspAutoAddMonitorID
+}
+
+func containsPSPAutoAddMonitorID(ids []int64) bool {
+	for _, id := range ids {
+		if id == pspAutoAddMonitorID {
+			return true
+		}
+	}
+	return false
+}
+
+func pspAutoAddMonitorsValue(ctx context.Context, monitorIDs types.Set) (types.Bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if monitorIDs.IsNull() || monitorIDs.IsUnknown() {
+		return types.BoolNull(), diags
+	}
+
+	ids, diags := pspInt64SetElements(ctx, monitorIDs)
+	if diags.HasError() {
+		return types.BoolNull(), diags
+	}
+
+	return types.BoolValue(isPSPAutoAddMonitorIDs(ids)), diags
+}
+
+func syncPSPAutoAddMonitorsFromMonitorIDs(ctx context.Context, state *pspResourceModel) diag.Diagnostics {
+	value, diags := pspAutoAddMonitorsValue(ctx, state.MonitorIDs)
+	if diags.HasError() {
+		return diags
+	}
+	state.AutoAddMonitors = value
+	return diags
+}
+
+func resolvePSPMonitorSelection(ctx context.Context, plan, config pspResourceModel) (pspMonitorSelection, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	planMonitorIDsKnown := !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown()
+	configuredMonitorIDs := !config.MonitorIDs.IsNull()
+
+	var planMonitorIDs []int64
+	if planMonitorIDsKnown {
+		monitorIDs, setDiags := pspInt64SetElements(ctx, plan.MonitorIDs)
+		diags.Append(setDiags...)
+		if diags.HasError() {
+			return pspMonitorSelection{}, diags
+		}
+		planMonitorIDs = monitorIDs
+
+		if containsPSPAutoAddMonitorID(planMonitorIDs) && !isPSPAutoAddMonitorIDs(planMonitorIDs) {
+			diags.AddError(
+				"Invalid PSP monitor_ids",
+				"`monitor_ids` can use the UptimeRobot auto-add sentinel `0` only by itself as `monitor_ids = [0]`. "+
+					"Use `auto_add_monitors = true` for automatic monitor selection, or remove `0` and provide explicit monitor IDs.",
+			)
+			return pspMonitorSelection{}, diags
+		}
+	}
+
+	configuredAutoAddMonitors := !config.AutoAddMonitors.IsNull()
+	if configuredAutoAddMonitors && !plan.AutoAddMonitors.IsNull() && !plan.AutoAddMonitors.IsUnknown() {
+		if plan.AutoAddMonitors.ValueBool() {
+			if configuredMonitorIDs && planMonitorIDsKnown && !isPSPAutoAddMonitorIDs(planMonitorIDs) {
+				diags.AddError(
+					"Conflicting PSP monitor selection",
+					"`auto_add_monitors = true` cannot be combined with explicit `monitor_ids`. "+
+						"Remove `monitor_ids`, or use `monitor_ids = [0]` only for backward compatibility.",
+				)
+				return pspMonitorSelection{}, diags
+			}
+
+			return pspMonitorSelection{
+				hasPlan:              true,
+				configuredMonitorIDs: configuredMonitorIDs,
+				monitorIDs:           []int64{pspAutoAddMonitorID},
+			}, diags
+		}
+
+		if configuredMonitorIDs && planMonitorIDsKnown {
+			if isPSPAutoAddMonitorIDs(planMonitorIDs) {
+				diags.AddError(
+					"Conflicting PSP monitor selection",
+					"`auto_add_monitors = false` cannot be combined with `monitor_ids = [0]`. "+
+						"Remove the auto-add sentinel or set `auto_add_monitors = true`.",
+				)
+				return pspMonitorSelection{}, diags
+			}
+
+			return pspMonitorSelection{
+				hasPlan:              true,
+				configuredMonitorIDs: true,
+				monitorIDs:           planMonitorIDs,
+			}, diags
+		}
+
+		if planMonitorIDsKnown && !isPSPAutoAddMonitorIDs(planMonitorIDs) {
+			return pspMonitorSelection{
+				hasPlan:    true,
+				monitorIDs: planMonitorIDs,
+			}, diags
+		}
+
+		return pspMonitorSelection{
+			hasPlan:    true,
+			monitorIDs: []int64{},
+		}, diags
+	}
+
+	if configuredMonitorIDs && planMonitorIDsKnown {
+		return pspMonitorSelection{
+			hasPlan:              true,
+			configuredMonitorIDs: true,
+			monitorIDs:           planMonitorIDs,
+		}, diags
+	}
+
+	if planMonitorIDsKnown {
+		return pspMonitorSelection{
+			hasPlan:    true,
+			monitorIDs: planMonitorIDs,
+		}, diags
+	}
+
+	return pspMonitorSelection{}, diags
+}
+
 func AllPSPMonitorSorts() []string {
 	return []string{
 		"friendly_name_asc",
@@ -1910,12 +2192,14 @@ func terraformPSPMonitorSort(value *int) (string, bool) {
 	}
 }
 
-func pspToResourceData(_ context.Context, psp *client.PSP, plan *pspResourceModel) {
+func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceModel) {
 	plan.ID = types.StringValue(strconv.FormatInt(psp.ID, 10))
 	plan.Name = types.StringValue(psp.Name)
 	plan.Status = types.StringValue(psp.Status)
 	plan.URLKey = types.StringValue(psp.URLKey)
 	plan.IsPasswordSet = types.BoolValue(psp.IsPasswordSet)
+	plan.AutoAddMonitors = types.BoolValue(isPSPAutoAddMonitorIDs(psp.MonitorIDs))
+	plan.TagIDs = pspInt64SetValue(ctx, psp.TagIDs)
 
 	// Always set computed values, even if they're defaults from the API
 	plan.ShareAnalyticsConsent = types.BoolValue(psp.ShareAnalyticsConsent)
@@ -2198,6 +2482,14 @@ func (r *pspResource) UpgradeState(_ context.Context) map[int64]resource.StateUp
 
 // diffMonitorIDs returns which IDs are missing from the applied list and which are extra.
 func diffMonitorIDs(requested, applied []int64) (missing, extra []int64) {
+	return diffInt64IDs(requested, applied)
+}
+
+func diffTagIDs(requested, applied []int64) (missing, extra []int64) {
+	return diffInt64IDs(requested, applied)
+}
+
+func diffInt64IDs(requested, applied []int64) (missing, extra []int64) {
 	req := make(map[int64]struct{}, len(requested))
 	app := make(map[int64]struct{}, len(applied))
 
@@ -2269,4 +2561,61 @@ func (r *pspResource) buildMonitorIDMismatchError(
 	fmt.Fprintf(&b, "Please fix monitor_ids (for example, remove invalid IDs or create the missing monitors) and run apply again.")
 
 	return "PSP monitor_ids do not match configuration", b.String(), true
+}
+
+// buildTagIDMismatchError compares requested vs applied tag_ids. If possible,
+// it lists missing IDs that are not visible through the tags API.
+func (r *pspResource) buildTagIDMismatchError(
+	ctx context.Context,
+	requested, applied []int64,
+) (title, detail string, mismatch bool) {
+	missing, extra := diffTagIDs(requested, applied)
+	if len(missing) == 0 && len(extra) == 0 {
+		return "", "", false
+	}
+
+	var notFound []int64
+	var existsButNotAttached []int64
+	var validationErrors []string
+
+	if len(missing) > 0 {
+		tags, err := r.client.ListAllTags(ctx)
+		if err != nil {
+			validationErrors = append(validationErrors, fmt.Sprintf("list tags: %v", err))
+		} else {
+			visibleTags := make(map[int64]struct{}, len(tags))
+			for _, tag := range tags {
+				visibleTags[tag.ID] = struct{}{}
+			}
+			for _, id := range missing {
+				if _, ok := visibleTags[id]; ok {
+					existsButNotAttached = append(existsButNotAttached, id)
+				} else {
+					notFound = append(notFound, id)
+				}
+			}
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Requested tag_ids: %v\nApplied tag_ids:   %v\n", requested, applied)
+	if len(missing) > 0 {
+		fmt.Fprintf(&b, "Missing on PSP after apply: %v\n", missing)
+	}
+	if len(extra) > 0 {
+		fmt.Fprintf(&b, "Unexpected tag_ids reported by PSP API: %v\n", extra)
+	}
+	if len(notFound) > 0 {
+		fmt.Fprintf(&b, "\nThe following tag IDs are not visible through the UptimeRobot tags API: %v\n", notFound)
+	}
+	if len(existsButNotAttached) > 0 {
+		fmt.Fprintf(&b, "\nThe following tags exist but were not attached to the PSP: %v\n", existsButNotAttached)
+	}
+	if len(validationErrors) > 0 {
+		fmt.Fprintf(&b, "\nAdditional errors while validating tag_ids: %s\n", strings.Join(validationErrors, "; "))
+	}
+	fmt.Fprintf(&b, "\nThis mismatch would cause Terraform/state drift, so the provider is treating it as an error.\n")
+	fmt.Fprintf(&b, "Please fix tag_ids (for example, remove invalid IDs or create the missing tags) and run apply again.")
+
+	return "PSP tag_ids do not match configuration", b.String(), true
 }

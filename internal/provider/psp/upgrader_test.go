@@ -73,3 +73,16 @@ func TestUpgradePSPFromV0_MonitorIDs_EmptyListToEmptySet(t *testing.T) {
 	require.False(t, eds.HasError())
 	require.Len(t, got, 0)
 }
+
+func TestUpgradePSPFromV0_AutoAddMonitorsFromSentinel(t *testing.T) {
+	ctx := context.Background()
+	prior := pspV0Model{
+		Name:       types.StringValue("PSP"),
+		MonitorIDs: listInt64(pspAutoAddMonitorID),
+	}
+
+	up, diags := upgradePSPFromV0(ctx, prior)
+	require.False(t, diags.HasError())
+	require.False(t, up.AutoAddMonitors.IsNull())
+	require.True(t, up.AutoAddMonitors.ValueBool())
+}

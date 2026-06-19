@@ -37,7 +37,9 @@ type pspDataSourceModel struct {
 	Name                       types.String         `tfsdk:"name"`
 	CustomDomain               types.String         `tfsdk:"custom_domain"`
 	IsPasswordSet              types.Bool           `tfsdk:"is_password_set"`
+	AutoAddMonitors            types.Bool           `tfsdk:"auto_add_monitors"`
 	MonitorIDs                 types.Set            `tfsdk:"monitor_ids"`
+	TagIDs                     types.Set            `tfsdk:"tag_ids"`
 	MonitorSort                types.String         `tfsdk:"monitor_sort"`
 	MonitorsCount              types.Int64          `tfsdk:"monitors_count"`
 	Status                     types.String         `tfsdk:"status"`
@@ -95,10 +97,19 @@ func (d *pspDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, re
 				Computed:            true,
 				MarkdownDescription: "Whether a password is set for the PSP. The password value itself is not returned by the UptimeRobot API.",
 			},
+			"auto_add_monitors": datasourceschema.BoolAttribute{
+				Computed:            true,
+				MarkdownDescription: "Whether the PSP automatically includes all current and future monitors.",
+			},
 			"monitor_ids": datasourceschema.SetAttribute{
 				Computed:            true,
 				ElementType:         types.Int64Type,
 				MarkdownDescription: "Monitor IDs assigned to the PSP.",
+			},
+			"tag_ids": datasourceschema.SetAttribute{
+				Computed:            true,
+				ElementType:         types.Int64Type,
+				MarkdownDescription: "Monitor tag IDs assigned to the PSP.",
 			},
 			"monitor_sort": datasourceschema.StringAttribute{
 				Computed:            true,
@@ -388,7 +399,9 @@ func pspDataSourceState(ctx context.Context, statusPage *client.PSP) (pspDataSou
 	resourceState := pspResourceModel{}
 	pspToResourceData(ctx, statusPage, &resourceState)
 
-	monitorIDs, setDiags := pspMonitorIDsSet(ctx, statusPage.MonitorIDs)
+	monitorIDs, setDiags := pspIDSet(ctx, statusPage.MonitorIDs)
+	diags.Append(setDiags...)
+	tagIDs, setDiags := pspIDSet(ctx, statusPage.TagIDs)
 	diags.Append(setDiags...)
 
 	return pspDataSourceModel{
@@ -396,7 +409,9 @@ func pspDataSourceState(ctx context.Context, statusPage *client.PSP) (pspDataSou
 		Name:                       resourceState.Name,
 		CustomDomain:               resourceState.CustomDomain,
 		IsPasswordSet:              resourceState.IsPasswordSet,
+		AutoAddMonitors:            resourceState.AutoAddMonitors,
 		MonitorIDs:                 monitorIDs,
+		TagIDs:                     tagIDs,
 		MonitorSort:                resourceState.MonitorSort,
 		MonitorsCount:              resourceState.MonitorsCount,
 		Status:                     resourceState.Status,
@@ -414,9 +429,9 @@ func pspDataSourceState(ctx context.Context, statusPage *client.PSP) (pspDataSou
 	}, diags
 }
 
-func pspMonitorIDsSet(ctx context.Context, monitorIDs []int64) (types.Set, diag.Diagnostics) {
-	if len(monitorIDs) == 0 {
+func pspIDSet(ctx context.Context, ids []int64) (types.Set, diag.Diagnostics) {
+	if len(ids) == 0 {
 		return types.SetValueMust(types.Int64Type, []attr.Value{}), nil
 	}
-	return types.SetValueFrom(ctx, types.Int64Type, monitorIDs)
+	return types.SetValueFrom(ctx, types.Int64Type, ids)
 }

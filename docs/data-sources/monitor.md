@@ -7,15 +7,24 @@ description: |-
 
 # uptimerobot_monitor (Data Source)
 
-Looks up one existing UptimeRobot monitor by `id` or exact `name` without managing it. Monitor names are not guaranteed unique in UptimeRobot; if more than one monitor has the configured name, the data source returns an error and lists the matching IDs. Configure `id` to select one monitor unambiguously.
+Looks up one existing UptimeRobot monitor by `id` or stable filters without managing it. Monitor names are not guaranteed unique in UptimeRobot; if more than one monitor has the configured filters, the data source returns an error and lists the matching IDs. Configure `id` or narrower filters to select one monitor unambiguously.
 
-Use this when monitors are managed in another Terraform state, created through the UI/API, or otherwise owned outside the current configuration. The data source exposes non-secret monitor metadata, including tag names, so existing monitors can be attached to public status pages or grouped in Terraform expressions without importing them as resources.
+Use this when monitors are managed in another Terraform state, created through the UI/API, or otherwise owned outside the current configuration. The data source exposes non-secret monitor metadata, including tag names, group ID, and custom fields, so existing monitors can be attached to public status pages or grouped in Terraform expressions without importing them as resources.
+
+Configured `tags` and `custom_fields` are containment filters: all configured values must match, but the selected monitor may have additional tags or custom fields.
 
 ## Example Usage
 
 ```terraform
 data "uptimerobot_monitor" "api" {
-  name = "Production API"
+  name     = "Production API"
+  url      = "https://api.example.com/health"
+  tags     = ["production", "api"]
+  group_id = 0
+
+  custom_fields = {
+    environment = "production"
+  }
 }
 
 resource "uptimerobot_psp" "production" {
@@ -33,13 +42,14 @@ output "api_monitor_tags" {
 
 ### Optional
 
-- `id` (String) The monitor ID. Configure this for an exact lookup, or omit it and configure `name`.
-- `name` (String) The exact monitor name. Monitor names are not guaranteed unique; if multiple monitors match, configure `id` instead.
+- `custom_fields` (Map of String) Custom key-value metadata assigned to the monitor. When configured, all provided key-value pairs must match the selected monitor.
+- `group_id` (Number) Monitor group ID assigned to the monitor. The default group is `0`. When configured, it is used as a stable lookup filter.
+- `id` (String) The monitor ID. Configure this for an exact lookup, or omit it and configure one or more stable filters (`name`, `url`, `tags`, `group_id`, or `custom_fields`).
+- `name` (String) The exact monitor name. Monitor names are not guaranteed unique; if multiple monitors match, configure `id` or additional filters.
+- `tags` (Set of String) Lowercase tag names assigned to the monitor. When configured, all listed tags must be present on the selected monitor.
+- `url` (String) The exact monitor URL or target returned by the API. When configured, it is used as a stable lookup filter.
 
 ### Read-Only
 
-- `group_id` (Number) Monitor group ID assigned to the monitor. The default group is `0`.
 - `status` (String) The monitor status returned by the API.
-- `tags` (Set of String) Lowercase tag names assigned to the monitor.
 - `type` (String) The monitor type returned by the API.
-- `url` (String) The monitor URL or target returned by the API.

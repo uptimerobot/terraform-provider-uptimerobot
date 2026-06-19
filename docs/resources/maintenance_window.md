@@ -25,6 +25,13 @@ resource "uptimerobot_maintenance_window" "weekly_maintenance" {
   auto_add_monitors = true
 }
 
+resource "uptimerobot_monitor" "website" {
+  name     = "Example Website"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+}
+
 resource "uptimerobot_maintenance_window" "business_hours_maintenance" {
   name     = "Business Hours Maintenance"
   interval = "weekly"
@@ -33,6 +40,7 @@ resource "uptimerobot_maintenance_window" "business_hours_maintenance" {
   days     = [2, 4] # Tuesday and Thursday
 
   auto_add_monitors = false
+  monitor_ids       = [uptimerobot_monitor.website.id]
 }
 ```
 
@@ -132,6 +140,7 @@ terraform import uptimerobot_maintenance_window.example 123456
 - `auto_add_monitors` (Boolean) Automatically add new monitors to maintenance window
 - `date` (String) Date of the maintenance window (format: YYYY-MM-DD)
 - `days` (Set of Number) Only for interval = "weekly" or "monthly". Weekly: 1=Mon..7=Sun. Monthly: 1..31, or -1 (last day of month).Invalid values are silently ignored by the API.
+- `monitor_ids` (Set of Number) Set of monitor IDs assigned to the maintenance window. Use [0] to auto-add all monitors.
 
 ### Read-Only
 

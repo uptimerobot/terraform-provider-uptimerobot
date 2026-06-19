@@ -7,9 +7,11 @@ description: |-
 
 # uptimerobot_monitor (Data Source)
 
-Looks up one existing UptimeRobot monitor by `id` or exact `name` without managing it. Monitor names are not guaranteed unique in UptimeRobot; if more than one monitor has the configured name, the data source returns an error and lists the matching IDs. Configure `id` to select one monitor unambiguously.
+Looks up one existing UptimeRobot monitor by `id` or stable filters without managing it. Monitor names are not guaranteed unique in UptimeRobot; if more than one monitor has the configured filters, the data source returns an error and lists the matching IDs. Configure `id` or narrower filters to select one monitor unambiguously.
 
-Use this when monitors are managed in another Terraform state, created through the UI/API, or otherwise owned outside the current configuration. The data source exposes non-secret monitor metadata, including tag names, so existing monitors can be attached to public status pages or grouped in Terraform expressions without importing them as resources.
+Use this when monitors are managed in another Terraform state, created through the UI/API, or otherwise owned outside the current configuration. The data source exposes non-secret monitor metadata, including tag names, group ID, and custom fields, so existing monitors can be attached to public status pages or grouped in Terraform expressions without importing them as resources.
+
+Configured `tags` and `custom_fields` are containment filters: all configured values must match, but the selected monitor may have additional tags or custom fields.
 
 ## Example Usage
 
