@@ -15,6 +15,10 @@
 
 - Enhanced `uptimerobot_monitor` data source with `url`, `tags`, `group_id`, and `custom_fields` filters plus `custom_fields` output.
 
+### Documentation
+
+- Added examples showing `uptimerobot_monitors.ids` reused for public status page and maintenance window `monitor_ids`.
+
 ## 1.8.1 — 2026-06-16
 
 ### Changed
