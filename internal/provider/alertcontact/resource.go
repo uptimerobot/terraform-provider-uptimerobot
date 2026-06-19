@@ -216,9 +216,10 @@ func (r *alertContactResource) Create(ctx context.Context, req resource.CreateRe
 	}
 
 	updateReq := buildUpdateAlertContactRequest(plan, plan)
-	contact, err = r.client.UpdateAlertContact(ctx, contact.ID, updateReq)
+	createdContactID := contact.ID
+	contact, err = r.client.UpdateAlertContact(ctx, createdContactID, updateReq)
 	if err != nil {
-		rollbackAlertContactAfterCreateUpdateFailure(ctx, r.client, contact.ID, err, &resp.Diagnostics)
+		rollbackAlertContactAfterCreateUpdateFailure(ctx, r.client, createdContactID, err, &resp.Diagnostics)
 		return
 	}
 
