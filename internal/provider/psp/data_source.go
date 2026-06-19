@@ -37,6 +37,7 @@ type pspDataSourceModel struct {
 	Name                       types.String         `tfsdk:"name"`
 	CustomDomain               types.String         `tfsdk:"custom_domain"`
 	IsPasswordSet              types.Bool           `tfsdk:"is_password_set"`
+	AutoAddMonitors            types.Bool           `tfsdk:"auto_add_monitors"`
 	MonitorIDs                 types.Set            `tfsdk:"monitor_ids"`
 	TagIDs                     types.Set            `tfsdk:"tag_ids"`
 	MonitorSort                types.String         `tfsdk:"monitor_sort"`
@@ -95,6 +96,10 @@ func (d *pspDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, re
 			"is_password_set": datasourceschema.BoolAttribute{
 				Computed:            true,
 				MarkdownDescription: "Whether a password is set for the PSP. The password value itself is not returned by the UptimeRobot API.",
+			},
+			"auto_add_monitors": datasourceschema.BoolAttribute{
+				Computed:            true,
+				MarkdownDescription: "Whether the PSP automatically includes all current and future monitors.",
 			},
 			"monitor_ids": datasourceschema.SetAttribute{
 				Computed:            true,
@@ -404,6 +409,7 @@ func pspDataSourceState(ctx context.Context, statusPage *client.PSP) (pspDataSou
 		Name:                       resourceState.Name,
 		CustomDomain:               resourceState.CustomDomain,
 		IsPasswordSet:              resourceState.IsPasswordSet,
+		AutoAddMonitors:            resourceState.AutoAddMonitors,
 		MonitorIDs:                 monitorIDs,
 		TagIDs:                     tagIDs,
 		MonitorSort:                resourceState.MonitorSort,

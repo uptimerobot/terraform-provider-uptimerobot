@@ -113,6 +113,9 @@ func upgradePSPFromV0(ctx context.Context, prior pspV0Model) (pspResourceModel, 
 	setIDs, d := tfconv.Int64ListToSet(ctx, prior.MonitorIDs)
 	diags.Append(d...)
 	up.MonitorIDs = setIDs
+	autoAddMonitors, d := pspAutoAddMonitorsValue(ctx, setIDs)
+	diags.Append(d...)
+	up.AutoAddMonitors = autoAddMonitors
 
 	// custom_settings
 	if prior.CustomSettings != nil {

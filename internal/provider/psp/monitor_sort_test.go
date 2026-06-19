@@ -104,6 +104,41 @@ func TestPSPToResourceDataTagIDs(t *testing.T) {
 	}
 }
 
+func TestPSPToResourceDataAutoAddMonitors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		monitorIDs []int64
+		want       bool
+	}{
+		{name: "sentinel", monitorIDs: []int64{pspAutoAddMonitorID}, want: true},
+		{name: "explicit monitors", monitorIDs: []int64{11, 22}, want: false},
+		{name: "empty", monitorIDs: nil, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			model := pspResourceModel{}
+			pspToResourceData(context.Background(), &client.PSP{
+				ID:                         123,
+				Name:                       "psp",
+				Status:                     "ENABLED",
+				URLKey:                     "abc123",
+				ShareAnalyticsConsent:      true,
+				UseSmallCookieConsentModal: false,
+				MonitorIDs:                 tt.monitorIDs,
+			}, &model)
+
+			if model.AutoAddMonitors.IsNull() || model.AutoAddMonitors.ValueBool() != tt.want {
+				t.Fatalf("auto_add_monitors = %#v, want %t", model.AutoAddMonitors, tt.want)
+			}
+		})
+	}
+}
+
 func TestPSPMonitorSortPtrMatchesTreatsMissingAPIAsUnverified(t *testing.T) {
 	t.Parallel()
 
