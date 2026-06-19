@@ -17,39 +17,76 @@ import (
 func TestMonitorLookupFiltersRequireSelectorAndValidateID(t *testing.T) {
 	t.Parallel()
 
-	if _, err := monitorLookupFilters(monitorDataSourceModel{}); err == nil {
+	if _, err := monitorLookupFilters(t.Context(), monitorDataSourceModel{}); err == nil {
 		t.Fatal("expected missing selector error, got nil")
-	} else if !strings.Contains(err.Error(), "configure id or name") {
+	} else if !strings.Contains(err.Error(), "configure id, name, url, tags, group_id, or custom_fields") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if _, err := monitorLookupFilters(monitorDataSourceModel{ID: types.StringValue("not-a-number")}); err == nil {
+	if _, err := monitorLookupFilters(t.Context(), monitorDataSourceModel{ID: types.StringValue("not-a-number")}); err == nil {
 		t.Fatal("expected invalid ID error, got nil")
 	} else if !strings.Contains(err.Error(), `could not parse monitor id "not-a-number"`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if _, err := monitorLookupFilters(monitorDataSourceModel{ID: types.StringValue("0")}); err == nil {
+	if _, err := monitorLookupFilters(t.Context(), monitorDataSourceModel{ID: types.StringValue("0")}); err == nil {
 		t.Fatal("expected non-positive ID error, got nil")
 	} else if !strings.Contains(err.Error(), "monitor id must be positive, got 0") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	if _, err := monitorLookupFilters(t.Context(), monitorDataSourceModel{GroupID: types.Int64Value(-1)}); err == nil {
+		t.Fatal("expected negative group_id error, got nil")
+	} else if !strings.Contains(err.Error(), "group_id must be zero or positive") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
-func TestFilterMonitorsByExactName(t *testing.T) {
+func TestFilterMonitorsByStableFilters(t *testing.T) {
 	t.Parallel()
 
 	monitors := []client.Monitor{
-		{ID: 101, Name: "api-prod"},
-		{ID: 102, Name: "api-prod-secondary"},
-		{ID: 103, Name: "api-prod"},
+		{
+			ID:      101,
+			Name:    "api-prod",
+			URL:     "https://example.com/health",
+			GroupID: 7,
+			Tags: []client.Tag{
+				{Name: "production"},
+				{Name: "api"},
+			},
+			CustomFields: map[string]string{"environment": "production", "team": "platform"},
+		},
+		{
+			ID:           102,
+			Name:         "api-prod-secondary",
+			URL:          "https://example.com/health",
+			GroupID:      7,
+			Tags:         []client.Tag{{Name: "production"}},
+			CustomFields: map[string]string{"environment": "production", "team": "support"},
+		},
+		{
+			ID:           103,
+			Name:         "api-prod",
+			URL:          "https://example.com/other",
+			GroupID:      9,
+			Tags:         []client.Tag{{Name: "production"}, {Name: "api"}},
+			CustomFields: map[string]string{"environment": "production", "team": "platform"},
+		},
 	}
 
-	matches := filterMonitors(monitors, monitorFilters{Name: "api-prod"})
-	if len(matches) != 2 {
-		t.Fatalf("expected two matches, got %#v", matches)
+	groupID := int64(7)
+	matches := filterMonitors(monitors, monitorFilters{
+		Name:         "api-prod",
+		URL:          "https://example.com/health",
+		GroupID:      &groupID,
+		Tags:         []string{"api"},
+		CustomFields: map[string]string{"team": "platform"},
+	})
+	if len(matches) != 1 {
+		t.Fatalf("expected one match, got %#v", matches)
 	}
-	if matches[0].ID != 101 || matches[1].ID != 103 {
+	if matches[0].ID != 101 {
 		t.Fatalf("unexpected matches %#v", matches)
 	}
 }
@@ -167,6 +204,33 @@ func TestMonitorDataSourceLookupRetriesEmptyNameResults(t *testing.T) {
 	}
 }
 
+func TestMonitorDataSourceLookupValidatesFiltersAfterIDRead(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.RequestURI() {
+		case "/monitors/101":
+			_, _ = w.Write([]byte(`{"id":101,"friendlyName":"eventual","type":"HTTP","url":"https://example.com","status":"UP","groupId":7}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.RequestURI())
+		}
+	}))
+	defer srv.Close()
+
+	apiClient := client.NewClient("test-key")
+	apiClient.SetBaseURL(srv.URL)
+	dataSource := monitorDataSource{client: apiClient}
+
+	groupID := int64(8)
+	_, err := dataSource.lookupMonitor(context.Background(), monitorFilters{ID: "101", GroupID: &groupID})
+	if err == nil {
+		t.Fatal("expected filter mismatch error")
+	}
+	if !strings.Contains(err.Error(), "does not match configured filters") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestMonitorDataSourceStateMapsNonSecretFields(t *testing.T) {
 	t.Parallel()
 
@@ -177,6 +241,10 @@ func TestMonitorDataSourceStateMapsNonSecretFields(t *testing.T) {
 		URL:     "https://example.com/health",
 		Status:  "UP",
 		GroupID: 12,
+		CustomFields: map[string]string{
+			"environment": "production",
+			"team":        "platform",
+		},
 		Tags: []client.Tag{
 			{Name: "Prod"},
 			{Name: " prod "},
@@ -212,5 +280,34 @@ func TestMonitorDataSourceStateMapsNonSecretFields(t *testing.T) {
 	}
 	if strings.Join(tags, ",") != "prod" {
 		t.Fatalf("unexpected tags %#v", tags)
+	}
+	if state.CustomFields.IsNull() || state.CustomFields.IsUnknown() {
+		t.Fatalf("unexpected custom_fields %#v", state.CustomFields)
+	}
+	var customFields map[string]string
+	diags = state.CustomFields.ElementsAs(t.Context(), &customFields, false)
+	if diags.HasError() {
+		t.Fatalf("unexpected custom field diagnostics: %v", diags.Errors())
+	}
+	if customFields["environment"] != "production" || customFields["team"] != "platform" {
+		t.Fatalf("unexpected custom fields %#v", customFields)
+	}
+}
+
+func TestFlattenMonitorsSortsByID(t *testing.T) {
+	t.Parallel()
+
+	monitors := []client.Monitor{
+		{ID: 300, Name: "third"},
+		{ID: 100, Name: "first"},
+		{ID: 200, Name: "second"},
+	}
+
+	tfMonitors, ids := flattenMonitors(t.Context(), monitors)
+	if strings.Join(ids, ",") != "100,200,300" {
+		t.Fatalf("unexpected ids %#v", ids)
+	}
+	if tfMonitors[0].Name.ValueString() != "first" || tfMonitors[1].Name.ValueString() != "second" || tfMonitors[2].Name.ValueString() != "third" {
+		t.Fatalf("unexpected monitors %#v", tfMonitors)
 	}
 }

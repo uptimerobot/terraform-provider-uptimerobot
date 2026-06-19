@@ -265,6 +265,62 @@ func TestClient_ListMonitorsByName_EncodesNameAndCursor(t *testing.T) {
 	}
 }
 
+func TestClient_ListMonitorsFiltered_EncodesStableFilters(t *testing.T) {
+	t.Parallel()
+
+	c := NewClient("test-key")
+	c.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.Method != http.MethodGet {
+				t.Fatalf("expected GET, got %s", req.Method)
+			}
+			if req.URL.Path != "/monitors" {
+				t.Fatalf("unexpected path %q", req.URL.Path)
+			}
+			q := req.URL.Query()
+			if q.Get("cursor") != "101" {
+				t.Fatalf("unexpected cursor query %#v", q)
+			}
+			if q.Get("name") != "api prod" {
+				t.Fatalf("unexpected name query %#v", q)
+			}
+			if q.Get("url") != "https://example.com/health" {
+				t.Fatalf("unexpected url query %#v", q)
+			}
+			if q.Get("tags") != "api,production" {
+				t.Fatalf("unexpected tags query %#v", q)
+			}
+			if q.Get("groupId") != "7" {
+				t.Fatalf("unexpected groupId query %#v", q)
+			}
+			if strings.Join(q["customField"], ",") != "environment:production,team:platform" {
+				t.Fatalf("unexpected customField query %#v", q)
+			}
+			return jsonResponse(http.StatusOK, `{"data":[{"id":102,"friendlyName":"api prod"}],"nextLink":null}`), nil
+		}),
+	}
+	c.SetBaseURL("https://example.test")
+
+	cursor := int64(101)
+	groupID := int64(7)
+	monitors, err := c.ListMonitorsFiltered(context.Background(), MonitorListFilters{
+		Name:    " api prod ",
+		URL:     " https://example.com/health ",
+		Tags:    []string{"production", "api", "api", " "},
+		GroupID: &groupID,
+		CustomFields: map[string]string{
+			"team":        "platform",
+			"environment": "production",
+		},
+	}, &cursor)
+	if err != nil {
+		t.Fatalf("ListMonitorsFiltered returned error: %v", err)
+	}
+	if len(monitors.Data) != 1 || monitors.Data[0].ID != 102 {
+		t.Fatalf("unexpected monitors %#v", monitors.Data)
+	}
+}
+
 func TestClient_GetMonitorsByName_Paginates(t *testing.T) {
 	t.Parallel()
 
