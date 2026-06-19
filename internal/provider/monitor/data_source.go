@@ -433,10 +433,6 @@ func listMonitorsForLookup(ctx context.Context, apiClient *client.Client, filter
 	return nil, lastErr
 }
 
-func (d *monitorDataSource) getMonitorsForLookup(ctx context.Context, filters monitorFilters) ([]client.Monitor, error) {
-	return getMonitorsForLookup(ctx, d.client, filters)
-}
-
 func getMonitorsForLookup(ctx context.Context, apiClient *client.Client, filters monitorFilters) ([]client.Monitor, error) {
 	return apiClient.GetMonitorsFiltered(ctx, monitorClientFilters(filters))
 }
@@ -716,16 +712,7 @@ func flattenMonitors(ctx context.Context, monitors []client.Monitor) ([]monitorD
 	ids := make([]string, 0, len(monitors))
 	for i := range monitors {
 		state := monitorState(ctx, &monitors[i])
-		tfMonitors = append(tfMonitors, monitorDataSourceTF{
-			ID:           state.ID,
-			Name:         state.Name,
-			Type:         state.Type,
-			URL:          state.URL,
-			Status:       state.Status,
-			Tags:         state.Tags,
-			GroupID:      state.GroupID,
-			CustomFields: state.CustomFields,
-		})
+		tfMonitors = append(tfMonitors, monitorDataSourceTF(state))
 		ids = append(ids, state.ID.ValueString())
 	}
 	return tfMonitors, ids
