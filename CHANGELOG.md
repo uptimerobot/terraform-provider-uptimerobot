@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 1.9.0 — 2026-06-19
+
 ### Added
 
 - Added `uptimerobot_alert_contact` resource for managing personal email and mobile app push alert contacts through API v3.
