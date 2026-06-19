@@ -1,0 +1,20 @@
+---
+page_title: "uptimerobot_monitors Data Source - uptimerobot"
+subcategory: ""
+description: |-
+  Lists existing UptimeRobot monitors.
+---
+
+# uptimerobot_monitors (Data Source)
+
+Lists existing UptimeRobot monitors with stable optional filters without managing them.
+
+Use this when monitors are managed in another Terraform state, created through the UI/API, or otherwise owned outside the current configuration. The data source returns sorted monitor IDs and non-secret monitor metadata so existing monitor sets can be attached to public status pages, maintenance windows, or other Terraform expressions without importing each monitor as a resource.
+
+Configured `tags` and `custom_fields` are containment filters: all configured values must match, but returned monitors may have additional tags or custom fields.
+
+## Example Usage
+
+{{tffile "examples/data-sources/uptimerobot_monitors/data-source.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}

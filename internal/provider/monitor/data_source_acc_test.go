@@ -13,22 +13,22 @@ import (
 	provideracctest "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/acctest"
 )
 
-func testAccMonitorDataSourceResourceConfig(name, tag string) string {
-	url := provideracctest.UniqueURL(name)
+func testAccMonitorDataSourceResourceConfig(name, url, tag string, customFields map[string]string) string {
 	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = %q
-  url      = %q
-  type     = "HTTP"
-  interval = 300
-  timeout  = 30
-  tags     = [%q]
+  name          = %q
+  url           = %q
+  type          = "HTTP"
+  interval      = 300
+  timeout       = 30
+  tags          = [%q]
+  custom_fields = %s
 }
-`, name, url, tag)
+`, name, url, tag, provideracctest.HCLStringMap(customFields))
 }
 
-func testAccMonitorDataSourceConfig(name, tag string) string {
-	return testAccMonitorDataSourceResourceConfig(name, tag) + `
+func testAccMonitorDataSourceConfig(name, url, tag string, customFields map[string]string) string {
+	return testAccMonitorDataSourceResourceConfig(name, url, tag, customFields) + fmt.Sprintf(`
 data "uptimerobot_monitor" "by_id" {
   id = uptimerobot_monitor.test.id
 
@@ -40,7 +40,27 @@ data "uptimerobot_monitor" "by_name" {
 
   depends_on = [uptimerobot_monitor.test]
 }
-`
+
+data "uptimerobot_monitor" "by_filters" {
+  name          = uptimerobot_monitor.test.name
+  url           = uptimerobot_monitor.test.url
+  tags          = [%q]
+  group_id      = 0
+  custom_fields = %s
+
+  depends_on = [uptimerobot_monitor.test]
+}
+
+data "uptimerobot_monitors" "by_filters" {
+  name          = uptimerobot_monitor.test.name
+  url           = uptimerobot_monitor.test.url
+  tags          = [%q]
+  group_id      = 0
+  custom_fields = %s
+
+  depends_on = [uptimerobot_monitor.test]
+}
+`, tag, provideracctest.HCLStringMap(customFields), tag, provideracctest.HCLStringMap(customFields))
 }
 
 func testAccCheckMonitorVisibleInList(name string) resource.TestCheckFunc {
@@ -76,7 +96,12 @@ func testAccCheckMonitorVisibleInList(name string) resource.TestCheckFunc {
 
 func TestAccMonitorDataSource(t *testing.T) {
 	name := provideracctest.RandomName("tf-acc-monitor-ds")
+	url := provideracctest.UniqueURL(name)
 	tag := "tf-acc-monitor-ds"
+	customFields := map[string]string{
+		"environment": "acceptance",
+		"testcase":    tag,
+	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { provideracctest.PreCheck(t) },
@@ -84,14 +109,14 @@ func TestAccMonitorDataSource(t *testing.T) {
 		CheckDestroy:             provideracctest.CheckMonitorDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccMonitorDataSourceResourceConfig(name, tag),
+				Config: testAccMonitorDataSourceResourceConfig(name, url, tag, customFields),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "name", name),
 					testAccCheckMonitorVisibleInList(name),
 				),
 			},
 			{
-				Config: testAccMonitorDataSourceConfig(name, tag),
+				Config: testAccMonitorDataSourceConfig(name, url, tag, customFields),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrPair(
 						"data.uptimerobot_monitor.by_id",
@@ -111,6 +136,35 @@ func TestAccMonitorDataSource(t *testing.T) {
 					resource.TestCheckTypeSetElemAttr("data.uptimerobot_monitor.by_name", "tags.*", tag),
 					resource.TestCheckResourceAttrSet("data.uptimerobot_monitor.by_name", "status"),
 					resource.TestCheckResourceAttrSet("data.uptimerobot_monitor.by_name", "group_id"),
+					resource.TestCheckResourceAttrPair(
+						"data.uptimerobot_monitor.by_filters",
+						"id",
+						"uptimerobot_monitor.test",
+						"id",
+					),
+					resource.TestCheckResourceAttr("data.uptimerobot_monitor.by_filters", "url", url),
+					resource.TestCheckResourceAttr("data.uptimerobot_monitor.by_filters", "custom_fields.environment", "acceptance"),
+					resource.TestCheckResourceAttr("data.uptimerobot_monitor.by_filters", "custom_fields.testcase", tag),
+					resource.TestCheckResourceAttr("data.uptimerobot_monitors.by_filters", "ids.#", "1"),
+					resource.TestCheckResourceAttrPair(
+						"data.uptimerobot_monitors.by_filters",
+						"ids.0",
+						"uptimerobot_monitor.test",
+						"id",
+					),
+					resource.TestCheckResourceAttr("data.uptimerobot_monitors.by_filters", "monitors.#", "1"),
+					resource.TestCheckResourceAttrPair(
+						"data.uptimerobot_monitors.by_filters",
+						"monitors.0.id",
+						"uptimerobot_monitor.test",
+						"id",
+					),
+					resource.TestCheckResourceAttr("data.uptimerobot_monitors.by_filters", "monitors.0.name", name),
+					resource.TestCheckResourceAttr("data.uptimerobot_monitors.by_filters", "monitors.0.url", url),
+					resource.TestCheckResourceAttr("data.uptimerobot_monitors.by_filters", "monitors.0.tags.#", "1"),
+					resource.TestCheckTypeSetElemAttr("data.uptimerobot_monitors.by_filters", "monitors.0.tags.*", tag),
+					resource.TestCheckResourceAttr("data.uptimerobot_monitors.by_filters", "monitors.0.custom_fields.environment", "acceptance"),
+					resource.TestCheckResourceAttr("data.uptimerobot_monitors.by_filters", "monitors.0.custom_fields.testcase", tag),
 				),
 			},
 		},

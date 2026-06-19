@@ -4,11 +4,16 @@
 
 ### Added
 
+- Added `uptimerobot_monitors` data source for listing existing monitors with stable filters and sorted IDs.
 - Added `uptimerobot_alert_contact` resource for managing personal email and mobile app push alert contacts through API v3.
 - Added `is_active` support to `uptimerobot_alert_contact` for pausing and reactivating alert contacts.
 - Added `tag_ids` support to `uptimerobot_psp` for tag-based public status page monitor selection.
 - Added `auto_add_monitors` support to `uptimerobot_psp` for automatically including all current and future monitors.
 - Added `monitor_ids` support to `uptimerobot_maintenance_window` for assigning maintenance windows to specific monitors.
+
+### Changed
+
+- Enhanced `uptimerobot_monitor` data source with `url`, `tags`, `group_id`, and `custom_fields` filters plus `custom_fields` output.
 
 ## 1.8.1 — 2026-06-16
 
