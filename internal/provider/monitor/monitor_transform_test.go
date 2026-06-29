@@ -468,17 +468,25 @@ func TestBuildUpdateRequest_HeartbeatOmitsServerGeneratedURL(t *testing.T) {
 	}
 }
 
-func TestBuildUpdateRequest_APIMonitorOmitsLegacyHEADMethodWhenConfigOmitted(t *testing.T) {
+func TestBuildUpdateRequest_APIMonitorOmitsLegacyHEADMethodWhenHTTPMethodOmitted(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
+	config := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"ip_version":                 types.StringNull(),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
+	})
 	plan := monitorResourceModel{
 		Type:           types.StringValue(MonitorTypeAPI),
 		Name:           types.StringValue("api"),
 		URL:            types.StringValue("https://example.com/api"),
 		Interval:       types.Int64Value(300),
 		HTTPMethodType: types.StringValue("HEAD"),
-		Config:         types.ObjectNull(configObjectType().AttrTypes),
+		Config:         config,
 	}
 	state := monitorResourceModel{
 		HTTPMethodType: types.StringValue("HEAD"),
@@ -486,7 +494,7 @@ func TestBuildUpdateRequest_APIMonitorOmitsLegacyHEADMethodWhenConfigOmitted(t *
 	}
 	resp := &resource.UpdateResponse{}
 
-	req, effMethod := buildUpdateRequest(ctx, plan, state, true, true, true, resp)
+	req, effMethod := buildUpdateRequest(ctx, plan, state, false, true, true, resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 	}
@@ -495,6 +503,10 @@ func TestBuildUpdateRequest_APIMonitorOmitsLegacyHEADMethodWhenConfigOmitted(t *
 	}
 	if req.HTTPMethodType != "" {
 		t.Fatalf("expected update request to omit legacy HEAD API method, got %q", req.HTTPMethodType)
+	}
+
+	if !shouldSendHTTPMethodTypeOnUpdate(plan.Type, effMethod, false, false, false) {
+		t.Fatalf("expected explicit HEAD method to be sent when http_method_type is configured")
 	}
 }
 

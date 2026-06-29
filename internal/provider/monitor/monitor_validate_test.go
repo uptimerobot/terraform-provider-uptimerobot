@@ -195,9 +195,25 @@ func TestValidateCreateHighLevel_UDPType_RejectsUnknownPort(t *testing.T) {
 
 func TestValidateCreateHighLevel_APIMonitorRejectsHEADMethod(t *testing.T) {
 	resp := &resource.CreateResponse{}
+	check := types.ObjectValueMust(apiAssertionCheckObjectType().AttrTypes, map[string]attr.Value{
+		"property":   types.StringValue("$.status"),
+		"comparison": types.StringValue("equals"),
+		"target":     jsontypes.NewNormalizedValue(`"ok"`),
+	})
 	plan := monitorResourceModel{
 		Type:           types.StringValue(MonitorTypeAPI),
 		HTTPMethodType: types.StringValue("HEAD"),
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"ip_version":                 types.StringNull(),
+			"api_assertions": types.ObjectValueMust(apiAssertionsObjectType().AttrTypes, map[string]attr.Value{
+				"logic":  types.StringValue("AND"),
+				"checks": types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{check}),
+			}),
+			"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries": types.Int64Unknown(),
+		}),
 	}
 
 	ok := validateCreateHighLevel(context.TODO(), plan, resp)
