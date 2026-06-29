@@ -198,7 +198,7 @@ func monitorSchema(version int64, includeApplicationErrorRetries bool) schema.Sc
 				},
 			},
 			"http_method_type": schema.StringAttribute{
-				Description: "The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS)",
+				Description: "The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS). HEAD is not supported for API monitors; use HTTP monitors for status/header-only HEAD checks.",
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.String{
