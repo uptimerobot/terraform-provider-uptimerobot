@@ -498,6 +498,73 @@ func TestBuildUpdateRequest_APIMonitorOmitsLegacyHEADMethodWhenConfigOmitted(t *
 	}
 }
 
+func TestBuildUpdateRequest_APIMonitorOmitsLegacyNullMethodWhenConfigOmitted(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	plan := monitorResourceModel{
+		Type:           types.StringValue(MonitorTypeAPI),
+		Name:           types.StringValue("api"),
+		URL:            types.StringValue("https://example.com/api"),
+		Interval:       types.Int64Value(300),
+		HTTPMethodType: types.StringNull(),
+		PostValueData:  jsontypes.NewNormalizedNull(),
+		PostValueKV:    types.MapNull(types.StringType),
+		Config:         types.ObjectNull(configObjectType().AttrTypes),
+	}
+	state := monitorResourceModel{
+		HTTPMethodType: types.StringNull(),
+		Config:         types.ObjectNull(configObjectType().AttrTypes),
+	}
+	resp := &resource.UpdateResponse{}
+
+	req, stateMethod := buildUpdateRequest(ctx, plan, state, true, true, true, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+	if stateMethod != "" {
+		t.Fatalf("expected state method to remain unmanaged, got %q", stateMethod)
+	}
+	if req.HTTPMethodType != "" {
+		t.Fatalf("expected update request to omit legacy null API method, got %q", req.HTTPMethodType)
+	}
+}
+
+func TestBuildUpdateRequest_APIMonitorSendsPOSTWhenBodyConfiguredAndMethodOmitted(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	plan := monitorResourceModel{
+		Type:           types.StringValue(MonitorTypeAPI),
+		Name:           types.StringValue("api"),
+		URL:            types.StringValue("https://example.com/api"),
+		Interval:       types.Int64Value(300),
+		HTTPMethodType: types.StringNull(),
+		PostValueData:  jsontypes.NewNormalizedValue(`{"status":"ok"}`),
+		PostValueKV:    types.MapNull(types.StringType),
+		Config:         types.ObjectNull(configObjectType().AttrTypes),
+	}
+	state := monitorResourceModel{
+		HTTPMethodType: types.StringNull(),
+		Config:         types.ObjectNull(configObjectType().AttrTypes),
+	}
+	resp := &resource.UpdateResponse{}
+
+	req, stateMethod := buildUpdateRequest(ctx, plan, state, true, true, true, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+	if stateMethod != "POST" {
+		t.Fatalf("expected state method POST for body update, got %q", stateMethod)
+	}
+	if req.HTTPMethodType != "POST" {
+		t.Fatalf("expected update request to send POST for body update, got %q", req.HTTPMethodType)
+	}
+	if req.PostValueType != PostTypeRawJSON {
+		t.Fatalf("expected RAW_JSON post type, got %q", req.PostValueType)
+	}
+}
+
 func TestFlattenConfigToState_DNSFromAPI_PopulatesSets(t *testing.T) {
 	t.Parallel()
 

@@ -302,8 +302,9 @@ func buildUpdateRequest(
 	hasJSON := !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull()
 	hasKV := !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull()
 	effMethod := inferEffectiveMethod(plan.HTTPMethodType, plan.Type, hasJSON, hasKV)
+	stateMethod := stateHTTPMethodTypeOnUpdate(plan.Type, plan.HTTPMethodType, effMethod, httpMethodTypeOmitted, hasJSON, hasKV)
 	if isMethodHTTPLike(plan.Type) {
-		if shouldSendHTTPMethodTypeOnUpdate(plan.Type, effMethod, httpMethodTypeOmitted) {
+		if shouldSendHTTPMethodTypeOnUpdate(plan.Type, effMethod, httpMethodTypeOmitted, hasJSON, hasKV) {
 			req.HTTPMethodType = effMethod
 		}
 		setBodyOnUpdate(ctx, plan, effMethod, req, resp)
@@ -411,16 +412,32 @@ func buildUpdateRequest(
 	// Config
 	expandOrClearConfigOnUpdate(ctx, plan, state.Config, configOmitted, applicationErrorRetriesOmitted, req, resp)
 
-	return req, effMethod
+	return req, stateMethod
 }
 
-func shouldSendHTTPMethodTypeOnUpdate(monType types.String, effMethod string, httpMethodTypeOmitted bool) bool {
-	if strings.ToUpper(stringOrEmpty(monType)) == MonitorTypeAPI &&
-		httpMethodTypeOmitted &&
-		strings.EqualFold(strings.TrimSpace(effMethod), "HEAD") {
+func shouldSendHTTPMethodTypeOnUpdate(monType types.String, effMethod string, httpMethodTypeOmitted bool, hasJSON, hasKV bool) bool {
+	if strings.ToUpper(stringOrEmpty(monType)) == MonitorTypeAPI && httpMethodTypeOmitted && !hasJSON && !hasKV {
 		return false
 	}
 	return effMethod != ""
+}
+
+func stateHTTPMethodTypeOnUpdate(
+	monType types.String,
+	method types.String,
+	effMethod string,
+	httpMethodTypeOmitted bool,
+	hasJSON bool,
+	hasKV bool,
+) string {
+	if strings.ToUpper(stringOrEmpty(monType)) == MonitorTypeAPI &&
+		httpMethodTypeOmitted &&
+		!hasJSON &&
+		!hasKV &&
+		strings.TrimSpace(stringOrEmpty(method)) == "" {
+		return ""
+	}
+	return effMethod
 }
 
 func configAttributeOmitted(config basetypes.ObjectValue, name string) bool {
