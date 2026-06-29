@@ -749,8 +749,8 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `keyword_case_type` (String) Case sensitivity for keyword. One of: CaseSensitive, CaseInsensitive. Omit to leave server as-is.
 - `keyword_type` (String) The type of keyword check (ALERT_EXISTS, ALERT_NOT_EXISTS)
 - `keyword_value` (String) The keyword to search for
-- `maintenance_window_ids` (Set of Number) Today API v3 behavior on update, if maintenance_window_ids is omitted or set to [] they both clear maintenance windows.
-					Recommended: To clear, set maintenance_window_ids = []. To manage them, set the exact IDs.
+- `maintenance_window_ids` (Set of Number) Omit maintenance_window_ids or set it to null to preserve existing maintenance windows on update.
+					To clear maintenance windows, set maintenance_window_ids = []. To manage them, set the exact IDs.
 - `port` (Number) The port to monitor
 - `post_value_data` (String) JSON body (use jsonencode). Mutually exclusive with post_value_kv.
 - `post_value_kv` (Map of String) Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.
