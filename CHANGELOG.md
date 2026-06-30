@@ -1,5 +1,8 @@
 ## Unreleased
 
+### Fixed
+- Fixed MS Teams integration creation by correcting the `type` API payload from `"MS Teams"` to `"MSTeams"`.
+
 ## 1.9.0 — 2026-06-19
 
 ### Added

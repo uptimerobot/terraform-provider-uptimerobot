@@ -15,7 +15,7 @@ func TestFilterIntegrationsExactNameAndCanonicalType(t *testing.T) {
 		{ID: 101, Name: "Ops", Type: "Slack"},
 		{ID: 102, Name: "Ops", Type: "Webhook"},
 		{ID: 103, Name: "ops", Type: "Slack"},
-		{ID: 104, Name: "Ops", Type: "MS Teams"},
+		{ID: 104, Name: "Ops", Type: "MSTeams"},
 	}
 
 	matches := filterIntegrations(integrations, "Ops", "msteams")
