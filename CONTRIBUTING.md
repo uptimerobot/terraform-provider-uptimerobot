@@ -3,7 +3,7 @@
 Thanks for helping improve the provider! This doc shows how to build, test, and propose changes.
 
 ## Prerequisites
-- Go **1.24.x**
+- Go version from `go.mod` (currently **1.26.4**)
 - Terraform **≥ 1.5** or OpenTofu **≥ 1.7**
 - UptimeRobot **v3** API key (for acceptance tests)
 
@@ -53,6 +53,9 @@ Example:
 ## Running tests
 
 ### Unit tests
+`make test`
+
+For a race-enabled run:
 `go test ./... -race`
 
 ### Acceptance tests with real API interaction
@@ -67,10 +70,10 @@ Use `make testacc` to run whole test suite
 
 They can be slow and sometimes flaky due to network and API interactions and connections.
 Or use
-`go test ./internal/provider -run 'Acc' -v -timeout 45m -parallel=1`
+`go test ./internal/provider/... -tags=acceptance -run '^TestAcc' -v -timeout 60m -p=1 -parallel=1`
 
 ### Single test execution
-`go test ./internal/provider -run '^TestAcc_Monitor_Name_HTMLNormalization$' -v -timeout 45m -parallel=1`
+`go test ./internal/provider/monitor -tags=acceptance -run '^TestAcc_Monitor_NameURL_HTMLNormalization$' -v -timeout 60m -p=1 -parallel=1`
 
 ## Debugging
 - Terraform/OpenTofu logs:
