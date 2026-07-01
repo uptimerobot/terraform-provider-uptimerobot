@@ -78,7 +78,7 @@ func TransformIntegrationTypeToAPI(terraformType string) string {
 	case "pagerduty", "pager duty":
 		return "PagerDuty"
 	case "googlechat", "google chat":
-		return "Google Chat"
+		return "GoogleChat"
 	case "splunk":
 		return "Splunk"
 	case "mattermost":
@@ -109,7 +109,7 @@ func TransformIntegrationTypeFromAPI(apiType string) string {
 		return "zapier"
 	case "PagerDuty":
 		return "pagerduty"
-	case "Google Chat":
+	case "GoogleChat", "Google Chat":
 		return "googlechat"
 	case "Splunk":
 		return "splunk"

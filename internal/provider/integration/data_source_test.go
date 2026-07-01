@@ -27,6 +27,22 @@ func TestFilterIntegrationsExactNameAndCanonicalType(t *testing.T) {
 	}
 }
 
+func TestTransformIntegrationTypeGoogleChatUsesAPIEnumKey(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{"googlechat", "google chat"} {
+		if got := TransformIntegrationTypeToAPI(input); got != "GoogleChat" {
+			t.Fatalf("TransformIntegrationTypeToAPI(%q) = %q, want GoogleChat", input, got)
+		}
+	}
+
+	for _, input := range []string{"GoogleChat", "Google Chat"} {
+		if got := TransformIntegrationTypeFromAPI(input); got != "googlechat" {
+			t.Fatalf("TransformIntegrationTypeFromAPI(%q) = %q, want googlechat", input, got)
+		}
+	}
+}
+
 func TestIntegrationLookupSelectorsRequireSelectorAndValidateID(t *testing.T) {
 	t.Parallel()
 
