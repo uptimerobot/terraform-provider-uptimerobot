@@ -17,24 +17,24 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@v6.5.0
+        uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
 
       - name: Import GPG Key
         id: import_gpg
-        uses: crazy-max/ghaction-import-gpg@v7.0.0
+        uses: crazy-max/ghaction-import-gpg@v7
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7.2.3
+        uses: goreleaser/goreleaser-action@v7
         with:
           args: release --clean
         env:
