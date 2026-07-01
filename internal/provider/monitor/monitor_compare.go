@@ -797,7 +797,7 @@ func equalComparable(want, got monComparable) bool {
 	if want.Type != nil && (got.Type == nil || *want.Type != *got.Type) {
 		return false
 	}
-	if want.URL != nil && (got.URL == nil || *want.URL != *got.URL) {
+	if want.URL != nil && !equalComparableURL(want, got) {
 		return false
 	}
 	if want.Name != nil && (got.Name == nil || *want.Name != *got.Name) {
@@ -909,6 +909,14 @@ func equalComparable(want, got monComparable) bool {
 	return true
 }
 
+func equalComparableURL(want, got monComparable) bool {
+	if got.URL == nil {
+		return false
+	}
+	monitorType := comparableMonitorType(want, got)
+	return monitorURLsEquivalentForState(monitorType, *want.URL, *got.URL)
+}
+
 // fieldsStillDifferent shows different of what we wanted and what we got from the API for debugging and logging.
 func fieldsStillDifferent(want, got monComparable) []string {
 	var f []string
@@ -919,7 +927,7 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	if want.Name != nil && (got.Name == nil || *want.Name != *got.Name) {
 		f = append(f, "name")
 	}
-	if want.URL != nil && (got.URL == nil || *want.URL != *got.URL) {
+	if want.URL != nil && !equalComparableURL(want, got) {
 		f = append(f, "url")
 	}
 	if want.Interval != nil && (got.Interval == nil || *want.Interval != *got.Interval) {

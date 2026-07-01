@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -706,6 +707,42 @@ func normalizeIPVersionForAPI(in string) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func monitorURLForState(monitorType string, configured types.String, apiURL string) types.String {
+	apiURL = unescapeHTML(apiURL)
+	if configured.IsNull() || configured.IsUnknown() {
+		return types.StringValue(apiURL)
+	}
+
+	configuredURL := unescapeHTML(configured.ValueString())
+	if monitorURLsEquivalentForState(monitorType, configuredURL, apiURL) {
+		return types.StringValue(configuredURL)
+	}
+
+	return types.StringValue(apiURL)
+}
+
+func monitorURLsEquivalentForState(monitorType, configuredURL, apiURL string) bool {
+	switch strings.ToUpper(strings.TrimSpace(monitorType)) {
+	case MonitorTypePING, MonitorTypePORT:
+		return monitorURLTargetWithoutScheme(configuredURL) == monitorURLTargetWithoutScheme(apiURL)
+	default:
+		return strings.TrimSpace(configuredURL) == strings.TrimSpace(apiURL)
+	}
+}
+
+func monitorURLTargetWithoutScheme(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(raw)
+	if err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		return parsed.Host + parsed.RequestURI()
+	}
+	return raw
 }
 
 // setStringsRespectingShape keeps empty-set vs null consistent with user's intent.

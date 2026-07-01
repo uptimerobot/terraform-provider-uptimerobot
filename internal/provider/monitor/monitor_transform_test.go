@@ -203,6 +203,80 @@ func TestBuildCreateRequest_HeartbeatOmitsURL(t *testing.T) {
 	}
 }
 
+func TestBuildStateAfterCreate_PingPreservesEquivalentConfiguredURL(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	plan := monitorResourceModel{
+		Type:     types.StringValue(MonitorTypePING),
+		Name:     types.StringValue("ping"),
+		URL:      types.StringValue("https://example.com/ping"),
+		Interval: types.Int64Value(300),
+	}
+	resp := &resource.CreateResponse{}
+
+	got := (&monitorResource{}).buildStateAfterCreate(ctx, plan, &client.Monitor{
+		Name:    "ping",
+		URL:     "example.com/ping",
+		Type:    MonitorTypePING,
+		Status:  "STARTED",
+		Timeout: 30,
+	}, "", resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+	if got.URL.ValueString() != "https://example.com/ping" {
+		t.Fatalf("expected configured URL to be preserved, got %q", got.URL.ValueString())
+	}
+}
+
+func TestApplyUpdatedMonitorToState_PortPreservesEquivalentConfiguredURL(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	plan := monitorResourceModel{
+		Type:     types.StringValue(MonitorTypePORT),
+		Name:     types.StringValue("port"),
+		URL:      types.StringValue("https://example.com/port"),
+		Interval: types.Int64Value(300),
+	}
+	resp := &resource.UpdateResponse{}
+
+	got := applyUpdatedMonitorToState(ctx, plan, monitorResourceModel{}, &client.Monitor{
+		Name:    "port",
+		URL:     "example.com/port",
+		Type:    MonitorTypePORT,
+		Status:  "STARTED",
+		Timeout: 30,
+	}, "", false, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+	if got.URL.ValueString() != "https://example.com/port" {
+		t.Fatalf("expected configured URL to be preserved, got %q", got.URL.ValueString())
+	}
+}
+
+func TestReadApplyIdentity_PingPreservesEquivalentConfiguredURL(t *testing.T) {
+	t.Parallel()
+
+	state := monitorResourceModel{
+		Type: types.StringValue(MonitorTypePING),
+		URL:  types.StringValue("https://example.com/ping"),
+	}
+
+	readApplyIdentity(&state, &client.Monitor{
+		ID:     123,
+		Name:   "ping",
+		URL:    "example.com/ping",
+		Status: "STARTED",
+	})
+
+	if state.URL.ValueString() != "https://example.com/ping" {
+		t.Fatalf("expected configured URL to be preserved, got %q", state.URL.ValueString())
+	}
+}
+
 func TestBuildCreateRequest_CustomFields(t *testing.T) {
 	t.Parallel()
 

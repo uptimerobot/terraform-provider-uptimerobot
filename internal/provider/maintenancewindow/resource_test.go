@@ -261,6 +261,13 @@ func TestValidateRuleMonitorIDsAutoAddConflict(t *testing.T) {
 				MonitorIDs:      setInt64(123, 456),
 			},
 		},
+		{
+			name: "unknown_monitor_id_skips_validation",
+			cfg: maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolValue(false),
+				MonitorIDs:      setInt64Values(types.Int64Unknown()),
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -443,6 +450,72 @@ func TestApplyMaintenanceWindowMonitorIDsUpdate(t *testing.T) {
 			t.Fatalf("expected auto_add_monitors=false settle target, got=%v", expectedAutoAdd)
 		}
 	})
+
+	t.Run("rejects_unknown_plan_values_before_payload", func(t *testing.T) {
+		t.Parallel()
+
+		updateReq := &client.UpdateMaintenanceWindowRequest{}
+		monitorIDs, expectedAutoAdd, shouldWait, diags := applyMaintenanceWindowMonitorIDsUpdate(
+			ctx,
+			maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolNull(),
+				MonitorIDs:      setInt64Values(types.Int64Unknown()),
+			},
+			maintenanceWindowResourceModel{
+				MonitorIDs: setInt64Values(types.Int64Unknown()),
+			},
+			updateReq,
+		)
+
+		if !diags.HasError() {
+			t.Fatal("expected diagnostics for unknown plan monitor_ids")
+		}
+		if shouldWait {
+			t.Fatal("did not expect settle wait for invalid monitor_ids plan")
+		}
+		if monitorIDs != nil {
+			t.Fatalf("expected no monitor IDs, got=%v", monitorIDs)
+		}
+		if updateReq.MonitorIDs != nil {
+			t.Fatalf("expected monitorIds payload to be omitted, got=%v", *updateReq.MonitorIDs)
+		}
+		if expectedAutoAdd != nil {
+			t.Fatalf("expected no auto_add_monitors settle target, got=%v", *expectedAutoAdd)
+		}
+	})
+
+	t.Run("rejects_resolved_auto_marker_with_specific_ids", func(t *testing.T) {
+		t.Parallel()
+
+		updateReq := &client.UpdateMaintenanceWindowRequest{}
+		monitorIDs, expectedAutoAdd, shouldWait, diags := applyMaintenanceWindowMonitorIDsUpdate(
+			ctx,
+			maintenanceWindowResourceModel{
+				AutoAddMonitors: types.BoolNull(),
+				MonitorIDs:      setInt64(0, 123),
+			},
+			maintenanceWindowResourceModel{
+				MonitorIDs: setInt64Values(types.Int64Unknown()),
+			},
+			updateReq,
+		)
+
+		if !diags.HasError() {
+			t.Fatal("expected diagnostics for invalid resolved monitor_ids")
+		}
+		if shouldWait {
+			t.Fatal("did not expect settle wait for invalid monitor_ids plan")
+		}
+		if monitorIDs != nil {
+			t.Fatalf("expected no monitor IDs, got=%v", monitorIDs)
+		}
+		if updateReq.MonitorIDs != nil {
+			t.Fatalf("expected monitorIds payload to be omitted, got=%v", *updateReq.MonitorIDs)
+		}
+		if expectedAutoAdd != nil {
+			t.Fatalf("expected no auto_add_monitors settle target, got=%v", *expectedAutoAdd)
+		}
+	})
 }
 
 func setInt64(values ...int64) types.Set {
@@ -450,6 +523,12 @@ func setInt64(values ...int64) types.Set {
 	for _, value := range values {
 		elements = append(elements, types.Int64Value(value))
 	}
+	return setInt64Values(elements...)
+}
+
+func setInt64Values(values ...attr.Value) types.Set {
+	elements := make([]attr.Value, 0, len(values))
+	elements = append(elements, values...)
 	return types.SetValueMust(types.Int64Type, elements)
 }
 

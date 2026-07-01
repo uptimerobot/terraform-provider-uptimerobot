@@ -90,6 +90,29 @@ func TestEqualComparable_UsesGroupID(t *testing.T) {
 	}
 }
 
+func TestEqualComparable_TreatsPingPortURLsWithoutSchemeAsEquivalent(t *testing.T) {
+	t.Parallel()
+
+	ping := MonitorTypePING
+	port := MonitorTypePORT
+	httpType := MonitorTypeHTTP
+	configured := "https://example.com/check"
+	apiURL := "example.com/check"
+
+	if !equalComparable(monComparable{Type: &ping, URL: &configured}, monComparable{Type: &ping, URL: &apiURL}) {
+		t.Fatal("expected PING URL with scheme to match API host-only URL")
+	}
+	if !equalComparable(monComparable{Type: &port, URL: &configured}, monComparable{Type: &port, URL: &apiURL}) {
+		t.Fatal("expected PORT URL with scheme to match API host-only URL")
+	}
+	if equalComparable(monComparable{Type: &httpType, URL: &configured}, monComparable{Type: &httpType, URL: &apiURL}) {
+		t.Fatal("did not expect HTTP URL with scheme to match host-only URL")
+	}
+	if diff := fieldsStillDifferent(monComparable{Type: &ping, URL: &configured}, monComparable{Type: &ping, URL: &apiURL}); len(diff) != 0 {
+		t.Fatalf("expected no differing fields for equivalent PING URLs, got %v", diff)
+	}
+}
+
 func TestEqualComparable_UsesCustomFields(t *testing.T) {
 	t.Parallel()
 
