@@ -42,6 +42,39 @@ func TestValidateNoHTMLEntities_AllowsLiteralAmpersandToken(t *testing.T) {
 	}
 }
 
+func TestValidateAPIHTTPMethodType_RejectsHEADForAPIMonitor(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateAPIHTTPMethodType(MonitorTypeAPI, types.StringValue("HEAD"), &resp.Diagnostics)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error for HEAD API monitor method")
+	}
+}
+
+func TestValidateAPIHTTPMethodType_AllowsHEADForHTTPMonitor(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateAPIHTTPMethodType(MonitorTypeHTTP, types.StringValue("HEAD"), &resp.Diagnostics)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for HEAD HTTP monitor method, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateAPIHTTPMethodType_AllowsOPTIONSForAPIMonitor(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateAPIHTTPMethodType(MonitorTypeAPI, types.StringValue("OPTIONS"), &resp.Diagnostics)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for OPTIONS API monitor method, got: %v", resp.Diagnostics)
+	}
+}
+
 func TestValidateURL_HeartbeatOmittedURL(t *testing.T) {
 	t.Parallel()
 
@@ -160,6 +193,39 @@ func TestValidateCreateHighLevel_UDPType_RejectsUnknownPort(t *testing.T) {
 	}
 }
 
+func TestValidateCreateHighLevel_APIMonitorRejectsHEADMethod(t *testing.T) {
+	resp := &resource.CreateResponse{}
+	check := types.ObjectValueMust(apiAssertionCheckObjectType().AttrTypes, map[string]attr.Value{
+		"property":   types.StringValue("$.status"),
+		"comparison": types.StringValue("equals"),
+		"target":     jsontypes.NewNormalizedValue(`"ok"`),
+	})
+	plan := monitorResourceModel{
+		Type:           types.StringValue(MonitorTypeAPI),
+		HTTPMethodType: types.StringValue("HEAD"),
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"ip_version":                 types.StringNull(),
+			"api_assertions": types.ObjectValueMust(apiAssertionsObjectType().AttrTypes, map[string]attr.Value{
+				"logic":  types.StringValue("AND"),
+				"checks": types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{check}),
+			}),
+			"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+			"application_error_retries": types.Int64Unknown(),
+		}),
+	}
+
+	ok := validateCreateHighLevel(context.TODO(), plan, resp)
+
+	if ok {
+		t.Fatalf("expected ok=false for HEAD API monitor method")
+	}
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected diagnostics error for HEAD API monitor method")
+	}
+}
+
 func TestValidateUpdateHighLevel_PortType_RejectsUnknownPort(t *testing.T) {
 	resp := &resource.UpdateResponse{}
 	plan := monitorResourceModel{
@@ -167,7 +233,7 @@ func TestValidateUpdateHighLevel_PortType_RejectsUnknownPort(t *testing.T) {
 		Port: types.Int64Unknown(),
 	}
 
-	ok := validateUpdateHighLevel(plan, resp)
+	ok := validateUpdateHighLevel(plan, false, resp)
 
 	if ok {
 		t.Fatalf("expected ok=false for unknown port")
@@ -184,13 +250,47 @@ func TestValidateUpdateHighLevel_UDPType_RejectsUnknownPort(t *testing.T) {
 		Port: types.Int64Unknown(),
 	}
 
-	ok := validateUpdateHighLevel(plan, resp)
+	ok := validateUpdateHighLevel(plan, false, resp)
 
 	if ok {
 		t.Fatalf("expected ok=false for unknown port")
 	}
 	if !resp.Diagnostics.HasError() {
 		t.Fatalf("expected diagnostics error for unknown port")
+	}
+}
+
+func TestValidateUpdateHighLevel_APIMonitorRejectsConfiguredHEADMethod(t *testing.T) {
+	resp := &resource.UpdateResponse{}
+	plan := monitorResourceModel{
+		Type:           types.StringValue(MonitorTypeAPI),
+		HTTPMethodType: types.StringValue("HEAD"),
+	}
+
+	ok := validateUpdateHighLevel(plan, false, resp)
+
+	if ok {
+		t.Fatalf("expected ok=false for configured HEAD API monitor method")
+	}
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected diagnostics error for configured HEAD API monitor method")
+	}
+}
+
+func TestValidateUpdateHighLevel_APIMonitorAllowsOmittedLegacyHEADMethod(t *testing.T) {
+	resp := &resource.UpdateResponse{}
+	plan := monitorResourceModel{
+		Type:           types.StringValue(MonitorTypeAPI),
+		HTTPMethodType: types.StringValue("HEAD"),
+	}
+
+	ok := validateUpdateHighLevel(plan, true, resp)
+
+	if !ok {
+		t.Fatalf("expected ok=true for omitted legacy HEAD API monitor method, got diagnostics: %v", resp.Diagnostics)
+	}
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no diagnostics for omitted legacy HEAD API monitor method")
 	}
 }
 

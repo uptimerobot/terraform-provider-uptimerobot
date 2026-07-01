@@ -38,17 +38,24 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	configOmitted := configVal.IsNull() || configVal.IsUnknown()
 	applicationErrorRetriesOmitted := configAttributeOmitted(configVal, "application_error_retries")
 
+	var configHTTPMethodType types.String
+	if diags := req.Config.GetAttribute(ctx, path.Root("http_method_type"), &configHTTPMethodType); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+	httpMethodTypeOmitted := configHTTPMethodType.IsNull() || configHTTPMethodType.IsUnknown()
+
 	id, err := strconv.ParseInt(plan.ID.ValueString(), 10, 64)
 	if err != nil {
 		resp.Diagnostics.AddError("Error parsing monitor ID", "Could not parse monitor ID: "+err.Error())
 		return
 	}
 
-	if !validateUpdateHighLevel(plan, resp) {
+	if !validateUpdateHighLevel(plan, httpMethodTypeOmitted, resp) {
 		return
 	}
 
-	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, applicationErrorRetriesOmitted, resp)
+	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, applicationErrorRetriesOmitted, httpMethodTypeOmitted, resp)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -228,8 +235,15 @@ func applyTrustedMonitorUpdateEcho(
 	return &out
 }
 
-func validateUpdateHighLevel(plan monitorResourceModel, resp *resource.UpdateResponse) bool {
+func validateUpdateHighLevel(plan monitorResourceModel, httpMethodTypeOmitted bool, resp *resource.UpdateResponse) bool {
 	t := plan.Type.ValueString()
+
+	if !httpMethodTypeOmitted {
+		validateAPIHTTPMethodType(t, plan.HTTPMethodType, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return false
+		}
+	}
 
 	// PORT/UDP requires port to be set
 	if (t == MonitorTypePORT || t == MonitorTypeUDP) && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
@@ -267,6 +281,7 @@ func buildUpdateRequest(
 	state monitorResourceModel,
 	configOmitted bool,
 	applicationErrorRetriesOmitted bool,
+	httpMethodTypeOmitted bool,
 	resp *resource.UpdateResponse,
 ) (*client.UpdateMonitorRequest, string) {
 	req := &client.UpdateMonitorRequest{
@@ -287,8 +302,11 @@ func buildUpdateRequest(
 	hasJSON := !plan.PostValueData.IsUnknown() && !plan.PostValueData.IsNull()
 	hasKV := !plan.PostValueKV.IsUnknown() && !plan.PostValueKV.IsNull()
 	effMethod := inferEffectiveMethod(plan.HTTPMethodType, plan.Type, hasJSON, hasKV)
+	stateMethod := stateHTTPMethodTypeOnUpdate(plan.Type, plan.HTTPMethodType, effMethod, httpMethodTypeOmitted, hasJSON, hasKV)
 	if isMethodHTTPLike(plan.Type) {
-		req.HTTPMethodType = effMethod
+		if shouldSendHTTPMethodTypeOnUpdate(plan.Type, effMethod, httpMethodTypeOmitted, hasJSON, hasKV) {
+			req.HTTPMethodType = effMethod
+		}
 		setBodyOnUpdate(ctx, plan, effMethod, req, resp)
 	}
 
@@ -394,7 +412,32 @@ func buildUpdateRequest(
 	// Config
 	expandOrClearConfigOnUpdate(ctx, plan, state.Config, configOmitted, applicationErrorRetriesOmitted, req, resp)
 
-	return req, effMethod
+	return req, stateMethod
+}
+
+func shouldSendHTTPMethodTypeOnUpdate(monType types.String, effMethod string, httpMethodTypeOmitted bool, hasJSON, hasKV bool) bool {
+	if strings.ToUpper(stringOrEmpty(monType)) == MonitorTypeAPI && httpMethodTypeOmitted && !hasJSON && !hasKV {
+		return false
+	}
+	return effMethod != ""
+}
+
+func stateHTTPMethodTypeOnUpdate(
+	monType types.String,
+	method types.String,
+	effMethod string,
+	httpMethodTypeOmitted bool,
+	hasJSON bool,
+	hasKV bool,
+) string {
+	if strings.ToUpper(stringOrEmpty(monType)) == MonitorTypeAPI &&
+		httpMethodTypeOmitted &&
+		!hasJSON &&
+		!hasKV &&
+		strings.TrimSpace(stringOrEmpty(method)) == "" {
+		return ""
+	}
+	return effMethod
 }
 
 func configAttributeOmitted(config basetypes.ObjectValue, name string) bool {

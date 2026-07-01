@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -59,6 +60,7 @@ func (r *monitorResource) ValidateConfig(
 	validateURL(ctx, t, &data, resp)
 	validateGracePeriodAndTimeout(ctx, t, &data, resp)
 	validateMethodVsBody(ctx, &data, resp)
+	validateAPIHTTPMethodType(t, data.HTTPMethodType, &resp.Diagnostics)
 	validateAssignedAlertContacts(ctx, &data, resp)
 	validateConfig(ctx, t, &data, resp)
 	validateRegionData(ctx, &data, resp)
@@ -217,6 +219,30 @@ func validateMethodVsBody(
 			)
 		}
 	}
+}
+
+func validateAPIHTTPMethodType(monitorType string, method types.String, diagnostics *diag.Diagnostics) {
+	if !isAPIHeadHTTPMethod(monitorType, method) {
+		return
+	}
+
+	diagnostics.AddAttributeError(
+		path.Root("http_method_type"),
+		"HEAD is not supported for API monitors",
+		"API monitors evaluate response bodies with config.api_assertions. "+
+			"Use GET, POST, PUT, PATCH, DELETE, or OPTIONS for API monitors, "+
+			"or use type = HTTP for status/header-only HEAD checks.",
+	)
+}
+
+func isAPIHeadHTTPMethod(monitorType string, method types.String) bool {
+	if strings.ToUpper(strings.TrimSpace(monitorType)) != MonitorTypeAPI {
+		return false
+	}
+	if method.IsNull() || method.IsUnknown() {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(method.ValueString()), http.MethodHead)
 }
 
 func validateAssignedAlertContacts(

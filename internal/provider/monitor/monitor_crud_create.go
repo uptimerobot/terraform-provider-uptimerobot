@@ -86,6 +86,11 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 func validateCreateHighLevel(ctx context.Context, plan monitorResourceModel, resp *resource.CreateResponse) bool {
 	t := strings.ToUpper(plan.Type.ValueString())
 
+	validateAPIHTTPMethodType(t, plan.HTTPMethodType, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return false
+	}
+
 	if (t == MonitorTypePORT || t == MonitorTypeUDP) && (plan.Port.IsNull() || plan.Port.IsUnknown()) {
 		resp.Diagnostics.AddError(
 			"Port required for PORT/UDP monitor",
