@@ -1,7 +1,9 @@
 ## Unreleased
 
 ### Fixed
+
 - Fixed MS Teams integration creation by correcting the `type` API payload from `"MS Teams"` to `"MSTeams"`.
+- Fixed Google Chat integration create/update requests to use the API v3 enum key expected by UptimeRobot.
 
 ## 1.9.0 — 2026-06-19
 
