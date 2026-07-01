@@ -272,6 +272,9 @@ func validateRuleMonitorIDsAutoAddConflict(
 	if cfg.MonitorIDs.IsNull() || cfg.MonitorIDs.IsUnknown() {
 		return
 	}
+	if maintenanceWindowMonitorIDsContainUnknown(cfg.MonitorIDs) {
+		return
+	}
 
 	monitorIDs, diags := maintenanceWindowMonitorIDsFromSet(ctx, cfg.MonitorIDs)
 	resp.Diagnostics.Append(diags...)
@@ -279,38 +282,7 @@ func validateRuleMonitorIDsAutoAddConflict(
 		return
 	}
 
-	if maintenanceWindowMonitorIDsContainAutoAdd(monitorIDs) && len(monitorIDs) > 1 {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("monitor_ids"),
-			"Invalid monitor_ids",
-			`"monitor_ids" can contain either specific monitor IDs or [0] to auto-add all monitors, but not both.`,
-		)
-		return
-	}
-
-	if cfg.AutoAddMonitors.IsNull() || cfg.AutoAddMonitors.IsUnknown() {
-		return
-	}
-
-	autoAddMonitors := cfg.AutoAddMonitors.ValueBool()
-	if autoAddMonitors {
-		if len(monitorIDs) == 0 || !maintenanceWindowMonitorIDsAutoAdd(monitorIDs) {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("monitor_ids"),
-				"monitor_ids conflicts with auto_add_monitors",
-				`When "auto_add_monitors" is true, omit "monitor_ids" or set it to [0].`,
-			)
-		}
-		return
-	}
-
-	if maintenanceWindowMonitorIDsAutoAdd(monitorIDs) {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("auto_add_monitors"),
-			"auto_add_monitors conflicts with monitor_ids",
-			`When "monitor_ids" is [0], omit "auto_add_monitors" or set it to true.`,
-		)
-	}
+	resp.Diagnostics.Append(validateMaintenanceWindowMonitorIDsAutoAdd(monitorIDs, cfg.AutoAddMonitors)...)
 }
 
 func (r *maintenanceWindowResource) ModifyPlan(
@@ -334,7 +306,7 @@ func (r *maintenanceWindowResource) ModifyPlan(
 		return
 	}
 
-	if !config.MonitorIDs.IsNull() && !config.MonitorIDs.IsUnknown() {
+	if !config.MonitorIDs.IsNull() && !config.MonitorIDs.IsUnknown() && !maintenanceWindowMonitorIDsContainUnknown(config.MonitorIDs) {
 		monitorIDs, diags := maintenanceWindowMonitorIDsFromSet(ctx, config.MonitorIDs)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
@@ -387,8 +359,21 @@ func (r *maintenanceWindowResource) Create(ctx context.Context, req resource.Cre
 	}
 
 	if !plan.MonitorIDs.IsNull() && !plan.MonitorIDs.IsUnknown() {
+		if maintenanceWindowMonitorIDsContainUnknown(plan.MonitorIDs) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("monitor_ids"),
+				"Invalid monitor_ids plan",
+				"Expected monitor_ids values to be known before creating the maintenance window. Please report this issue to the provider developers.",
+			)
+			return
+		}
+
 		monitorIDs, d := maintenanceWindowMonitorIDsFromSet(ctx, plan.MonitorIDs)
 		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(validateMaintenanceWindowMonitorIDsAutoAdd(monitorIDs, plan.AutoAddMonitors)...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -916,16 +901,20 @@ func applyMaintenanceWindowMonitorIDsUpdate(
 		return nil, nil, false, diags
 	}
 
-	if plan.MonitorIDs.IsNull() || plan.MonitorIDs.IsUnknown() {
+	if plan.MonitorIDs.IsNull() || plan.MonitorIDs.IsUnknown() || maintenanceWindowMonitorIDsContainUnknown(plan.MonitorIDs) {
 		diags.AddError(
 			"Invalid monitor_ids plan",
-			"Expected monitor_ids to be known because it is present in configuration. Please report this issue to the provider developers.",
+			"Expected monitor_ids values to be known because monitor_ids is present in configuration. Please report this issue to the provider developers.",
 		)
 		return nil, nil, false, diags
 	}
 
 	monitorIDs, d := maintenanceWindowMonitorIDsFromSet(ctx, plan.MonitorIDs)
 	diags.Append(d...)
+	if diags.HasError() {
+		return nil, nil, false, diags
+	}
+	diags.Append(validateMaintenanceWindowMonitorIDsAutoAdd(monitorIDs, plan.AutoAddMonitors)...)
 	if diags.HasError() {
 		return nil, nil, false, diags
 	}
@@ -957,6 +946,56 @@ func maintenanceWindowMonitorIDsFromSet(ctx context.Context, value types.Set) ([
 		normalized = []int64{}
 	}
 	return normalized, diags
+}
+
+func maintenanceWindowMonitorIDsContainUnknown(value types.Set) bool {
+	if value.IsUnknown() {
+		return true
+	}
+	for _, element := range value.Elements() {
+		if element.IsUnknown() {
+			return true
+		}
+	}
+	return false
+}
+
+func validateMaintenanceWindowMonitorIDsAutoAdd(monitorIDs []int64, autoAddMonitors types.Bool) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	if maintenanceWindowMonitorIDsContainAutoAdd(monitorIDs) && len(monitorIDs) > 1 {
+		diags.AddAttributeError(
+			path.Root("monitor_ids"),
+			"Invalid monitor_ids",
+			`"monitor_ids" can contain either specific monitor IDs or [0] to auto-add all monitors, but not both.`,
+		)
+		return diags
+	}
+
+	if autoAddMonitors.IsNull() || autoAddMonitors.IsUnknown() {
+		return diags
+	}
+
+	if autoAddMonitors.ValueBool() {
+		if len(monitorIDs) == 0 || !maintenanceWindowMonitorIDsAutoAdd(monitorIDs) {
+			diags.AddAttributeError(
+				path.Root("monitor_ids"),
+				"monitor_ids conflicts with auto_add_monitors",
+				`When "auto_add_monitors" is true, omit "monitor_ids" or set it to [0].`,
+			)
+		}
+		return diags
+	}
+
+	if maintenanceWindowMonitorIDsAutoAdd(monitorIDs) {
+		diags.AddAttributeError(
+			path.Root("auto_add_monitors"),
+			"auto_add_monitors conflicts with monitor_ids",
+			`When "monitor_ids" is [0], omit "auto_add_monitors" or set it to true.`,
+		)
+	}
+
+	return diags
 }
 
 func maintenanceWindowMonitorIDsSet(ctx context.Context, monitorIDs []int64) (types.Set, diag.Diagnostics) {
