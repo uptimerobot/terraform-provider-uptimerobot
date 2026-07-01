@@ -72,7 +72,7 @@ func TransformIntegrationTypeToAPI(terraformType string) string {
 	case "pushbullet":
 		return "Pushbullet"
 	case "msteams", "ms teams", "microsoft teams":
-		return "MS Teams"
+		return "MSTeams"
 	case "zapier":
 		return "Zapier"
 	case "pagerduty", "pager duty":
@@ -103,7 +103,7 @@ func TransformIntegrationTypeFromAPI(apiType string) string {
 		return "pushover"
 	case "Pushbullet":
 		return "pushbullet"
-	case "MS Teams":
+	case "MSTeams", "MS Teams":
 		return "msteams"
 	case "Zapier":
 		return "zapier"
