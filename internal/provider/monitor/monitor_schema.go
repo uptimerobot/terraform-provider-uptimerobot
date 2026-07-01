@@ -286,15 +286,11 @@ func monitorSchema(version int64, includeApplicationErrorRetries bool) schema.Sc
 			"maintenance_window_ids": schema.SetAttribute{
 				Description: "The maintenance window IDs",
 				MarkdownDescription: `
-					Today API v3 behavior on update, if maintenance_window_ids is omitted or set to [] they both clear maintenance windows.
-					Recommended: To clear, set maintenance_window_ids = []. To manage them, set the exact IDs.
+					Omit maintenance_window_ids or set it to null to preserve existing maintenance windows on update.
+					To clear maintenance windows, set maintenance_window_ids = []. To manage them, set the exact IDs.
 				`,
-				//	When the API changes to preserve omits, leaving the attribute out will preserve remote values automatically and no provider change will be needed.
 				Optional:    true,
 				ElementType: types.Int64Type,
-				// PlanModifiers: []planmodifier.Set{ // Check if omit delets and fix
-				// 	setplanmodifier.UseStateForUnknown(),
-				// },
 			},
 			"id": schema.StringAttribute{
 				Description: "Monitor ID",

@@ -437,6 +437,73 @@ func TestPlanAlertContactsComparable_SkipsComparisonForIncompleteContact(t *test
 	}
 }
 
+func TestSetMaintenanceWindowsOnUpdatePreserveOrClear(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	tests := []struct {
+		name     string
+		plan     types.Set
+		wantSent bool
+		want     []int64
+	}{
+		{
+			name:     "null omits and preserves remote",
+			plan:     types.SetNull(types.Int64Type),
+			wantSent: false,
+		},
+		{
+			name:     "unknown omits and preserves remote",
+			plan:     types.SetUnknown(types.Int64Type),
+			wantSent: false,
+		},
+		{
+			name:     "empty set sends clear payload",
+			plan:     types.SetValueMust(types.Int64Type, []attr.Value{}),
+			wantSent: true,
+			want:     []int64{},
+		},
+		{
+			name: "configured set sends normalized ids",
+			plan: types.SetValueMust(types.Int64Type, []attr.Value{
+				types.Int64Value(2),
+				types.Int64Value(1),
+			}),
+			wantSent: true,
+			want:     []int64{1, 2},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := &client.UpdateMonitorRequest{}
+			resp := &resource.UpdateResponse{}
+			setMaintenanceWindowsOnUpdate(ctx, monitorResourceModel{
+				MaintenanceWindowIDs: tt.plan,
+			}, req, resp)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+			}
+
+			if !tt.wantSent {
+				if req.MaintenanceWindowIDs != nil {
+					t.Fatalf("expected maintenanceWindowsIds to be omitted, got %#v", *req.MaintenanceWindowIDs)
+				}
+				return
+			}
+			if req.MaintenanceWindowIDs == nil {
+				t.Fatal("expected maintenanceWindowsIds payload to be sent")
+			}
+			if !equalInt64Set(tt.want, *req.MaintenanceWindowIDs) {
+				t.Fatalf("expected maintenanceWindowsIds %#v, got %#v", tt.want, *req.MaintenanceWindowIDs)
+			}
+		})
+	}
+}
+
 func TestBuildUpdateRequest_HeartbeatOmitsServerGeneratedURL(t *testing.T) {
 	t.Parallel()
 

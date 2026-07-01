@@ -592,8 +592,7 @@ func setMaintenanceWindowsOnUpdate(ctx context.Context, plan monitorResourceMode
 	case plan.MaintenanceWindowIDs.IsUnknown():
 		req.MaintenanceWindowIDs = nil
 	case plan.MaintenanceWindowIDs.IsNull():
-		empty := []int64{}
-		req.MaintenanceWindowIDs = &empty
+		req.MaintenanceWindowIDs = nil
 	default:
 		var ids []int64
 		resp.Diagnostics.Append(plan.MaintenanceWindowIDs.ElementsAs(ctx, &ids, false)...)
