@@ -5,6 +5,7 @@
 - Fixed MS Teams integration creation by correcting the `type` API payload from `"MS Teams"` to `"MSTeams"`.
 - Fixed Google Chat integration create/update requests to use the API v3 enum key expected by UptimeRobot.
 - Fixed `uptimerobot_maintenance_window.monitor_ids` validation when IDs reference monitors created in the same Terraform run.
+- Fixed PING and PORT monitor URL state consistency when UptimeRobot returns host-only targets.
 
 ## 1.9.0 — 2026-06-19
 

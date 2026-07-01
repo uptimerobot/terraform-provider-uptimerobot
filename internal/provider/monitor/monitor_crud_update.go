@@ -733,7 +733,7 @@ func applyUpdatedMonitorToState(
 ) monitorResourceModel {
 	out := plan
 	out.Name = types.StringValue(unescapeHTML(m.Name))
-	out.URL = types.StringValue(unescapeHTML(m.URL))
+	out.URL = monitorURLForState(plan.Type.ValueString(), plan.URL, m.URL)
 	out.Status = prev.Status
 	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
 		out.IsPaused = types.BoolValue(isMonitorPausedStatus(m.Status))

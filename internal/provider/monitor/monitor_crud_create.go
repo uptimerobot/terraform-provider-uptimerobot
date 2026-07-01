@@ -551,7 +551,7 @@ func (r *monitorResource) buildStateAfterCreate(
 	resp *resource.CreateResponse,
 ) monitorResourceModel {
 	plan.Name = types.StringValue(unescapeHTML(api.Name))
-	plan.URL = types.StringValue(unescapeHTML(api.URL))
+	plan.URL = monitorURLForState(plan.Type.ValueString(), plan.URL, api.URL)
 	plan.Status = types.StringValue(api.Status)
 	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
 		plan.IsPaused = types.BoolValue(isMonitorPausedStatus(api.Status))
