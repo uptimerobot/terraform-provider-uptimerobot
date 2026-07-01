@@ -21,7 +21,7 @@ terraform {
   required_providers {
     uptimerobot = {
       source  = "uptimerobot/uptimerobot"
-      version = "~> 1.3.0"
+      version = "~> 1.9.1"
     }
   }
 }
@@ -56,7 +56,7 @@ terraform {
   required_providers {
     uptimerobot = {
       source  = "uptimerobot/uptimerobot"
-      version = "~> 1.3.0"
+      version = "~> 1.9.1"
     }
   }
 }
@@ -122,7 +122,7 @@ Detailed documentation for the data sources supported by this provider can be fo
 
 ## Developing the Provider
 
-If you wish to work on the provider, you'll first need [Go](https://golang.org/doc/install) installed on your machine (version 1.24 or higher is recommended).
+If you wish to work on the provider, you'll first need [Go](https://golang.org/doc/install) installed on your machine. Use the version declared in `go.mod` (currently 1.26.4), which is also what CI uses.
 
 ### Building The Provider
 
@@ -156,11 +156,13 @@ provider_installation {
 
 ### Generating Documentation
 
-If you have `tfplugindocs` installed, you can generate or update documentation by running:
+Generate or update registry documentation by running:
 
 ```shell
-go generate
+go generate ./...
 ```
+
+This formats Terraform examples and regenerates the files in `docs/` from the provider schema and templates.
 
 ### Running Acceptance Tests
 

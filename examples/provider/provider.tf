@@ -2,7 +2,7 @@ terraform {
   required_providers {
     uptimerobot = {
       source  = "uptimerobot/uptimerobot"
-      version = "~> 0.1.0"
+      version = "~> 1.9.1"
     }
   }
 }

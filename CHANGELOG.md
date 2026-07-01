@@ -1,11 +1,22 @@
 ## Unreleased
 
+## 1.9.1 — 2026-07-01
+
+### Changed
+
+- Updated the Go toolchain directive to 1.26.4.
+
 ### Fixed
 
 - Fixed MS Teams integration creation by correcting the `type` API payload from `"MS Teams"` to `"MSTeams"`.
 - Fixed Google Chat integration create/update requests to use the API v3 enum key expected by UptimeRobot.
 - Fixed `uptimerobot_maintenance_window.monitor_ids` validation when IDs reference monitors created in the same Terraform run.
 - Fixed PING and PORT monitor URL state consistency when UptimeRobot returns host-only targets.
+
+### Documentation
+
+- Updated README and provider examples to use the 1.9.1 provider version constraint.
+- Aligned contributor documentation and manual Terraform examples with the current Go toolchain, acceptance-test commands, and provider schema.
 
 ## 1.9.0 — 2026-06-19
 

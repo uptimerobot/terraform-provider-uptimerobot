@@ -2,9 +2,9 @@
 
 This project has pre-commit hooks configured to automatically run linting and code generation before each commit. There are two ways to use pre-commit hooks:
 
-## Option 1: Simple Git Hook (Already Active)
+## Option 1: Makefile Checks
 
-The simple git hook is already installed and active at `.git/hooks/pre-commit`. It will automatically run before each commit and includes:
+Run the same checks CI expects before opening a PR:
 
 - `go generate ./...` - Runs code generation
 - `go mod tidy` - Tidies Go modules
@@ -12,9 +12,7 @@ The simple git hook is already installed and active at `.git/hooks/pre-commit`. 
 - `golangci-lint run` - Runs comprehensive linting
 - `go test ./... -short` - Runs unit tests
 
-### Manual Commands
-
-You can also run the same checks manually using the Makefile:
+Use the Makefile:
 
 ```bash
 # Run all pre-commit checks

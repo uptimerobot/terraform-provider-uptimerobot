@@ -1,14 +1,20 @@
 terraform {
   required_providers {
     uptimerobot = {
-      source  = "local/providers/uptimerobot"
-      version = "1.0.0"
+      source  = "uptimerobot/uptimerobot"
+      version = "~> 1.9.1"
     }
   }
 }
 
 provider "uptimerobot" {
-  api_key = "your-api-key" # Replace with your actual API key
+  api_key = var.uptimerobot_api_key
+}
+
+variable "uptimerobot_api_key" {
+  description = "UptimeRobot API key"
+  type        = string
+  sensitive   = true
 }
 
 # Test Monitor Resource
@@ -32,10 +38,9 @@ resource "uptimerobot_monitor" "heartbeat" {
 
 # Test PSP Resource
 resource "uptimerobot_psp" "test" {
-  name     = "Test PSP"
-  type     = "public"
-  sort     = "name-asc"
-  monitors = [uptimerobot_monitor.test.id]
+  name         = "Test PSP"
+  monitor_sort = "friendly_name_asc"
+  monitor_ids  = [uptimerobot_monitor.test.id]
 }
 
 output "heartbeat_url" {

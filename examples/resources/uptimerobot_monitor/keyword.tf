@@ -5,7 +5,7 @@ resource "uptimerobot_monitor" "api_health" {
   interval = 60
 
   # Look for "healthy" in the response
-  keyword_type  = "exists"
+  keyword_type  = "ALERT_EXISTS"
   keyword_value = "healthy"
 
   # Case insensitive search (default)

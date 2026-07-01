@@ -65,7 +65,7 @@ resource "uptimerobot_monitor" "api_health" {
   interval = 60
 
   # Look for "healthy" in the response
-  keyword_type  = "exists"
+  keyword_type  = "ALERT_EXISTS"
   keyword_value = "healthy"
 
   # Case insensitive search (default)
@@ -112,7 +112,6 @@ resource "uptimerobot_monitor" "protected_api" {
   http_method_type = "POST"
 
   # POST data
-  post_value_type = "JSON"
   post_value_data = jsonencode({
     action = "health_check"
     source = "uptime_monitor"
