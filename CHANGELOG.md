@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Changed
+
+- Updated the Go toolchain directive to 1.26.5 and refreshed Go module dependencies.
+
 ## 1.9.1 — 2026-07-01
 
 ### Changed
