@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Added
+
+- `http_method_type` now accepts `QUERY` on monitor resources.
+
 ## 1.9.1 — 2026-07-01
 
 ### Changed
