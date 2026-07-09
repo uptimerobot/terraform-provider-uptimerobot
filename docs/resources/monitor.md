@@ -741,7 +741,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `follow_redirections` (Boolean) Whether to follow redirections
 - `grace_period` (Number) The grace period (in seconds). Only for HEARTBEAT monitors
 - `group_id` (Number) Monitor group ID to assign monitor to. Use 0 for default group.
-- `http_method_type` (String) The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS). HEAD is not supported for API monitors; use HTTP monitors for status/header-only HEAD checks.
+- `http_method_type` (String) The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS, QUERY). HEAD is not supported for API monitors; use HTTP monitors for status/header-only HEAD checks.
 - `http_password` (String, Sensitive) The password for HTTP authentication
 - `http_username` (String) The username for HTTP authentication
 - `is_paused` (Boolean) Controls monitor run state. Set true to pause, false to start. Omit to preserve remote state (unmanaged).
