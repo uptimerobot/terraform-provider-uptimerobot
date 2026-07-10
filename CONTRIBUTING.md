@@ -3,7 +3,7 @@
 Thanks for helping improve the provider! This doc shows how to build, test, and propose changes.
 
 ## Prerequisites
-- Go version from `go.mod` (currently **1.26.4**)
+- Go version from `go.mod` (currently **1.26.5**)
 - Terraform **≥ 1.5** or OpenTofu **≥ 1.7**
 - UptimeRobot **v3** API key (for acceptance tests)
 
