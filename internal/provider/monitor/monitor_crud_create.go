@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -37,8 +39,11 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	// Create
 	created, err := r.client.CreateMonitor(ctx, createReq)
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating monitor", "Could not create monitor, unexpected error: "+err.Error())
-		return
+		created = r.recoverMonitorCreatedDespiteError(ctx, createReq, err, &resp.Diagnostics)
+		if created == nil {
+			resp.Diagnostics.AddError("Error creating monitor", "Could not create monitor, unexpected error: "+err.Error())
+			return
+		}
 	}
 
 	// Wait to apply in the API
@@ -79,6 +84,58 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, final)...)
+}
+
+// recoverMonitorCreatedDespiteError handles create calls that fail with an
+// ambiguous API response (404 or 5xx). POST /monitors is known to persist the
+// monitor and still answer with an error (e.g. "404 Monitor not found
+// (code 000-004)"), which would otherwise orphan the monitor outside of state
+// and make the next apply fail on the duplicate. Look the monitor up by its
+// exact name (plus type, and URL when one was requested) and adopt it only if
+// there is exactly one match.
+func (r *monitorResource) recoverMonitorCreatedDespiteError(
+	ctx context.Context,
+	createReq *client.CreateMonitorRequest,
+	createErr error,
+	diags *diag.Diagnostics,
+) *client.Monitor {
+	status, ok := client.StatusCode(createErr)
+	if !ok || (status != http.StatusNotFound && status < 500) {
+		return nil
+	}
+
+	monitors, err := r.client.GetMonitorsByName(ctx, createReq.Name)
+	if err != nil {
+		return nil
+	}
+
+	var matches []client.Monitor
+	for _, m := range monitors {
+		// The API name filter matches substrings; require an exact match.
+		if m.Name != createReq.Name {
+			continue
+		}
+		if !strings.EqualFold(m.Type, string(createReq.Type)) {
+			continue
+		}
+		if createReq.URL != "" && m.URL != createReq.URL {
+			continue
+		}
+		matches = append(matches, m)
+	}
+	if len(matches) != 1 {
+		return nil
+	}
+
+	adopted := matches[0]
+	diags.AddWarning(
+		"Monitor create reported an error but the monitor was created",
+		fmt.Sprintf(
+			"The API answered the create request for %q with an error (%s) but the monitor was created anyway (id %d); adopting it into state.",
+			createReq.Name, createErr.Error(), adopted.ID,
+		),
+	)
+	return &adopted
 }
 
 // High level validate create plan
