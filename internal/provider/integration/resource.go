@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -49,14 +50,14 @@ func convertNotificationsForToString(value int64) string {
 
 // convertNotificationsForFromString converts API string format to integer.
 func convertNotificationsForFromString(value string) int64 {
-	switch value {
-	case "UpAndDown":
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "upanddown":
 		return 1
-	case "Down":
+	case "down":
 		return 2
-	case "Up":
+	case "up":
 		return 3
-	case "None":
+	case "none":
 		return 4
 	default:
 		return 1
@@ -71,13 +72,43 @@ type webhookConfig struct {
 	SendPost  json.RawMessage `json:"sendPost,omitempty"`
 }
 
+type integrationSettleExpectations struct {
+	name                   string
+	customHeaders          *map[string]string
+	enableNotificationsFor string
+	sslExpirationReminder  *bool
+}
+
+func (e integrationSettleExpectations) matches(integration *client.Integration) bool {
+	if integration == nil {
+		return false
+	}
+	if e.name != "" && integration.Name != e.name {
+		return false
+	}
+	if e.customHeaders != nil && !maputil.EqualStringMap(integration.CustomHeaders, *e.customHeaders) {
+		return false
+	}
+	if e.enableNotificationsFor != "" &&
+		!strings.EqualFold(strings.TrimSpace(integration.EnableNotificationsFor), e.enableNotificationsFor) {
+		return false
+	}
+	return e.sslExpirationReminder == nil || integration.SSLExpirationReminder == *e.sslExpirationReminder
+}
+
+func integrationSettingsMatch(integration *client.Integration, enableNotificationsFor string, sslExpirationReminder bool) bool {
+	return integrationSettleExpectations{
+		enableNotificationsFor: enableNotificationsFor,
+		sslExpirationReminder:  &sslExpirationReminder,
+	}.matches(integration)
+}
+
 // waitIntegrationSettled polls integration until expected values are visible
 // in repeated reads. This reduces stale read-after-write drift.
 func (r *integrationResource) waitIntegrationSettled(
 	ctx context.Context,
 	id int64,
-	expectedName string,
-	expectedCustomHeaders *map[string]string,
+	expected integrationSettleExpectations,
 	timeout time.Duration,
 ) (*client.Integration, error) {
 	if timeout <= 0 {
@@ -103,9 +134,7 @@ func (r *integrationResource) waitIntegrationSettled(
 		integration, err := r.client.GetIntegration(ctx, id)
 		if err == nil {
 			last = integration
-			nameOK := expectedName == "" || integration.Name == expectedName
-			customHeadersOK := expectedCustomHeaders == nil || maputil.EqualStringMap(integration.CustomHeaders, *expectedCustomHeaders)
-			if nameOK && customHeadersOK {
+			if expected.matches(integration) {
 				consecutiveMatches++
 				if consecutiveMatches >= requiredConsecutiveMatches {
 					return integration, nil
@@ -120,7 +149,14 @@ func (r *integrationResource) waitIntegrationSettled(
 		select {
 		case <-ctx.Done():
 			if last != nil {
-				return last, fmt.Errorf("timeout waiting for integration to settle; last name=%q custom_header_count=%d: %w", last.Name, len(last.CustomHeaders), ctx.Err())
+				return last, fmt.Errorf(
+					"timeout waiting for integration to settle; last name=%q custom_header_count=%d enable_notifications_for=%q ssl_expiration_reminder=%t: %w",
+					last.Name,
+					len(last.CustomHeaders),
+					last.EnableNotificationsFor,
+					last.SSLExpirationReminder,
+					ctx.Err(),
+				)
 			}
 			return nil, fmt.Errorf("timeout waiting for integration to settle: %w", ctx.Err())
 		case <-time.After(backoff):
@@ -133,6 +169,65 @@ func (r *integrationResource) waitIntegrationSettled(
 			}
 		}
 	}
+}
+
+func (r *integrationResource) updateIntegrationWithRetry(
+	ctx context.Context,
+	id int64,
+	req *client.UpdateIntegrationRequest,
+) (*client.Integration, error) {
+	backoffs := []time.Duration{
+		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 3 * time.Second, 5 * time.Second,
+	}
+
+	var updated *client.Integration
+	var err error
+	for i := 0; i < len(backoffs); i++ {
+		updated, err = r.client.UpdateIntegration(ctx, id, req)
+		if err == nil {
+			return updated, nil
+		}
+		if !apiretry.IsTempServerErr(err) || i == len(backoffs)-1 {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoffs[i]):
+		}
+	}
+
+	return nil, err
+}
+
+func rollbackIntegrationAfterCreateFailure(
+	ctx context.Context,
+	apiClient *client.Client,
+	id int64,
+	cause error,
+	diags interface{ AddError(string, string) },
+) {
+	rollbackErr := apiClient.DeleteIntegration(ctx, id)
+	if rollbackErr != nil {
+		diags.AddError(
+			"Error finalizing integration after create",
+			fmt.Sprintf("The integration was created (id=%d), reconciliation failed, and rollback delete also failed: reconciliation=%v rollback=%v", id, cause, rollbackErr),
+		)
+		return
+	}
+
+	if waitErr := apiClient.WaitIntegrationDeleted(ctx, id, 30*time.Second); waitErr != nil {
+		diags.AddError(
+			"Error finalizing integration after create",
+			fmt.Sprintf("The integration was created (id=%d), reconciliation failed, rollback delete was requested, but deletion was not confirmed: reconciliation=%v rollback_wait=%v", id, cause, waitErr),
+		)
+		return
+	}
+
+	diags.AddError(
+		"Error finalizing integration after create",
+		"The integration was created but its settings could not be reconciled; the provider rolled it back by deleting it: "+cause.Error(),
+	)
 }
 
 // jsonEquivalentPlanModifier is a custom plan modifier that ignores JSON formatting differences.
@@ -488,7 +583,10 @@ func (r *integrationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 			"enable_notifications_for": schema.Int64Attribute{
 				Required:            true,
-				MarkdownDescription: "Enable notifications for specific events (1 for all, 2 for down only, 3 for custom).",
+				MarkdownDescription: "Enable notifications for specific events (1 for up and down, 2 for down only, 3 for up only, 4 for none).",
+				Validators: []validator.Int64{
+					int64validator.Between(1, 4),
+				},
 			},
 			"ssl_expiration_reminder": schema.BoolAttribute{
 				Required:            true,
@@ -801,13 +899,33 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	if t == "webhook" && customHeaders != nil {
-		settled, err := r.waitIntegrationSettled(ctx, newIntegration.ID, plan.Name.ValueString(), customHeaders, 90*time.Second)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Integration create did not settle in time",
-				err.Error(),
-			)
+	expectedNotifications := convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64())
+	expectedSSLExpirationReminder := plan.SSLExpirationReminder.ValueBool()
+	settingsCorrected := false
+	if !integrationSettingsMatch(newIntegration, expectedNotifications, expectedSSLExpirationReminder) {
+		updated, updateErr := r.updateIntegrationWithRetry(ctx, newIntegration.ID, &client.UpdateIntegrationRequest{
+			Type: integrationTypeAPI,
+			Data: integrationData,
+		})
+		if updateErr != nil {
+			rollbackIntegrationAfterCreateFailure(ctx, r.client, newIntegration.ID, updateErr, &resp.Diagnostics)
+			return
+		}
+		if updated != nil {
+			newIntegration = updated
+		}
+		settingsCorrected = true
+	}
+
+	if settingsCorrected || (t == "webhook" && customHeaders != nil) {
+		settled, settleErr := r.waitIntegrationSettled(ctx, newIntegration.ID, integrationSettleExpectations{
+			name:                   plan.Name.ValueString(),
+			customHeaders:          customHeaders,
+			enableNotificationsFor: expectedNotifications,
+			sslExpirationReminder:  &expectedSSLExpirationReminder,
+		}, 90*time.Second)
+		if settleErr != nil {
+			rollbackIntegrationAfterCreateFailure(ctx, r.client, newIntegration.ID, settleErr, &resp.Diagnostics)
 			return
 		}
 		if settled != nil {
@@ -817,6 +935,8 @@ func (r *integrationResource) Create(ctx context.Context, req resource.CreateReq
 
 	// Map response body to schema and populate Computed attribute values
 	plan.ID = types.StringValue(strconv.FormatInt(newIntegration.ID, 10))
+	plan.EnableNotificationsFor = types.Int64Value(convertNotificationsForFromString(newIntegration.EnableNotificationsFor))
+	plan.SSLExpirationReminder = types.BoolValue(newIntegration.SSLExpirationReminder)
 	if t == "webhook" {
 		if plan.CustomHeaders.IsNull() || plan.CustomHeaders.IsUnknown() {
 			customHeadersState, diags := webhookCustomHeadersState(ctx, plan.CustomHeaders, newIntegration.CustomHeaders)
@@ -917,7 +1037,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	if !state.Name.IsNull() && !state.Name.IsUnknown() {
 		expectedName := state.Name.ValueString()
 		if expectedName != "" && integration.Name != expectedName {
-			if settled, err := r.waitIntegrationSettled(ctx, id, expectedName, nil, 60*time.Second); err == nil && settled != nil {
+			if settled, err := r.waitIntegrationSettled(ctx, id, integrationSettleExpectations{name: expectedName}, 60*time.Second); err == nil && settled != nil {
 				integration = settled
 			} else if settled != nil {
 				integration = settled
@@ -930,9 +1050,7 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	state.Type = types.StringValue(TransformIntegrationTypeFromAPI(integration.Type))
 	intType := TransformIntegrationTypeFromAPI(integration.Type)
 
-	// Use sticky behavior for SSL expiration reminder to avoid flips when API
-	// returns defaults or transient values.
-	state.SSLExpirationReminder = stickyBool(prev.SSLExpirationReminder, integration.SSLExpirationReminder, false)
+	state.SSLExpirationReminder = types.BoolValue(integration.SSLExpirationReminder)
 
 	if integrationEchoesValueFromAPI(intType) {
 		if integration.WebhookURL != "" {
@@ -985,7 +1103,10 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 				if !prev.Name.IsNull() && !prev.Name.IsUnknown() {
 					expectedName = prev.Name.ValueString()
 				}
-				if settled, err := r.waitIntegrationSettled(ctx, id, expectedName, &expectedHeaders, 60*time.Second); err == nil && settled != nil {
+				if settled, err := r.waitIntegrationSettled(ctx, id, integrationSettleExpectations{
+					name:          expectedName,
+					customHeaders: &expectedHeaders,
+				}, 60*time.Second); err == nil && settled != nil {
 					integration = settled
 				} else if settled != nil {
 					integration = settled
@@ -1287,25 +1408,12 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		Data: integrationData,
 	}
 
-	backoffs := []time.Duration{
-		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 3 * time.Second, 5 * time.Second,
-	}
-	for i := 0; i < len(backoffs); i++ {
-		_, err = r.client.UpdateIntegration(ctx, id, integration)
-		if err == nil {
-			break
-		}
-		if !apiretry.IsTempServerErr(err) || i == len(backoffs)-1 {
-			break
-		}
-		select {
-		case <-ctx.Done():
+	_, err = r.updateIntegrationWithRetry(ctx, id, integration)
+	if err != nil {
+		if ctx.Err() != nil {
 			resp.Diagnostics.AddError("Update cancelled", ctx.Err().Error())
 			return
-		case <-time.After(backoffs[i]):
 		}
-	}
-	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating integration",
 			"Could not update integration, unexpected error: "+err.Error(),
@@ -1313,7 +1421,13 @@ func (r *integrationResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	settled, err := r.waitIntegrationSettled(ctx, id, plan.Name.ValueString(), customHeaders, 90*time.Second)
+	expectedSSLExpirationReminder := plan.SSLExpirationReminder.ValueBool()
+	settled, err := r.waitIntegrationSettled(ctx, id, integrationSettleExpectations{
+		name:                   plan.Name.ValueString(),
+		customHeaders:          customHeaders,
+		enableNotificationsFor: convertNotificationsForToString(plan.EnableNotificationsFor.ValueInt64()),
+		sslExpirationReminder:  &expectedSSLExpirationReminder,
+	}, 90*time.Second)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Integration update did not settle in time",
@@ -1445,12 +1559,7 @@ func stickyEF(prev types.Int64, api string) types.Int64 {
 		}
 		return types.Int64Value(1) // UpAndDown
 	}
-	v := convertNotificationsForFromString(a)
-	if v == 1 && !prev.IsNull() && !prev.IsUnknown() && prev.ValueInt64() != 1 {
-		// API defaulted to UpAndDown. Keep previously configured non-default
-		return prev
-	}
-	return types.Int64Value(v)
+	return types.Int64Value(convertNotificationsForFromString(a))
 }
 
 func pagerDutyLocationFromAPI(integration *client.Integration) (string, bool) {

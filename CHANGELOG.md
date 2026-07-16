@@ -1,5 +1,10 @@
 ## Unreleased
 
+### Fixed
+
+- Reconciled integration notification settings after create when the API initially returns defaults, preventing persistent `enable_notifications_for` drift.
+- Made `ssl_expiration_reminder = false` explicit in integration API payloads and authoritative during refresh.
+
 ## 1.9.1 — 2026-07-01
 
 ### Changed

@@ -2,11 +2,15 @@ package integration
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
@@ -60,6 +64,106 @@ func TestPagerDutyLocationFromAPI(t *testing.T) {
 				t.Fatalf("value mismatch: got=%q want=%q", gotValue, tt.wantValue)
 			}
 		})
+	}
+}
+
+func TestStickyEFUsesExplicitAPIValue(t *testing.T) {
+	t.Parallel()
+
+	got := stickyEF(types.Int64Value(2), "UpAndDown")
+	if got.IsNull() || got.IsUnknown() {
+		t.Fatal("expected known value")
+	}
+	if got.ValueInt64() != 1 {
+		t.Fatalf("expected API value 1 to replace stale state, got %d", got.ValueInt64())
+	}
+}
+
+func TestIntegrationSettingsMatch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		integration *client.Integration
+		want        bool
+	}{
+		{
+			name: "matching",
+			integration: &client.Integration{
+				EnableNotificationsFor: "Down",
+				SSLExpirationReminder:  true,
+			},
+			want: true,
+		},
+		{
+			name: "notification drift",
+			integration: &client.Integration{
+				EnableNotificationsFor: "UpAndDown",
+				SSLExpirationReminder:  true,
+			},
+		},
+		{
+			name: "ssl drift",
+			integration: &client.Integration{
+				EnableNotificationsFor: "Down",
+				SSLExpirationReminder:  false,
+			},
+		},
+		{name: "missing response"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := integrationSettingsMatch(tt.integration, "Down", true); got != tt.want {
+				t.Fatalf("match mismatch: got=%v want=%v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRollbackIntegrationAfterCreateFailureDeletesCreatedIntegration(t *testing.T) {
+	t.Parallel()
+
+	var deleteCalled bool
+	var getCalled bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "DELETE /integrations/101":
+			deleteCalled = true
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{}`))
+		case "GET /integrations/101":
+			getCalled = true
+			if !deleteCalled {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"id":101}`))
+				return
+			}
+			http.Error(w, `{"message":"not found"}`, http.StatusNotFound)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	apiClient := client.NewClient("test-key")
+	apiClient.SetBaseURL(srv.URL)
+
+	var diags diag.Diagnostics
+	rollbackIntegrationAfterCreateFailure(context.Background(), apiClient, 101, errors.New("update failed"), &diags)
+
+	if !deleteCalled {
+		t.Fatal("expected rollback delete to be called")
+	}
+	if !getCalled {
+		t.Fatal("expected rollback wait to confirm deletion")
+	}
+	if !diags.HasError() {
+		t.Fatal("expected diagnostic for original update failure")
+	}
+	if !strings.Contains(diags[0].Detail(), "rolled it back by deleting it") {
+		t.Fatalf("unexpected diagnostic: %#v", diags)
 	}
 }
 

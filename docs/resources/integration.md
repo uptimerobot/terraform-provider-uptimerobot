@@ -354,7 +354,7 @@ terraform import uptimerobot_integration.example 123456
 
 ### Required
 
-- `enable_notifications_for` (Number) Enable notifications for specific events (1 for all, 2 for down only, 3 for custom).
+- `enable_notifications_for` (Number) Enable notifications for specific events (1 for up and down, 2 for down only, 3 for up only, 4 for none).
 - `name` (String) The name of the integration.
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders.
 - `type` (String) The type of the integration (slack, webhook, discord, telegram, pushover, pushbullet, msteams, zapier, pagerduty, googlechat, splunk, mattermost).
