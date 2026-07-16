@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Fixed
+
+- Fixed `uptimerobot_monitor` incorrectly rejecting a HEARTBEAT monitor's `grace_period` as missing when its value comes from a `for_each`/`count` instance (e.g. `grace_period = each.value.grace_period`) and is legitimately unknown at `ValidateConfig` time, not absent.
+
 ## 1.9.1 — 2026-07-01
 
 ### Changed
