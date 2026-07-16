@@ -207,7 +207,10 @@ func rollbackIntegrationAfterCreateFailure(
 	cause error,
 	diags interface{ AddError(string, string) },
 ) {
-	rollbackErr := apiClient.DeleteIntegration(ctx, id)
+	rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
+	defer cancel()
+
+	rollbackErr := apiClient.DeleteIntegration(rollbackCtx, id)
 	if rollbackErr != nil {
 		diags.AddError(
 			"Error finalizing integration after create",
@@ -216,7 +219,7 @@ func rollbackIntegrationAfterCreateFailure(
 		return
 	}
 
-	if waitErr := apiClient.WaitIntegrationDeleted(ctx, id, 30*time.Second); waitErr != nil {
+	if waitErr := apiClient.WaitIntegrationDeleted(rollbackCtx, id, 30*time.Second); waitErr != nil {
 		diags.AddError(
 			"Error finalizing integration after create",
 			fmt.Sprintf("The integration was created (id=%d), reconciliation failed, rollback delete was requested, but deletion was not confirmed: reconciliation=%v rollback_wait=%v", id, cause, waitErr),
@@ -1050,8 +1053,6 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 	state.Type = types.StringValue(TransformIntegrationTypeFromAPI(integration.Type))
 	intType := TransformIntegrationTypeFromAPI(integration.Type)
 
-	state.SSLExpirationReminder = types.BoolValue(integration.SSLExpirationReminder)
-
 	if integrationEchoesValueFromAPI(intType) {
 		if integration.WebhookURL != "" {
 			state.Value = types.StringValue(integration.WebhookURL)
@@ -1061,8 +1062,6 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 			state.Value = types.StringNull() // normalize empty. null on read
 		}
 	}
-
-	state.EnableNotificationsFor = stickyEF(prev.EnableNotificationsFor, integration.EnableNotificationsFor)
 
 	// Handle integration-specific fields based on type
 	switch TransformIntegrationTypeFromAPI(integration.Type) {
@@ -1195,6 +1194,9 @@ func (r *integrationResource) Read(ctx context.Context, req resource.ReadRequest
 		state.Location = types.StringNull()
 		state.AutoResolve = types.BoolNull()
 	}
+
+	state.SSLExpirationReminder = types.BoolValue(integration.SSLExpirationReminder)
+	state.EnableNotificationsFor = stickyEF(prev.EnableNotificationsFor, integration.EnableNotificationsFor)
 
 	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)

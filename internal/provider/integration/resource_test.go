@@ -150,8 +150,11 @@ func TestRollbackIntegrationAfterCreateFailureDeletesCreatedIntegration(t *testi
 	apiClient := client.NewClient("test-key")
 	apiClient.SetBaseURL(srv.URL)
 
+	parentCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
 	var diags diag.Diagnostics
-	rollbackIntegrationAfterCreateFailure(context.Background(), apiClient, 101, errors.New("update failed"), &diags)
+	rollbackIntegrationAfterCreateFailure(parentCtx, apiClient, 101, errors.New("update failed"), &diags)
 
 	if !deleteCalled {
 		t.Fatal("expected rollback delete to be called")

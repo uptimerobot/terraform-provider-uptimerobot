@@ -335,9 +335,10 @@ resource "uptimerobot_integration" "zapier" {
 
 ## Notification Levels
 
-- `1` - All notifications (up, down, paused, etc.)
+- `1` - Up and down notifications
 - `2` - Down notifications only
-- `3` - Custom notification settings
+- `3` - Up notifications only
+- `4` - No notifications
 
 ## Import
 
