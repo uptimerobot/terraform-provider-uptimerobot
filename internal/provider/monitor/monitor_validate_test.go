@@ -22,6 +22,53 @@ func TestValidateNoHTMLEntities_AllowsPlainText(t *testing.T) {
 	}
 }
 
+func TestValidateHeartbeatInterval(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		monitorType string
+		interval    types.Int64
+		wantError   bool
+	}{
+		{
+			name:        "heartbeat at maximum",
+			monitorType: MonitorTypeHEARTBEAT,
+			interval:    types.Int64Value(heartbeatMonitorIntervalMax),
+		},
+		{
+			name:        "heartbeat above maximum",
+			monitorType: MonitorTypeHEARTBEAT,
+			interval:    types.Int64Value(heartbeatMonitorIntervalMax + 1),
+			wantError:   true,
+		},
+		{
+			name:        "heartbeat unknown during planning",
+			monitorType: MonitorTypeHEARTBEAT,
+			interval:    types.Int64Unknown(),
+		},
+		{
+			name:        "non-heartbeat above heartbeat maximum",
+			monitorType: MonitorTypeHTTP,
+			interval:    types.Int64Value(heartbeatMonitorIntervalMax + 1),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			resp := &resource.ValidateConfigResponse{}
+			validateHeartbeatInterval(tt.monitorType, tt.interval, resp)
+
+			if got := resp.Diagnostics.HasError(); got != tt.wantError {
+				t.Fatalf("HasError() = %t, want %t; diagnostics: %v", got, tt.wantError, resp.Diagnostics)
+			}
+		})
+	}
+}
+
 func TestValidateNoHTMLEntities_RejectsHTMLEntities(t *testing.T) {
 	t.Parallel()
 
