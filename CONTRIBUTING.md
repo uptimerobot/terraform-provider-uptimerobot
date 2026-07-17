@@ -114,6 +114,25 @@ Maintainers handle version increment and releases.
 
 Before opening a PR, make sure tests pass locally.
 
+### Public repository hygiene
+
+This repository is public. Treat all repository content and GitHub activity as
+public, including branch names, issues, pull request descriptions, comments,
+reviews, commit messages, CI output, screenshots, and attached logs.
+
+- Do not name or link private repositories, internal pull requests, internal
+  issue trackers, private dashboards, non-public hostnames, or internal
+  deployment details.
+- Do not publish credentials, API keys, customer or account identifiers,
+  unsanitized production data, or raw logs that may contain sensitive data.
+- Public API endpoints, documented behavior, and sanitized error responses are
+  appropriate when they help reproduce or explain a provider issue.
+- Describe dependencies on non-public work generically, for example:
+  "Requires a corresponding server-side API release."
+
+Before publishing or updating a branch, issue, or pull request, review the
+content for private references and sensitive information.
+
 ## Notes:
 - Some acceptance tests can be unstable due to network or API. Re-running is sometimes necessary.
 - Never commit real API keys or logs containing secrets. The provider redacts known secrets in debug output.
