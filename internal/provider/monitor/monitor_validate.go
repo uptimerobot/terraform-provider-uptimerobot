@@ -158,7 +158,10 @@ func validateGracePeriodAndTimeout(
 	switch monitorType {
 	case MonitorTypeHEARTBEAT:
 		// heartbeat MUST use grace_period and MUST NOT use timeout
-		if data.GracePeriod.IsNull() || data.GracePeriod.IsUnknown() {
+		// Do not treat unknown as missing: for_each/count instances aren't
+		// expanded yet during ValidateConfig, so a per-instance grace_period
+		// is legitimately unknown at this point, not absent.
+		if data.GracePeriod.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("grace_period"),
 				"Missing grace_period for heartbeat monitor",
