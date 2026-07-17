@@ -19,14 +19,14 @@ import (
 
 // Configs
 
-func testAccWebhookIntegrationConfig(name, value string) string {
+func testAccWebhookIntegrationConfig(name, value string, enableNotificationsFor int64, sslExpirationReminder bool) string {
 	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_integration" "webhook" {
   name                     = %q
   type                     = "webhook"
   value                    = %q
-  enable_notifications_for = 1
-  ssl_expiration_reminder  = true
+  enable_notifications_for = %d
+  ssl_expiration_reminder  = %t
 
   // webhook send options
   send_as_json             = true
@@ -34,7 +34,7 @@ resource "uptimerobot_integration" "webhook" {
   send_as_post_parameters  = false
   post_value               = "{\"message\": \"Alert: $monitorURL is $alertType\"}"
 }
-`, name, value)
+`, name, value, enableNotificationsFor, sslExpirationReminder)
 }
 
 func testAccWebhookIntegrationConfigWithCustomHeaders(name, value string, headers *map[string]string) string {
@@ -116,8 +116,8 @@ func TestAccIntegrationResource(t *testing.T) {
 	name2 := "tfacc-webhook-upd-" + suffix
 	value := fmt.Sprintf("https://httpbin.org/anything?tfacc=%s", suffix)
 
-	cfgCreate := testAccWebhookIntegrationConfig(name1, value)
-	cfgUpdate := testAccWebhookIntegrationConfig(name2, value)
+	cfgCreate := testAccWebhookIntegrationConfig(name1, value, 2, false)
+	cfgUpdate := testAccWebhookIntegrationConfig(name2, value, 3, true)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { provideracctest.PreCheck(t) },
@@ -130,19 +130,21 @@ func TestAccIntegrationResource(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "name", name1),
 					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "type", "webhook"),
 					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "value", value),
-					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "enable_notifications_for", "1"),
-					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "ssl_expiration_reminder", "true"),
+					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "enable_notifications_for", "2"),
+					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "ssl_expiration_reminder", "false"),
 					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "send_as_json", "true"),
 					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "send_as_query_string", "false"),
 					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "send_as_post_parameters", "false"),
 				),
 			},
 			{
-				// update just the name to verify Update works
+				// Update the name and integration settings to verify both paths settle.
 				Config: cfgUpdate,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "name", name2),
 					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "value", value),
+					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "enable_notifications_for", "3"),
+					resource.TestCheckResourceAttr("uptimerobot_integration.webhook", "ssl_expiration_reminder", "true"),
 				),
 			},
 			{

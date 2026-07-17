@@ -57,7 +57,7 @@ type SlackIntegrationData struct {
 	WebhookURL             string `json:"webhookURL,omitempty"`
 	CustomValue            string `json:"customValue,omitempty"`
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 }
 
 // MSTeamsIntegrationData represents the data structure for MS Teams integrations.
@@ -65,7 +65,7 @@ type MSTeamsIntegrationData struct {
 	FriendlyName           string `json:"friendlyName,omitempty"`
 	WebhookURL             string `json:"webhookURL"`
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 }
 
 // GoogleChatIntegrationData represents the data structure for Google Chat integrations.
@@ -74,7 +74,7 @@ type GoogleChatIntegrationData struct {
 	RoomURL                string `json:"roomURL"`
 	CustomMessage          string `json:"customMessage"` // optional (send "" to clear)
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 }
 
 // DiscordIntegrationData represents the data structure for Discord integrations.
@@ -83,7 +83,7 @@ type DiscordIntegrationData struct {
 	WebhookURL             string `json:"webhookURL,omitempty"`
 	CustomValue            string `json:"customValue,omitempty"`
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 }
 
 // WebhookIntegrationData represents the data structure for Webhook integrations.
@@ -92,7 +92,7 @@ type WebhookIntegrationData struct {
 	URLToNotify            string             `json:"urlToNotify"`
 	CustomValue            string             `json:"customValue,omitempty"`
 	EnableNotificationsFor string             `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool               `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool               `json:"sslExpirationReminder"`
 	PostValue              string             `json:"postValue"`
 	SendAsQueryString      bool               `json:"sendAsQueryString,omitempty"`
 	SendAsJSON             bool               `json:"sendAsJSON,omitempty"`
@@ -105,7 +105,7 @@ type ZapierIntegrationData struct {
 	FriendlyName           string `json:"friendlyName,omitempty"`
 	HookURL                string `json:"hookURL"`
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 }
 
 // PushbulletIntegrationData represents the data structure for Pushbullet integrations.
@@ -113,7 +113,7 @@ type PushbulletIntegrationData struct {
 	FriendlyName           string `json:"friendlyName,omitempty"`
 	AccessToken            string `json:"accessToken"`
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 }
 
 // MattermostIntegrationData represents the data structure for Mattermost integrations.
@@ -122,7 +122,7 @@ type MattermostIntegrationData struct {
 	WebhookURL             string  `json:"webhookURL"`
 	CustomValue            *string `json:"customValue,omitempty"`
 	EnableNotificationsFor string  `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool    `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool    `json:"sslExpirationReminder"`
 }
 
 // SplunkIntegrationData represents the data structure for Splunk integrations.
@@ -130,7 +130,7 @@ type SplunkIntegrationData struct {
 	FriendlyName           string `json:"friendlyName,omitempty"`
 	URLToNotify            string `json:"urlToNotify"`
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 }
 
 // TelegramIntegrationData represents the data structure for Telegram integrations.
@@ -139,7 +139,7 @@ type TelegramIntegrationData struct {
 	FriendlyName           string `json:"friendlyName,omitempty"`
 	CustomValue            string `json:"customValue,omitempty"` // chat ID
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 }
 
 // PushoverIntegrationData represents the data structure for Pushover integrations.
@@ -148,7 +148,7 @@ type PushoverIntegrationData struct {
 	UserKey                string `json:"userKey"`
 	Priority               string `json:"priority,omitempty"` //  (Lowest|Low|Normal|High|Emergency)
 	EnableNotificationsFor string `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool   `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool   `json:"sslExpirationReminder"`
 }
 
 // PagerDuty represents the data structure for PagerDuty integrations.
@@ -158,7 +158,7 @@ type PagerDutyIntegrationData struct {
 	Location               *string `json:"location,omitempty"`    // "us" | "eu"
 	AutoResolve            *bool   `json:"autoResolve,omitempty"` // omit unless set
 	EnableNotificationsFor string  `json:"enableNotificationsFor,omitempty"`
-	SSLExpirationReminder  bool    `json:"sslExpirationReminder,omitempty"`
+	SSLExpirationReminder  bool    `json:"sslExpirationReminder"`
 }
 
 // UpdateIntegrationRequest represents the request to update an existing integration.
