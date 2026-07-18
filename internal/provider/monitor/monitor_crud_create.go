@@ -38,12 +38,14 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 
 	// Create
 	created, err := r.client.CreateMonitor(ctx, createReq)
+	adopted := false
 	if err != nil {
 		created = r.recoverMonitorCreatedDespiteError(ctx, createReq, err, &resp.Diagnostics)
 		if created == nil {
 			resp.Diagnostics.AddError("Error creating monitor", "Could not create monitor, unexpected error: "+err.Error())
 			return
 		}
+		adopted = true
 	}
 
 	// Wait to apply in the API
@@ -55,6 +57,21 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 	api, err := r.waitMonitorSettled(ctx, created.ID, want, settleTimeout)
 	if err != nil {
+		if adopted {
+			// An adopted monitor's config can't be trusted the way a normal
+			// create can; if it doesn't settle to match what was requested,
+			// fail loudly instead of writing a possibly-mismatched monitor
+			// into state.
+			resp.Diagnostics.AddError(
+				"Adopted monitor does not match requested configuration",
+				fmt.Sprintf(
+					"Monitor %d was adopted after an ambiguous create error, but it did not settle to match the requested configuration: %s. "+
+						"It was not written to state; inspect the monitor in UptimeRobot (and import it manually once it matches) before re-applying.",
+					created.ID, err.Error(),
+				),
+			)
+			return
+		}
 		resp.Diagnostics.AddWarning("Create settled slowly", "Backend took longer to reflect changes; proceeding.")
 		if api == nil {
 			api = created
@@ -86,32 +103,75 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, final)...)
 }
 
-// recoverMonitorCreatedDespiteError handles create calls that fail with an
-// ambiguous API response (404 or 5xx). POST /monitors is known to persist the
-// monitor and still answer with an error (e.g. "404 Monitor not found
-// (code 000-004)"), which would otherwise orphan the monitor outside of state
-// and make the next apply fail on the duplicate. Look the monitor up by its
-// exact name (plus type, and URL when one was requested) and adopt it only if
-// there is exactly one match.
+// recoverMonitorCreatedDespiteError handles create calls that fail with the
+// one known-ambiguous API response: HTTP 404 "Monitor not found" (code
+// 000-004). POST /monitors can persist the monitor and still answer with
+// that error, which would otherwise orphan the monitor outside of state and
+// make the next apply fail on the duplicate. Look the monitor up by its
+// exact name (plus type, and URL when one was requested) and adopt it only
+// if there is exactly one match.
+//
+// Any other error status (including other 5xx responses) is treated as a
+// genuine create failure: the API is known to sometimes persist a monitor
+// with invalid settings (e.g. an out-of-range interval) alongside a 500, and
+// that monitor is not safe to adopt automatically. In that case, if exactly
+// one candidate monitor is found, its ID is surfaced as an import hint only
+// - the create still fails.
 func (r *monitorResource) recoverMonitorCreatedDespiteError(
 	ctx context.Context,
 	createReq *client.CreateMonitorRequest,
 	createErr error,
 	diags *diag.Diagnostics,
 ) *client.Monitor {
-	status, ok := client.StatusCode(createErr)
-	if !ok || (status != http.StatusNotFound && status < 500) {
+	apiErr, ok := client.AsAPIError(createErr)
+	if !ok {
+		return nil
+	}
+	isAmbiguous404 := apiErr.StatusCode == http.StatusNotFound && apiErr.Code == "000-004"
+	if !isAmbiguous404 && apiErr.StatusCode < 500 {
 		return nil
 	}
 
+	matches, err := r.findCandidateMonitors(ctx, createReq)
+	if err != nil || len(matches) != 1 {
+		return nil
+	}
+	candidate := matches[0]
+
+	if !isAmbiguous404 {
+		diags.AddWarning(
+			"A monitor matching this create request was found but not adopted",
+			fmt.Sprintf(
+				"The create request for %q failed (%s). A monitor with the same name and type (and URL, if one was requested) already exists (id %d) and may be the one this request attempted to create. "+
+					"It was not adopted automatically because this isn't the known-ambiguous 404 (code 000-004) case, and its settings can't be trusted to match what was requested. "+
+					"If you confirm it matches, import it manually.",
+				createReq.Name, createErr.Error(), candidate.ID,
+			),
+		)
+		return nil
+	}
+
+	diags.AddWarning(
+		"Monitor create reported an error but the monitor was created",
+		fmt.Sprintf(
+			"The API answered the create request for %q with an error (%s) but the monitor was created anyway (id %d); adopting it into state.",
+			createReq.Name, createErr.Error(), candidate.ID,
+		),
+	)
+	return &candidate
+}
+
+// findCandidateMonitors looks up monitors that could match createReq by
+// exact name (the API's name filter matches substrings), type, and URL (when
+// the request had one).
+func (r *monitorResource) findCandidateMonitors(ctx context.Context, createReq *client.CreateMonitorRequest) ([]client.Monitor, error) {
 	monitors, err := r.client.GetMonitorsByName(ctx, createReq.Name)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	var matches []client.Monitor
 	for _, m := range monitors {
-		// The API name filter matches substrings; require an exact match.
 		if m.Name != createReq.Name {
 			continue
 		}
@@ -123,19 +183,7 @@ func (r *monitorResource) recoverMonitorCreatedDespiteError(
 		}
 		matches = append(matches, m)
 	}
-	if len(matches) != 1 {
-		return nil
-	}
-
-	adopted := matches[0]
-	diags.AddWarning(
-		"Monitor create reported an error but the monitor was created",
-		fmt.Sprintf(
-			"The API answered the create request for %q with an error (%s) but the monitor was created anyway (id %d); adopting it into state.",
-			createReq.Name, createErr.Error(), adopted.ID,
-		),
-	)
-	return &adopted
+	return matches, nil
 }
 
 // High level validate create plan

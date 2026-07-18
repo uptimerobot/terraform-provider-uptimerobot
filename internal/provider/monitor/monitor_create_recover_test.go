@@ -47,9 +47,9 @@ func TestRecoverMonitorCreatedDespiteErrorAdopts(t *testing.T) {
 			],"nextCursorId":null}`,
 			wantID: 101,
 		},
-		"5xx on http create with matching url": {
-			createStatus: http.StatusInternalServerError,
-			createBody:   `{"message":"Internal Server Error","statusCode":500}`,
+		"404 on http create with matching url and different code": {
+			createStatus: http.StatusNotFound,
+			createBody:   `{"message":"Monitor not found","code":"000-004"}`,
 			createReq: &client.CreateMonitorRequest{
 				Name:     "api-prod",
 				Type:     client.MonitorType("HTTP"),
@@ -101,6 +101,51 @@ func TestRecoverMonitorCreatedDespiteErrorAdopts(t *testing.T) {
 				t.Fatalf("expected no error diagnostics, got %v", diags)
 			}
 		})
+	}
+}
+
+func TestRecoverMonitorCreatedDespiteErrorDoesNotAdoptGeneric5xx(t *testing.T) {
+	t.Parallel()
+
+	// Reproduces #273: an invalid HEARTBEAT interval (3,888,000s) was
+	// rejected with a 500 but the API persisted it anyway. A generic 500 must
+	// never be auto-adopted, even when exactly one matching monitor is
+	// found, because that monitor's settings can't be trusted.
+	r := newRecoverTestResource(t, func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case req.Method == http.MethodPost && req.URL.Path == "/monitors":
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message":"Internal Server Error"}`))
+		case req.Method == http.MethodGet && req.URL.Path == "/monitors":
+			_, _ = w.Write([]byte(`{"data":[
+				{"id":301,"friendlyName":"prod-heartbeat","type":"HEARTBEAT","url":"https://heartbeat.uptimerobot.com/token"}
+			],"nextCursorId":null}`))
+		default:
+			t.Errorf("unexpected request %s %s", req.Method, req.URL.RequestURI())
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	})
+
+	createReq := &client.CreateMonitorRequest{
+		Name:     "prod-heartbeat",
+		Type:     client.MonitorType("HEARTBEAT"),
+		Interval: 3888000,
+	}
+
+	_, createErr := r.client.CreateMonitor(context.Background(), createReq)
+	if createErr == nil {
+		t.Fatal("expected create to fail, got nil error")
+	}
+
+	var diags diag.Diagnostics
+	if adopted := r.recoverMonitorCreatedDespiteError(context.Background(), createReq, createErr, &diags); adopted != nil {
+		t.Fatalf("expected no adoption for generic 5xx, got monitor id %d", adopted.ID)
+	}
+	if diags.WarningsCount() != 1 {
+		t.Fatalf("expected 1 hint warning diagnostic, got %d: %v", diags.WarningsCount(), diags)
+	}
+	if diags.HasError() {
+		t.Fatalf("expected no error diagnostics, got %v", diags)
 	}
 }
 
