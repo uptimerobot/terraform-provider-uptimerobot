@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -97,6 +99,9 @@ func TestRecoverMonitorCreatedDespiteErrorAdopts(t *testing.T) {
 			if diags.WarningsCount() != 1 {
 				t.Fatalf("expected 1 warning diagnostic, got %d: %v", diags.WarningsCount(), diags)
 			}
+			if !strings.Contains(diags[0].Detail(), strconv.FormatInt(tc.wantID, 10)) {
+				t.Fatalf("expected warning to mention adopted monitor id %d, got: %s", tc.wantID, diags[0].Detail())
+			}
 			if diags.HasError() {
 				t.Fatalf("expected no error diagnostics, got %v", diags)
 			}
@@ -143,6 +148,10 @@ func TestRecoverMonitorCreatedDespiteErrorDoesNotAdoptGeneric5xx(t *testing.T) {
 	}
 	if diags.WarningsCount() != 1 {
 		t.Fatalf("expected 1 hint warning diagnostic, got %d: %v", diags.WarningsCount(), diags)
+	}
+	const wantID = 301
+	if !strings.Contains(diags[0].Detail(), strconv.Itoa(wantID)) {
+		t.Fatalf("expected hint warning to mention candidate monitor id %d, got: %s", wantID, diags[0].Detail())
 	}
 	if diags.HasError() {
 		t.Fatalf("expected no error diagnostics, got %v", diags)
