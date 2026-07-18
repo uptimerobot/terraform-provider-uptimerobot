@@ -17,7 +17,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/apiretry"
 )
+
+var monitorCreateRecoveryBackoffs = []time.Duration{
+	250 * time.Millisecond,
+	500 * time.Millisecond,
+	1 * time.Second,
+	2 * time.Second,
+}
 
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan monitorResourceModel
@@ -132,7 +140,13 @@ func (r *monitorResource) recoverMonitorCreatedDespiteError(
 		return nil
 	}
 
-	matches, err := r.findCandidateMonitors(ctx, createReq)
+	var matches []client.Monitor
+	var err error
+	if isAmbiguous404 {
+		matches, err = r.findCandidateMonitorsWithRetry(ctx, createReq)
+	} else {
+		matches, err = r.findCandidateMonitors(ctx, createReq)
+	}
 	if err != nil || len(matches) != 1 {
 		return nil
 	}
@@ -170,20 +184,54 @@ func (r *monitorResource) findCandidateMonitors(ctx context.Context, createReq *
 		return nil, err
 	}
 
+	requestedName := unescapeHTML(createReq.Name)
+	requestedURL := unescapeHTML(createReq.URL)
 	var matches []client.Monitor
 	for _, m := range monitors {
-		if m.Name != createReq.Name {
+		if unescapeHTML(m.Name) != requestedName {
 			continue
 		}
 		if !strings.EqualFold(m.Type, string(createReq.Type)) {
 			continue
 		}
-		if createReq.URL != "" && m.URL != createReq.URL {
+		if requestedURL != "" &&
+			!monitorURLsEquivalentForState(
+				string(createReq.Type),
+				requestedURL,
+				unescapeHTML(m.URL),
+			) {
 			continue
 		}
 		matches = append(matches, m)
 	}
 	return matches, nil
+}
+
+// findCandidateMonitorsWithRetry allows the list read path to catch up after
+// the create endpoint's own read-after-write lookup returned the known
+// ambiguous 404. It never retries the POST.
+func (r *monitorResource) findCandidateMonitorsWithRetry(
+	ctx context.Context,
+	createReq *client.CreateMonitorRequest,
+) ([]client.Monitor, error) {
+	for attempt := 0; ; attempt++ {
+		matches, err := r.findCandidateMonitors(ctx, createReq)
+		if err == nil && len(matches) > 0 {
+			return matches, nil
+		}
+		if err != nil && !apiretry.IsTempServerErr(err) {
+			return nil, err
+		}
+		if attempt >= len(monitorCreateRecoveryBackoffs) {
+			return matches, err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(monitorCreateRecoveryBackoffs[attempt]):
+		}
+	}
 }
 
 // High level validate create plan

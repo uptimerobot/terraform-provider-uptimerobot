@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -63,6 +64,33 @@ func TestRecoverMonitorCreatedDespiteErrorAdopts(t *testing.T) {
 			],"nextCursorId":null}`,
 			wantID: 201,
 		},
+		"404 with HTML-escaped name": {
+			createStatus: http.StatusNotFound,
+			createBody:   `{"message":"Monitor not found","code":"000-004"}`,
+			createReq: &client.CreateMonitorRequest{
+				Name:     "A & B",
+				Type:     client.MonitorType("HEARTBEAT"),
+				Interval: 3600,
+			},
+			listBody: `{"data":[
+				{"id":202,"friendlyName":"A &amp; B","type":"HEARTBEAT","url":"https://heartbeat.uptimerobot.com/token"}
+			],"nextCursorId":null}`,
+			wantID: 202,
+		},
+		"404 on ping create with API-normalized URL": {
+			createStatus: http.StatusNotFound,
+			createBody:   `{"message":"Monitor not found","code":"000-004"}`,
+			createReq: &client.CreateMonitorRequest{
+				Name:     "ping-prod",
+				Type:     client.MonitorType("PING"),
+				URL:      "https://example.com/health",
+				Interval: 300,
+			},
+			listBody: `{"data":[
+				{"id":203,"friendlyName":"ping-prod","type":"PING","url":"example.com/health"}
+			],"nextCursorId":null}`,
+			wantID: 203,
+		},
 	}
 
 	for name, tc := range cases {
@@ -106,6 +134,54 @@ func TestRecoverMonitorCreatedDespiteErrorAdopts(t *testing.T) {
 				t.Fatalf("expected no error diagnostics, got %v", diags)
 			}
 		})
+	}
+}
+
+func TestRecoverMonitorCreatedDespiteErrorWaitsForListVisibility(t *testing.T) {
+	t.Parallel()
+
+	var listCalls atomic.Int32
+	r := newRecoverTestResource(t, func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case req.Method == http.MethodPost && req.URL.Path == "/monitors":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Monitor not found","code":"000-004"}`))
+		case req.Method == http.MethodGet && req.URL.Path == "/monitors":
+			if listCalls.Add(1) == 1 {
+				_, _ = w.Write([]byte(`{"data":[],"nextCursorId":null}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[
+				{"id":204,"friendlyName":"delayed-heartbeat","type":"HEARTBEAT","url":"https://heartbeat.uptimerobot.com/token"}
+			],"nextCursorId":null}`))
+		default:
+			t.Errorf("unexpected request %s %s", req.Method, req.URL.RequestURI())
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	})
+
+	createReq := &client.CreateMonitorRequest{
+		Name:     "delayed-heartbeat",
+		Type:     client.MonitorType("HEARTBEAT"),
+		Interval: 3600,
+	}
+	_, createErr := r.client.CreateMonitor(context.Background(), createReq)
+	if createErr == nil {
+		t.Fatal("expected create to fail, got nil error")
+	}
+
+	var diags diag.Diagnostics
+	adopted := r.recoverMonitorCreatedDespiteError(
+		context.Background(),
+		createReq,
+		createErr,
+		&diags,
+	)
+	if adopted == nil || adopted.ID != 204 {
+		t.Fatalf("expected delayed monitor 204 to be adopted, got %#v", adopted)
+	}
+	if listCalls.Load() < 2 {
+		t.Fatalf("expected recovery to retry the list lookup, got %d call(s)", listCalls.Load())
 	}
 }
 
