@@ -255,7 +255,7 @@ func (c *Client) CreateMonitor(ctx context.Context, req *CreateMonitorRequest) (
 	base := NewBaseCRUDOperations(c, "/monitors")
 	var monitor Monitor
 	if err := base.doCreate(ctx, req, &monitor); err != nil {
-		return nil, fmt.Errorf("failed to create monitor: %v", err)
+		return nil, fmt.Errorf("failed to create monitor: %w", err)
 	}
 	return &monitor, nil
 }
