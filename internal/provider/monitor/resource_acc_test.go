@@ -1908,6 +1908,31 @@ resource "uptimerobot_monitor" "hb" {
 	})
 }
 
+func TestAcc_Monitor_Heartbeat_IntervalResolvedAtApplyRejected(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-heartbeat-interval")
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
+resource "terraform_data" "heartbeat_interval" {
+  input = %d
+}
+
+resource "uptimerobot_monitor" "hb" {
+  name         = %q
+  type         = "HEARTBEAT"
+  interval     = terraform_data.heartbeat_interval.output
+  grace_period = 120
+}
+`, 31*24*60*60+1, name),
+				ExpectError: regexp.MustCompile(`Heartbeat interval exceeds maximum`),
+			},
+		},
+	})
+}
+
 func TestAcc_Monitor_Heartbeat_Grace_Bounds_OK(t *testing.T) {
 	baseName := acctest.RandomWithPrefix("hb-bounds")
 	resource.Test(t, resource.TestCase{

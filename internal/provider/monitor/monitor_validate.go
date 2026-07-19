@@ -59,7 +59,7 @@ func (r *monitorResource) ValidateConfig(
 
 	t := strings.ToUpper(data.Type.ValueString())
 
-	validateHeartbeatInterval(t, data.Interval, resp)
+	validateHeartbeatInterval(t, data.Interval, &resp.Diagnostics)
 	validateURL(ctx, t, &data, resp)
 	validateGracePeriodAndTimeout(ctx, t, &data, resp)
 	validateMethodVsBody(ctx, &data, resp)
@@ -77,7 +77,7 @@ func (r *monitorResource) ValidateConfig(
 func validateHeartbeatInterval(
 	monitorType string,
 	interval types.Int64,
-	resp *resource.ValidateConfigResponse,
+	diagnostics *diag.Diagnostics,
 ) {
 	if monitorType != MonitorTypeHEARTBEAT || interval.IsNull() || interval.IsUnknown() {
 		return
@@ -86,7 +86,7 @@ func validateHeartbeatInterval(
 		return
 	}
 
-	resp.Diagnostics.AddAttributeError(
+	diagnostics.AddAttributeError(
 		path.Root("interval"),
 		"Heartbeat interval exceeds maximum",
 		fmt.Sprintf(
