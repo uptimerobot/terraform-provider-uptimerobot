@@ -4,18 +4,28 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
+	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/apiretry"
 )
+
+var monitorCreateRecoveryBackoffs = []time.Duration{
+	250 * time.Millisecond,
+	500 * time.Millisecond,
+	1 * time.Second,
+	2 * time.Second,
+}
 
 func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan monitorResourceModel
@@ -36,9 +46,14 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 
 	// Create
 	created, err := r.client.CreateMonitor(ctx, createReq)
+	adopted := false
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating monitor", "Could not create monitor, unexpected error: "+err.Error())
-		return
+		created = r.recoverMonitorCreatedDespiteError(ctx, createReq, err, &resp.Diagnostics)
+		if created == nil {
+			resp.Diagnostics.AddError("Error creating monitor", "Could not create monitor, unexpected error: "+err.Error())
+			return
+		}
+		adopted = true
 	}
 
 	// Wait to apply in the API
@@ -50,6 +65,21 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 	api, err := r.waitMonitorSettled(ctx, created.ID, want, settleTimeout)
 	if err != nil {
+		if adopted {
+			// An adopted monitor's config can't be trusted the way a normal
+			// create can; if it doesn't settle to match what was requested,
+			// fail loudly instead of writing a possibly-mismatched monitor
+			// into state.
+			resp.Diagnostics.AddError(
+				"Adopted monitor does not match requested configuration",
+				fmt.Sprintf(
+					"Monitor %d was adopted after an ambiguous create error, but it did not settle to match the requested configuration: %s. "+
+						"It was not written to state; inspect the monitor in UptimeRobot (and import it manually once it matches) before re-applying.",
+					created.ID, err.Error(),
+				),
+			)
+			return
+		}
 		resp.Diagnostics.AddWarning("Create settled slowly", "Backend took longer to reflect changes; proceeding.")
 		if api == nil {
 			api = created
@@ -79,6 +109,129 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, final)...)
+}
+
+// recoverMonitorCreatedDespiteError handles create calls that fail with the
+// one known-ambiguous API response: HTTP 404 "Monitor not found" (code
+// 000-004). POST /monitors can persist the monitor and still answer with
+// that error, which would otherwise orphan the monitor outside of state and
+// make the next apply fail on the duplicate. Look the monitor up by its
+// exact name (plus type, and URL when one was requested) and adopt it only
+// if there is exactly one match.
+//
+// Any other error status (including other 5xx responses) is treated as a
+// genuine create failure: the API is known to sometimes persist a monitor
+// with invalid settings (e.g. an out-of-range interval) alongside a 500, and
+// that monitor is not safe to adopt automatically. In that case, if exactly
+// one candidate monitor is found, its ID is surfaced as an import hint only
+// - the create still fails.
+func (r *monitorResource) recoverMonitorCreatedDespiteError(
+	ctx context.Context,
+	createReq *client.CreateMonitorRequest,
+	createErr error,
+	diags *diag.Diagnostics,
+) *client.Monitor {
+	apiErr, ok := client.AsAPIError(createErr)
+	if !ok {
+		return nil
+	}
+	isAmbiguous404 := apiErr.StatusCode == http.StatusNotFound && apiErr.Code == "000-004"
+	if !isAmbiguous404 && apiErr.StatusCode < 500 {
+		return nil
+	}
+
+	var matches []client.Monitor
+	var err error
+	if isAmbiguous404 {
+		matches, err = r.findCandidateMonitorsWithRetry(ctx, createReq)
+	} else {
+		matches, err = r.findCandidateMonitors(ctx, createReq)
+	}
+	if err != nil || len(matches) != 1 {
+		return nil
+	}
+	candidate := matches[0]
+
+	if !isAmbiguous404 {
+		diags.AddWarning(
+			"A monitor matching this create request was found but not adopted",
+			fmt.Sprintf(
+				"The create request for %q failed (%s). A monitor with the same name and type (and URL, if one was requested) already exists (id %d) and may be the one this request attempted to create. "+
+					"It was not adopted automatically because this isn't the known-ambiguous 404 (code 000-004) case, and its settings can't be trusted to match what was requested. "+
+					"If you confirm it matches, import it manually.",
+				createReq.Name, createErr.Error(), candidate.ID,
+			),
+		)
+		return nil
+	}
+
+	diags.AddWarning(
+		"Monitor create reported an error but the monitor was created",
+		fmt.Sprintf(
+			"The API answered the create request for %q with an error (%s) but the monitor was created anyway (id %d); adopting it into state.",
+			createReq.Name, createErr.Error(), candidate.ID,
+		),
+	)
+	return &candidate
+}
+
+// findCandidateMonitors looks up monitors that could match createReq by
+// exact name (the API's name filter matches substrings), type, and URL (when
+// the request had one).
+func (r *monitorResource) findCandidateMonitors(ctx context.Context, createReq *client.CreateMonitorRequest) ([]client.Monitor, error) {
+	monitors, err := r.client.GetMonitorsByName(ctx, createReq.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	requestedName := unescapeHTML(createReq.Name)
+	requestedURL := unescapeHTML(createReq.URL)
+	var matches []client.Monitor
+	for _, m := range monitors {
+		if unescapeHTML(m.Name) != requestedName {
+			continue
+		}
+		if !strings.EqualFold(m.Type, string(createReq.Type)) {
+			continue
+		}
+		if requestedURL != "" &&
+			!monitorURLsEquivalentForState(
+				string(createReq.Type),
+				requestedURL,
+				unescapeHTML(m.URL),
+			) {
+			continue
+		}
+		matches = append(matches, m)
+	}
+	return matches, nil
+}
+
+// findCandidateMonitorsWithRetry allows the list read path to catch up after
+// the create endpoint's own read-after-write lookup returned the known
+// ambiguous 404. It never retries the POST.
+func (r *monitorResource) findCandidateMonitorsWithRetry(
+	ctx context.Context,
+	createReq *client.CreateMonitorRequest,
+) ([]client.Monitor, error) {
+	for attempt := 0; ; attempt++ {
+		matches, err := r.findCandidateMonitors(ctx, createReq)
+		if err == nil && len(matches) > 0 {
+			return matches, nil
+		}
+		if err != nil && !apiretry.IsTempServerErr(err) {
+			return nil, err
+		}
+		if attempt >= len(monitorCreateRecoveryBackoffs) {
+			return matches, err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(monitorCreateRecoveryBackoffs[attempt]):
+		}
+	}
 }
 
 // High level validate create plan
