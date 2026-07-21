@@ -122,7 +122,7 @@ Detailed documentation for the data sources supported by this provider can be fo
 
 ## Developing the Provider
 
-If you wish to work on the provider, you'll first need [Go](https://golang.org/doc/install) installed on your machine. Use the version declared in `go.mod` (currently 1.26.4), which is also what CI uses.
+If you wish to work on the provider, you'll first need [Go](https://golang.org/doc/install) installed on your machine. Use the version declared in `go.mod` (currently 1.26.5), which is also what CI uses.
 
 ### Building The Provider
 

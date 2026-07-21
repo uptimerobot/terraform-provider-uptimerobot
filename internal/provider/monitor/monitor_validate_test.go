@@ -627,6 +627,42 @@ func TestValidateGracePeriodAndTimeout_PING_AllowsTimeout(t *testing.T) {
 	}
 }
 
+func TestValidateGracePeriodAndTimeout_HEARTBEAT_AllowsUnknownGracePeriodAtPlanTime(t *testing.T) {
+	t.Parallel()
+
+	// A monitor built with for_each/count has an unexpanded grace_period at
+	// ValidateConfig time (e.g. grace_period = each.value.grace_period), so
+	// it arrives as unknown rather than null. That must not be treated as
+	// missing: the real value is known by plan/apply time.
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{
+		Timeout:     types.Int64Null(),
+		GracePeriod: types.Int64Unknown(),
+	}
+
+	validateGracePeriodAndTimeout(context.TODO(), MonitorTypeHEARTBEAT, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for unknown grace_period on HEARTBEAT monitor, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateGracePeriodAndTimeout_HEARTBEAT_RejectsNullGracePeriod(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{
+		Timeout:     types.Int64Null(),
+		GracePeriod: types.Int64Null(),
+	}
+
+	validateGracePeriodAndTimeout(context.TODO(), MonitorTypeHEARTBEAT, data, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatalf("expected an error for null grace_period on HEARTBEAT monitor")
+	}
+}
+
 func TestValidateConfig_SSLDays_AllowsHTTP(t *testing.T) {
 	t.Parallel()
 

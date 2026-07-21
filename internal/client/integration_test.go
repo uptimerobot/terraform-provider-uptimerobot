@@ -2,10 +2,55 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 )
+
+func TestIntegrationDataIncludesFalseSSLExpirationReminder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		data any
+	}{
+		{name: "slack", data: SlackIntegrationData{}},
+		{name: "msteams", data: MSTeamsIntegrationData{}},
+		{name: "googlechat", data: GoogleChatIntegrationData{}},
+		{name: "discord", data: DiscordIntegrationData{}},
+		{name: "webhook", data: WebhookIntegrationData{}},
+		{name: "zapier", data: ZapierIntegrationData{}},
+		{name: "pushbullet", data: PushbulletIntegrationData{}},
+		{name: "mattermost", data: MattermostIntegrationData{}},
+		{name: "splunk", data: SplunkIntegrationData{}},
+		{name: "telegram", data: TelegramIntegrationData{}},
+		{name: "pushover", data: PushoverIntegrationData{}},
+		{name: "pagerduty", data: PagerDutyIntegrationData{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			encoded, err := json.Marshal(tt.data)
+			if err != nil {
+				t.Fatalf("marshal integration data: %v", err)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(encoded, &payload); err != nil {
+				t.Fatalf("unmarshal integration data: %v", err)
+			}
+			value, ok := payload["sslExpirationReminder"]
+			if !ok {
+				t.Fatal("expected sslExpirationReminder to be present when false")
+			}
+			if value != false {
+				t.Fatalf("expected false sslExpirationReminder, got %#v", value)
+			}
+		})
+	}
+}
 
 func TestClient_ListIntegrations_WithCursor(t *testing.T) {
 	t.Parallel()
