@@ -17,6 +17,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
+const heartbeatMonitorIntervalMax int64 = 31 * 24 * 60 * 60
+
 func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
 		resourcevalidator.Conflicting(
@@ -57,6 +59,7 @@ func (r *monitorResource) ValidateConfig(
 
 	t := strings.ToUpper(data.Type.ValueString())
 
+	validateHeartbeatInterval(t, data.Interval, &resp.Diagnostics)
 	validateURL(ctx, t, &data, resp)
 	validateGracePeriodAndTimeout(ctx, t, &data, resp)
 	validateMethodVsBody(ctx, &data, resp)
@@ -69,6 +72,28 @@ func (r *monitorResource) ValidateConfig(
 	validateKeywordMonitor(ctx, t, &data, resp)
 	validateHTTPPasswordWithoutUserName(ctx, &data, resp)
 
+}
+
+func validateHeartbeatInterval(
+	monitorType string,
+	interval types.Int64,
+	diagnostics *diag.Diagnostics,
+) {
+	if monitorType != MonitorTypeHEARTBEAT || interval.IsNull() || interval.IsUnknown() {
+		return
+	}
+	if interval.ValueInt64() <= heartbeatMonitorIntervalMax {
+		return
+	}
+
+	diagnostics.AddAttributeError(
+		path.Root("interval"),
+		"Heartbeat interval exceeds maximum",
+		fmt.Sprintf(
+			"HEARTBEAT monitors support intervals up to %d seconds (31 days).",
+			heartbeatMonitorIntervalMax,
+		),
+	)
 }
 
 func validateNoHTMLEntities(p path.Path, v interface {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -19,6 +20,53 @@ func TestValidateNoHTMLEntities_AllowsPlainText(t *testing.T) {
 	validateNoHTMLEntities(path.Root("name"), types.StringValue("A & B <C>"), resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("expected no errors, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateHeartbeatInterval(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		monitorType string
+		interval    types.Int64
+		wantError   bool
+	}{
+		{
+			name:        "heartbeat at maximum",
+			monitorType: MonitorTypeHEARTBEAT,
+			interval:    types.Int64Value(heartbeatMonitorIntervalMax),
+		},
+		{
+			name:        "heartbeat above maximum",
+			monitorType: MonitorTypeHEARTBEAT,
+			interval:    types.Int64Value(heartbeatMonitorIntervalMax + 1),
+			wantError:   true,
+		},
+		{
+			name:        "heartbeat unknown during planning",
+			monitorType: MonitorTypeHEARTBEAT,
+			interval:    types.Int64Unknown(),
+		},
+		{
+			name:        "non-heartbeat above heartbeat maximum",
+			monitorType: MonitorTypeHTTP,
+			interval:    types.Int64Value(heartbeatMonitorIntervalMax + 1),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var diagnostics diag.Diagnostics
+			validateHeartbeatInterval(tt.monitorType, tt.interval, &diagnostics)
+
+			if got := diagnostics.HasError(); got != tt.wantError {
+				t.Fatalf("HasError() = %t, want %t; diagnostics: %v", got, tt.wantError, diagnostics)
+			}
+		})
 	}
 }
 
@@ -193,6 +241,23 @@ func TestValidateCreateHighLevel_UDPType_RejectsUnknownPort(t *testing.T) {
 	}
 }
 
+func TestValidateCreateHighLevel_HeartbeatRejectsResolvedIntervalAboveMaximum(t *testing.T) {
+	resp := &resource.CreateResponse{}
+	plan := monitorResourceModel{
+		Type:     types.StringValue(MonitorTypeHEARTBEAT),
+		Interval: types.Int64Value(heartbeatMonitorIntervalMax + 1),
+	}
+
+	ok := validateCreateHighLevel(context.TODO(), plan, resp)
+
+	if ok {
+		t.Fatal("expected ok=false for a heartbeat interval above the maximum")
+	}
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an interval diagnostic before create")
+	}
+}
+
 func TestValidateCreateHighLevel_APIMonitorRejectsHEADMethod(t *testing.T) {
 	resp := &resource.CreateResponse{}
 	check := types.ObjectValueMust(apiAssertionCheckObjectType().AttrTypes, map[string]attr.Value{
@@ -257,6 +322,23 @@ func TestValidateUpdateHighLevel_UDPType_RejectsUnknownPort(t *testing.T) {
 	}
 	if !resp.Diagnostics.HasError() {
 		t.Fatalf("expected diagnostics error for unknown port")
+	}
+}
+
+func TestValidateUpdateHighLevel_HeartbeatRejectsResolvedIntervalAboveMaximum(t *testing.T) {
+	resp := &resource.UpdateResponse{}
+	plan := monitorResourceModel{
+		Type:     types.StringValue(MonitorTypeHEARTBEAT),
+		Interval: types.Int64Value(heartbeatMonitorIntervalMax + 1),
+	}
+
+	ok := validateUpdateHighLevel(plan, true, resp)
+
+	if ok {
+		t.Fatal("expected ok=false for a heartbeat interval above the maximum")
+	}
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an interval diagnostic before update")
 	}
 }
 

@@ -111,7 +111,7 @@ func monitorSchema(version int64, includeApplicationErrorRetries bool) schema.Sc
 				},
 			},
 			"interval": schema.Int64Attribute{
-				Description: "Interval for the monitoring check (in seconds)",
+				Description: "Interval for the monitoring check (in seconds). HEARTBEAT monitors support at most 2678400 seconds (31 days).",
 				Required:    true,
 				Validators: []validator.Int64{
 					int64validator.AtLeast(30),

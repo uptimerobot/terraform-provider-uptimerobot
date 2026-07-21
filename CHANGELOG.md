@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Fixed
+
+- Fixed `uptimerobot_monitor` accepting HEARTBEAT intervals above the API's 2678400-second (31-day) maximum.
+
 ## 1.9.2 — 2026-07-18
 
 ### Fixed
