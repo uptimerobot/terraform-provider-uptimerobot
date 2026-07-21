@@ -1,8 +1,11 @@
 ## Unreleased
 
+## 1.9.3 — 2026-07-21
+
 ### Fixed
 
-- Fixed `uptimerobot_monitor` accepting HEARTBEAT intervals above the API's 2678400-second (31-day) maximum.
+- Recovered newly created `uptimerobot_monitor` resources into state when the API returns an ambiguous not-found response after persisting the monitor, preventing orphaned monitors and duplicate retries.
+- Rejected `uptimerobot_monitor` HEARTBEAT intervals above the API's 2678400-second (31-day) maximum during planning and apply.
 
 ## 1.9.2 — 2026-07-18
 
