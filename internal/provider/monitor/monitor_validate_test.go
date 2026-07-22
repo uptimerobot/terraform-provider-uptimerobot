@@ -101,6 +101,21 @@ func TestValidateAPIHTTPMethodType_RejectsHEADForAPIMonitor(t *testing.T) {
 	}
 }
 
+func TestValidateAPIHTTPMethodType_HEADGuidanceListsQUERY(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	validateAPIHTTPMethodType(MonitorTypeAPI, types.StringValue("HEAD"), &resp.Diagnostics)
+
+	errors := resp.Diagnostics.Errors()
+	if len(errors) == 0 {
+		t.Fatalf("expected an error for HEAD API monitor method")
+	}
+	if detail := errors[0].Detail(); !strings.Contains(detail, "QUERY") {
+		t.Fatalf("expected HEAD guidance to list QUERY, got: %q", detail)
+	}
+}
+
 func TestValidateAPIHTTPMethodType_AllowsHEADForHTTPMonitor(t *testing.T) {
 	t.Parallel()
 

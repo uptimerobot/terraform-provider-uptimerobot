@@ -258,7 +258,7 @@ func validateAPIHTTPMethodType(monitorType string, method types.String, diagnost
 		path.Root("http_method_type"),
 		"HEAD is not supported for API monitors",
 		"API monitors evaluate response bodies with config.api_assertions. "+
-			"Use GET, POST, PUT, PATCH, DELETE, or OPTIONS for API monitors, "+
+			"Use GET, POST, PUT, PATCH, DELETE, OPTIONS, or QUERY for API monitors, "+
 			"or use type = HTTP for status/header-only HEAD checks.",
 	)
 }
