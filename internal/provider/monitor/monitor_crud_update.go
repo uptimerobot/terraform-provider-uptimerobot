@@ -54,6 +54,10 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	if !validateUpdateHighLevel(plan, httpMethodTypeOmitted, resp) {
 		return
 	}
+	validateMaterialAPIAssertionsAtApply(ctx, plan, state, false, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, applicationErrorRetriesOmitted, httpMethodTypeOmitted, resp)
 	if resp.Diagnostics.HasError() {

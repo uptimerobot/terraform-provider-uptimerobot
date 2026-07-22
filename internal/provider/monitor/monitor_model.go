@@ -78,8 +78,8 @@ type configTF struct {
 }
 
 type apiAssertionsTF struct {
-	Logic  types.String `tfsdk:"logic"`
-	Checks types.List   `tfsdk:"checks"`
+	Logic  types.String            `tfsdk:"logic"`
+	Checks apiAssertionChecksValue `tfsdk:"checks"`
 }
 
 type udpTF struct {
@@ -144,7 +144,7 @@ func apiAssertionsObjectType() types.ObjectType {
 	return types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"logic":  types.StringType,
-			"checks": types.ListType{ElemType: apiAssertionCheckObjectType()},
+			"checks": newAPIAssertionChecksType(),
 		},
 	}
 }

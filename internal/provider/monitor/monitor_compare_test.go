@@ -200,6 +200,25 @@ func TestEqualComparable_UsesAPIAssertions(t *testing.T) {
 	}
 }
 
+func TestNormalizeAPIAssertions_DefaultANDAndStatusNumericStringAreCanonical(t *testing.T) {
+	t.Parallel()
+
+	legacy := normalizeAPIAssertions(&client.APIMonitorAssertions{
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "status_code", Comparison: "equals", Target: "0200"},
+		},
+	})
+	v2 := normalizeAPIAssertions(&client.APIMonitorAssertions{
+		Logic: "AND",
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "status_code", Comparison: "equals", Target: 200},
+		},
+	})
+	if !equalAPIAssertions(legacy, v2) {
+		t.Fatalf("default AND and legacy status numeric strings must be canonically equal\nlegacy: %#v\nv2: %#v", legacy, v2)
+	}
+}
+
 func TestEqualComparable_HTTPMethod_EmptyAPIEqualsDefaultGET(t *testing.T) {
 	t.Parallel()
 

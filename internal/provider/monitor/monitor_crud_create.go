@@ -37,6 +37,10 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	if !validateCreateHighLevel(ctx, plan, resp) {
 		return
 	}
+	validateMaterialAPIAssertionsAtApply(ctx, plan, monitorResourceModel{}, true, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Build API request from plan
 	createReq, effMethod := r.buildCreateRequest(ctx, plan, resp)

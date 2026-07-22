@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"html"
+	"math/big"
 	"slices"
 	"strings"
 
@@ -61,9 +62,10 @@ type apiAssertionsComparable struct {
 }
 
 type apiAssertionCheckComparable struct {
-	Property   string
-	Comparison string
-	TargetJSON string
+	Property      string
+	Comparison    string
+	TargetPresent bool
+	TargetJSON    string
 }
 
 type udpComparable struct {
@@ -1051,9 +1053,11 @@ func normalizeAPIAssertions(in *client.APIMonitorAssertions) *apiAssertionsCompa
 	if in == nil {
 		return nil
 	}
-	out := &apiAssertionsComparable{
-		Logic: strings.ToUpper(strings.TrimSpace(in.Logic)),
+	logic := strings.ToUpper(strings.TrimSpace(in.Logic))
+	if logic == "" {
+		logic = "AND"
 	}
+	out := &apiAssertionsComparable{Logic: logic}
 	if len(in.Checks) == 0 {
 		out.Checks = []apiAssertionCheckComparable{}
 		return out
@@ -1061,16 +1065,36 @@ func normalizeAPIAssertions(in *client.APIMonitorAssertions) *apiAssertionsCompa
 
 	checks := make([]apiAssertionCheckComparable, 0, len(in.Checks))
 	for _, c := range in.Checks {
+		property := strings.TrimSpace(c.Property)
+		if strings.HasPrefix(strings.ToLower(property), "headers.") {
+			property = "headers." + strings.ToLower(property[len("headers."):])
+		}
+		comparison := strings.ToLower(strings.TrimSpace(c.Comparison))
 		targetJSON := ""
-		if c.Target != nil {
+		if c.HasTarget() {
 			if b, err := json.Marshal(c.Target); err == nil {
-				targetJSON = string(b)
+				if canonical, ok := canonicalJSONTarget(string(b)); ok {
+					targetJSON = canonical
+				} else {
+					targetJSON = string(b)
+				}
+			}
+		}
+		if property == "status_code" &&
+			(comparison == apiAssertionComparisonEquals || comparison == apiAssertionComparisonNotEquals) &&
+			strings.HasPrefix(targetJSON, "string:") {
+			numeric := strings.TrimPrefix(targetJSON, "string:")
+			if statusCodeNumericString.MatchString(numeric) {
+				if integer, ok := new(big.Int).SetString(numeric, 10); ok && integer.Cmp(apiAssertionMaximumSafeIntegerBig) <= 0 {
+					targetJSON = "number:" + integer.String() + "/1"
+				}
 			}
 		}
 		checks = append(checks, apiAssertionCheckComparable{
-			Property:   strings.TrimSpace(c.Property),
-			Comparison: strings.ToLower(strings.TrimSpace(c.Comparison)),
-			TargetJSON: targetJSON,
+			Property:      property,
+			Comparison:    comparison,
+			TargetPresent: c.HasTarget(),
+			TargetJSON:    targetJSON,
 		})
 	}
 	slices.SortFunc(checks, func(a, b apiAssertionCheckComparable) int {
@@ -1079,6 +1103,12 @@ func normalizeAPIAssertions(in *client.APIMonitorAssertions) *apiAssertionsCompa
 		}
 		if c := cmp.Compare(a.Comparison, b.Comparison); c != 0 {
 			return c
+		}
+		if a.TargetPresent != b.TargetPresent {
+			if a.TargetPresent {
+				return 1
+			}
+			return -1
 		}
 		return cmp.Compare(a.TargetJSON, b.TargetJSON)
 	})

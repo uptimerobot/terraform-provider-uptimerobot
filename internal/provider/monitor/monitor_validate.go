@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -488,130 +487,15 @@ func validateConfig(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if len(checks) < 1 || len(checks) > 5 {
+		if len(checks) < apiAssertionMinimumChecks || len(checks) > apiAssertionMaximumChecks {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("config").AtName("api_assertions").AtName("checks"),
 				"Invalid number of checks",
-				"API assertions checks must contain 1 to 5 items.",
+				fmt.Sprintf("API assertions checks must contain %d to %d items.", apiAssertionMinimumChecks, apiAssertionMaximumChecks),
 			)
 			return
 		}
 
-		for i, check := range checks {
-			checkPath := path.Root("config").AtName("api_assertions").AtName("checks").AtListIndex(i)
-			if check.Property.IsUnknown() || check.Comparison.IsUnknown() || check.Target.IsUnknown() {
-				continue
-			}
-			if check.Property.IsNull() || strings.TrimSpace(check.Property.ValueString()) == "" {
-				resp.Diagnostics.AddAttributeError(
-					checkPath.AtName("property"),
-					"Missing assertion property",
-					"Each check.property must be a non-empty JSONPath expression.",
-				)
-			}
-			if !check.Property.IsNull() && !strings.HasPrefix(strings.TrimSpace(check.Property.ValueString()), "$") {
-				resp.Diagnostics.AddAttributeError(
-					checkPath.AtName("property"),
-					"Invalid assertion property",
-					"check.property must start with '$' (JSONPath syntax).",
-				)
-			}
-
-			comparison := strings.TrimSpace(strings.ToLower(stringOrEmpty(check.Comparison)))
-			switch comparison {
-			case "equals", "not_equals", "contains", "not_contains", "greater_than", "less_than", "is_null", "is_not_null":
-			default:
-				resp.Diagnostics.AddAttributeError(
-					checkPath.AtName("comparison"),
-					"Invalid assertion comparison",
-					"Allowed values: equals, not_equals, contains, not_contains, greater_than, less_than, is_null, is_not_null.",
-				)
-				continue
-			}
-
-			hasTarget := !check.Target.IsNull() && !check.Target.IsUnknown() && strings.TrimSpace(check.Target.ValueString()) != ""
-			var target interface{}
-			if hasTarget {
-				if err := json.Unmarshal([]byte(check.Target.ValueString()), &target); err != nil {
-					resp.Diagnostics.AddAttributeError(
-						checkPath.AtName("target"),
-						"Invalid JSON target",
-						"target must be valid JSON. Use jsonencode(...) for strings, numbers, booleans, or null.",
-					)
-					continue
-				}
-			}
-
-			switch comparison {
-			case "is_null", "is_not_null":
-				if hasTarget && target != nil {
-					resp.Diagnostics.AddAttributeError(
-						checkPath.AtName("target"),
-						"Target is not allowed",
-						"is_null and is_not_null comparisons must not define target.",
-					)
-				}
-			case "greater_than", "less_than":
-				if !hasTarget {
-					resp.Diagnostics.AddAttributeError(
-						checkPath.AtName("target"),
-						"Missing numeric target",
-						"greater_than and less_than require numeric target.",
-					)
-					continue
-				}
-				if _, ok := target.(float64); !ok {
-					resp.Diagnostics.AddAttributeError(
-						checkPath.AtName("target"),
-						"Invalid numeric target",
-						"greater_than and less_than require a number target.",
-					)
-				}
-			case "contains", "not_contains":
-				if !hasTarget {
-					resp.Diagnostics.AddAttributeError(
-						checkPath.AtName("target"),
-						"Missing string target",
-						"contains and not_contains require a non-empty string target.",
-					)
-					continue
-				}
-				s, ok := target.(string)
-				if !ok || strings.TrimSpace(s) == "" {
-					resp.Diagnostics.AddAttributeError(
-						checkPath.AtName("target"),
-						"Invalid string target",
-						"contains and not_contains require a non-empty string target.",
-					)
-				}
-			case "equals", "not_equals":
-				if !hasTarget {
-					resp.Diagnostics.AddAttributeError(
-						checkPath.AtName("target"),
-						"Missing target",
-						"equals and not_equals require string, number, or boolean target.",
-					)
-					continue
-				}
-				switch v := target.(type) {
-				case string:
-					if strings.TrimSpace(v) == "" {
-						resp.Diagnostics.AddAttributeError(
-							checkPath.AtName("target"),
-							"Invalid string target",
-							"equals and not_equals do not allow empty string target.",
-						)
-					}
-				case float64, bool:
-				default:
-					resp.Diagnostics.AddAttributeError(
-						checkPath.AtName("target"),
-						"Invalid target type",
-						"equals and not_equals require string, number, or boolean target.",
-					)
-				}
-			}
-		}
 	}
 
 	if monitorType == MonitorTypeUDP && !data.Config.IsNull() && !data.Config.IsUnknown() {
