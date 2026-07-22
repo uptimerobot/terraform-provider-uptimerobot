@@ -13,14 +13,28 @@ resource "uptimerobot_monitor" "api_assertions" {
       logic = "AND"
       checks = [
         {
-          property   = "$.status"
-          comparison = "equals"
-          target     = jsonencode("ok")
+          # API Internal validates the documented safe RFC 9535 subset.
+          property   = "$.items[?(@.status == 'active')].enabled"
+          comparison = "is_boolean"
         },
         {
-          property   = "$.count"
-          comparison = "greater_than"
-          target     = jsonencode(0)
+          property   = "headers.Content-Type"
+          comparison = "contains"
+          target     = jsonencode("application/json")
+        },
+        {
+          property   = "headers.X-Request-Id"
+          comparison = "exists"
+        },
+        {
+          property   = "status_code"
+          comparison = "less_than"
+          target     = jsonencode(500)
+        },
+        {
+          property   = "body"
+          comparison = "not_contains"
+          target     = jsonencode("fatal")
         },
       ]
     }

@@ -55,6 +55,25 @@ description: |-
 
 {{tffile "examples/resources/uptimerobot_monitor/api_assertions_null_checks.tf"}}
 
+## API Assertions v2
+
+`config.api_assertions.checks` is a duplicate-preserving, order-insensitive collection. Reordering checks does not change the monitor, but adding or removing a duplicate does. Between one and five checks are required.
+
+| Property source | Supported comparisons |
+| --- | --- |
+| JSON body (`$...`) | `equals`, `not_equals`, `contains`, `not_contains`, `greater_than`, `less_than`, `is_null`, `is_not_null`, `is_string`, `is_number`, `is_boolean`, `is_array`, `is_object`, `exists`, `not_exists` |
+| Header (`headers.<name>`) | `equals`, `not_equals`, `contains`, `not_contains`, `is_string`, `exists`, `not_exists` |
+| Status (`status_code`) | `equals`, `not_equals`, `greater_than`, `less_than`, `is_number` |
+| Raw body (`body`) | `equals`, `not_equals`, `contains`, `not_contains`, `is_string` |
+
+`equals`, `not_equals`, `contains`, `not_contains`, `greater_than`, and `less_than` require a target. Other comparisons require no concrete target; omit it or use `jsonencode(null)`. Targets are scalar values only in this release: array/object type checks are supported, but array/object equality targets are not.
+
+JSONPath is the documented safe RFC 9535-compatible subset enforced by API Internal, not full RFC 9535. The provider validates the source shape, source/comparison/target matrix, and known limits without parsing or evaluating JSONPath. API errors remain authoritative for selector grammar and the 16-selector depth limit.
+
+Assertion targets are marked sensitive and are redacted in Terraform plans where Terraform supports nested sensitivity. They are still stored in Terraform state. The nested collection can expose its shape, and `property` remains visible for useful diffs; JSONPath filter literals inside `property` are therefore also visible in configuration, plans, and state. Do not put secrets in assertion targets or selectors unless the state backend and all readers are trusted.
+
+The provider does not expose assertion semantics versions, internal check identifiers, or diagnostics in configuration or state. API Internal assigns and preserves semantics versions. Existing legacy configurations and imported API monitors keep their stored semantics when assertions are unchanged; a material assertion edit is validated as v2.
+
 ### Alert Contacts Example
 
 {{tffile "examples/resources/uptimerobot_monitor/alert_contacts.tf"}}

@@ -289,14 +289,28 @@ resource "uptimerobot_monitor" "api_assertions" {
       logic = "AND"
       checks = [
         {
-          property   = "$.status"
-          comparison = "equals"
-          target     = jsonencode("ok")
+          # API Internal validates the documented safe RFC 9535 subset.
+          property   = "$.items[?(@.status == 'active')].enabled"
+          comparison = "is_boolean"
         },
         {
-          property   = "$.count"
-          comparison = "greater_than"
-          target     = jsonencode(0)
+          property   = "headers.Content-Type"
+          comparison = "contains"
+          target     = jsonencode("application/json")
+        },
+        {
+          property   = "headers.X-Request-Id"
+          comparison = "exists"
+        },
+        {
+          property   = "status_code"
+          comparison = "less_than"
+          target     = jsonencode(500)
+        },
+        {
+          property   = "body"
+          comparison = "not_contains"
+          target     = jsonencode("fatal")
         },
       ]
     }
@@ -323,18 +337,37 @@ resource "uptimerobot_monitor" "api_assertions_null_checks" {
         {
           property   = "$.result.value"
           comparison = "is_not_null"
-          # target must be omitted for is_null/is_not_null
+          # Omit target for no-target comparisons. jsonencode(null) is also valid.
         },
         {
           property   = "$.result.error"
           comparison = "is_null"
-          # target must be omitted for is_null/is_not_null
+          target     = jsonencode(null)
         },
       ]
     }
   }
 }
 ```
+
+## API Assertions v2
+
+`config.api_assertions.checks` is a duplicate-preserving, order-insensitive collection. Reordering checks does not change the monitor, but adding or removing a duplicate does. Between one and five checks are required.
+
+| Property source | Supported comparisons |
+| --- | --- |
+| JSON body (`$...`) | `equals`, `not_equals`, `contains`, `not_contains`, `greater_than`, `less_than`, `is_null`, `is_not_null`, `is_string`, `is_number`, `is_boolean`, `is_array`, `is_object`, `exists`, `not_exists` |
+| Header (`headers.<name>`) | `equals`, `not_equals`, `contains`, `not_contains`, `is_string`, `exists`, `not_exists` |
+| Status (`status_code`) | `equals`, `not_equals`, `greater_than`, `less_than`, `is_number` |
+| Raw body (`body`) | `equals`, `not_equals`, `contains`, `not_contains`, `is_string` |
+
+`equals`, `not_equals`, `contains`, `not_contains`, `greater_than`, and `less_than` require a target. Other comparisons require no concrete target; omit it or use `jsonencode(null)`. Targets are scalar values only in this release: array/object type checks are supported, but array/object equality targets are not.
+
+JSONPath is the documented safe RFC 9535-compatible subset enforced by API Internal, not full RFC 9535. The provider validates the source shape, source/comparison/target matrix, and known limits without parsing or evaluating JSONPath. API errors remain authoritative for selector grammar and the 16-selector depth limit.
+
+Assertion targets are marked sensitive and are redacted in Terraform plans where Terraform supports nested sensitivity. They are still stored in Terraform state. The nested collection can expose its shape, and `property` remains visible for useful diffs; JSONPath filter literals inside `property` are therefore also visible in configuration, plans, and state. Do not put secrets in assertion targets or selectors unless the state backend and all readers are trusted.
+
+The provider does not expose assertion semantics versions, internal check identifiers, or diagnostics in configuration or state. API Internal assigns and preserves semantics versions. Existing legacy configurations and imported API monitors keep their stored semantics when assertions are unchanged; a material assertion edit is validated as v2.
 
 ### Alert Contacts Example
 
@@ -799,7 +832,7 @@ Required:
 
 Optional:
 
-- `api_assertions` (Attributes) API monitor assertion rules. Supported only for type=API. (see [below for nested schema](#nestedatt--config--api_assertions))
+- `api_assertions` (Attributes) API monitor assertion rules. Supported only for type=API. API Internal assigns assertion semantics; the provider never stores internal semantics metadata. (see [below for nested schema](#nestedatt--config--api_assertions))
 - `application_error_retries` (Number) Number of additional retries before declaring an application or content failure (response status, body assertion, keyword, etc.) for `HTTP`, `KEYWORD`, and `API` monitors. Connection errors (DNS, TCP, TLS, timeouts) are unaffected and always retry.
 
 - Allowed range: `0..3`.
@@ -819,7 +852,7 @@ Supported when `type = "HTTP"`, `"KEYWORD"`, or `"API"`.
 
 Optional:
 
-- `checks` (Attributes List) Assertion checks list. Each check uses JSONPath property, comparison, and optional target. (see [below for nested schema](#nestedatt--config--api_assertions--checks))
+- `checks` (Attributes List) Duplicate-preserving, order-insensitive assertion checks. Reordering checks alone has no semantic effect. (see [below for nested schema](#nestedatt--config--api_assertions--checks))
 - `logic` (String) How checks are combined. Allowed: AND, OR.
 
 <a id="nestedatt--config--api_assertions--checks"></a>
@@ -827,12 +860,12 @@ Optional:
 
 Required:
 
-- `comparison` (String) Comparison operator.
-- `property` (String) JSONPath expression, for example $.data.status
+- `comparison` (String) Comparison operator. Availability depends on the property source.
+- `property` (String) Assertion source and selector: safe Core JSONPath beginning with $, headers.<name>, status_code, or body.
 
 Optional:
 
-- `target` (String) Optional target value as JSON. Use jsonencode(...) for strings/numbers/booleans/null. Omit target for is_null and is_not_null comparisons.
+- `target` (String, Sensitive) Optional scalar target as JSON. Use jsonencode(...) for strings, numbers, booleans, or explicit null. Targets are redacted in plans, but remain stored in Terraform state; selector/property values are not sensitive.
 
 
 
