@@ -1,0 +1,1302 @@
+{
+  "contract": "api-monitoring-v2/arrays-and-objects",
+  "contractVersion": "arrays-and-objects/1.0.0",
+  "fixtureSchemaVersion": 1,
+  "sourceIssue": "UPT-3178",
+  "asOf": "2026-07-22",
+  "extends": "core-assertions/1.0.0",
+  "wireContract": {
+    "targetRepresentation": "native_json",
+    "structuredTargetTypes": [
+      "array",
+      "object"
+    ],
+    "doubleEncoding": "A JSON string remains a string and is never reparsed as a structured target.",
+    "targetDiscriminator": "none",
+    "duplicateObjectKeys": "reject_before_lossy_parsing",
+    "rawTextBoundaries": [
+      "api-internal request rawBody",
+      "dashboard structured-target editor",
+      "terraform jsontypes.Normalized"
+    ],
+    "storage": "Persist the accepted target as the existing native JSON target field without schema changes.",
+    "runtime": "Transport the accepted target as native JSON without an additional parse or discriminator."
+  },
+  "limits": {
+    "targetSerializedBytes": 2048,
+    "structuredTargetDepth": 16,
+    "selectedValueDepth": 16,
+    "selectedNodes": 100,
+    "evaluationWorkUnits": 100000,
+    "evaluationMillisecondsPerAssertion": 50,
+    "actualSummaryCharacters": 256,
+    "diagnosticBytesPerAssertion": 1024,
+    "diagnosticBytesPerCheckResult": 8192
+  },
+  "numericPolicy": {
+    "representation": "finite_ieee_754_binary64",
+    "minimumSafeInteger": -9007199254740991,
+    "maximumSafeInteger": 9007199254740991,
+    "nonFinite": "reject",
+    "integerOutsideSafeRange": "reject_at_input_boundary",
+    "structuredEquality": "Numbers are equal when their finite IEEE-754 binary64 values are equal.",
+    "negativeZero": "equal_to_zero",
+    "stringCoercion": "none",
+    "existingScalarComparisons": "unchanged by this contract"
+  },
+  "comparisonMatrix": [
+    {
+      "comparison": "equals",
+      "sources": [
+        "body_json"
+      ],
+      "target": "Any non-null JSON value. Structured targets use strict recursive equality.",
+      "structuredSemantics": "Object key order is ignored, object key sets are exact, array order is preserved, and JSON types are not coerced."
+    },
+    {
+      "comparison": "not_equals",
+      "sources": [
+        "body_json"
+      ],
+      "target": "Any non-null JSON value.",
+      "structuredSemantics": "Exact logical negation of equals."
+    },
+    {
+      "comparison": "contains",
+      "sources": [
+        "body_json"
+      ],
+      "target": "Any JSON value for an array, an object for an object, or a string for a string.",
+      "structuredSemantics": "Arrays contain an exact element. Objects contain an expected-object recursive subset. Existing string substring behavior is unchanged."
+    },
+    {
+      "comparison": "not_contains",
+      "sources": [
+        "body_json"
+      ],
+      "target": "Same target rules as contains.",
+      "structuredSemantics": "Exact logical negation of contains after the selected value and target types are valid."
+    },
+    {
+      "comparison": "is_empty",
+      "sources": [
+        "body_json"
+      ],
+      "target": "omitted",
+      "selectedTypes": [
+        "array",
+        "object"
+      ]
+    },
+    {
+      "comparison": "is_not_empty",
+      "sources": [
+        "body_json"
+      ],
+      "target": "omitted",
+      "selectedTypes": [
+        "array",
+        "object"
+      ]
+    },
+    {
+      "comparison": "length_equals",
+      "sources": [
+        "body_json"
+      ],
+      "target": "non-negative safe integer",
+      "selectedTypes": [
+        "array",
+        "object"
+      ]
+    },
+    {
+      "comparison": "length_not_equals",
+      "sources": [
+        "body_json"
+      ],
+      "target": "non-negative safe integer",
+      "selectedTypes": [
+        "array",
+        "object"
+      ]
+    },
+    {
+      "comparison": "length_greater_than",
+      "sources": [
+        "body_json"
+      ],
+      "target": "non-negative safe integer",
+      "selectedTypes": [
+        "array",
+        "object"
+      ]
+    },
+    {
+      "comparison": "length_less_than",
+      "sources": [
+        "body_json"
+      ],
+      "target": "non-negative safe integer",
+      "selectedTypes": [
+        "array",
+        "object"
+      ]
+    }
+  ],
+  "semantics": {
+    "objectEquality": "unordered_keys_exact_key_set",
+    "arrayEquality": "ordered_exact_elements",
+    "arrayContains": "one_element_strictly_equals_target",
+    "objectContains": "every_expected_key_exists_and_each_expected_value_recursively_matches; nested expected objects are subsets and arrays are exact",
+    "multiMatch": "all selected JSONPath values must pass",
+    "missing": "No selected value keeps the Core no-match behavior.",
+    "null": "Null remains distinct from missing and from arrays or objects.",
+    "depth": "The root array or object has depth 1; each nested array or object adds 1; scalars do not add depth.",
+    "objectLength": "number_of_own_keys",
+    "arrayLength": "number_of_elements",
+    "stringBehavior": "unchanged; new empty and length comparisons do not apply to strings",
+    "featureGate": "reuse_existing_core_rollout_controls",
+    "newFeatureGate": false
+  },
+  "diagnostics": {
+    "contractVersion": "assertion-diagnostics/1.0.0",
+    "envelopeVersion": 1,
+    "newEnvelopeRequired": false,
+    "arraySummary": "[array length=<n>]",
+    "objectSummary": "[object fields=<n>]",
+    "fullStructuredValues": "never_emit",
+    "failureReasons": "Use the existing open failure-reason field and existing limit reasons; enum additions do not change the envelope."
+  },
+  "consumerAreas": {
+    "monitoring-core-go": [
+      "validation",
+      "evaluation",
+      "limits",
+      "diagnostics"
+    ],
+    "api-internal": [
+      "wire",
+      "validation",
+      "persistence",
+      "openapi"
+    ],
+    "dashboard": [
+      "raw_text_validation",
+      "editor",
+      "serialization",
+      "diagnostics"
+    ],
+    "terraform-provider-uptimerobot": [
+      "raw_text_validation",
+      "round_trip",
+      "documentation"
+    ],
+    "qa-automation": [
+      "cross_service_conformance"
+    ]
+  },
+  "fixtureSemantics": {
+    "copyPolicy": "Files with this contractVersion remain byte-identical in every consumer repository.",
+    "generatedInput": "A generated object describes deterministic data that a repository-native test constructs instead of storing a very large literal.",
+    "expectedMatching": "Expected fields are partial unless a case explicitly declares an exact payload.",
+    "execution": "Downstream implementation tasks execute the areas they own; UPT-3178 consumers verify identity, limits, comparison inventory, and required case coverage."
+  },
+  "cases": [
+    {
+      "id": "wire-native-array-target",
+      "area": "wire",
+      "input": {
+        "assertion": {
+          "property": "$.items",
+          "comparison": "equals",
+          "target": [
+            1,
+            "two",
+            true,
+            null
+          ]
+        }
+      },
+      "expected": {
+        "valid": true,
+        "targetType": "array",
+        "additionalParse": false
+      }
+    },
+    {
+      "id": "wire-native-object-target",
+      "area": "wire",
+      "input": {
+        "assertion": {
+          "property": "$.metadata",
+          "comparison": "contains",
+          "target": {
+            "ready": true,
+            "region": "eu"
+          }
+        }
+      },
+      "expected": {
+        "valid": true,
+        "targetType": "object",
+        "additionalParse": false
+      }
+    },
+    {
+      "id": "wire-scalar-target-remains-compatible",
+      "area": "wire",
+      "input": {
+        "assertion": {
+          "property": "$.status",
+          "comparison": "equals",
+          "target": "ok"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "targetType": "string",
+        "behavior": "core_unchanged"
+      }
+    },
+    {
+      "id": "wire-double-encoded-array-remains-string",
+      "area": "wire",
+      "input": {
+        "assertion": {
+          "property": "$.items",
+          "comparison": "equals",
+          "target": "[1,2]"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "targetType": "string",
+        "target": "[1,2]",
+        "additionalParse": false
+      }
+    },
+    {
+      "id": "reject-duplicate-root-object-key",
+      "area": "validation",
+      "input": {
+        "comparison": "equals",
+        "rawTarget": "{\"id\":1,\"id\":2}"
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "duplicate_object_key",
+        "path": "$.id"
+      }
+    },
+    {
+      "id": "reject-duplicate-nested-object-key",
+      "area": "validation",
+      "input": {
+        "comparison": "equals",
+        "rawTarget": "{\"outer\":{\"id\":1,\"id\":2}}"
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "duplicate_object_key",
+        "path": "$.outer.id"
+      }
+    },
+    {
+      "id": "accept-maximum-safe-integers",
+      "area": "validation",
+      "input": {
+        "comparison": "equals",
+        "target": [
+          -9007199254740991,
+          9007199254740991
+        ]
+      },
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "reject-positive-unsafe-integer",
+      "area": "validation",
+      "input": {
+        "comparison": "equals",
+        "rawTarget": "[9007199254740992]"
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "number_outside_interoperable_range"
+      }
+    },
+    {
+      "id": "reject-negative-unsafe-integer",
+      "area": "validation",
+      "input": {
+        "comparison": "equals",
+        "rawTarget": "[-9007199254740992]"
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "number_outside_interoperable_range"
+      }
+    },
+    {
+      "id": "reject-number-overflow-to-non-finite",
+      "area": "validation",
+      "input": {
+        "comparison": "equals",
+        "rawTarget": "[1e400]"
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "number_outside_interoperable_range"
+      }
+    },
+    {
+      "id": "accept-structured-target-at-depth-limit",
+      "area": "limits",
+      "input": {
+        "comparison": "equals",
+        "generated": {
+          "type": "nested_single_element_arrays",
+          "depth": 16,
+          "leaf": null
+        }
+      },
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "reject-structured-target-over-depth-limit",
+      "area": "limits",
+      "input": {
+        "comparison": "equals",
+        "generated": {
+          "type": "nested_single_element_arrays",
+          "depth": 17,
+          "leaf": null
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "limit_exceeded",
+        "reason": "structured_target_too_deep"
+      }
+    },
+    {
+      "id": "accept-target-at-serialized-size-limit",
+      "area": "limits",
+      "input": {
+        "comparison": "equals",
+        "generated": {
+          "type": "single_string_array",
+          "serializedBytes": 2048
+        }
+      },
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "reject-target-over-serialized-size-limit",
+      "area": "limits",
+      "input": {
+        "comparison": "equals",
+        "generated": {
+          "type": "single_string_array",
+          "serializedBytes": 2049
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "limit_exceeded",
+        "reason": "target_too_large"
+      }
+    },
+    {
+      "id": "equals-object-ignores-key-order",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": {
+          "a": 1,
+          "b": 2
+        },
+        "selectedValues": [
+          {
+            "b": 2,
+            "a": 1
+          }
+        ]
+      },
+      "expected": {
+        "passed": true,
+        "selectedCount": 1,
+        "failedCount": 0
+      }
+    },
+    {
+      "id": "equals-object-requires-exact-key-set",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": {
+          "a": 1
+        },
+        "selectedValues": [
+          {
+            "a": 1,
+            "b": 2
+          }
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "comparison_failed"
+      }
+    },
+    {
+      "id": "equals-array-preserves-order",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": [
+          1,
+          2,
+          3
+        ],
+        "selectedValues": [
+          [
+            1,
+            2,
+            3
+          ]
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "equals-array-rejects-reordered-elements",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": [
+          1,
+          2,
+          3
+        ],
+        "selectedValues": [
+          [
+            3,
+            2,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "comparison_failed"
+      }
+    },
+    {
+      "id": "equals-structured-does-not-coerce-number-string",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": [
+          1
+        ],
+        "selectedValues": [
+          [
+            "1"
+          ]
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "comparison_failed"
+      }
+    },
+    {
+      "id": "equals-structured-does-not-coerce-boolean-string",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": {
+          "ready": true
+        },
+        "selectedValues": [
+          {
+            "ready": "true"
+          }
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "comparison_failed"
+      }
+    },
+    {
+      "id": "equals-nested-structured-values",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": {
+          "items": [
+            {
+              "id": 1,
+              "tags": [
+                "a",
+                "b"
+              ]
+            }
+          ],
+          "next": null
+        },
+        "selectedValues": [
+          {
+            "next": null,
+            "items": [
+              {
+                "tags": [
+                  "a",
+                  "b"
+                ],
+                "id": 1
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "equals-numbers-after-binary64-normalization",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "rawTarget": "[0.30000000000000003]",
+        "rawSelectedValues": "[[0.30000000000000004]]"
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "equals-distinct-binary64-numbers-fails",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": [
+          0.3
+        ],
+        "selectedValues": [
+          [
+            0.30000000000000004
+          ]
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "comparison_failed"
+      }
+    },
+    {
+      "id": "not-equals-is-exact-negation",
+      "area": "evaluation",
+      "input": {
+        "comparison": "not_equals",
+        "target": [
+          1,
+          2
+        ],
+        "selectedValues": [
+          [
+            2,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "array-contains-scalar-element",
+      "area": "evaluation",
+      "input": {
+        "comparison": "contains",
+        "target": 2,
+        "selectedValues": [
+          [
+            1,
+            2,
+            3
+          ]
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "array-contains-exact-object-element",
+      "area": "evaluation",
+      "input": {
+        "comparison": "contains",
+        "target": {
+          "id": 2,
+          "ready": true
+        },
+        "selectedValues": [
+          [
+            {
+              "id": 1
+            },
+            {
+              "ready": true,
+              "id": 2
+            }
+          ]
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "array-contains-object-does-not-use-subset",
+      "area": "evaluation",
+      "input": {
+        "comparison": "contains",
+        "target": {
+          "id": 2
+        },
+        "selectedValues": [
+          [
+            {
+              "id": 2,
+              "ready": true
+            }
+          ]
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "comparison_failed"
+      }
+    },
+    {
+      "id": "array-not-contains-exact-element",
+      "area": "evaluation",
+      "input": {
+        "comparison": "not_contains",
+        "target": [
+          2,
+          1
+        ],
+        "selectedValues": [
+          [
+            [
+              1,
+              2
+            ]
+          ]
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "object-contains-shallow-subset",
+      "area": "evaluation",
+      "input": {
+        "comparison": "contains",
+        "target": {
+          "ready": true
+        },
+        "selectedValues": [
+          {
+            "id": 7,
+            "ready": true
+          }
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "object-contains-recursive-object-subset",
+      "area": "evaluation",
+      "input": {
+        "comparison": "contains",
+        "target": {
+          "metadata": {
+            "region": "eu"
+          }
+        },
+        "selectedValues": [
+          {
+            "metadata": {
+              "region": "eu",
+              "zone": "1a"
+            },
+            "ready": true
+          }
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "object-contains-requires-every-expected-key",
+      "area": "evaluation",
+      "input": {
+        "comparison": "contains",
+        "target": {
+          "ready": true,
+          "region": "eu"
+        },
+        "selectedValues": [
+          {
+            "ready": true
+          }
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "comparison_failed"
+      }
+    },
+    {
+      "id": "object-contains-nested-array-exactly",
+      "area": "evaluation",
+      "input": {
+        "comparison": "contains",
+        "target": {
+          "roles": [
+            "reader",
+            "writer"
+          ]
+        },
+        "selectedValues": [
+          {
+            "id": 1,
+            "roles": [
+              "reader",
+              "writer"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "object-contains-does-not-subset-nested-array",
+      "area": "evaluation",
+      "input": {
+        "comparison": "contains",
+        "target": {
+          "roles": [
+            "reader"
+          ]
+        },
+        "selectedValues": [
+          {
+            "roles": [
+              "reader",
+              "writer"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "comparison_failed"
+      }
+    },
+    {
+      "id": "object-not-contains-subset",
+      "area": "evaluation",
+      "input": {
+        "comparison": "not_contains",
+        "target": {
+          "ready": false
+        },
+        "selectedValues": [
+          {
+            "ready": true,
+            "id": 1
+          }
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "object-contains-scalar-target-is-type-mismatch",
+      "area": "evaluation",
+      "input": {
+        "comparison": "contains",
+        "target": 1,
+        "selectedValues": [
+          {
+            "id": 1
+          }
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "type_mismatch"
+      }
+    },
+    {
+      "id": "is-empty-array",
+      "area": "evaluation",
+      "input": {
+        "comparison": "is_empty",
+        "selectedValues": [
+          []
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "is-empty-object",
+      "area": "evaluation",
+      "input": {
+        "comparison": "is_empty",
+        "selectedValues": [
+          {}
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "is-not-empty-structured-value",
+      "area": "evaluation",
+      "input": {
+        "comparison": "is_not_empty",
+        "selectedValues": [
+          {
+            "ready": true
+          }
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "is-empty-non-empty-array-fails",
+      "area": "evaluation",
+      "input": {
+        "comparison": "is_empty",
+        "selectedValues": [
+          [
+            null
+          ]
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "comparison_failed"
+      }
+    },
+    {
+      "id": "is-empty-string-is-type-mismatch",
+      "area": "evaluation",
+      "input": {
+        "comparison": "is_empty",
+        "selectedValues": [
+          ""
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "type_mismatch"
+      }
+    },
+    {
+      "id": "length-equals-array",
+      "area": "evaluation",
+      "input": {
+        "comparison": "length_equals",
+        "target": 3,
+        "selectedValues": [
+          [
+            1,
+            2,
+            3
+          ]
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "length-equals-object-key-count",
+      "area": "evaluation",
+      "input": {
+        "comparison": "length_equals",
+        "target": 2,
+        "selectedValues": [
+          {
+            "a": 1,
+            "b": 2
+          }
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "length-not-equals",
+      "area": "evaluation",
+      "input": {
+        "comparison": "length_not_equals",
+        "target": 1,
+        "selectedValues": [
+          {
+            "a": 1,
+            "b": 2
+          }
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "length-greater-than",
+      "area": "evaluation",
+      "input": {
+        "comparison": "length_greater_than",
+        "target": 2,
+        "selectedValues": [
+          [
+            1,
+            2,
+            3
+          ]
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "length-less-than",
+      "area": "evaluation",
+      "input": {
+        "comparison": "length_less_than",
+        "target": 3,
+        "selectedValues": [
+          {
+            "a": 1,
+            "b": 2
+          }
+        ]
+      },
+      "expected": {
+        "passed": true
+      }
+    },
+    {
+      "id": "reject-negative-length-target",
+      "area": "validation",
+      "input": {
+        "comparison": "length_equals",
+        "target": -1
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "non_negative_integer_target_required"
+      }
+    },
+    {
+      "id": "reject-fractional-length-target",
+      "area": "validation",
+      "input": {
+        "comparison": "length_equals",
+        "target": 1.5
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "non_negative_integer_target_required"
+      }
+    },
+    {
+      "id": "reject-string-length-target",
+      "area": "validation",
+      "input": {
+        "comparison": "length_equals",
+        "target": "2"
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "non_negative_integer_target_required"
+      }
+    },
+    {
+      "id": "reject-missing-length-target",
+      "area": "validation",
+      "input": {
+        "comparison": "length_equals"
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "target_required"
+      }
+    },
+    {
+      "id": "reject-target-on-is-empty",
+      "area": "validation",
+      "input": {
+        "comparison": "is_empty",
+        "target": 0
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "target_not_allowed"
+      }
+    },
+    {
+      "id": "reject-structured-comparison-for-header-source",
+      "area": "validation",
+      "input": {
+        "property": "headers.x-items",
+        "comparison": "is_empty"
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_comparison_for_source",
+        "reason": "unsupported_comparison"
+      }
+    },
+    {
+      "id": "multi-match-all-structured-values-pass",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": [
+          1
+        ],
+        "selectedValues": [
+          [
+            1
+          ],
+          [
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "passed": true,
+        "selectedCount": 2,
+        "failedCount": 0
+      }
+    },
+    {
+      "id": "multi-match-one-structured-value-fails",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": [
+          1
+        ],
+        "selectedValues": [
+          [
+            1
+          ],
+          [
+            2
+          ]
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "selectedCount": 2,
+        "failedCount": 1,
+        "failedIndexes": [
+          1
+        ],
+        "failureReason": "comparison_failed"
+      }
+    },
+    {
+      "id": "structured-equality-no-match-keeps-core-semantics",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": {},
+        "selectedValues": []
+      },
+      "expected": {
+        "passed": false,
+        "selectedCount": 0,
+        "failureReason": "no_match"
+      }
+    },
+    {
+      "id": "null-is-not-an-empty-object",
+      "area": "evaluation",
+      "input": {
+        "comparison": "equals",
+        "target": {},
+        "selectedValues": [
+          null
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "comparison_failed"
+      }
+    },
+    {
+      "id": "selected-structured-value-over-depth-limit-fails-closed",
+      "area": "limits",
+      "input": {
+        "comparison": "equals",
+        "target": [],
+        "generatedSelectedValues": {
+          "type": "nested_single_element_arrays",
+          "depth": 17,
+          "leaf": null
+        }
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "evaluation_work_limit_exceeded"
+      }
+    },
+    {
+      "id": "structured-comparison-work-budget-fails-closed",
+      "area": "limits",
+      "input": {
+        "comparison": "equals",
+        "generated": {
+          "type": "wide_nested_objects",
+          "forceWorkUnits": 100001
+        }
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "evaluation_work_limit_exceeded"
+      }
+    },
+    {
+      "id": "selected-node-cap-remains-core-limit",
+      "area": "limits",
+      "input": {
+        "comparison": "is_not_empty",
+        "generatedSelectedValues": {
+          "type": "empty_arrays",
+          "count": 101
+        }
+      },
+      "expected": {
+        "passed": false,
+        "failureReason": "too_many_matches",
+        "maximumSelectedNodes": 100
+      }
+    },
+    {
+      "id": "diagnostic-array-summary-is-bounded",
+      "area": "diagnostics",
+      "input": {
+        "comparison": "equals",
+        "target": [
+          "secret-a",
+          "secret-b"
+        ],
+        "selectedValues": [
+          [
+            "actual-secret"
+          ]
+        ]
+      },
+      "expected": {
+        "targetType": "array",
+        "targetSummary": "[array length=2]",
+        "actualSummary": "[array length=1]",
+        "containsFullValue": false
+      }
+    },
+    {
+      "id": "diagnostic-object-summary-is-bounded",
+      "area": "diagnostics",
+      "input": {
+        "comparison": "contains",
+        "target": {
+          "token": "secret",
+          "ready": true
+        },
+        "selectedValues": [
+          {
+            "token": "different",
+            "ready": true,
+            "extra": 1
+          }
+        ]
+      },
+      "expected": {
+        "targetType": "object",
+        "targetSummary": "[object fields=2]",
+        "actualSummary": "[object fields=3]",
+        "containsFullValue": false
+      }
+    },
+    {
+      "id": "diagnostics-envelope-remains-version-one",
+      "area": "compatibility",
+      "input": {
+        "comparison": "length_equals",
+        "target": 2
+      },
+      "expected": {
+        "contractVersion": "assertion-diagnostics/1.0.0",
+        "envelopeVersion": 1
+      }
+    },
+    {
+      "id": "structured-comparisons-reuse-core-rollout-controls",
+      "area": "compatibility",
+      "input": {
+        "comparison": "equals",
+        "target": []
+      },
+      "expected": {
+        "newFeatureGate": false,
+        "semanticsVersion": 2
+      }
+    }
+  ]
+}
