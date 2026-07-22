@@ -694,7 +694,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 
 ### Required
 
-- `interval` (Number) Interval for the monitoring check (in seconds)
+- `interval` (Number) Interval for the monitoring check (in seconds). HEARTBEAT monitors support at most 2678400 seconds (31 days).
 - `name` (String) Tip: Write names as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
 - `type` (String) Type of the monitor (HTTP, KEYWORD, PING, PORT, HEARTBEAT, DNS, API, UDP)
 

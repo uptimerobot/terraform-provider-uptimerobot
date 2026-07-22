@@ -239,6 +239,13 @@ func (r *monitorResource) findCandidateMonitorsWithRetry(
 func validateCreateHighLevel(ctx context.Context, plan monitorResourceModel, resp *resource.CreateResponse) bool {
 	t := strings.ToUpper(plan.Type.ValueString())
 
+	// ValidateConfig must allow unknown values during planning. Recheck the
+	// resolved value at apply time before building or sending the create request.
+	validateHeartbeatInterval(t, plan.Interval, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return false
+	}
+
 	validateAPIHTTPMethodType(t, plan.HTTPMethodType, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return false

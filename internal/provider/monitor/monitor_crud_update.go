@@ -236,7 +236,14 @@ func applyTrustedMonitorUpdateEcho(
 }
 
 func validateUpdateHighLevel(plan monitorResourceModel, httpMethodTypeOmitted bool, resp *resource.UpdateResponse) bool {
-	t := plan.Type.ValueString()
+	t := strings.ToUpper(plan.Type.ValueString())
+
+	// ValidateConfig must allow unknown values during planning. Recheck the
+	// resolved value at apply time before building or sending the update request.
+	validateHeartbeatInterval(t, plan.Interval, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return false
+	}
 
 	if !httpMethodTypeOmitted {
 		validateAPIHTTPMethodType(t, plan.HTTPMethodType, &resp.Diagnostics)
