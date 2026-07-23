@@ -289,9 +289,14 @@ resource "uptimerobot_monitor" "api_assertions" {
       logic = "AND"
       checks = [
         {
-          # API Internal validates the documented safe RFC 9535 subset.
-          property   = "$.items[?(@.status == 'active')].enabled"
-          comparison = "is_boolean"
+          # jsonencode is decoded once by the provider and sent as a native
+          # JSON object, so an array can look for this exact object element.
+          property   = "$.items"
+          comparison = "contains"
+          target = jsonencode({
+            status  = "active"
+            enabled = true
+          })
         },
         {
           property   = "headers.Content-Type"
@@ -865,7 +870,7 @@ Required:
 
 Optional:
 
-- `target` (String, Sensitive) Optional scalar target as JSON. Use jsonencode(...) for strings, numbers, booleans, or explicit null. Targets are redacted in plans, but remain stored in Terraform state; selector/property values are not sensitive.
+- `target` (String, Sensitive) Optional target as JSON. Use jsonencode(...) for strings, numbers, booleans, arrays, objects, or explicit null. Arrays and objects are supported for body-JSON equality and containment. Targets are redacted in plans, but remain stored in Terraform state; selector/property values are not sensitive.
 
 
 

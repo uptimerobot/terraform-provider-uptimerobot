@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/stretchr/testify/require"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -822,6 +823,48 @@ func TestExpandConfigToAPI_APIAssertionsTouched(t *testing.T) {
 	if !ok || gotTarget != "ok" {
 		t.Fatalf("expected string target=ok, got %#v", out.APIAssertions.Checks[0].Target)
 	}
+}
+
+func TestExpandConfigToAPI_APIAssertionsStructuredTargetsRemainNativeJSON(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	check := func(comparison, target string) attr.Value {
+		return types.ObjectValueMust(apiAssertionCheckObjectType().AttrTypes, map[string]attr.Value{
+			"property":   types.StringValue("$.value"),
+			"comparison": types.StringValue(comparison),
+			"target":     jsontypes.NewNormalizedValue(target),
+		})
+	}
+	checks, checkDiags := newAPIAssertionChecksValue([]attr.Value{
+		check("equals", `[1,"two",true,null]`),
+		check("contains", `{"ready":true,"metadata":{"region":"eu"}}`),
+		check("equals", `"[1,2]"`),
+	})
+	require.False(t, checkDiags.HasError())
+	cfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions": types.ObjectValueMust(apiAssertionsObjectType().AttrTypes, map[string]attr.Value{
+			"logic":  types.StringValue("AND"),
+			"checks": checks,
+		}),
+		"ip_version":                types.StringNull(),
+		"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries": types.Int64Unknown(),
+	})
+
+	out, _, diags := expandConfigToAPI(ctx, cfg)
+	require.False(t, diags.HasError(), "%+v", diags)
+	require.Len(t, out.APIAssertions.Checks, 3)
+
+	arrayJSON, err := json.Marshal(out.APIAssertions.Checks[0].Target)
+	require.NoError(t, err)
+	require.JSONEq(t, `[1,"two",true,null]`, string(arrayJSON))
+	objectJSON, err := json.Marshal(out.APIAssertions.Checks[1].Target)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"ready":true,"metadata":{"region":"eu"}}`, string(objectJSON))
+	require.Equal(t, "[1,2]", out.APIAssertions.Checks[2].Target, "JSON-looking strings must never be reparsed")
 }
 
 func TestExpandConfigToAPI_APIAssertionTargetPresence(t *testing.T) {

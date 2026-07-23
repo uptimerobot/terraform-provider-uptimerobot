@@ -13,9 +13,14 @@ resource "uptimerobot_monitor" "api_assertions" {
       logic = "AND"
       checks = [
         {
-          # API Internal validates the documented safe RFC 9535 subset.
-          property   = "$.items[?(@.status == 'active')].enabled"
-          comparison = "is_boolean"
+          # jsonencode is decoded once by the provider and sent as a native
+          # JSON object, so an array can look for this exact object element.
+          property   = "$.items"
+          comparison = "contains"
+          target = jsonencode({
+            status  = "active"
+            enabled = true
+          })
         },
         {
           property   = "headers.Content-Type"

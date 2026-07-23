@@ -29,6 +29,11 @@ type coreAssertionFixture struct {
 	} `json:"cases"`
 }
 
+var arraysSupersededCoreValidationCases = map[string]bool{
+	"reject-structured-equality-target": true,
+	"reject-contains-non-string-target": true,
+}
+
 func TestCoreAssertionsV1FrozenValidationFixtures(t *testing.T) {
 	t.Parallel()
 
@@ -57,6 +62,10 @@ func TestCoreAssertionsV1FrozenValidationFixtures(t *testing.T) {
 			switch {
 			case testCase.Input["assertion"] != nil:
 				check := apiAssertionCheckFromFixture(t, testCase.Input["assertion"])
+				if arraysSupersededCoreValidationCases[testCase.ID] {
+					require.Nil(t, validateAPIAssertionCheckV2(check), "arrays-and-objects/1.0.0 supersedes this Core rejection")
+					return
+				}
 				assertFixtureIssue(t, testCase.Expected.Valid, testCase.Expected.Category, testCase.Expected.Reason, validateAPIAssertionCheckV2(check))
 			case testCase.Input["paths"] != nil:
 				var paths []string
@@ -180,6 +189,9 @@ func validTargetForMatrix(source apiAssertionSource, comparison string) jsontype
 	if !apiAssertionTargetComparisons[comparison] {
 		return jsontypes.NewNormalizedNull()
 	}
+	if isAPIAssertionLengthComparison(comparison) {
+		return jsontypes.NewNormalizedValue(`1`)
+	}
 	if comparison == apiAssertionComparisonContains || comparison == apiAssertionComparisonNotContains ||
 		source == apiAssertionSourceHeader || source == apiAssertionSourceBodyText {
 		return jsontypes.NewNormalizedValue(`"ready"`)
@@ -208,11 +220,19 @@ func TestAPIAssertionTargetMatrix(t *testing.T) {
 		{name: "no target value rejected", property: "$.v", comparison: "exists", target: jsontypes.NewNormalizedValue("true"), reason: "target_not_allowed"},
 		{name: "body json empty string accepted", property: "$.v", comparison: "equals", target: jsontypes.NewNormalizedValue(`""`), valid: true},
 		{name: "contains empty string accepted", property: "$.v", comparison: "contains", target: jsontypes.NewNormalizedValue(`""`), valid: true},
-		{name: "contains number rejected", property: "$.v", comparison: "contains", target: jsontypes.NewNormalizedValue("1"), reason: "string_target_required"},
+		{name: "contains number accepted for JSON array elements", property: "$.v", comparison: "contains", target: jsontypes.NewNormalizedValue("1"), valid: true},
 		{name: "range numeric string rejected", property: "$.v", comparison: "greater_than", target: jsontypes.NewNormalizedValue(`"1"`), reason: "numeric_target_required"},
 		{name: "body json boolean accepted", property: "$.v", comparison: "equals", target: jsontypes.NewNormalizedValue("true"), valid: true},
-		{name: "body json array rejected", property: "$.v", comparison: "equals", target: jsontypes.NewNormalizedValue("[1]"), reason: "structured_targets_not_supported_in_core"},
-		{name: "body json object rejected", property: "$.v", comparison: "equals", target: jsontypes.NewNormalizedValue(`{"id":1}`), reason: "structured_targets_not_supported_in_core"},
+		{name: "body json array accepted", property: "$.v", comparison: "equals", target: jsontypes.NewNormalizedValue("[1]"), valid: true},
+		{name: "body json object accepted", property: "$.v", comparison: "equals", target: jsontypes.NewNormalizedValue(`{"id":1}`), valid: true},
+		{name: "body json object subset accepted", property: "$.v", comparison: "contains", target: jsontypes.NewNormalizedValue(`{"ready":true}`), valid: true},
+		{name: "header structured target rejected", property: "headers.x-items", comparison: "equals", target: jsontypes.NewNormalizedValue(`[1]`), reason: "scalar_target_required"},
+		{name: "empty comparison omits target", property: "$.v", comparison: "is_empty", target: jsontypes.NewNormalizedNull(), valid: true},
+		{name: "empty comparison rejects target", property: "$.v", comparison: "is_empty", target: jsontypes.NewNormalizedValue(`0`), reason: "target_not_allowed"},
+		{name: "length accepts zero", property: "$.v", comparison: "length_equals", target: jsontypes.NewNormalizedValue(`0`), valid: true},
+		{name: "length rejects negative", property: "$.v", comparison: "length_equals", target: jsontypes.NewNormalizedValue(`-1`), reason: "non_negative_integer_target_required"},
+		{name: "length rejects fraction", property: "$.v", comparison: "length_equals", target: jsontypes.NewNormalizedValue(`1.5`), reason: "non_negative_integer_target_required"},
+		{name: "length rejects string", property: "$.v", comparison: "length_equals", target: jsontypes.NewNormalizedValue(`"2"`), reason: "non_negative_integer_target_required"},
 		{name: "header number rejected", property: "headers.x-count", comparison: "equals", target: jsontypes.NewNormalizedValue("1"), reason: "string_target_required"},
 		{name: "body text boolean rejected", property: "body", comparison: "equals", target: jsontypes.NewNormalizedValue("true"), reason: "string_target_required"},
 		{name: "status number accepted", property: "status_code", comparison: "equals", target: jsontypes.NewNormalizedValue("200"), valid: true},
@@ -274,15 +294,21 @@ func TestAPIAssertionExhaustiveSourceComparisonTargetMatrix(t *testing.T) {
 		if !apiAssertionTargetComparisons[comparison] {
 			return targetFamily == "omitted" || targetFamily == "null"
 		}
+		if isAPIAssertionLengthComparison(comparison) {
+			return targetFamily == "number"
+		}
 		switch comparison {
 		case apiAssertionComparisonContains, apiAssertionComparisonNotContains:
+			if source == apiAssertionSourceBodyJSON {
+				return targetFamily != "omitted" && targetFamily != "null" && targetFamily != "unsafe_number" && targetFamily != "malformed"
+			}
 			return targetFamily == "string" || targetFamily == "numeric_string"
 		case apiAssertionComparisonGreaterThan, apiAssertionComparisonLessThan:
 			return targetFamily == "number"
 		}
 		switch source {
 		case apiAssertionSourceBodyJSON:
-			return targetFamily == "string" || targetFamily == "numeric_string" || targetFamily == "number" || targetFamily == "boolean"
+			return targetFamily == "string" || targetFamily == "numeric_string" || targetFamily == "number" || targetFamily == "boolean" || targetFamily == "structured"
 		case apiAssertionSourceHeader, apiAssertionSourceBodyText:
 			return targetFamily == "string" || targetFamily == "numeric_string"
 		case apiAssertionSourceStatusCode:
@@ -325,7 +351,7 @@ func TestAPIAssertionUnknownsDeferOnlyDependentValidation(t *testing.T) {
 		Target:     jsontypes.NewNormalizedUnknown(),
 	})
 	require.NotNil(t, issue)
-	require.Equal(t, "invalid_comparison_for_source", issue.Reason)
+	require.Equal(t, "unsupported_comparison", issue.Reason)
 
 	issue = validateAPIAssertionCheckV2(apiAssertionCheckTF{
 		Property:   types.StringUnknown(),
@@ -373,6 +399,48 @@ func TestAPIAssertionLimitsUseCharactersAndSerializedBytes(t *testing.T) {
 	})
 	require.NotNil(t, issue)
 	require.Equal(t, "target_too_large", issue.Reason)
+}
+
+func TestAPIAssertionStructuredTargetLosslessValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		raw    string
+		valid  bool
+		reason string
+	}{
+		{name: "unique object", raw: `{"id":1,"nested":{"ready":true}}`, valid: true},
+		{name: "duplicate root key", raw: `{"id":1,"id":2}`, reason: "duplicate_object_key"},
+		{name: "duplicate escaped key", raw: `{"id":1,"\u0069d":2}`, reason: "duplicate_object_key"},
+		{name: "duplicate nested key", raw: `{"nested":{"id":1,"id":2}}`, reason: "duplicate_object_key"},
+		{name: "positive unsafe integer", raw: `[9007199254740992]`, reason: "number_outside_interoperable_range"},
+		{name: "negative unsafe integer", raw: `[-9007199254740992]`, reason: "number_outside_interoperable_range"},
+		{name: "non-finite binary64", raw: `[1e400]`, reason: "number_outside_interoperable_range"},
+		{name: "fraction remains valid", raw: `[0.30000000000000004]`, valid: true},
+		{name: "depth boundary", raw: strings.Repeat("[", apiAssertionStructuredTargetDepth) + "null" + strings.Repeat("]", apiAssertionStructuredTargetDepth), valid: true},
+		{name: "over depth boundary", raw: strings.Repeat("[", apiAssertionStructuredTargetDepth+1) + "null" + strings.Repeat("]", apiAssertionStructuredTargetDepth+1), reason: "structured_target_too_deep"},
+		{name: "serialized byte boundary", raw: `["` + strings.Repeat("x", apiAssertionTargetSerializedBytes-4) + `"]`, valid: true},
+		{name: "over serialized byte boundary", raw: `["` + strings.Repeat("x", apiAssertionTargetSerializedBytes-3) + `"]`, reason: "target_too_large"},
+		{name: "decoded escape uses compact size", raw: `["` + strings.Repeat(`\u003c`, apiAssertionTargetSerializedBytes-4) + `"]`, valid: true},
+	}
+
+	for _, testCase := range tests {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			issue := validateAPIAssertionCheckV2(apiAssertionCheckTF{
+				Property:   types.StringValue("$.value"),
+				Comparison: types.StringValue(apiAssertionComparisonEquals),
+				Target:     jsontypes.NewNormalizedValue(testCase.raw),
+			})
+			require.Equal(t, testCase.valid, issue == nil)
+			if !testCase.valid {
+				require.NotNil(t, issue)
+				require.Equal(t, testCase.reason, issue.Reason)
+			}
+		})
+	}
 }
 
 func TestAPIAssertionChecksSemanticEquality(t *testing.T) {

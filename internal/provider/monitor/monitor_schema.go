@@ -589,7 +589,7 @@ Advanced monitor configuration.
 											},
 										},
 										"target": schema.StringAttribute{
-											Description: "Optional scalar target as JSON. Use jsonencode(...) for strings, numbers, booleans, or explicit null. Targets are redacted in plans, but remain stored in Terraform state; selector/property values are not sensitive.",
+											Description: "Optional target as JSON. Use jsonencode(...) for strings, numbers, booleans, arrays, objects, or explicit null. Arrays and objects are supported for body-JSON equality and containment. Targets are redacted in plans, but remain stored in Terraform state; selector/property values are not sensitive.",
 											Optional:    true,
 											Sensitive:   true,
 											CustomType:  jsontypes.NormalizedType{},
