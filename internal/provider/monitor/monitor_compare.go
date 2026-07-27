@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"encoding/json"
 	"html"
-	"math/big"
 	"slices"
 	"strings"
 
@@ -1083,12 +1082,7 @@ func normalizeAPIAssertions(in *client.APIMonitorAssertions) *apiAssertionsCompa
 		if property == "status_code" &&
 			(comparison == apiAssertionComparisonEquals || comparison == apiAssertionComparisonNotEquals) &&
 			strings.HasPrefix(targetJSON, "string:") {
-			numeric := strings.TrimPrefix(targetJSON, "string:")
-			if statusCodeNumericString.MatchString(numeric) {
-				if integer, ok := new(big.Int).SetString(numeric, 10); ok && integer.Cmp(apiAssertionMaximumSafeIntegerBig) <= 0 {
-					targetJSON = "number:" + integer.String() + "/1"
-				}
-			}
+			targetJSON = canonicalizeLegacyStatusTarget(targetJSON)
 		}
 		checks = append(checks, apiAssertionCheckComparable{
 			Property:      property,

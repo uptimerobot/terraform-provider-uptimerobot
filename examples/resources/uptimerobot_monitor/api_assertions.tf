@@ -14,7 +14,33 @@ resource "uptimerobot_monitor" "api_assertions" {
       checks = [
         {
           # jsonencode is decoded once by the provider and sent as a native
-          # JSON object, so an array can look for this exact object element.
+          # JSON array. Array order and nested JSON types remain significant.
+          property   = "$.expected_items"
+          comparison = "equals"
+          target = jsonencode([
+            {
+              status  = "active"
+              enabled = true
+            },
+            "complete",
+            null,
+          ])
+        },
+        {
+          # An object selected from the response contains this recursive
+          # object subset. Nested arrays, when present, still compare exactly.
+          property   = "$.metadata"
+          comparison = "contains"
+          target = jsonencode({
+            region = "eu"
+            flags = {
+              healthy = true
+            }
+          })
+        },
+        {
+          # An array contains an object only when one element is exactly equal
+          # to the target object; this is not object-subset matching.
           property   = "$.items"
           comparison = "contains"
           target = jsonencode({
@@ -23,23 +49,13 @@ resource "uptimerobot_monitor" "api_assertions" {
           })
         },
         {
-          property   = "headers.Content-Type"
-          comparison = "contains"
-          target     = jsonencode("application/json")
+          property   = "$.items"
+          comparison = "length_greater_than"
+          target     = jsonencode(0)
         },
         {
-          property   = "headers.X-Request-Id"
-          comparison = "exists"
-        },
-        {
-          property   = "status_code"
-          comparison = "less_than"
-          target     = jsonencode(500)
-        },
-        {
-          property   = "body"
-          comparison = "not_contains"
-          target     = jsonencode("fatal")
+          property   = "$.metadata"
+          comparison = "is_not_empty"
         },
       ]
     }

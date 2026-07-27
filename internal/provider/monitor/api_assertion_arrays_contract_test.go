@@ -5,8 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,10 +37,32 @@ type arraysAssertionsContract struct {
 	Semantics struct {
 		NewFeatureGate bool `json:"newFeatureGate"`
 	} `json:"semantics"`
-	Cases []struct {
-		ID   string `json:"id"`
-		Area string `json:"area"`
-	} `json:"cases"`
+	Cases []arraysAssertionContractCase `json:"cases"`
+}
+
+type arraysAssertionContractCase struct {
+	ID    string `json:"id"`
+	Area  string `json:"area"`
+	Input struct {
+		Assertion  json.RawMessage `json:"assertion"`
+		Property   string          `json:"property"`
+		Comparison string          `json:"comparison"`
+		Target     json.RawMessage `json:"target"`
+		RawTarget  string          `json:"rawTarget"`
+		Generated  struct {
+			Type            string      `json:"type"`
+			Depth           int         `json:"depth"`
+			Leaf            interface{} `json:"leaf"`
+			SerializedBytes int         `json:"serializedBytes"`
+		} `json:"generated"`
+	} `json:"input"`
+	Expected struct {
+		Valid           bool   `json:"valid"`
+		TargetType      string `json:"targetType"`
+		AdditionalParse bool   `json:"additionalParse"`
+		Category        string `json:"category"`
+		Reason          string `json:"reason"`
+	} `json:"expected"`
 }
 
 func TestArraysAssertionsFrozenContract(t *testing.T) {
@@ -98,5 +123,111 @@ func TestArraysAssertionsFrozenContract(t *testing.T) {
 	} {
 		_, ok := seen[id]
 		require.True(t, ok, "missing provider contract case %q", id)
+	}
+}
+
+func TestArraysAssertionsProviderBoundaryCases(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile("testdata/arrays-and-objects-v1.json")
+	require.NoError(t, err)
+	var contract arraysAssertionsContract
+	require.NoError(t, json.Unmarshal(raw, &contract))
+
+	providerCases := 0
+	for _, testCase := range contract.Cases {
+		testCase := testCase
+		switch testCase.Area {
+		case "wire", "validation":
+			providerCases++
+		case "limits":
+			if testCase.Input.Generated.Type != "nested_single_element_arrays" &&
+				testCase.Input.Generated.Type != "single_string_array" {
+				continue
+			}
+			providerCases++
+		default:
+			continue
+		}
+
+		t.Run(testCase.ID, func(t *testing.T) {
+			t.Parallel()
+
+			check := arraysAssertionCheckFromContract(t, testCase)
+			issue := validateAPIAssertionCheckV2(check)
+			require.Equal(t, testCase.Expected.Valid, issue == nil)
+			if !testCase.Expected.Valid {
+				require.NotNil(t, issue)
+				require.Equal(t, testCase.Expected.Category, issue.Category)
+				require.Equal(t, testCase.Expected.Reason, issue.Reason)
+				return
+			}
+
+			if testCase.Area != "wire" {
+				return
+			}
+			require.False(t, testCase.Expected.AdditionalParse)
+			target, targetIssue := decodeAPIAssertionTarget(check.Target.ValueString())
+			require.Nil(t, targetIssue)
+			require.Equal(t, testCase.Expected.TargetType, apiAssertionJSONTargetType(target))
+			if testCase.ID == "wire-double-encoded-array-remains-string" {
+				require.Equal(t, "[1,2]", target, "JSON-looking strings must remain strings")
+			}
+		})
+	}
+
+	require.Equal(t, 20, providerCases, "every provider-owned wire, validation, and input-limit case must execute")
+}
+
+func arraysAssertionCheckFromContract(t *testing.T, testCase arraysAssertionContractCase) apiAssertionCheckTF {
+	t.Helper()
+
+	if len(testCase.Input.Assertion) > 0 {
+		return apiAssertionCheckFromFixture(t, testCase.Input.Assertion)
+	}
+	property := testCase.Input.Property
+	if property == "" {
+		property = "$.value"
+	}
+	target := jsontypes.NewNormalizedNull()
+	switch {
+	case testCase.Input.RawTarget != "":
+		target = jsontypes.NewNormalizedValue(testCase.Input.RawTarget)
+	case len(testCase.Input.Target) > 0:
+		target = jsontypes.NewNormalizedValue(string(testCase.Input.Target))
+	case testCase.Input.Generated.Type == "nested_single_element_arrays":
+		target = jsontypes.NewNormalizedValue(
+			strings.Repeat("[", testCase.Input.Generated.Depth) +
+				"null" +
+				strings.Repeat("]", testCase.Input.Generated.Depth),
+		)
+	case testCase.Input.Generated.Type == "single_string_array":
+		target = jsontypes.NewNormalizedValue(
+			`["` + strings.Repeat("x", testCase.Input.Generated.SerializedBytes-4) + `"]`,
+		)
+	}
+	return apiAssertionCheckTF{
+		Property:   types.StringValue(property),
+		Comparison: types.StringValue(testCase.Input.Comparison),
+		Target:     target,
+	}
+}
+
+func apiAssertionJSONTargetType(target interface{}) string {
+	switch target.(type) {
+	case []interface{}:
+		return "array"
+	case map[string]interface{}:
+		return "object"
+	case string:
+		return "string"
+	case json.Number:
+		return "number"
+	case bool:
+		return "boolean"
+	case nil:
+		return "null"
+	default:
+		return ""
 	}
 }

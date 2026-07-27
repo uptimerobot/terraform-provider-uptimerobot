@@ -325,7 +325,7 @@ func validateAPIAssertionCheckV2(check apiAssertionCheckTF) *apiAssertionValidat
 	}
 
 	if comparison == apiAssertionComparisonContains || comparison == apiAssertionComparisonNotContains {
-		if propertyKnown && source == apiAssertionSourceBodyJSON {
+		if !propertyKnown || source == apiAssertionSourceBodyJSON {
 			return nil
 		}
 		if _, ok := target.(string); !ok {
@@ -360,14 +360,11 @@ func validateAPIAssertionCheckV2(check apiAssertionCheckTF) *apiAssertionValidat
 		return nil
 	}
 
-	if _, structured := target.([]interface{}); structured && propertyKnown && source == apiAssertionSourceBodyJSON {
-		return nil
-	}
-	if _, structured := target.(map[string]interface{}); structured && propertyKnown && source == apiAssertionSourceBodyJSON {
-		return nil
-	}
 	switch target.(type) {
 	case []interface{}, map[string]interface{}:
+		if !propertyKnown || source == apiAssertionSourceBodyJSON {
+			return nil
+		}
 		return &apiAssertionValidationIssue{
 			Category: "invalid_target",
 			Reason:   "scalar_target_required",

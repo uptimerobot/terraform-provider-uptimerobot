@@ -32,6 +32,7 @@ The target-taking comparisons are `equals`, `not_equals`, `contains`, `not_conta
 - Header and raw-body equality require strings.
 - Status equality accepts a number or a legacy unsigned numeric string.
 - Structured numbers must be finite IEEE-754 binary64 values; integers must be within `-9007199254740991` through `9007199254740991`.
+- Binary64-equivalent number spellings and negative zero versus zero are non-material during refresh, avoiding drift if API storage normalizes the JSON number text.
 - A property can contain at most 500 Unicode characters. A compact serialized target can contain at most 2048 UTF-8 bytes, and a structured target can contain at most 16 array/object levels.
 - Object keys must be unique. The provider rejects duplicates from the original `jsontypes.Normalized` JSON before map decoding can discard them.
 
@@ -60,6 +61,8 @@ Treat the state backend and every reader as trusted before placing confidential 
 Existing provider configurations keep the same HCL shape. Imported legacy API monitors are read without assigning semantics in Terraform. API Internal owns semantics-version assignment and strips internal markers, per-check identifiers, and diagnostics from the public contract.
 
 An unrelated update or a canonically unchanged assertion update preserves legacy semantics. Header-name casing, default `AND`, status numeric-string normalization, and check ordering are non-material; duplicate counts and omitted-versus-explicit-null target presence remain material. A material assertion change must satisfy the v2 matrix and API Internal assigns v2 semantics.
+
+Terraform unknown values are deferred until their dependent property, comparison, or target is known. In particular, the provider does not reject a structured or non-string target while an unknown property may still resolve to a body-JSON source.
 
 ## Implementation and release order
 

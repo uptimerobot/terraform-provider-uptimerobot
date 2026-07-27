@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -216,6 +217,51 @@ func TestNormalizeAPIAssertions_DefaultANDAndStatusNumericStringAreCanonical(t *
 	})
 	if !equalAPIAssertions(legacy, v2) {
 		t.Fatalf("default AND and legacy status numeric strings must be canonically equal\nlegacy: %#v\nv2: %#v", legacy, v2)
+	}
+}
+
+func TestNormalizeAPIAssertions_StructuredTargetsUseFrozenNumericSemantics(t *testing.T) {
+	t.Parallel()
+
+	configured := normalizeAPIAssertions(&client.APIMonitorAssertions{
+		Logic: "AND",
+		Checks: []client.APIMonitorAssertionCheck{{
+			Property:   "$.values",
+			Comparison: "equals",
+			Target: []interface{}{
+				json.Number("0.30000000000000003"),
+				json.Number("-0"),
+			},
+		}},
+	})
+	fromAPI := normalizeAPIAssertions(&client.APIMonitorAssertions{
+		Logic: "AND",
+		Checks: []client.APIMonitorAssertionCheck{{
+			Property:   "$.values",
+			Comparison: "equals",
+			Target: []interface{}{
+				json.Number("0.30000000000000004"),
+				json.Number("0"),
+			},
+		}},
+	})
+	if !equalAPIAssertions(configured, fromAPI) {
+		t.Fatalf("binary64-equivalent structured targets must not cause API settle or refresh drift\nconfigured: %#v\nfrom API: %#v", configured, fromAPI)
+	}
+
+	different := normalizeAPIAssertions(&client.APIMonitorAssertions{
+		Logic: "AND",
+		Checks: []client.APIMonitorAssertionCheck{{
+			Property:   "$.values",
+			Comparison: "equals",
+			Target: []interface{}{
+				json.Number("0.3"),
+				json.Number("0"),
+			},
+		}},
+	})
+	if equalAPIAssertions(configured, different) {
+		t.Fatal("distinct binary64 structured numbers must remain a material change")
 	}
 }
 

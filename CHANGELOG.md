@@ -5,6 +5,8 @@
 - Added API Assertions v2 source families (`headers.<name>`, `status_code`, and `body`) and type/existence comparisons to `uptimerobot_monitor.config.api_assertions`.
 - Added frozen-contract validation for the v2 source/comparison/target/length matrix, scalar target types, interoperable number range, and one-to-five check limit.
 - Added lifecycle acceptance coverage for API assertion create, refresh, import, order-only changes, update, duplicate removal, and destroy.
+- Added native JSON array/object assertion targets for body-JSON equality and containment, plus structured empty and length comparisons, with frozen depth, size, duplicate-key, and binary64 number rules.
+- Added structured-target lifecycle coverage for create, refresh, import, update, check removal, no-drift planning, and destroy.
 
 ### Changed
 

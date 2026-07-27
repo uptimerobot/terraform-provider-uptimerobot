@@ -5,9 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
 	"math/big"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -207,12 +210,7 @@ func canonicalAPIAssertionCheckKey(check apiAssertionCheckTF) (string, bool) {
 		if property == "status_code" &&
 			(comparison == apiAssertionComparisonEquals || comparison == apiAssertionComparisonNotEquals) &&
 			strings.HasPrefix(canonical, "string:") {
-			numeric := strings.TrimPrefix(canonical, "string:")
-			if statusCodeNumericString.MatchString(numeric) {
-				if integer, ok := new(big.Int).SetString(numeric, 10); ok && integer.Cmp(apiAssertionMaximumSafeIntegerBig) <= 0 {
-					canonical = "number:" + integer.String() + "/1"
-				}
-			}
+			canonical = canonicalizeLegacyStatusTarget(canonical)
 		}
 		target = "present:" + canonical
 	}
@@ -227,6 +225,16 @@ func canonicalJSONTarget(raw string) (string, bool) {
 	if err := decoder.Decode(&value); err != nil {
 		return "", false
 	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return "", false
+	}
+	return canonicalJSONValue(value)
+}
+
+// canonicalJSONValue follows the frozen structured-comparison contract:
+// object key order is ignored, array order and JSON types are preserved, and
+// numbers compare by their finite IEEE-754 binary64 value with -0 equal to 0.
+func canonicalJSONValue(value interface{}) (string, bool) {
 	switch value := value.(type) {
 	case nil:
 		return "null", true
@@ -235,16 +243,60 @@ func canonicalJSONTarget(raw string) (string, bool) {
 	case bool:
 		return fmt.Sprintf("bool:%t", value), true
 	case json.Number:
-		number, ok := new(big.Rat).SetString(value.String())
-		if !ok {
+		number, err := value.Float64()
+		if err != nil || math.IsInf(number, 0) || math.IsNaN(number) {
 			return "", false
 		}
-		return "number:" + number.Num().String() + "/" + number.Denom().String(), true
+		if number == 0 {
+			number = 0
+		}
+		return "number:" + strconv.FormatUint(math.Float64bits(number), 16), true
+	case []interface{}:
+		var result strings.Builder
+		result.WriteString("array:")
+		for _, element := range value {
+			canonical, ok := canonicalJSONValue(element)
+			if !ok {
+				return "", false
+			}
+			fmt.Fprintf(&result, "%d:", len(canonical))
+			result.WriteString(canonical)
+		}
+		return result.String(), true
+	case map[string]interface{}:
+		keys := make([]string, 0, len(value))
+		for key := range value {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		var result strings.Builder
+		result.WriteString("object:")
+		for _, key := range keys {
+			canonical, ok := canonicalJSONValue(value[key])
+			if !ok {
+				return "", false
+			}
+			fmt.Fprintf(&result, "%d:%s%d:", len(key), key, len(canonical))
+			result.WriteString(canonical)
+		}
+		return result.String(), true
 	default:
-		encoded, err := json.Marshal(value)
-		if err != nil {
-			return "", false
-		}
-		return "structured:" + string(encoded), true
+		return "", false
 	}
+}
+
+func canonicalizeLegacyStatusTarget(canonical string) string {
+	numeric := strings.TrimPrefix(canonical, "string:")
+	if !statusCodeNumericString.MatchString(numeric) {
+		return canonical
+	}
+	integer, ok := new(big.Int).SetString(numeric, 10)
+	if !ok || integer.Cmp(apiAssertionMaximumSafeIntegerBig) > 0 {
+		return canonical
+	}
+	normalized, ok := canonicalJSONTarget(integer.String())
+	if !ok {
+		return canonical
+	}
+	return normalized
 }

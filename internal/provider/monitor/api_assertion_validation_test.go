@@ -353,13 +353,23 @@ func TestAPIAssertionUnknownsDeferOnlyDependentValidation(t *testing.T) {
 	require.NotNil(t, issue)
 	require.Equal(t, "unsupported_comparison", issue.Reason)
 
-	issue = validateAPIAssertionCheckV2(apiAssertionCheckTF{
+	require.Nil(t, validateAPIAssertionCheckV2(apiAssertionCheckTF{
 		Property:   types.StringUnknown(),
 		Comparison: types.StringValue("contains"),
 		Target:     jsontypes.NewNormalizedValue("1"),
-	})
-	require.NotNil(t, issue)
-	require.Equal(t, "string_target_required", issue.Reason)
+	}), "a numeric target is valid if the unknown property resolves to body JSON")
+
+	require.Nil(t, validateAPIAssertionCheckV2(apiAssertionCheckTF{
+		Property:   types.StringUnknown(),
+		Comparison: types.StringValue("equals"),
+		Target:     jsontypes.NewNormalizedValue(`{"ready":true}`),
+	}), "a structured target is valid if the unknown property resolves to body JSON")
+
+	require.Nil(t, validateAPIAssertionCheckV2(apiAssertionCheckTF{
+		Property:   types.StringUnknown(),
+		Comparison: types.StringValue("is_empty"),
+		Target:     jsontypes.NewNormalizedNull(),
+	}), "source compatibility must be deferred until the property is known")
 }
 
 func TestAPIAssertionLimitsUseCharactersAndSerializedBytes(t *testing.T) {
@@ -483,6 +493,24 @@ func TestAPIAssertionChecksSemanticEquality(t *testing.T) {
 	statusNumber := list(check("status_code", "equals", jsontypes.NewNormalizedValue("200")))
 	equal, _ = statusNumber.ListSemanticEquals(context.Background(), statusString)
 	require.True(t, equal)
+
+	binary64SpellingA := list(check("$.values", "equals", jsontypes.NewNormalizedValue(`[0.30000000000000003,-0]`)))
+	binary64SpellingB := list(check("$.values", "equals", jsontypes.NewNormalizedValue(`[0.30000000000000004,0]`)))
+	equal, _ = binary64SpellingB.ListSemanticEquals(context.Background(), binary64SpellingA)
+	require.True(t, equal, "state comparison must use the frozen binary64 and negative-zero numeric semantics")
+
+	differentBinary64 := list(check("$.values", "equals", jsontypes.NewNormalizedValue(`[0.3,0]`)))
+	equal, _ = differentBinary64.ListSemanticEquals(context.Background(), binary64SpellingA)
+	require.False(t, equal)
+
+	objectOrderA := list(check("$.value", "equals", jsontypes.NewNormalizedValue(`{"a":1,"b":[true,null]}`)))
+	objectOrderB := list(check("$.value", "equals", jsontypes.NewNormalizedValue(`{"b":[true,null],"a":1.0}`)))
+	equal, _ = objectOrderB.ListSemanticEquals(context.Background(), objectOrderA)
+	require.True(t, equal, "object key order and equivalent binary64 number spelling are non-semantic")
+
+	arrayOrderChanged := list(check("$.value", "equals", jsontypes.NewNormalizedValue(`{"b":[null,true],"a":1}`)))
+	equal, _ = arrayOrderChanged.ListSemanticEquals(context.Background(), objectOrderA)
+	require.False(t, equal, "array order remains semantic")
 }
 
 func TestAPIAssertionChecksPlanModifier(t *testing.T) {
