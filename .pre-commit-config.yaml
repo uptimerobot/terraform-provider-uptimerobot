@@ -5,7 +5,7 @@
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -25,6 +25,6 @@ repos:
         args: [--config=.golangci.yml]
 
   - repo: https://github.com/tekwizely/pre-commit-golang
-    rev: v1.0.0-rc.1
+    rev: v1.0.0-rc.4
     hooks:
       - id: go-fmt-repo
