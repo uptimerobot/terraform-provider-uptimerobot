@@ -81,12 +81,16 @@ func (r *alertContactResource) Schema(_ context.Context, _ resource.SchemaReques
 			},
 			"type": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The personal alert contact type. Creatable values are `email`, `mobile_app_old` for iOS push contacts, and `mobile_app` for Android push contacts.",
+				MarkdownDescription: "The personal alert contact type. Creatable values are `email`, `mobile_app_ios`, and `mobile_app_android`. The values `mobile_app_old` and `mobile_app` remain accepted as deprecated aliases.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(CreatableAlertContactTypes()...),
 				},
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.RequiresReplaceIf(
+						alertContactTypeRequiresReplace,
+						"Changing alert contact kind or mobile platform requires replacement.",
+						"Changing alert contact kind or mobile platform requires replacement; changing only a deprecated alias does not.",
+					),
 				},
 			},
 			"value": schema.StringAttribute{
@@ -138,7 +142,7 @@ func (r *alertContactResource) Schema(_ context.Context, _ resource.SchemaReques
 				Optional:            true,
 				Computed:            true,
 				Sensitive:           true,
-				MarkdownDescription: "OneSignal subscription ID. Required when creating `mobile_app_old` or `mobile_app` contacts.",
+				MarkdownDescription: "OneSignal subscription ID. Required when creating `mobile_app_ios` or `mobile_app_android` contacts.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
@@ -147,7 +151,7 @@ func (r *alertContactResource) Schema(_ context.Context, _ resource.SchemaReques
 			"one_signal_user_id": schema.StringAttribute{
 				Optional:            true,
 				Sensitive:           true,
-				MarkdownDescription: "OneSignal user ID. Required when creating `mobile_app_old` or `mobile_app` contacts. The public API does not return this value after creation, so imported resources leave it unset.",
+				MarkdownDescription: "OneSignal user ID. Required when creating `mobile_app_ios` or `mobile_app_android` contacts. The public API does not return this value after creation, so imported resources leave it unset.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -155,7 +159,7 @@ func (r *alertContactResource) Schema(_ context.Context, _ resource.SchemaReques
 			"device_fingerprint": schema.StringAttribute{
 				Optional:            true,
 				Sensitive:           true,
-				MarkdownDescription: "Device fingerprint. Required when creating `mobile_app_old` or `mobile_app` contacts. The public API does not return this value after creation, so imported resources leave it unset.",
+				MarkdownDescription: "Device fingerprint. Required when creating `mobile_app_ios` or `mobile_app_android` contacts. The public API does not return this value after creation, so imported resources leave it unset.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -164,7 +168,7 @@ func (r *alertContactResource) Schema(_ context.Context, _ resource.SchemaReques
 				Optional:            true,
 				Computed:            true,
 				Sensitive:           true,
-				MarkdownDescription: "Optional mobile push token for `mobile_app_old` or `mobile_app` contacts.",
+				MarkdownDescription: "Optional mobile push token for `mobile_app_ios` or `mobile_app_android` contacts.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
@@ -173,7 +177,7 @@ func (r *alertContactResource) Schema(_ context.Context, _ resource.SchemaReques
 			"android_push_up_channel": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Android push channel used for up notifications. Only valid for `mobile_app` contacts.",
+				MarkdownDescription: "Android push channel used for up notifications. Only valid for `mobile_app_android` contacts.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
@@ -182,7 +186,7 @@ func (r *alertContactResource) Schema(_ context.Context, _ resource.SchemaReques
 			"android_push_down_channel": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Android push channel used for down notifications. Only valid for `mobile_app` contacts.",
+				MarkdownDescription: "Android push channel used for down notifications. Only valid for `mobile_app_android` contacts.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
@@ -346,7 +350,18 @@ func rollbackAlertContactAfterCreateUpdateFailure(ctx context.Context, apiClient
 }
 
 func CreatableAlertContactTypes() []string {
-	return []string{"email", "mobile_app_old", "mobile_app"}
+	return []string{"email", "mobile_app_ios", "mobile_app_android", "mobile_app_old", "mobile_app"}
+}
+
+func alertContactTypeRequiresReplacement(state, plan string) bool {
+	return normalizeAlertContactType(state) != normalizeAlertContactType(plan)
+}
+
+func alertContactTypeRequiresReplace(_ context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+	if req.StateValue.IsNull() || req.StateValue.IsUnknown() || req.PlanValue.IsNull() || req.PlanValue.IsUnknown() {
+		return
+	}
+	resp.RequiresReplace = alertContactTypeRequiresReplacement(req.StateValue.ValueString(), req.PlanValue.ValueString())
 }
 
 func AllAlertContactNotificationEvents() []string {
@@ -363,7 +378,7 @@ func validateAlertContactResourceCreate(plan alertContactResourceModel, diags in
 			diags.AddError("Invalid mobile fields", "OneSignal and push token fields are only valid for mobile app alert contacts.")
 		}
 		if hasString(plan.AndroidPushUpChannel) || hasString(plan.AndroidPushDownChannel) {
-			diags.AddError("Invalid Android push channels", "Android push channel fields are only valid when type = \"mobile_app\".")
+			diags.AddError("Invalid Android push channels", "Android push channel fields are only valid when type = \"mobile_app_android\".")
 		}
 		return
 	}
@@ -385,8 +400,8 @@ func validateAlertContactResourceCreate(plan alertContactResourceModel, diags in
 	if valueString(plan.DeviceFingerprint) == "" {
 		diags.AddError("Missing device fingerprint", "`device_fingerprint` is required when creating mobile app alert contacts.")
 	}
-	if alertType != "mobile_app" && (hasString(plan.AndroidPushUpChannel) || hasString(plan.AndroidPushDownChannel)) {
-		diags.AddError("Invalid Android push channels", "Android push channel fields are only valid when type = \"mobile_app\".")
+	if alertType != "mobile_app_android" && (hasString(plan.AndroidPushUpChannel) || hasString(plan.AndroidPushDownChannel)) {
+		diags.AddError("Invalid Android push channels", "Android push channel fields are only valid when type = \"mobile_app_android\".")
 	}
 }
 
@@ -448,7 +463,7 @@ func alertContactResourceState(contact client.UserAlertContact, prev alertContac
 	state := alertContactResourceModel{
 		ID:                      types.StringValue(strconv.FormatInt(contact.ID, 10)),
 		Name:                    stringState(contact.Name),
-		Type:                    types.StringValue(alertType),
+		Type:                    alertContactTypeState(alertType, prev.Type),
 		NotificationEvents:      notificationEventsState(contact.EnableNotificationsFor, prev.NotificationEvents),
 		SSLExpirationReminder:   types.BoolValue(contact.SSLExpirationReminder),
 		IsActive:                alertContactIsActiveState(contact.Status, prev.IsActive),
@@ -497,10 +512,10 @@ func alertContactTypeToAPI(value string) string {
 	switch normalizeAlertContactType(value) {
 	case "email":
 		return "Email"
-	case "mobile_app_old":
-		return "MobileAppOld"
-	case "mobile_app":
-		return "MobileApp"
+	case "mobile_app_ios":
+		return "MobileAppIOS"
+	case "mobile_app_android":
+		return "MobileAppAndroid"
 	default:
 		return value
 	}
@@ -508,9 +523,9 @@ func alertContactTypeToAPI(value string) string {
 
 func alertContactPlatform(value string) string {
 	switch normalizeAlertContactType(value) {
-	case "mobile_app_old":
+	case "mobile_app_ios":
 		return "ios"
-	case "mobile_app":
+	case "mobile_app_android":
 		return "android"
 	default:
 		return ""
@@ -571,9 +586,21 @@ func hasString(value types.String) bool {
 	return valueString(value) != ""
 }
 
+func alertContactTypeState(apiType string, previous types.String) types.String {
+	canonicalType := normalizeAlertContactType(apiType)
+	if !previous.IsNull() && !previous.IsUnknown() {
+		previousType := strings.ToLower(strings.TrimSpace(previous.ValueString()))
+		if (previousType == "mobile_app_old" || previousType == "mobile_app") &&
+			normalizeAlertContactType(previousType) == canonicalType {
+			return previous
+		}
+	}
+	return types.StringValue(canonicalType)
+}
+
 func isMobileAlertContactType(value string) bool {
 	switch normalizeAlertContactType(value) {
-	case "mobile_app_old", "mobile_app":
+	case "mobile_app_ios", "mobile_app_android":
 		return true
 	default:
 		return false

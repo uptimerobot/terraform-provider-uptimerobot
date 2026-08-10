@@ -1,5 +1,5 @@
 data "uptimerobot_alert_contacts" "mobile_devices" {
-  type   = "mobile_app"
+  type   = "mobile_app_android"
   status = "active"
 }
 

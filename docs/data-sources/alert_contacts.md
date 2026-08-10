@@ -13,13 +13,13 @@ The data source reads public API v3 `GET /user/alert-contacts`. It is read-only 
 
 The endpoint returns monitor notification contacts such as email, Pro SMS, voice, and mobile app push contacts. Integrations such as Slack, webhook, Telegram, PagerDuty, Discord, and similar channels are exposed through the `uptimerobot_integration` data source instead.
 
-For mobile app push contacts, the public API uses separate type values by platform: `mobile_app_old` for iOS push contacts and `mobile_app` for Android push contacts. The UptimeRobot dashboard groups both under Push notifications.
+Mobile push contacts use `mobile_app_ios` and `mobile_app_android`. The deprecated aliases `mobile_app_old` and `mobile_app` remain accepted for existing configurations.
 
 ## Example Usage
 
 ```terraform
 data "uptimerobot_alert_contacts" "mobile_devices" {
-  type   = "mobile_app"
+  type   = "mobile_app_android"
   status = "active"
 }
 
@@ -35,7 +35,7 @@ output "mobile_alert_contact_ids" {
 
 - `name` (String) Optional exact alert contact name filter.
 - `status` (String) Optional alert contact status filter (not_activated, paused, active, to_migrate).
-- `type` (String) Optional alert contact type filter (email, pro_sms, mobile_app_old, mobile_app, voice).
+- `type` (String) Optional alert contact type filter (email, pro_sms, mobile_app_ios, mobile_app_android, mobile_app_old, mobile_app, voice).
 - `value` (String, Sensitive) Optional exact alert contact value filter. This may be an email address, phone number, or mobile device value and is stored as sensitive state.
 
 ### Read-Only

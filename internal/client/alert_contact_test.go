@@ -58,6 +58,17 @@ func TestClient_ListAlertContacts(t *testing.T) {
 	}
 }
 
+func TestNumericMobileAlertContactTypesUsePlatformNames(t *testing.T) {
+	t.Parallel()
+
+	if alertContactTypeByNumber[12] != "MobileAppIOS" {
+		t.Fatalf("unexpected iOS type name %q", alertContactTypeByNumber[12])
+	}
+	if alertContactTypeByNumber[13] != "MobileAppAndroid" {
+		t.Fatalf("unexpected Android type name %q", alertContactTypeByNumber[13])
+	}
+}
+
 func TestClient_CreateAlertContact(t *testing.T) {
 	t.Parallel()
 
@@ -307,7 +318,7 @@ func TestAlertContactUnmarshalNumericEnums(t *testing.T) {
 		t.Fatalf("unmarshal returned error: %v", err)
 	}
 
-	if contact.Type != "MobileAppOld" {
+	if contact.Type != "MobileAppIOS" {
 		t.Fatalf("unexpected type %q", contact.Type)
 	}
 	if contact.EnableNotificationsFor != "UpAndDown" {
@@ -335,7 +346,7 @@ func TestAllAlertContactItemUnmarshalNumericEnums(t *testing.T) {
 		t.Fatalf("unmarshal returned error: %v", err)
 	}
 
-	if contact.Type != "MobileAppOld" {
+	if contact.Type != "MobileAppIOS" {
 		t.Fatalf("unexpected type %q", contact.Type)
 	}
 	if contact.Status != "Active" {

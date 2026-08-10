@@ -221,7 +221,7 @@ func filterAllAlertContacts(groups []client.AllAlertContactGroup, filters allAle
 			if filters.Name != "" && contact.Name != filters.Name {
 				continue
 			}
-			if filters.Type != "" && normalizeAlertContactType(contact.Type) != filters.Type {
+			if filters.Type != "" && normalizeAlertContactType(contact.Type) != normalizeAlertContactType(filters.Type) {
 				continue
 			}
 			if filters.Value != "" && contact.Value != filters.Value {

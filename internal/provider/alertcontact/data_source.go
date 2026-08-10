@@ -333,7 +333,7 @@ func filterAlertContacts(contacts []client.UserAlertContact, filters alertContac
 		if filters.Name != "" && contact.Name != filters.Name {
 			continue
 		}
-		if filters.Type != "" && normalizeAlertContactType(contact.Type) != filters.Type {
+		if filters.Type != "" && normalizeAlertContactType(contact.Type) != normalizeAlertContactType(filters.Type) {
 			continue
 		}
 		if filters.Value != "" && contact.Value != filters.Value {
@@ -475,6 +475,8 @@ func AllAlertContactTypes() []string {
 	return []string{
 		"email",
 		"pro_sms",
+		"mobile_app_ios",
+		"mobile_app_android",
 		"mobile_app_old",
 		"mobile_app",
 		"voice",
@@ -506,10 +508,10 @@ func normalizeAlertContactType(value string) string {
 		return "pushover"
 	case "slack":
 		return "slack"
-	case "mobileappold":
-		return "mobile_app_old"
-	case "mobileapp":
-		return "mobile_app"
+	case "mobileappios", "mobileappold":
+		return "mobile_app_ios"
+	case "mobileappandroid", "mobileapp":
+		return "mobile_app_android"
 	case "voice":
 		return "voice"
 	case "splunk":

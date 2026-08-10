@@ -3,7 +3,7 @@ data "uptimerobot_all_alert_contacts" "assignable" {
 }
 
 data "uptimerobot_all_alert_contacts" "mobile_devices" {
-  type   = "mobile_app_old"
+  type   = "mobile_app_ios"
   status = "active"
 }
 

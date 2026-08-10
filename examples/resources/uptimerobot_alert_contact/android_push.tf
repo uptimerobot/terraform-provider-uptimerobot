@@ -1,6 +1,6 @@
 resource "uptimerobot_alert_contact" "android_phone" {
   name                    = "On-call Android"
-  type                    = "mobile_app"
+  type                    = "mobile_app_android"
   notification_events     = "up_and_down"
   ssl_expiration_reminder = true
 

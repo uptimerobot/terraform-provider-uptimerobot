@@ -12,7 +12,7 @@ Manages a personal UptimeRobot alert contact. Email and mobile app push contacts
 ## Notes
 
 - This resource manages personal alert contacts through `/v3/alert-contacts`; third-party channels such as Slack, webhook, PagerDuty, Telegram, and Discord remain `uptimerobot_integration` resources.
-- `mobile_app_old` corresponds to iOS push contacts and `mobile_app` corresponds to Android push contacts.
+- Use `mobile_app_ios` for iOS push contacts and `mobile_app_android` for Android push contacts. Existing `mobile_app_old` and `mobile_app` values are deprecated aliases and can be renamed in place without recreating the contact.
 - `pro_sms` and `voice` contacts can be discovered with alert-contact data sources, but they require dashboard phone verification and cannot be created through this resource.
 - Mobile push identity fields are required when creating mobile contacts. The public API does not return `one_signal_user_id` or `device_fingerprint` after creation, so imported mobile contacts leave those fields unset until configured.
 - Use `is_active = false` to pause an alert contact without deleting it.
@@ -44,7 +44,7 @@ variable "team_alert_email" {
 ```terraform
 resource "uptimerobot_alert_contact" "android_phone" {
   name                    = "On-call Android"
-  type                    = "mobile_app"
+  type                    = "mobile_app_android"
   notification_events     = "up_and_down"
   ssl_expiration_reminder = true
 
@@ -88,7 +88,7 @@ variable "android_push_token" {
 ```terraform
 resource "uptimerobot_alert_contact" "ios_phone" {
   name                    = "On-call iPhone"
-  type                    = "mobile_app_old"
+  type                    = "mobile_app_ios"
   notification_events     = "down"
   ssl_expiration_reminder = false
 
@@ -138,18 +138,18 @@ terraform import uptimerobot_alert_contact.team_email 123456
 ### Required
 
 - `name` (String) Display name of the alert contact. For mobile push contacts, this is also sent as the device name during creation.
-- `type` (String) The personal alert contact type. Creatable values are `email`, `mobile_app_old` for iOS push contacts, and `mobile_app` for Android push contacts.
+- `type` (String) The personal alert contact type. Creatable values are `email`, `mobile_app_ios`, and `mobile_app_android`. The values `mobile_app_old` and `mobile_app` remain accepted as deprecated aliases.
 
 ### Optional
 
-- `android_push_down_channel` (String) Android push channel used for down notifications. Only valid for `mobile_app` contacts.
-- `android_push_up_channel` (String) Android push channel used for up notifications. Only valid for `mobile_app` contacts.
-- `device_fingerprint` (String, Sensitive) Device fingerprint. Required when creating `mobile_app_old` or `mobile_app` contacts. The public API does not return this value after creation, so imported resources leave it unset.
+- `android_push_down_channel` (String) Android push channel used for down notifications. Only valid for `mobile_app_android` contacts.
+- `android_push_up_channel` (String) Android push channel used for up notifications. Only valid for `mobile_app_android` contacts.
+- `device_fingerprint` (String, Sensitive) Device fingerprint. Required when creating `mobile_app_ios` or `mobile_app_android` contacts. The public API does not return this value after creation, so imported resources leave it unset.
 - `is_active` (Boolean) Whether the alert contact is active. Set to `false` to pause notifications for this contact without deleting it.
 - `notification_events` (String) Notification event setting: `up_and_down`, `down`, `up`, or `none`.
-- `one_signal_subscription_id` (String, Sensitive) OneSignal subscription ID. Required when creating `mobile_app_old` or `mobile_app` contacts.
-- `one_signal_user_id` (String, Sensitive) OneSignal user ID. Required when creating `mobile_app_old` or `mobile_app` contacts. The public API does not return this value after creation, so imported resources leave it unset.
-- `push_token` (String, Sensitive) Optional mobile push token for `mobile_app_old` or `mobile_app` contacts.
+- `one_signal_subscription_id` (String, Sensitive) OneSignal subscription ID. Required when creating `mobile_app_ios` or `mobile_app_android` contacts.
+- `one_signal_user_id` (String, Sensitive) OneSignal user ID. Required when creating `mobile_app_ios` or `mobile_app_android` contacts. The public API does not return this value after creation, so imported resources leave it unset.
+- `push_token` (String, Sensitive) Optional mobile push token for `mobile_app_ios` or `mobile_app_android` contacts.
 - `ssl_expiration_reminder` (Boolean) Whether SSL expiration reminders are enabled for this alert contact.
 - `value` (String, Sensitive) Email address for `email` alert contacts. This is not used for mobile push contacts; use `push_token` for mobile push tokens.
 

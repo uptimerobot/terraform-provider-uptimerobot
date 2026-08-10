@@ -1,6 +1,6 @@
 data "uptimerobot_alert_contact" "mobile" {
   name = "My Phone"
-  type = "mobile_app"
+  type = "mobile_app_android"
 }
 
 resource "uptimerobot_monitor" "website" {
