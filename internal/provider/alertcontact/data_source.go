@@ -140,9 +140,10 @@ func alertContactFilterAttributes() map[string]schema.Attribute {
 		},
 		"type": schema.StringAttribute{
 			Optional:            true,
-			MarkdownDescription: "Optional alert contact type filter (" + strings.Join(AllAlertContactTypes(), ", ") + ").",
+			MarkdownDescription: "Optional alert contact type filter (" + strings.Join(AllAlertContactTypes(), ", ") + "). The values `mobile_app_old` and `mobile_app` are deprecated; use `mobile_app_ios` and `mobile_app_android`.",
 			Validators: []validator.String{
 				stringvalidator.OneOf(AllAlertContactTypes()...),
+				deprecatedMobilePushTypeValidator{},
 			},
 		},
 		"value": schema.StringAttribute{
@@ -178,6 +179,7 @@ func alertContactLookupAttributes(topLevel bool) map[string]schema.Attribute {
 		MarkdownDescription: "The normalized alert contact type.",
 		Validators: []validator.String{
 			stringvalidator.OneOf(AllAlertContactTypes()...),
+			deprecatedMobilePushTypeValidator{},
 		},
 	}
 	attrs["value"] = schema.StringAttribute{

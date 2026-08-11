@@ -81,9 +81,10 @@ func (r *alertContactResource) Schema(_ context.Context, _ resource.SchemaReques
 			},
 			"type": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The personal alert contact type. Creatable values are `email`, `mobile_app_ios`, and `mobile_app_android`. The values `mobile_app_old` and `mobile_app` remain accepted as deprecated aliases.",
+				MarkdownDescription: "The personal alert contact type. Creatable values are `email`, `mobile_app_ios`, and `mobile_app_android`. The values `mobile_app_old` and `mobile_app` remain accepted as deprecated aliases; update them to their platform-specific replacements by October 10, 2026.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(CreatableAlertContactTypes()...),
+					deprecatedMobilePushTypeValidator{},
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIf(

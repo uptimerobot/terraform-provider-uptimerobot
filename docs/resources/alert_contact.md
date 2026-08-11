@@ -138,7 +138,7 @@ terraform import uptimerobot_alert_contact.team_email 123456
 ### Required
 
 - `name` (String) Display name of the alert contact. For mobile push contacts, this is also sent as the device name during creation.
-- `type` (String) The personal alert contact type. Creatable values are `email`, `mobile_app_ios`, and `mobile_app_android`. The values `mobile_app_old` and `mobile_app` remain accepted as deprecated aliases.
+- `type` (String) The personal alert contact type. Creatable values are `email`, `mobile_app_ios`, and `mobile_app_android`. The values `mobile_app_old` and `mobile_app` remain accepted as deprecated aliases; update them to their platform-specific replacements by October 10, 2026.
 
 ### Optional
 

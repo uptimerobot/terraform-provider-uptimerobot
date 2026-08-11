@@ -35,7 +35,7 @@ output "mobile_alert_contact_ids" {
 
 - `name` (String) Optional exact alert contact name filter.
 - `status` (String) Optional alert contact status filter (not_activated, paused, active, to_migrate).
-- `type` (String) Optional alert contact type filter (email, pro_sms, mobile_app_ios, mobile_app_android, mobile_app_old, mobile_app, voice).
+- `type` (String) Optional alert contact type filter (email, pro_sms, mobile_app_ios, mobile_app_android, mobile_app_old, mobile_app, voice). The values `mobile_app_old` and `mobile_app` are deprecated; use `mobile_app_ios` and `mobile_app_android`.
 - `value` (String, Sensitive) Optional exact alert contact value filter. This may be an email address, phone number, or mobile device value and is stored as sensitive state.
 
 ### Read-Only
