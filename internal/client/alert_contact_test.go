@@ -327,6 +327,23 @@ func TestAlertContactUnmarshalNumericEnums(t *testing.T) {
 	if contact.Status != "Active" {
 		t.Fatalf("unexpected status %q", contact.Status)
 	}
+
+	var androidContact UserAlertContact
+	err = json.Unmarshal([]byte(`{
+		"id": 104,
+		"friendlyName": "Pixel",
+		"type": 13,
+		"value": "Pixel",
+		"enableNotificationsFor": 0,
+		"sslExpirationReminder": false,
+		"status": 2
+	}`), &androidContact)
+	if err != nil {
+		t.Fatalf("unmarshal Android contact returned error: %v", err)
+	}
+	if androidContact.Type != "MobileAppAndroid" {
+		t.Fatalf("unexpected Android type %q", androidContact.Type)
+	}
 }
 
 func TestAllAlertContactItemUnmarshalNumericEnums(t *testing.T) {
