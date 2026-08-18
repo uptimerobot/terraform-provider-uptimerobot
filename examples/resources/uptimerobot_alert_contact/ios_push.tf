@@ -1,6 +1,6 @@
 resource "uptimerobot_alert_contact" "ios_phone" {
   name                    = "On-call iPhone"
-  type                    = "mobile_app_old"
+  type                    = "mobile_app_ios"
   notification_events     = "down"
   ssl_expiration_reminder = false
 

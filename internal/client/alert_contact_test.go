@@ -58,6 +58,17 @@ func TestClient_ListAlertContacts(t *testing.T) {
 	}
 }
 
+func TestNumericMobileAlertContactTypesUsePlatformNames(t *testing.T) {
+	t.Parallel()
+
+	if alertContactTypeByNumber[12] != "MobileAppIOS" {
+		t.Fatalf("unexpected iOS type name %q", alertContactTypeByNumber[12])
+	}
+	if alertContactTypeByNumber[13] != "MobileAppAndroid" {
+		t.Fatalf("unexpected Android type name %q", alertContactTypeByNumber[13])
+	}
+}
+
 func TestClient_CreateAlertContact(t *testing.T) {
 	t.Parallel()
 
@@ -307,7 +318,7 @@ func TestAlertContactUnmarshalNumericEnums(t *testing.T) {
 		t.Fatalf("unmarshal returned error: %v", err)
 	}
 
-	if contact.Type != "MobileAppOld" {
+	if contact.Type != "MobileAppIOS" {
 		t.Fatalf("unexpected type %q", contact.Type)
 	}
 	if contact.EnableNotificationsFor != "UpAndDown" {
@@ -315,6 +326,23 @@ func TestAlertContactUnmarshalNumericEnums(t *testing.T) {
 	}
 	if contact.Status != "Active" {
 		t.Fatalf("unexpected status %q", contact.Status)
+	}
+
+	var androidContact UserAlertContact
+	err = json.Unmarshal([]byte(`{
+		"id": 104,
+		"friendlyName": "Pixel",
+		"type": 13,
+		"value": "Pixel",
+		"enableNotificationsFor": 0,
+		"sslExpirationReminder": false,
+		"status": 2
+	}`), &androidContact)
+	if err != nil {
+		t.Fatalf("unmarshal Android contact returned error: %v", err)
+	}
+	if androidContact.Type != "MobileAppAndroid" {
+		t.Fatalf("unexpected Android type %q", androidContact.Type)
 	}
 }
 
@@ -335,7 +363,7 @@ func TestAllAlertContactItemUnmarshalNumericEnums(t *testing.T) {
 		t.Fatalf("unmarshal returned error: %v", err)
 	}
 
-	if contact.Type != "MobileAppOld" {
+	if contact.Type != "MobileAppIOS" {
 		t.Fatalf("unexpected type %q", contact.Type)
 	}
 	if contact.Status != "Active" {

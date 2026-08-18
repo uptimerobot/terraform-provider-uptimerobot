@@ -12,7 +12,7 @@ description: |-
 ## Notes
 
 - This resource manages personal alert contacts through `/v3/alert-contacts`; third-party channels such as Slack, webhook, PagerDuty, Telegram, and Discord remain `uptimerobot_integration` resources.
-- `mobile_app_old` corresponds to iOS push contacts and `mobile_app` corresponds to Android push contacts.
+- Use `mobile_app_ios` for iOS push contacts and `mobile_app_android` for Android push contacts. Existing `mobile_app_old` and `mobile_app` values are deprecated aliases and can be renamed in place without recreating the contact.
 - `pro_sms` and `voice` contacts can be discovered with alert-contact data sources, but they require dashboard phone verification and cannot be created through this resource.
 - Mobile push identity fields are required when creating mobile contacts. The public API does not return `one_signal_user_id` or `device_fingerprint` after creation, so imported mobile contacts leave those fields unset until configured.
 - Use `is_active = false` to pause an alert contact without deleting it.

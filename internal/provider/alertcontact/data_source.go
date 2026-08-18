@@ -140,9 +140,10 @@ func alertContactFilterAttributes() map[string]schema.Attribute {
 		},
 		"type": schema.StringAttribute{
 			Optional:            true,
-			MarkdownDescription: "Optional alert contact type filter (" + strings.Join(AllAlertContactTypes(), ", ") + ").",
+			MarkdownDescription: "Optional alert contact type filter (" + strings.Join(AllAlertContactTypes(), ", ") + "). The values `mobile_app_old` and `mobile_app` are deprecated; use `mobile_app_ios` and `mobile_app_android`.",
 			Validators: []validator.String{
 				stringvalidator.OneOf(AllAlertContactTypes()...),
+				deprecatedMobilePushTypeValidator{},
 			},
 		},
 		"value": schema.StringAttribute{
@@ -178,6 +179,7 @@ func alertContactLookupAttributes(topLevel bool) map[string]schema.Attribute {
 		MarkdownDescription: "The normalized alert contact type.",
 		Validators: []validator.String{
 			stringvalidator.OneOf(AllAlertContactTypes()...),
+			deprecatedMobilePushTypeValidator{},
 		},
 	}
 	attrs["value"] = schema.StringAttribute{
@@ -333,7 +335,7 @@ func filterAlertContacts(contacts []client.UserAlertContact, filters alertContac
 		if filters.Name != "" && contact.Name != filters.Name {
 			continue
 		}
-		if filters.Type != "" && normalizeAlertContactType(contact.Type) != filters.Type {
+		if filters.Type != "" && normalizeAlertContactType(contact.Type) != normalizeAlertContactType(filters.Type) {
 			continue
 		}
 		if filters.Value != "" && contact.Value != filters.Value {
@@ -475,6 +477,8 @@ func AllAlertContactTypes() []string {
 	return []string{
 		"email",
 		"pro_sms",
+		"mobile_app_ios",
+		"mobile_app_android",
 		"mobile_app_old",
 		"mobile_app",
 		"voice",
@@ -506,10 +510,10 @@ func normalizeAlertContactType(value string) string {
 		return "pushover"
 	case "slack":
 		return "slack"
-	case "mobileappold":
-		return "mobile_app_old"
-	case "mobileapp":
-		return "mobile_app"
+	case "mobileappios", "mobileappold":
+		return "mobile_app_ios"
+	case "mobileappandroid", "mobileapp":
+		return "mobile_app_android"
 	case "voice":
 		return "voice"
 	case "splunk":

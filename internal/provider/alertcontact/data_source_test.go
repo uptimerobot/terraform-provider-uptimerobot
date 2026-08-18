@@ -11,12 +11,16 @@ func TestNormalizeAlertContactType(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]string{
-		"MobileApp":      "mobile_app",
-		"mobile_app":     "mobile_app",
-		"mobile-app-old": "mobile_app_old",
-		"ProSms":         "pro_sms",
-		"Voice":          "voice",
-		"Email":          "email",
+		"MobileAppIOS":     "mobile_app_ios",
+		"MobileAppOld":     "mobile_app_ios",
+		"mobile_app_ios":   "mobile_app_ios",
+		"mobile-app-old":   "mobile_app_ios",
+		"MobileAppAndroid": "mobile_app_android",
+		"MobileApp":        "mobile_app_android",
+		"mobile_app":       "mobile_app_android",
+		"ProSms":           "pro_sms",
+		"Voice":            "voice",
+		"Email":            "email",
 	}
 
 	for in, want := range tests {
@@ -30,7 +34,7 @@ func TestAllAlertContactTypesMatchPublicAlertContactEndpoints(t *testing.T) {
 	t.Parallel()
 
 	got := strings.Join(AllAlertContactTypes(), ",")
-	want := "email,pro_sms,mobile_app_old,mobile_app,voice"
+	want := "email,pro_sms,mobile_app_ios,mobile_app_android,mobile_app_old,mobile_app,voice"
 	if got != want {
 		t.Fatalf("unexpected alert contact types %q", got)
 	}
@@ -197,7 +201,7 @@ func TestAlertContactStateMapsMobileConfig(t *testing.T) {
 	if state.ID.ValueString() != "101" {
 		t.Fatalf("unexpected ID %q", state.ID.ValueString())
 	}
-	if state.Type.ValueString() != "mobile_app" {
+	if state.Type.ValueString() != "mobile_app_android" {
 		t.Fatalf("unexpected type %q", state.Type.ValueString())
 	}
 	if state.Status.ValueString() != "active" {
@@ -236,7 +240,7 @@ func TestAllAlertContactStateMapsGroupMetadata(t *testing.T) {
 	if state.ID.ValueString() != "203" {
 		t.Fatalf("unexpected ID %q", state.ID.ValueString())
 	}
-	if state.Type.ValueString() != "mobile_app_old" {
+	if state.Type.ValueString() != "mobile_app_ios" {
 		t.Fatalf("unexpected type %q", state.Type.ValueString())
 	}
 	if !state.NotifyOnly.ValueBool() {

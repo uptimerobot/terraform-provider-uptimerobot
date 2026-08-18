@@ -86,7 +86,7 @@ func TestBuildCreateAlertContactRequestMobile(t *testing.T) {
 
 	req := buildCreateAlertContactRequest(alertContactResourceModel{
 		Name:                    types.StringValue("Pixel"),
-		Type:                    types.StringValue("mobile_app"),
+		Type:                    types.StringValue("mobile_app_android"),
 		NotificationEvents:      types.StringValue("up_and_down"),
 		OneSignalSubscriptionID: types.StringValue("sub-1"),
 		OneSignalUserID:         types.StringValue("user-1"),
@@ -96,7 +96,7 @@ func TestBuildCreateAlertContactRequestMobile(t *testing.T) {
 		AndroidPushDownChannel:  types.StringValue("down"),
 	})
 
-	if req.Type != "MobileApp" || req.Platform != "android" {
+	if req.Type != "MobileAppAndroid" || req.Platform != "android" {
 		t.Fatalf("unexpected mobile type/platform: %#v", req)
 	}
 	if req.DeviceName != "Pixel" || req.OneSignalSubscriptionID != "sub-1" || req.OneSignalUserID != "user-1" {
@@ -107,12 +107,12 @@ func TestBuildCreateAlertContactRequestMobile(t *testing.T) {
 	}
 }
 
-func TestBuildCreateAlertContactRequestMobileOld(t *testing.T) {
+func TestBuildCreateAlertContactRequestMobileIOS(t *testing.T) {
 	t.Parallel()
 
 	req := buildCreateAlertContactRequest(alertContactResourceModel{
 		Name:                    types.StringValue("iPhone"),
-		Type:                    types.StringValue("mobile_app_old"),
+		Type:                    types.StringValue("mobile_app_ios"),
 		NotificationEvents:      types.StringValue("down"),
 		OneSignalSubscriptionID: types.StringValue("sub-ios"),
 		OneSignalUserID:         types.StringValue("user-ios"),
@@ -120,7 +120,7 @@ func TestBuildCreateAlertContactRequestMobileOld(t *testing.T) {
 		PushToken:               types.StringValue("push-ios"),
 	})
 
-	if req.Type != "MobileAppOld" || req.Platform != "ios" {
+	if req.Type != "MobileAppIOS" || req.Platform != "ios" {
 		t.Fatalf("unexpected iOS type/platform: %#v", req)
 	}
 	if req.DeviceName != "iPhone" || req.OneSignalSubscriptionID != "sub-ios" || req.OneSignalUserID != "user-ios" {
@@ -131,6 +131,41 @@ func TestBuildCreateAlertContactRequestMobileOld(t *testing.T) {
 	}
 	if req.Config != nil {
 		t.Fatalf("expected no Android config for iOS contact, got %#v", req.Config)
+	}
+}
+
+func TestLegacyMobileTypeAliasesUseCanonicalAPIValues(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"mobile_app_old": "MobileAppIOS",
+		"mobile_app":     "MobileAppAndroid",
+	}
+	for configuredType, wantAPIType := range tests {
+		if got := alertContactTypeToAPI(configuredType); got != wantAPIType {
+			t.Fatalf("alertContactTypeToAPI(%q) = %q, want %q", configuredType, got, wantAPIType)
+		}
+	}
+}
+
+func TestAlertContactTypeRequiresReplacement(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		state string
+		plan  string
+		want  bool
+	}{
+		{state: "mobile_app_old", plan: "mobile_app_ios", want: false},
+		{state: "mobile_app", plan: "mobile_app_android", want: false},
+		{state: "mobile_app_ios", plan: "mobile_app_android", want: true},
+		{state: "email", plan: "mobile_app_ios", want: true},
+	}
+
+	for _, tt := range tests {
+		if got := alertContactTypeRequiresReplacement(tt.state, tt.plan); got != tt.want {
+			t.Fatalf("alertContactTypeRequiresReplacement(%q, %q) = %v, want %v", tt.state, tt.plan, got, tt.want)
+		}
 	}
 }
 
@@ -275,7 +310,7 @@ func TestAlertContactResourceStateMobilePreservesHiddenIdentity(t *testing.T) {
 		},
 	}, prev)
 
-	if state.Type.ValueString() != "mobile_app" {
+	if state.Type.ValueString() != "mobile_app_android" {
 		t.Fatalf("unexpected type %q", state.Type.ValueString())
 	}
 	if !state.Value.IsNull() {
@@ -295,6 +330,30 @@ func TestAlertContactResourceStateMobilePreservesHiddenIdentity(t *testing.T) {
 	}
 	if !state.IsActive.ValueBool() {
 		t.Fatalf("expected active contact state, got %#v", state.IsActive)
+	}
+}
+
+func TestAlertContactResourceStatePreservesMatchingLegacyAlias(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		apiType  string
+		previous string
+	}{
+		{apiType: "MobileAppIOS", previous: "mobile_app_old"},
+		{apiType: "MobileAppAndroid", previous: "mobile_app"},
+	}
+
+	for _, tt := range tests {
+		state := alertContactResourceState(client.UserAlertContact{
+			ID:   101,
+			Name: "Push device",
+			Type: tt.apiType,
+		}, alertContactResourceModel{Type: types.StringValue(tt.previous)})
+
+		if state.Type.ValueString() != tt.previous {
+			t.Fatalf("type state = %q, want preserved alias %q", state.Type.ValueString(), tt.previous)
+		}
 	}
 }
 

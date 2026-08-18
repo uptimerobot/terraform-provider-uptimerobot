@@ -13,7 +13,7 @@ The data source reads public API v3 `GET /user/all-alert-contacts`. It is read-o
 
 The endpoint returns monitor notification contacts such as email, Pro SMS, voice, and mobile app push contacts across the current user, notify-only groups, and organization members. Integrations such as Slack, webhook, Telegram, PagerDuty, Discord, and similar channels are exposed through the `uptimerobot_integration` data source instead.
 
-For mobile app push contacts, the public API uses separate type values by platform: `mobile_app_old` for iOS push contacts and `mobile_app` for Android push contacts. The UptimeRobot dashboard groups both under Push notifications.
+Mobile push contacts use `mobile_app_ios` and `mobile_app_android`. The deprecated aliases `mobile_app_old` and `mobile_app` remain accepted for existing configurations.
 
 The `value` attribute may contain email addresses, phone numbers, or mobile device tokens. Terraform marks it sensitive, but sensitive values are still stored in Terraform state.
 
@@ -25,7 +25,7 @@ data "uptimerobot_all_alert_contacts" "assignable" {
 }
 
 data "uptimerobot_all_alert_contacts" "mobile_devices" {
-  type   = "mobile_app_old"
+  type   = "mobile_app_ios"
   status = "active"
 }
 
@@ -53,7 +53,7 @@ resource "uptimerobot_monitor" "example" {
 - `name` (String) Optional exact alert contact name filter.
 - `notify_only` (Boolean) Optional filter for contacts from notify-only groups.
 - `status` (String) Optional alert contact status filter (not_activated, paused, active, to_migrate).
-- `type` (String) Optional alert contact type filter (email, pro_sms, mobile_app_old, mobile_app, voice).
+- `type` (String) Optional alert contact type filter (email, pro_sms, mobile_app_ios, mobile_app_android, mobile_app_old, mobile_app, voice). The values `mobile_app_old` and `mobile_app` are deprecated; use `mobile_app_ios` and `mobile_app_android`.
 - `value` (String, Sensitive) Optional exact alert contact value filter. This may be an email address, phone number, or mobile device value and is stored as sensitive state.
 
 ### Read-Only
