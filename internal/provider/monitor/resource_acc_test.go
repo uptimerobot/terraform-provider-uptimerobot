@@ -3554,7 +3554,8 @@ resource "uptimerobot_monitor" "test" {
 
   config = {
     dns_records = {
-      cname = []   # explicitly managed empty list
+      cname = []                 # explicitly managed empty list
+      a     = ["93.184.216.34"]  # keep a real record so the monitor is fully valid
     }
   }
 }
@@ -3569,6 +3570,7 @@ resource "uptimerobot_monitor" "test" {
   config = {
     dns_records = {
       cname = ["foo.%s."]
+      a     = ["93.184.216.34"]
     }
   }
 }
@@ -3577,13 +3579,7 @@ resource "uptimerobot_monitor" "test" {
 		PreCheck:                 func() { provideracctest.PreCheck(t) },
 		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
-			// Create needs a record type with a value; an all-empty dns_records
-			// requests nothing and is rejected on create.
-			{
-				Config: cfgNonEmpty,
-				Check:  resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "1"),
-			},
-			// Clear to [] -> should be an empty set in state, not null
+			// Create with empty list -> should be an empty set in state, not null
 			{
 				Config: cfgEmpty,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -3596,7 +3592,7 @@ resource "uptimerobot_monitor" "test" {
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
-			// Flip back to non-empty and to [] again to ensure it remains an empty set (not null)
+			// Flip to non-empty and back to [] to ensure it remains empty set (not null)
 			{
 				Config: cfgNonEmpty,
 				Check:  resource.TestCheckResourceAttr(res, "config.dns_records.cname.#", "1"),
