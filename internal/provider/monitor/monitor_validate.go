@@ -439,7 +439,7 @@ func validateConfig(
 			"You added a config block for a DNS monitor, but set neither "+
 				"config.dns_records. "+
 				"Omit the config block to preserve remote values, or set config.dns_records to manage DNS config. "+
-				"If this is the initial create for a DNS monitor, config = {} is acceptable and this warning is informational.",
+				"On create, config.dns_records is required with at least one record type.",
 		)
 	}
 

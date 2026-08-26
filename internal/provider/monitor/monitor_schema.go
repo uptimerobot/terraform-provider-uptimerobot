@@ -526,7 +526,7 @@ Advanced monitor configuration.
 						},
 					},
 					"dns_records": schema.SingleNestedAttribute{
-						Description: "DNS record lists for DNS monitors. If present on non-DNS types, validation fails.",
+						Description: "DNS record lists for DNS monitors. Required on create: set at least one record type. If present on non-DNS types, validation fails.",
 						Optional:    true,
 						Computed:    true,
 						Attributes: map[string]schema.Attribute{

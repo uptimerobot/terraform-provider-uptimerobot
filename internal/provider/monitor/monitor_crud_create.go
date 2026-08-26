@@ -305,6 +305,31 @@ func validateCreateHighLevel(ctx context.Context, plan monitorResourceModel, res
 		}
 	}
 
+	if t == MonitorTypeDNS {
+		// Without a record type the checker has nothing to compare against and
+		// falls back to a bare "does this name resolve" check, so the monitor
+		// silently stops verifying whatever the user actually cared about.
+		if plan.Config.IsNull() || plan.Config.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"Config required for DNS monitor",
+				"DNS monitors require config.dns_records on create.",
+			)
+			return false
+		}
+		var cfg configTF
+		resp.Diagnostics.Append(plan.Config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return false
+		}
+		if cfg.DNSRecords.IsNull() || cfg.DNSRecords.IsUnknown() || !dnsRecordsRequestAnyType(cfg.DNSRecords) {
+			resp.Diagnostics.AddError(
+				"dns_records required for DNS monitor",
+				"Set at least one record type in config.dns_records, e.g. txt = [\"v=BIMI1; ...\"].",
+			)
+			return false
+		}
+	}
+
 	if t == MonitorTypeUDP {
 		if plan.Config.IsNull() || plan.Config.IsUnknown() {
 			resp.Diagnostics.AddError(
@@ -913,4 +938,21 @@ func (r *monitorResource) buildStateAfterCreate(
 	}
 
 	return plan
+}
+
+// dnsRecordsRequestAnyType reports whether a dns_records object asks for at
+// least one record type. Every attribute is an optional set, so an object with
+// all of them null requests nothing and is equivalent to omitting the block.
+func dnsRecordsRequestAnyType(dnsRecords types.Object) bool {
+	for _, value := range dnsRecords.Attributes() {
+		set, ok := value.(types.Set)
+		if !ok || set.IsNull() || set.IsUnknown() {
+			continue
+		}
+		if len(set.Elements()) > 0 {
+			return true
+		}
+	}
+
+	return false
 }

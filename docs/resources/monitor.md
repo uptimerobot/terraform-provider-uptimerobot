@@ -721,7 +721,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - Omit `application_error_retries` to preserve the remote value; set `application_error_retries = null` to clear the remote override so the API applies its own default. Connection errors always retry (this setting only governs application/content failures).
 
 **Validation**
-- For `type = "DNS"` on create, `config` is required (use `config = {}` for defaults).
+- For `type = "DNS"` on create, `config.dns_records` is required with at least one record type set. A DNS monitor with no record type cannot verify anything: the checker falls back to a bare "does this name resolve" check.
 - For `type = "API"` on create, set `config.api_assertions` with `logic` and 1-5 `checks`.
 - `dns_records` is only valid for DNS monitors.
 - `config.ssl_expiration_period_days` is only valid for HTTP/KEYWORD/API monitors.
