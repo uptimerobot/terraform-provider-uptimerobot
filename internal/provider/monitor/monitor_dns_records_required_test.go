@@ -9,26 +9,29 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// emptyDNSRecords builds a dns_records object with every record set null --
-// the shape a config block that mentions no record types produces.
-func emptyDNSRecords() types.Object {
+// dnsRecords builds a dns_records object with every record set null -- the
+// shape a config block that mentions no record types produces -- then applies
+// the given overrides. Every attribute is a set of strings (monitor_model.go).
+func dnsRecords(overrides map[string]attr.Value) types.Object {
 	attrs := map[string]attr.Value{}
-	for name, typ := range dnsRecordsObjectType().AttrTypes {
-		attrs[name] = types.SetNull(typ.(types.SetType).ElemType)
+	for name := range dnsRecordsObjectType().AttrTypes {
+		attrs[name] = types.SetNull(types.StringType)
+	}
+	for name, value := range overrides {
+		attrs[name] = value
 	}
 	return types.ObjectValueMust(dnsRecordsObjectType().AttrTypes, attrs)
 }
 
+func emptyDNSRecords() types.Object { return dnsRecords(nil) }
+
 // dnsRecordsWithTXT builds a dns_records object requesting one TXT value.
 func dnsRecordsWithTXT() types.Object {
-	attrs := map[string]attr.Value{}
-	for name, typ := range dnsRecordsObjectType().AttrTypes {
-		attrs[name] = types.SetNull(typ.(types.SetType).ElemType)
-	}
-	attrs["txt"] = types.SetValueMust(types.StringType, []attr.Value{
-		types.StringValue("v=BIMI1; l=https://example.com/logo.svg"),
+	return dnsRecords(map[string]attr.Value{
+		"txt": types.SetValueMust(types.StringType, []attr.Value{
+			types.StringValue("v=BIMI1; l=https://example.com/logo.svg"),
+		}),
 	})
-	return types.ObjectValueMust(dnsRecordsObjectType().AttrTypes, attrs)
 }
 
 func dnsConfig(dnsRecords types.Object) types.Object {

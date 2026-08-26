@@ -805,7 +805,7 @@ Optional:
 - Allowed range: `0..3`.
 - Omit the attribute → **preserve** the remote value.
 - Set to `null` → **clear** the override; the API applies its own default.
-- `dns_records` (Attributes) DNS record lists for DNS monitors. If present on non-DNS types, validation fails. (see [below for nested schema](#nestedatt--config--dns_records))
+- `dns_records` (Attributes) DNS record lists for DNS monitors. Required on create: set at least one record type. If present on non-DNS types, validation fails. (see [below for nested schema](#nestedatt--config--dns_records))
 - `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT/API monitors. Use ipv4Only or ipv6Only. Set empty string to clear and fall back to API default behavior.
 - `ssl_expiration_period_days` (Set of Number) Reminder days before SSL expiry (0..365). Max 10 items.
 
