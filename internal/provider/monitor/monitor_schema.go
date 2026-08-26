@@ -823,7 +823,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		resp.Diagnostics.AddAttributeError(
 			path.Root("config"),
 			"`config` is required for DNS/API/UDP monitors on create",
-			"For DNS use `config = {}` or set DNS fields. For API set `config.api_assertions` with logic and checks. For UDP set `config.udp.packet_loss_threshold`.",
+			"For DNS set `config.dns_records` with at least one record type. For API set `config.api_assertions` with logic and checks. For UDP set `config.udp.packet_loss_threshold`.",
 		)
 	}
 

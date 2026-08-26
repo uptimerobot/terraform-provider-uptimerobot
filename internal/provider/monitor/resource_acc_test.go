@@ -3741,10 +3741,12 @@ resource "uptimerobot_monitor" "test" {
 	})
 }
 
-func TestAcc_Monitor_Config_DNSRecords_ConfigWithoutRecords_AllowsEmptyConfig(t *testing.T) {
+// A config block that names no record type requests nothing, so it is
+// equivalent to omitting the block: the monitor would be created with nothing
+// to check and the checker would fall back to a bare resolution check.
+func TestAcc_Monitor_Config_DNSRecords_ConfigWithoutRecords_RejectedOnCreate(t *testing.T) {
 	name := acctest.RandomWithPrefix("acc-dns-norecords")
 	domain := provideracctest.UniqueDomain(name)
-	res := "uptimerobot_monitor.test"
 
 	cfgMissing := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
@@ -3763,15 +3765,8 @@ resource "uptimerobot_monitor" "test" {
 		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: cfgMissing,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(res, "name", name),
-				),
-			},
-			{
-				Config:             cfgMissing,
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: false,
+				Config:      cfgMissing,
+				ExpectError: regexp.MustCompile("dns_records required for DNS monitor"),
 			},
 		},
 	})

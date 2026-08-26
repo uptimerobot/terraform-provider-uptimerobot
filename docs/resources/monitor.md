@@ -436,7 +436,8 @@ resource "uptimerobot_monitor" "set_days" {
   }
 }
 
-# Preserve remote values but manage the block. Nothing will be sent
+# Preserve remote values but manage the block. Nothing will be sent.
+# Update only - creating a DNS monitor requires config.dns_records (see below)
 resource "uptimerobot_monitor" "preserve" {
   name     = "DNS preserve"
   type     = "DNS"
@@ -557,14 +558,19 @@ resource "uptimerobot_monitor" "dns_records" {
   }
 }
 
-# DNS on CREATE - config is required, even when using defaults
+# DNS on CREATE - config.dns_records is required with at least one record type.
+# A DNS monitor with no record type cannot verify anything.
 resource "uptimerobot_monitor" "dns" {
   name     = "example.org DNS (create)"
   type     = "DNS"
   url      = "example.org"
   interval = 300
 
-  config = {}
+  config = {
+    dns_records = {
+      a = ["93.184.216.34"]
+    }
+  }
 }
 
 # DNS on UPDATE - to preserve server values, omit the config block entirely
