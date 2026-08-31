@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 2.0.0 — 2026-08-31
+
 ### Added
 
 - Added API Assertions v2 source families (`headers.<name>`, `status_code`, and `body`) and type/existence comparisons to `uptimerobot_monitor.config.api_assertions`.
