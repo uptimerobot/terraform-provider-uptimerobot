@@ -353,6 +353,45 @@ func TestSanitizeJSON_RedactsAndRemainsJSON(t *testing.T) {
 	}
 }
 
+func TestSanitizeJSON_RedactsAPIAssertionTargets(t *testing.T) {
+	raw := []byte(`{
+		"data": {
+			"config": {
+				"apiAssertions": {
+					"checks": [
+						{"property":"$.token","comparison":"equals","target":"Bearer assertion-secret"},
+						{"property":"$.items","comparison":"contains","target":{"passwordLikeValue":"nested-secret"}}
+					]
+				}
+			},
+			"target":"unrelated-value"
+		}
+	}`)
+
+	out := sanitizeJSON(raw, 4096)
+	if strings.Contains(out, "assertion-secret") || strings.Contains(out, "nested-secret") {
+		t.Fatalf("assertion target leaked: %s", out)
+	}
+	if !strings.Contains(out, `"target":"unrelated-value"`) {
+		t.Fatalf("unrelated target was redacted: %s", out)
+	}
+
+	var sanitized map[string]any
+	if err := json.Unmarshal([]byte(out), &sanitized); err != nil {
+		t.Fatalf("sanitized output not JSON: %v\n%s", err, out)
+	}
+	data := mustMap(t, sanitized["data"])
+	config := mustMap(t, data["config"])
+	assertions := mustMap(t, config["apiAssertions"])
+	checks := mustSlice(t, assertions["checks"])
+	for i, rawCheck := range checks {
+		check := mustMap(t, rawCheck)
+		if check["target"] != "***REDACTED***" {
+			t.Fatalf("check %d target was not redacted: %#v", i, check["target"])
+		}
+	}
+}
+
 func TestSanitizeJSON_ClipsLargeOutput_NonSensitive(t *testing.T) {
 	raw := []byte(`{"note":"` + strings.Repeat("x", 300) + `"}`)
 	out := sanitizeJSON(raw, 32)
