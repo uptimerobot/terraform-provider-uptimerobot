@@ -37,7 +37,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	if !validateCreateHighLevel(ctx, plan, resp) {
 		return
 	}
-	validateMaterialAPIAssertionsAtApply(ctx, plan, monitorResourceModel{}, true, &resp.Diagnostics)
+	validateMaterialAPIAssertions(ctx, plan, monitorResourceModel{}, stringOrEmpty(plan.Type), true, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

@@ -611,6 +611,9 @@ func apiAssertionsResponseStructurallyValid(in *client.APIMonitorAssertions) boo
 		return false
 	}
 	logic := strings.ToUpper(strings.TrimSpace(in.Logic))
+	if logic == "" {
+		logic = "AND"
+	}
 	if logic != "AND" && logic != "OR" {
 		return false
 	}

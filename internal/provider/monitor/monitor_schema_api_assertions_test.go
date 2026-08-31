@@ -1,16 +1,20 @@
 package monitor
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	resourceschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 )
 
 func TestAPIAssertionsSchemaSensitivityAndInternalMetadataBoundary(t *testing.T) {
 	t.Parallel()
 
-	s := monitorSchema(6, true)
+	var schemaResponse resource.SchemaResponse
+	(&monitorResource{}).Schema(context.Background(), resource.SchemaRequest{}, &schemaResponse)
+	s := schemaResponse.Schema
 	if s.Version != 6 {
 		t.Fatalf("API assertions v2 must not require a state-shape version bump: got schema version %d", s.Version)
 	}

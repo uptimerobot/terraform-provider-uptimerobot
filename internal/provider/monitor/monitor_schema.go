@@ -830,32 +830,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	// API Internal owns v1/v2 semantics assignment. At plan time, validate a
 	// create or material assertion change against the frozen v2 matrix, while
 	// allowing canonically unchanged imported/legacy assertions to round-trip.
-	if planType == MonitorTypeAPI && !plan.Config.IsNull() && !plan.Config.IsUnknown() {
-		var planConfig configTF
-		resp.Diagnostics.Append(plan.Config.As(ctx, &planConfig, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
-		if !resp.Diagnostics.HasError() && !planConfig.APIAssertions.IsNull() {
-			materialChange := req.State.Raw.IsNull()
-			if !materialChange {
-				if state.Config.IsNull() || state.Config.IsUnknown() {
-					materialChange = true
-				} else {
-					var stateConfig configTF
-					resp.Diagnostics.Append(state.Config.As(ctx, &stateConfig, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
-					if !resp.Diagnostics.HasError() {
-						materialChange = !apiAssertionObjectsSemanticallyEqual(ctx, stateConfig.APIAssertions, planConfig.APIAssertions)
-					}
-				}
-			}
-			if materialChange && !resp.Diagnostics.HasError() {
-				validateAPIAssertionsObjectV2(
-					ctx,
-					planConfig.APIAssertions,
-					path.Root("config").AtName("api_assertions"),
-					&resp.Diagnostics,
-				)
-			}
-		}
-	}
+	validateMaterialAPIAssertions(ctx, plan, state, planType, req.State.Raw.IsNull(), &resp.Diagnostics)
 
 	if (planType == MonitorTypeDNS || planType == MonitorTypeAPI || planType == MonitorTypeUDP) && req.State.Raw.IsNull() &&
 		(plan.Config.IsNull() || plan.Config.IsUnknown()) {

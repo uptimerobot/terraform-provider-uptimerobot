@@ -314,8 +314,11 @@ func TestAPIMonitorAssertionCheck_TargetPresenceRoundTrip(t *testing.T) {
 			if decoded.HasTarget() != tt.wantTargetKey || decoded.TargetPresent != tt.wantTargetKey {
 				t.Fatalf("decoded target presence mismatch: %#v", decoded)
 			}
-			if number, ok := decoded.Target.(json.Number); tt.name == "programmatic non-nil target" && (!ok || number.String() != "200") {
-				t.Fatalf("number target lost exact JSON representation: %#v", decoded.Target)
+			if tt.name == "programmatic non-nil target" {
+				number, ok := decoded.Target.(json.Number)
+				if !ok || number.String() != "200" {
+					t.Fatalf("number target lost exact JSON representation: %#v", decoded.Target)
+				}
 			}
 		})
 	}

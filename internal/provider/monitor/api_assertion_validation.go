@@ -119,8 +119,14 @@ func validateAPIAssertionsObjectV2(ctx context.Context, assertionsObject types.O
 	}
 }
 
-func validateMaterialAPIAssertionsAtApply(ctx context.Context, plan, state monitorResourceModel, create bool, diags *diag.Diagnostics) {
-	if plan.Type.IsNull() || plan.Type.IsUnknown() || strings.ToUpper(plan.Type.ValueString()) != MonitorTypeAPI ||
+func validateMaterialAPIAssertions(
+	ctx context.Context,
+	plan, state monitorResourceModel,
+	monitorType string,
+	create bool,
+	diags *diag.Diagnostics,
+) {
+	if strings.ToUpper(strings.TrimSpace(monitorType)) != MonitorTypeAPI ||
 		plan.Config.IsNull() || plan.Config.IsUnknown() {
 		return
 	}

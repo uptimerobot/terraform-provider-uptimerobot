@@ -591,11 +591,11 @@ func TestMaterialAPIAssertionValidationPreservesUnchangedLegacyConfiguration(t *
 	state := monitorResourceModel{Type: types.StringValue(MonitorTypeAPI), Config: config("$invalid")}
 	plan := state
 	var unchangedDiags diag.Diagnostics
-	validateMaterialAPIAssertionsAtApply(ctx, plan, state, false, &unchangedDiags)
+	validateMaterialAPIAssertions(ctx, plan, state, stringOrEmpty(plan.Type), false, &unchangedDiags)
 	require.False(t, unchangedDiags.HasError(), "unchanged legacy assertions must round-trip: %+v", unchangedDiags)
 
 	plan.Config = config("$other")
 	var changedDiags diag.Diagnostics
-	validateMaterialAPIAssertionsAtApply(ctx, plan, state, false, &changedDiags)
+	validateMaterialAPIAssertions(ctx, plan, state, stringOrEmpty(plan.Type), false, &changedDiags)
 	require.True(t, changedDiags.HasError(), "a material assertion edit must satisfy the v2 contract")
 }

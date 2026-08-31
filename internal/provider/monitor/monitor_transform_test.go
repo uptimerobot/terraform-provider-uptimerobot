@@ -1073,6 +1073,20 @@ func TestFlattenConfigToState_MalformedAPIAssertionsKeepsPriorState(t *testing.T
 	}
 }
 
+func TestAPIAssertionsResponseStructurallyValid_DefaultsBlankLogicToAND(t *testing.T) {
+	t.Parallel()
+
+	assertions := &client.APIMonitorAssertions{
+		Logic: " ",
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "body", Comparison: "is_string"},
+		},
+	}
+	if !apiAssertionsResponseStructurallyValid(assertions) {
+		t.Fatal("blank API logic should use the contract default AND")
+	}
+}
+
 func TestMapFromAttr_AllowsUnknownHeaderValues(t *testing.T) {
 	t.Parallel()
 
