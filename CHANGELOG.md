@@ -1,5 +1,30 @@
 ## Unreleased
 
+## 2.0.0 — 2026-08-31
+
+### Added
+
+- Added API Assertions v2 source families (`headers.<name>`, `status_code`, and `body`) and type/existence comparisons to `uptimerobot_monitor.config.api_assertions`.
+- Added frozen-contract validation for the v2 source/comparison/target/length matrix, scalar target types, interoperable number range, and one-to-five check limit.
+- Added lifecycle acceptance coverage for API assertion create, refresh, import, order-only changes, update, duplicate removal, and destroy.
+- Added native JSON array/object assertion targets for body-JSON equality and containment, plus structured empty and length comparisons, with frozen depth, size, duplicate-key, and binary64 number rules.
+- Added structured-target lifecycle coverage for create, refresh, import, update, check removal, no-drift planning, and destroy.
+
+### Changed
+
+- Made API assertion checks duplicate-preserving and order-insensitive for planning and API settle comparison.
+- Marked assertion targets sensitive in Terraform plans and documented unavoidable state, nested collection, and selector exposure.
+- Preserved omitted targets separately from explicit JSON null and kept API Internal-owned semantics metadata and diagnostics out of Terraform configuration and state.
+
+### Fixed
+
+- Preserved unchanged legacy API assertion configurations and imported monitors without forcing v2 validation or creating order/casing drift.
+- Prevented API-valid empty strings, secret-like strings, and decoded scalar values with Terraform JSON escaping from being rejected by provider-only heuristics.
+
+### Documentation
+
+- Added API Assertions v2 examples, source/comparison matrix, upgrade behavior, state-sensitivity caveats, and release-order requirements.
+
 ## 1.10.0 — 2026-07-22
 
 ### Added

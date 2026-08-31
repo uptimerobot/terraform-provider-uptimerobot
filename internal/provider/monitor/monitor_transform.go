@@ -308,9 +308,11 @@ func expandConfigToAPI(
 					Property:   strings.TrimSpace(stringOrEmpty(check.Property)),
 					Comparison: strings.TrimSpace(stringOrEmpty(check.Comparison)),
 				}
-				if !check.Target.IsNull() && !check.Target.IsUnknown() && strings.TrimSpace(check.Target.ValueString()) != "" {
+				if !check.Target.IsNull() && !check.Target.IsUnknown() {
 					var target interface{}
-					if err := json.Unmarshal([]byte(check.Target.ValueString()), &target); err != nil {
+					decoder := json.NewDecoder(strings.NewReader(check.Target.ValueString()))
+					decoder.UseNumber()
+					if err := decoder.Decode(&target); err != nil {
 						diags.AddError(
 							"Invalid API assertion target",
 							fmt.Sprintf("api_assertions.checks.target must contain valid JSON: %v", err),
@@ -318,6 +320,7 @@ func expandConfigToAPI(
 						return nil, false, diags
 					}
 					item.Target = target
+					item.TargetPresent = true
 				}
 				outChecks = append(outChecks, item)
 			}
@@ -562,10 +565,22 @@ func flattenConfigToState(
 		prevAPIAssertions = c.APIAssertions
 	}
 	if api != nil && api.APIAssertions != nil {
-		apiAssertionsObj, d := apiAssertionsFromAPI(ctx, api.APIAssertions)
-		diags.Append(d...)
-		if !diags.HasError() {
-			c.APIAssertions = apiAssertionsObj
+		if !apiAssertionsResponseStructurallyValid(api.APIAssertions) && !prevAPIAssertions.IsNull() {
+			diags.AddWarning(
+				"Malformed API assertions response ignored",
+				"UptimeRobot returned an incomplete API assertions object. The provider kept the prior Terraform state to avoid creating drift from a malformed read.",
+			)
+			c.APIAssertions = prevAPIAssertions
+		} else {
+			apiAssertionsObj, d := apiAssertionsFromAPI(ctx, api.APIAssertions)
+			diags.Append(d...)
+			if !diags.HasError() {
+				if apiAssertionObjectsSemanticallyEqual(ctx, prevAPIAssertions, apiAssertionsObj) {
+					c.APIAssertions = prevAPIAssertions
+				} else {
+					c.APIAssertions = apiAssertionsObj
+				}
+			}
 		}
 	} else {
 		c.APIAssertions = prevAPIAssertions
@@ -586,7 +601,61 @@ func flattenConfigToState(
 		c.UDP = prevUDP
 	}
 
-	return types.ObjectValueFrom(ctx, configObjectType().AttrTypes, c)
+	out, objectDiags := types.ObjectValueFrom(ctx, configObjectType().AttrTypes, c)
+	diags.Append(objectDiags...)
+	return out, diags
+}
+
+func apiAssertionsResponseStructurallyValid(in *client.APIMonitorAssertions) bool {
+	if in == nil {
+		return false
+	}
+	logic := strings.ToUpper(strings.TrimSpace(in.Logic))
+	if logic == "" {
+		logic = "AND"
+	}
+	if logic != "AND" && logic != "OR" {
+		return false
+	}
+	if len(in.Checks) < apiAssertionMinimumChecks || len(in.Checks) > apiAssertionMaximumChecks {
+		return false
+	}
+	knownComparisons := comparisonSet(apiAssertionComparisons...)
+	for _, check := range in.Checks {
+		if check.Property == "" || !knownComparisons[strings.ToLower(strings.TrimSpace(check.Comparison))] {
+			return false
+		}
+		if check.HasTarget() {
+			if _, err := json.Marshal(check.Target); err != nil {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func apiAssertionObjectsSemanticallyEqual(ctx context.Context, left, right types.Object) bool {
+	if left.IsNull() || left.IsUnknown() || right.IsNull() || right.IsUnknown() {
+		return false
+	}
+	var leftAssertions, rightAssertions apiAssertionsTF
+	if diags := left.As(ctx, &leftAssertions, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); diags.HasError() {
+		return false
+	}
+	if diags := right.As(ctx, &rightAssertions, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); diags.HasError() {
+		return false
+	}
+	canonicalLogic := func(value types.String) string {
+		if value.IsNull() || value.IsUnknown() || strings.TrimSpace(value.ValueString()) == "" {
+			return "AND"
+		}
+		return strings.ToUpper(strings.TrimSpace(value.ValueString()))
+	}
+	if canonicalLogic(leftAssertions.Logic) != canonicalLogic(rightAssertions.Logic) {
+		return false
+	}
+	equal, diags := rightAssertions.Checks.ListSemanticEquals(ctx, leftAssertions.Checks)
+	return !diags.HasError() && equal
 }
 
 func udpFromAPI(ctx context.Context, in *client.UDPMonitorConfig) (types.Object, diag.Diagnostics) {
@@ -624,16 +693,18 @@ func apiAssertionsFromAPI(ctx context.Context, in *client.APIMonitorAssertions) 
 		logic = types.StringValue(s)
 	}
 
-	var checksValue types.List
+	var checksValue apiAssertionChecksValue
 	if in.Checks == nil {
-		checksValue = types.ListNull(apiAssertionCheckObjectType())
+		checksValue = newAPIAssertionChecksNull()
 	} else if len(in.Checks) == 0 {
-		checksValue = types.ListValueMust(apiAssertionCheckObjectType(), []attr.Value{})
+		var d diag.Diagnostics
+		checksValue, d = newAPIAssertionChecksValue([]attr.Value{})
+		diags.Append(d...)
 	} else {
 		tfChecks := make([]apiAssertionCheckTF, 0, len(in.Checks))
 		for _, check := range in.Checks {
 			target := jsontypes.NewNormalizedNull()
-			if check.Target != nil {
+			if check.HasTarget() {
 				b, err := json.Marshal(check.Target)
 				if err != nil {
 					diags.AddError("Invalid API assertion target from API", err.Error())
@@ -653,7 +724,7 @@ func apiAssertionsFromAPI(ctx context.Context, in *client.APIMonitorAssertions) 
 		if diags.HasError() {
 			return types.ObjectNull(apiAssertionsObjectType().AttrTypes), diags
 		}
-		checksValue = lv
+		checksValue = apiAssertionChecksValue{ListValue: lv}
 	}
 
 	out, d := types.ObjectValueFrom(ctx, apiAssertionsObjectType().AttrTypes, apiAssertionsTF{

@@ -841,23 +841,42 @@ func sanitizeJSON(b []byte, maxBytes int) string {
 }
 
 func sanitizeValue(v *any) {
+	sanitizeValueAtPath(v, nil)
+}
+
+func sanitizeValueAtPath(v *any, path []string) {
 	switch m := (*v).(type) {
 	case map[string]any:
 		for k, vv := range m {
-			if isSensitiveKey(k) {
+			if isSensitiveKey(k) || isAPIAssertionTarget(path, k) {
 				m[k] = "***REDACTED***"
 				continue
 			}
-			sanitizeValue(&vv)
+			sanitizeValueAtPath(&vv, append(path, k))
 			m[k] = vv
 		}
 	case []any:
 		for i := range m {
-			sanitizeValue(&m[i])
+			sanitizeValueAtPath(&m[i], path)
 		}
 	default:
 		// primitives – nothing to do
 	}
+}
+
+func isAPIAssertionTarget(path []string, key string) bool {
+	if !strings.EqualFold(key, "target") || len(path) < 2 {
+		return false
+	}
+
+	return strings.EqualFold(path[len(path)-1], "checks") &&
+		normalizeJSONKey(path[len(path)-2]) == "apiassertions"
+}
+
+func normalizeJSONKey(key string) string {
+	key = strings.ToLower(key)
+	key = strings.ReplaceAll(key, "_", "")
+	return strings.ReplaceAll(key, "-", "")
 }
 
 func clip(s string, limit int) string {

@@ -14,12 +14,12 @@ resource "uptimerobot_monitor" "api_assertions_null_checks" {
         {
           property   = "$.result.value"
           comparison = "is_not_null"
-          # target must be omitted for is_null/is_not_null
+          # Omit target for no-target comparisons. jsonencode(null) is also valid.
         },
         {
           property   = "$.result.error"
           comparison = "is_null"
-          # target must be omitted for is_null/is_not_null
+          target     = jsonencode(null)
         },
       ]
     }

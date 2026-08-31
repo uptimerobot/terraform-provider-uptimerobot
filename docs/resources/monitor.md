@@ -289,14 +289,49 @@ resource "uptimerobot_monitor" "api_assertions" {
       logic = "AND"
       checks = [
         {
-          property   = "$.status"
+          # jsonencode is decoded once by the provider and sent as a native
+          # JSON array. Array order and nested JSON types remain significant.
+          property   = "$.expected_items"
           comparison = "equals"
-          target     = jsonencode("ok")
+          target = jsonencode([
+            {
+              status  = "active"
+              enabled = true
+            },
+            "complete",
+            null,
+          ])
         },
         {
-          property   = "$.count"
-          comparison = "greater_than"
+          # An object selected from the response contains this recursive
+          # object subset. Nested arrays, when present, still compare exactly.
+          property   = "$.metadata"
+          comparison = "contains"
+          target = jsonencode({
+            region = "eu"
+            flags = {
+              healthy = true
+            }
+          })
+        },
+        {
+          # An array contains an object only when one element is exactly equal
+          # to the target object; this is not object-subset matching.
+          property   = "$.items"
+          comparison = "contains"
+          target = jsonencode({
+            status  = "active"
+            enabled = true
+          })
+        },
+        {
+          property   = "$.items"
+          comparison = "length_greater_than"
           target     = jsonencode(0)
+        },
+        {
+          property   = "$.metadata"
+          comparison = "is_not_empty"
         },
       ]
     }
@@ -323,18 +358,37 @@ resource "uptimerobot_monitor" "api_assertions_null_checks" {
         {
           property   = "$.result.value"
           comparison = "is_not_null"
-          # target must be omitted for is_null/is_not_null
+          # Omit target for no-target comparisons. jsonencode(null) is also valid.
         },
         {
           property   = "$.result.error"
           comparison = "is_null"
-          # target must be omitted for is_null/is_not_null
+          target     = jsonencode(null)
         },
       ]
     }
   }
 }
 ```
+
+## API Assertions v2
+
+`config.api_assertions.checks` is a duplicate-preserving, order-insensitive collection. Reordering checks does not change the monitor, but adding or removing a duplicate does. Between one and five checks are required.
+
+| Property source | Supported comparisons |
+| --- | --- |
+| JSON body (`$...`) | `equals`, `not_equals`, `contains`, `not_contains`, `greater_than`, `less_than`, `is_null`, `is_not_null`, `is_string`, `is_number`, `is_boolean`, `is_array`, `is_object`, `exists`, `not_exists`, `is_empty`, `is_not_empty`, `length_equals`, `length_not_equals`, `length_greater_than`, `length_less_than` |
+| Header (`headers.<name>`) | `equals`, `not_equals`, `contains`, `not_contains`, `is_string`, `exists`, `not_exists` |
+| Status (`status_code`) | `equals`, `not_equals`, `greater_than`, `less_than`, `is_number` |
+| Raw body (`body`) | `equals`, `not_equals`, `contains`, `not_contains`, `is_string` |
+
+`equals`, `not_equals`, `contains`, `not_contains`, `greater_than`, `less_than`, and the four `length_*` comparisons require a target. Other comparisons require no concrete target; omit it or use `jsonencode(null)`. Parsed JSON-body equality and containment accept non-null scalar, array, and object targets. Structured equality is recursive and type-strict, object key order is ignored, and array order is significant. `is_empty` and `is_not_empty` apply to arrays and objects; `length_*` comparisons count array elements or object keys and require a non-negative safe integer target. Header and raw-body containment remain string-only, and numeric comparisons require numbers.
+
+JSONPath is the documented safe RFC 9535-compatible subset enforced by API Internal, not full RFC 9535. The provider validates the source shape, source/comparison/target matrix, and known limits without parsing or evaluating JSONPath. API errors remain authoritative for selector grammar and the 16-selector depth limit.
+
+Assertion targets are marked sensitive and are redacted in Terraform plans where Terraform supports nested sensitivity. They are still stored in Terraform state. The nested collection can expose its shape, and `property` remains visible for useful diffs; JSONPath filter literals inside `property` are therefore also visible in configuration, plans, and state. Do not put secrets in assertion targets or selectors unless the state backend and all readers are trusted.
+
+The provider does not expose assertion semantics versions, internal check identifiers, or diagnostics in configuration or state. API Internal assigns and preserves semantics versions. Existing legacy configurations and imported API monitors keep their stored semantics when assertions are unchanged; a material assertion edit is validated as v2.
 
 ### Alert Contacts Example
 
@@ -799,7 +853,7 @@ Required:
 
 Optional:
 
-- `api_assertions` (Attributes) API monitor assertion rules. Supported only for type=API. (see [below for nested schema](#nestedatt--config--api_assertions))
+- `api_assertions` (Attributes) API monitor assertion rules. Supported only for type=API. API Internal assigns assertion semantics; the provider never stores internal semantics metadata. (see [below for nested schema](#nestedatt--config--api_assertions))
 - `application_error_retries` (Number) Number of additional retries before declaring an application or content failure (response status, body assertion, keyword, etc.) for `HTTP`, `KEYWORD`, and `API` monitors. Connection errors (DNS, TCP, TLS, timeouts) are unaffected and always retry.
 
 - Allowed range: `0..3`.
@@ -819,7 +873,7 @@ Supported when `type = "HTTP"`, `"KEYWORD"`, or `"API"`.
 
 Optional:
 
-- `checks` (Attributes List) Assertion checks list. Each check uses JSONPath property, comparison, and optional target. (see [below for nested schema](#nestedatt--config--api_assertions--checks))
+- `checks` (Attributes List) Duplicate-preserving, order-insensitive assertion checks. Reordering checks alone has no semantic effect. (see [below for nested schema](#nestedatt--config--api_assertions--checks))
 - `logic` (String) How checks are combined. Allowed: AND, OR.
 
 <a id="nestedatt--config--api_assertions--checks"></a>
@@ -827,12 +881,12 @@ Optional:
 
 Required:
 
-- `comparison` (String) Comparison operator.
-- `property` (String) JSONPath expression, for example $.data.status
+- `comparison` (String) Comparison operator. Availability depends on the property source.
+- `property` (String) Assertion source and selector: safe Core JSONPath beginning with $, headers.<name>, status_code, or body.
 
 Optional:
 
-- `target` (String) Optional target value as JSON. Use jsonencode(...) for strings/numbers/booleans/null. Omit target for is_null and is_not_null comparisons.
+- `target` (String, Sensitive) Optional target as JSON. Use jsonencode(...) for strings, numbers, booleans, arrays, objects, or explicit null. Arrays and objects are supported for body-JSON equality and containment. Targets are redacted in plans, but remain stored in Terraform state; selector/property values are not sensitive.
 
 
 

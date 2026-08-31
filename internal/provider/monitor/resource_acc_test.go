@@ -420,9 +420,223 @@ resource "uptimerobot_monitor" "test" {
         }
       ]
     }
-  }
+	  }
 }
 `, name, url, logic, comparison, target)
+}
+
+func testAccMonitorResourceConfigWithAPIAssertionsV2(name string, reordered bool) string {
+	url := provideracctest.UniqueURL(name)
+	checks := `
+        {
+          property   = "$.status"
+          comparison = "equals"
+          target     = jsonencode("ok")
+        },
+        {
+          property   = "headers.Content-Type"
+          comparison = "contains"
+          target     = jsonencode("json")
+        },
+        {
+          property   = "status_code"
+          comparison = "equals"
+          target     = jsonencode(200)
+        },
+        {
+          property   = "body"
+          comparison = "is_string"
+        },
+        {
+          property   = "$.status"
+          comparison = "equals"
+          target     = jsonencode("ok")
+        },`
+	if reordered {
+		checks = `
+        {
+          property   = "body"
+          comparison = "is_string"
+        },
+        {
+          property   = "$.status"
+          comparison = "equals"
+          target     = jsonencode("ok")
+        },
+        {
+          property   = "status_code"
+          comparison = "equals"
+          target     = jsonencode(200)
+        },
+        {
+          property   = "$.status"
+          comparison = "equals"
+          target     = jsonencode("ok")
+        },
+        {
+          property   = "headers.content-type"
+          comparison = "contains"
+          target     = jsonencode("json")
+        },`
+	}
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = %q
+  type     = "API"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    api_assertions = {
+      logic  = "AND"
+      checks = [%s
+      ]
+    }
+  }
+}
+`, name, url, checks)
+}
+
+func testAccMonitorResourceConfigWithUpdatedAPIAssertionsV2(name string, keepDuplicate bool) string {
+	url := provideracctest.UniqueURL(name)
+	duplicate := ""
+	if keepDuplicate {
+		duplicate = `
+        {
+          property   = "headers.X-Request-Id"
+          comparison = "exists"
+        },`
+	}
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = %q
+  type     = "API"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    api_assertions = {
+      logic = "OR"
+      checks = [
+        {
+          property   = "$.status"
+          comparison = "not_equals"
+          target     = jsonencode("down")
+        },
+        {
+          property   = "headers.X-Request-Id"
+          comparison = "exists"
+        },%s
+        {
+          property   = "status_code"
+          comparison = "less_than"
+          target     = jsonencode(500)
+        },
+        {
+          property   = "body"
+          comparison = "contains"
+          target     = jsonencode("")
+        },
+      ]
+    }
+  }
+}
+`, name, url, duplicate)
+}
+
+func testAccMonitorResourceConfigWithStructuredAPIAssertions(name string, updated bool) string {
+	url := provideracctest.UniqueURL(name)
+	logic := "AND"
+	checks := `
+        {
+          property   = "$.items"
+          comparison = "equals"
+          target = jsonencode([
+            {
+              id    = 1
+              ready = true
+            },
+            "tail",
+            null,
+          ])
+        },
+        {
+          property   = "$.metadata"
+          comparison = "contains"
+          target = jsonencode({
+            flags = {
+              healthy = true
+            }
+            region = "eu"
+          })
+        },
+        {
+          property   = "$.items"
+          comparison = "length_equals"
+          target     = jsonencode(3)
+        },
+        {
+          property   = "$.metadata"
+          comparison = "is_not_empty"
+        },
+        {
+          property   = "$.tags"
+          comparison = "equals"
+          target     = jsonencode(["public", "healthy"])
+        },`
+	if updated {
+		logic = "OR"
+		checks = `
+        {
+          property   = "$.items"
+          comparison = "equals"
+          target = jsonencode([
+            {
+              id    = 2
+              ready = false
+            },
+            "tail",
+            null,
+          ])
+        },
+        {
+          property   = "$.metadata"
+          comparison = "contains"
+          target = jsonencode({
+            region = "us"
+          })
+        },
+        {
+          property   = "$.items"
+          comparison = "length_greater_than"
+          target     = jsonencode(1)
+        },
+        {
+          property   = "$.tags"
+          comparison = "not_equals"
+          target     = jsonencode(["private"])
+        },`
+	}
+
+	return provideracctest.ProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = %q
+  url      = %q
+  type     = "API"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    api_assertions = {
+      logic  = %q
+      checks = [%s
+      ]
+    }
+  }
+}
+`, name, url, logic, checks)
 }
 
 // ---------- MW helpers that embed STABLE (literal) date/time ----------
@@ -1431,6 +1645,138 @@ func TestAcc_Monitor_API_ConfigAssertions_RoundTrip(t *testing.T) {
 			},
 			{
 				Config:             testAccMonitorResourceConfigWithAPIAssertions(name, "OR", "not_equals", `jsonencode("down")`),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_API_ConfigAssertionsV2_Lifecycle(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-api-assert-v2")
+	res := "uptimerobot_monitor.test"
+	initial := testAccMonitorResourceConfigWithAPIAssertionsV2(name, false)
+	reordered := testAccMonitorResourceConfigWithAPIAssertionsV2(name, true)
+	updatedWithDuplicate := testAccMonitorResourceConfigWithUpdatedAPIAssertionsV2(name, true)
+	updatedWithoutDuplicate := testAccMonitorResourceConfigWithUpdatedAPIAssertionsV2(name, false)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: initial,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "type", "API"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.logic", "AND"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.#", "5"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.1.property", "headers.Content-Type"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.2.property", "status_code"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.3.property", "body"),
+				),
+			},
+			{
+				RefreshState: true,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.#", "5"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.0.property", "$.status"),
+				),
+			},
+			{
+				ResourceName:            res,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name", "is_paused"},
+			},
+			{
+				Config:             reordered,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: updatedWithDuplicate,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.api_assertions.logic", "OR"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.#", "5"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.1.comparison", "exists"),
+					resource.TestCheckNoResourceAttr(res, "config.api_assertions.checks.1.target"),
+				),
+			},
+			{
+				Config: updatedWithoutDuplicate,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.#", "4"),
+				),
+			},
+			{
+				Config:             updatedWithoutDuplicate,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+func TestAcc_Monitor_API_StructuredAssertionTargets_Lifecycle(t *testing.T) {
+	name := acctest.RandomWithPrefix("acc-api-assert-structured")
+	res := "uptimerobot_monitor.test"
+	initial := testAccMonitorResourceConfigWithStructuredAPIAssertions(name, false)
+	updated := testAccMonitorResourceConfigWithStructuredAPIAssertions(name, true)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: initial,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.api_assertions.logic", "AND"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.#", "5"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.0.target", `[{"id":1,"ready":true},"tail",null]`),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.1.target", `{"flags":{"healthy":true},"region":"eu"}`),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.2.comparison", "length_equals"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.2.target", "3"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.3.comparison", "is_not_empty"),
+					resource.TestCheckNoResourceAttr(res, "config.api_assertions.checks.3.target"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.4.target", `["public","healthy"]`),
+				),
+			},
+			{
+				RefreshState: true,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.#", "5"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.0.target", `[{"id":1,"ready":true},"tail",null]`),
+				),
+			},
+			{
+				ResourceName:            res,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name", "is_paused"},
+			},
+			{
+				Config: updated,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.api_assertions.logic", "OR"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.#", "4"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.0.target", `[{"id":2,"ready":false},"tail",null]`),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.1.target", `{"region":"us"}`),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.2.comparison", "length_greater_than"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.2.target", "1"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.3.target", `["private"]`),
+				),
+			},
+			{
+				RefreshState: true,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.api_assertions.logic", "OR"),
+					resource.TestCheckResourceAttr(res, "config.api_assertions.checks.#", "4"),
+				),
+			},
+			{
+				Config:             updated,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},

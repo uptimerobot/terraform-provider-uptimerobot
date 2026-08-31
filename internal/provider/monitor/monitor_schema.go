@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -547,7 +548,7 @@ Advanced monitor configuration.
 						},
 					},
 					"api_assertions": schema.SingleNestedAttribute{
-						Description: "API monitor assertion rules. Supported only for type=API.",
+						Description: "API monitor assertion rules. Supported only for type=API. API Internal assigns assertion semantics; the provider never stores internal semantics metadata.",
 						Optional:    true,
 						Computed:    true,
 						Attributes: map[string]schema.Attribute{
@@ -560,29 +561,37 @@ Advanced monitor configuration.
 								},
 							},
 							"checks": schema.ListNestedAttribute{
-								Description: "Assertion checks list. Each check uses JSONPath property, comparison, and optional target.",
+								Description: "Duplicate-preserving, order-insensitive assertion checks. Reordering checks alone has no semantic effect.",
 								Optional:    true,
 								Computed:    true,
+								CustomType:  newAPIAssertionChecksType(),
+								PlanModifiers: []planmodifier.List{
+									apiAssertionChecksPlanModifier{},
+								},
+								Validators: []validator.List{
+									listvalidator.SizeBetween(apiAssertionMinimumChecks, apiAssertionMaximumChecks),
+								},
 								NestedObject: schema.NestedAttributeObject{
 									Attributes: map[string]schema.Attribute{
 										"property": schema.StringAttribute{
-											Description: "JSONPath expression, for example $.data.status",
+											Description: "Assertion source and selector: safe Core JSONPath beginning with $, headers.<name>, status_code, or body.",
 											Required:    true,
 											Validators: []validator.String{
 												stringvalidator.LengthAtLeast(1),
-												stringvalidator.LengthAtMost(500),
+												stringvalidator.LengthAtMost(apiAssertionPropertyCharacters),
 											},
 										},
 										"comparison": schema.StringAttribute{
-											Description: "Comparison operator.",
+											Description: "Comparison operator. Availability depends on the property source.",
 											Required:    true,
 											Validators: []validator.String{
-												stringvalidator.OneOf("equals", "not_equals", "contains", "not_contains", "greater_than", "less_than", "is_null", "is_not_null"),
+												stringvalidator.OneOf(apiAssertionComparisons...),
 											},
 										},
 										"target": schema.StringAttribute{
-											Description: "Optional target value as JSON. Use jsonencode(...) for strings/numbers/booleans/null. Omit target for is_null and is_not_null comparisons.",
+											Description: "Optional target as JSON. Use jsonencode(...) for strings, numbers, booleans, arrays, objects, or explicit null. Arrays and objects are supported for body-JSON equality and containment. Targets are redacted in plans, but remain stored in Terraform state; selector/property values are not sensitive.",
 											Optional:    true,
+											Sensitive:   true,
 											CustomType:  jsontypes.NormalizedType{},
 										},
 									},
@@ -809,7 +818,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 			if cfg.DNSRecords.IsUnknown() {
 				_ = resp.Plan.SetAttribute(ctx, path.Root("config").AtName("dns_records"), types.ObjectNull(dnsRecordsObjectType().AttrTypes))
 			}
-			if cfg.APIAssertions.IsUnknown() {
+			if cfg.APIAssertions.IsUnknown() && planType != MonitorTypeAPI {
 				_ = resp.Plan.SetAttribute(ctx, path.Root("config").AtName("api_assertions"), types.ObjectNull(apiAssertionsObjectType().AttrTypes))
 			}
 			if cfg.UDP.IsUnknown() {
@@ -817,6 +826,11 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 			}
 		}
 	}
+
+	// API Internal owns v1/v2 semantics assignment. At plan time, validate a
+	// create or material assertion change against the frozen v2 matrix, while
+	// allowing canonically unchanged imported/legacy assertions to round-trip.
+	validateMaterialAPIAssertions(ctx, plan, state, planType, req.State.Raw.IsNull(), &resp.Diagnostics)
 
 	if (planType == MonitorTypeDNS || planType == MonitorTypeAPI || planType == MonitorTypeUDP) && req.State.Raw.IsNull() &&
 		(plan.Config.IsNull() || plan.Config.IsUnknown()) {

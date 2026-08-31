@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/stretchr/testify/require"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -824,6 +825,98 @@ func TestExpandConfigToAPI_APIAssertionsTouched(t *testing.T) {
 	}
 }
 
+func TestExpandConfigToAPI_APIAssertionsStructuredTargetsRemainNativeJSON(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	check := func(comparison, target string) attr.Value {
+		return types.ObjectValueMust(apiAssertionCheckObjectType().AttrTypes, map[string]attr.Value{
+			"property":   types.StringValue("$.value"),
+			"comparison": types.StringValue(comparison),
+			"target":     jsontypes.NewNormalizedValue(target),
+		})
+	}
+	checks, checkDiags := newAPIAssertionChecksValue([]attr.Value{
+		check("equals", `[1,"two",true,null]`),
+		check("contains", `{"ready":true,"metadata":{"region":"eu"}}`),
+		check("equals", `"[1,2]"`),
+	})
+	require.False(t, checkDiags.HasError())
+	cfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions": types.ObjectValueMust(apiAssertionsObjectType().AttrTypes, map[string]attr.Value{
+			"logic":  types.StringValue("AND"),
+			"checks": checks,
+		}),
+		"ip_version":                types.StringNull(),
+		"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries": types.Int64Unknown(),
+	})
+
+	out, _, diags := expandConfigToAPI(ctx, cfg)
+	require.False(t, diags.HasError(), "%+v", diags)
+	require.Len(t, out.APIAssertions.Checks, 3)
+
+	arrayJSON, err := json.Marshal(out.APIAssertions.Checks[0].Target)
+	require.NoError(t, err)
+	require.JSONEq(t, `[1,"two",true,null]`, string(arrayJSON))
+	objectJSON, err := json.Marshal(out.APIAssertions.Checks[1].Target)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"ready":true,"metadata":{"region":"eu"}}`, string(objectJSON))
+	require.Equal(t, "[1,2]", out.APIAssertions.Checks[2].Target, "JSON-looking strings must never be reparsed")
+}
+
+func TestExpandConfigToAPI_APIAssertionTargetPresence(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	check := func(comparison string, target jsontypes.Normalized) attr.Value {
+		return types.ObjectValueMust(apiAssertionCheckObjectType().AttrTypes, map[string]attr.Value{
+			"property":   types.StringValue("$.value"),
+			"comparison": types.StringValue(comparison),
+			"target":     target,
+		})
+	}
+	checks, checkDiags := newAPIAssertionChecksValue([]attr.Value{
+		check("is_null", jsontypes.NewNormalizedNull()),
+		check("is_null", jsontypes.NewNormalizedValue("null")),
+		check("equals", jsontypes.NewNormalizedValue(`""`)),
+	})
+	if checkDiags.HasError() {
+		t.Fatalf("unexpected check diagnostics: %+v", checkDiags)
+	}
+	cfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions": types.ObjectValueMust(apiAssertionsObjectType().AttrTypes, map[string]attr.Value{
+			"logic":  types.StringValue("AND"),
+			"checks": checks,
+		}),
+		"ip_version":                types.StringNull(),
+		"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries": types.Int64Unknown(),
+	})
+
+	out, _, diags := expandConfigToAPI(ctx, cfg)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if got := out.APIAssertions.Checks; len(got) != 3 {
+		t.Fatalf("expected three checks, got %#v", got)
+	} else {
+		if got[0].HasTarget() {
+			t.Fatalf("Terraform null must omit target: %#v", got[0])
+		}
+		if !got[1].HasTarget() || got[1].Target != nil {
+			t.Fatalf("jsonencode(null) must become an explicit JSON null: %#v", got[1])
+		}
+		if !got[2].HasTarget() || got[2].Target != "" {
+			t.Fatalf("empty string must remain an API-valid concrete target: %#v", got[2])
+		}
+	}
+}
+
 func TestFlattenConfigToState_APIAssertionsFromAPI_PopulatesObject(t *testing.T) {
 	t.Parallel()
 
@@ -881,6 +974,116 @@ func TestFlattenConfigToState_APIAssertionsFromAPI_PopulatesObject(t *testing.T)
 	}
 	if target != "ok" {
 		t.Fatalf("expected target=ok, got %#v", target)
+	}
+}
+
+func TestFlattenConfigToState_APIAssertionsPreservesEquivalentPriorMultiset(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	check := func(property string) attr.Value {
+		return types.ObjectValueMust(apiAssertionCheckObjectType().AttrTypes, map[string]attr.Value{
+			"property":   types.StringValue(property),
+			"comparison": types.StringValue("contains"),
+			"target":     jsontypes.NewNormalizedValue(`"json"`),
+		})
+	}
+	checks, checkDiags := newAPIAssertionChecksValue([]attr.Value{
+		check("headers.Content-Type"),
+		check("body"),
+		check("body"),
+	})
+	if checkDiags.HasError() {
+		t.Fatalf("unexpected check diagnostics: %+v", checkDiags)
+	}
+	priorAssertions := types.ObjectValueMust(apiAssertionsObjectType().AttrTypes, map[string]attr.Value{
+		"logic":  types.StringValue("AND"),
+		"checks": checks,
+	})
+	prev := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             priorAssertions,
+		"ip_version":                 types.StringNull(),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
+	})
+
+	stateObj, diags := flattenConfigToState(ctx, true, prev, &client.MonitorConfig{
+		APIAssertions: &client.APIMonitorAssertions{
+			Logic: "and",
+			Checks: []client.APIMonitorAssertionCheck{
+				{Property: "body", Comparison: "contains", Target: "json"},
+				{Property: "headers.content-type", Comparison: "contains", Target: "json"},
+				{Property: "body", Comparison: "contains", Target: "json"},
+			},
+		},
+	})
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	var cfg configTF
+	if d := stateObj.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); d.HasError() {
+		t.Fatalf("unexpected object decode diagnostics: %+v", d)
+	}
+	if !cfg.APIAssertions.Equal(priorAssertions) {
+		t.Fatalf("refresh reordered or canonicalized an equivalent duplicate-preserving checks multiset\nprior: %#v\nstate: %#v", priorAssertions, cfg.APIAssertions)
+	}
+}
+
+func TestFlattenConfigToState_MalformedAPIAssertionsKeepsPriorState(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	checks, checkDiags := newAPIAssertionChecksValue([]attr.Value{
+		types.ObjectValueMust(apiAssertionCheckObjectType().AttrTypes, map[string]attr.Value{
+			"property":   types.StringValue("$.legacy"),
+			"comparison": types.StringValue("equals"),
+			"target":     jsontypes.NewNormalizedValue(`"value"`),
+		}),
+	})
+	if checkDiags.HasError() {
+		t.Fatalf("unexpected check diagnostics: %+v", checkDiags)
+	}
+	priorAssertions := types.ObjectValueMust(apiAssertionsObjectType().AttrTypes, map[string]attr.Value{
+		"logic":  types.StringValue("AND"),
+		"checks": checks,
+	})
+	prev := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             priorAssertions,
+		"ip_version":                 types.StringNull(),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
+	})
+
+	stateObj, diags := flattenConfigToState(ctx, true, prev, &client.MonitorConfig{
+		APIAssertions: &client.APIMonitorAssertions{Logic: "", Checks: nil},
+	})
+	if diags.HasError() || diags.WarningsCount() != 1 {
+		t.Fatalf("expected one warning and no errors, got %+v", diags)
+	}
+	var cfg configTF
+	if d := stateObj.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); d.HasError() {
+		t.Fatalf("unexpected object decode diagnostics: %+v", d)
+	}
+	if !cfg.APIAssertions.Equal(priorAssertions) {
+		t.Fatalf("malformed response replaced prior assertions state")
+	}
+}
+
+func TestAPIAssertionsResponseStructurallyValid_DefaultsBlankLogicToAND(t *testing.T) {
+	t.Parallel()
+
+	assertions := &client.APIMonitorAssertions{
+		Logic: " ",
+		Checks: []client.APIMonitorAssertionCheck{
+			{Property: "body", Comparison: "is_string"},
+		},
+	}
+	if !apiAssertionsResponseStructurallyValid(assertions) {
+		t.Fatal("blank API logic should use the contract default AND")
 	}
 }
 

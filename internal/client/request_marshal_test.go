@@ -250,6 +250,184 @@ func TestCreateMonitorRequest_Config_APIAssertions_JSON(t *testing.T) {
 	}
 }
 
+func TestAPIMonitorAssertionCheck_TargetPresenceRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		check         APIMonitorAssertionCheck
+		wantTargetKey bool
+		wantTarget    string
+	}{
+		{
+			name: "omitted",
+			check: APIMonitorAssertionCheck{
+				Property:   "$.value",
+				Comparison: "is_null",
+			},
+			wantTargetKey: false,
+		},
+		{
+			name: "explicit null",
+			check: APIMonitorAssertionCheck{
+				Property:      "$.value",
+				Comparison:    "is_null",
+				TargetPresent: true,
+			},
+			wantTargetKey: true,
+			wantTarget:    "null",
+		},
+		{
+			name: "programmatic non-nil target",
+			check: APIMonitorAssertionCheck{
+				Property:   "status_code",
+				Comparison: "equals",
+				Target:     json.Number("200"),
+			},
+			wantTargetKey: true,
+			wantTarget:    "200",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, err := json.Marshal(tt.check)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				t.Fatal(err)
+			}
+			target, targetExists := fields["target"]
+			if targetExists != tt.wantTargetKey {
+				t.Fatalf("target presence: got %t, want %t; JSON=%s", targetExists, tt.wantTargetKey, raw)
+			}
+			if targetExists && string(target) != tt.wantTarget {
+				t.Fatalf("target JSON: got %s, want %s", target, tt.wantTarget)
+			}
+
+			var decoded APIMonitorAssertionCheck
+			if err := json.Unmarshal(raw, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			if decoded.HasTarget() != tt.wantTargetKey || decoded.TargetPresent != tt.wantTargetKey {
+				t.Fatalf("decoded target presence mismatch: %#v", decoded)
+			}
+			if tt.name == "programmatic non-nil target" {
+				number, ok := decoded.Target.(json.Number)
+				if !ok || number.String() != "200" {
+					t.Fatalf("number target lost exact JSON representation: %#v", decoded.Target)
+				}
+			}
+		})
+	}
+}
+
+func TestAPIMonitorAssertionCheck_StructuredTargetRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		raw        string
+		targetType string
+	}{
+		{
+			name:       "array",
+			raw:        `{"property":"$.items","comparison":"equals","target":[1,"two",true,null,0.30000000000000004]}`,
+			targetType: "array",
+		},
+		{
+			name:       "object",
+			raw:        `{"property":"$.metadata","comparison":"contains","target":{"fraction":0.30000000000000004,"nested":{"ready":true}}}`,
+			targetType: "object",
+		},
+	}
+
+	for _, testCase := range tests {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			var check APIMonitorAssertionCheck
+			if err := json.Unmarshal([]byte(testCase.raw), &check); err != nil {
+				t.Fatal(err)
+			}
+			if !check.HasTarget() || !check.TargetPresent {
+				t.Fatalf("structured target presence was lost: %#v", check)
+			}
+			switch testCase.targetType {
+			case "array":
+				if _, ok := check.Target.([]interface{}); !ok {
+					t.Fatalf("target type = %T, want array", check.Target)
+				}
+			case "object":
+				if _, ok := check.Target.(map[string]interface{}); !ok {
+					t.Fatalf("target type = %T, want object", check.Target)
+				}
+			}
+
+			encoded, err := json.Marshal(check)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got, want interface{}
+			gotDecoder := json.NewDecoder(strings.NewReader(string(encoded)))
+			gotDecoder.UseNumber()
+			if err := gotDecoder.Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+			wantDecoder := json.NewDecoder(strings.NewReader(testCase.raw))
+			wantDecoder.UseNumber()
+			if err := wantDecoder.Decode(&want); err != nil {
+				t.Fatal(err)
+			}
+			if gotJSON, wantJSON := mustJSON(t, got), mustJSON(t, want); gotJSON != wantJSON {
+				t.Fatalf("structured target changed across client round-trip:\ngot:  %s\nwant: %s", gotJSON, wantJSON)
+			}
+			if !strings.Contains(string(encoded), "0.30000000000000004") {
+				t.Fatalf("number representation was narrowed through float64: %s", encoded)
+			}
+		})
+	}
+}
+
+func mustJSON(t *testing.T, value interface{}) string {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+func TestAPIMonitorAssertions_InternalMetadataIsNotExposedOnWireModel(t *testing.T) {
+	t.Parallel()
+
+	var assertions APIMonitorAssertions
+	if err := json.Unmarshal([]byte(`{
+		"logic":"AND",
+		"semanticsVersion":2,
+		"diagnostics":{"source":"internal"},
+		"checks":[{"property":"$.value","comparison":"exists","id":"internal-id","index":0}]
+	}`), &assertions); err != nil {
+		t.Fatal(err)
+	}
+	if assertions.Logic != "AND" || len(assertions.Checks) != 1 {
+		t.Fatalf("public assertion fields did not decode: %#v", assertions)
+	}
+
+	raw, err := json.Marshal(assertions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, internalField := range []string{"semanticsVersion", "diagnostics", `"id"`, `"index"`} {
+		if strings.Contains(string(raw), internalField) {
+			t.Fatalf("internal assertion metadata leaked into the public wire model: %s", raw)
+		}
+	}
+}
+
 func TestCreateMonitorRequest_Config_UDP_JSON(t *testing.T) {
 	packetLossThreshold := int64(50)
 	payload := "ping"

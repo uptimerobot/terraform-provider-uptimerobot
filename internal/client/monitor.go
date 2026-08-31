@@ -194,7 +194,73 @@ type APIMonitorAssertions struct {
 type APIMonitorAssertionCheck struct {
 	Property   string      `json:"property"`
 	Comparison string      `json:"comparison"`
-	Target     interface{} `json:"target,omitempty"`
+	Target     interface{} `json:"-"`
+
+	// TargetPresent preserves the API contract's distinction between an
+	// omitted target and an explicit JSON null target.
+	TargetPresent bool `json:"-"`
+}
+
+// HasTarget reports whether target was present on the wire. Programmatic
+// callers that set a non-nil Target remain backwards compatible.
+func (c APIMonitorAssertionCheck) HasTarget() bool {
+	return c.TargetPresent || c.Target != nil
+}
+
+// MarshalJSON keeps omitted target distinct from explicit JSON null.
+func (c APIMonitorAssertionCheck) MarshalJSON() ([]byte, error) {
+	type checkWithoutTarget struct {
+		Property   string `json:"property"`
+		Comparison string `json:"comparison"`
+	}
+	if !c.HasTarget() {
+		return json.Marshal(checkWithoutTarget{
+			Property:   c.Property,
+			Comparison: c.Comparison,
+		})
+	}
+
+	type checkWithTarget struct {
+		Property   string      `json:"property"`
+		Comparison string      `json:"comparison"`
+		Target     interface{} `json:"target"`
+	}
+	return json.Marshal(checkWithTarget{
+		Property:   c.Property,
+		Comparison: c.Comparison,
+		Target:     c.Target,
+	})
+}
+
+// UnmarshalJSON preserves target presence and decodes numbers as json.Number
+// so refreshes do not lose their wire representation through float64.
+func (c *APIMonitorAssertionCheck) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	*c = APIMonitorAssertionCheck{}
+	if raw, ok := fields["property"]; ok {
+		if err := json.Unmarshal(raw, &c.Property); err != nil {
+			return err
+		}
+	}
+	if raw, ok := fields["comparison"]; ok {
+		if err := json.Unmarshal(raw, &c.Comparison); err != nil {
+			return err
+		}
+	}
+	if raw, ok := fields["target"]; ok {
+		c.TargetPresent = true
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		if err := decoder.Decode(&c.Target); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type DNSRecords struct {

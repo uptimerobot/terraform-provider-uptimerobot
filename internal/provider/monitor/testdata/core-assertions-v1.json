@@ -1,0 +1,2739 @@
+{
+  "contract": "api-monitoring-v2/core-assertions",
+  "contractVersion": "core-assertions/1.0.0",
+  "assertionSemanticsVersion": 2,
+  "asOf": "2026-07-10",
+  "sourceIssue": "UPT-3177",
+  "fixtureSemantics": {
+    "expectedMatching": "Expected objects are partial constraints unless a case explicitly says exact.",
+    "absence": "A missing JSON key represents wire-level omission. Strings such as missing or omitted appear only as declarative operation metadata, never as wire values.",
+    "dispatch": "Consumers select cases by area and id; Core implementation tasks add repository-native runners.",
+    "copyPolicy": "Files with the same contractVersion must remain byte-identical across consuming repositories."
+  },
+  "consumerAreas": {
+    "api-internal": [
+      "validation",
+      "compatibility"
+    ],
+    "dashboard": [
+      "validation",
+      "compatibility",
+      "diagnostic rendering through the separate diagnostics corpus"
+    ],
+    "monitoring-core-go": [
+      "validation defense-in-depth",
+      "evaluation",
+      "compatibility dispatch"
+    ],
+    "monitoring-core-nodejs": [
+      "diagnostics corpus only; Node does not evaluate assertions"
+    ]
+  },
+  "scope": {
+    "included": [
+      "safe RFC 9535-compatible JSONPath subset",
+      "scalar, type, header, status-code, raw-body, and existence assertions",
+      "v1/v2 compatibility and canonical assertion change detection"
+    ],
+    "excluded": [
+      "structured array/object targets and equality",
+      "incident history",
+      "public apiAssertionsSemanticsVersion input or output"
+    ]
+  },
+  "inventory": {
+    "assertionMonitors": 2116,
+    "potentiallyAffectedMonitors": 114,
+    "activePotentiallyAffectedMonitors": 104,
+    "potentiallyAffectedChecks": 127
+  },
+  "wireContract": {
+    "logic": [
+      "AND",
+      "OR"
+    ],
+    "checkFields": {
+      "property": "required string",
+      "comparison": "one of: equals, not_equals, contains, not_contains, greater_than, less_than, is_null, is_not_null, is_string, is_number, is_boolean, is_array, is_object, exists, not_exists",
+      "target": "required only for target-based comparisons; omission and explicit null remain distinguishable"
+    },
+    "comparisons": [
+      "equals",
+      "not_equals",
+      "contains",
+      "not_contains",
+      "greater_than",
+      "less_than",
+      "is_null",
+      "is_not_null",
+      "is_string",
+      "is_number",
+      "is_boolean",
+      "is_array",
+      "is_object",
+      "exists",
+      "not_exists"
+    ],
+    "noTargetComparisons": [
+      "is_null",
+      "is_not_null",
+      "is_string",
+      "is_number",
+      "is_boolean",
+      "is_array",
+      "is_object",
+      "exists",
+      "not_exists"
+    ]
+  },
+  "sourceMatrix": [
+    {
+      "source": "body_json",
+      "property": "RFC 9535-compatible JSONPath beginning with $",
+      "comparisons": [
+        "equals",
+        "not_equals",
+        "contains",
+        "not_contains",
+        "greater_than",
+        "less_than",
+        "is_null",
+        "is_not_null",
+        "is_string",
+        "is_number",
+        "is_boolean",
+        "is_array",
+        "is_object",
+        "exists",
+        "not_exists"
+      ],
+      "targetRule": "Scalar target for target-based comparisons; structured targets are invalid in Core."
+    },
+    {
+      "source": "header",
+      "property": "headers.<non-empty RFC-compatible field-name>",
+      "comparisons": [
+        "equals",
+        "not_equals",
+        "contains",
+        "not_contains",
+        "is_string",
+        "exists",
+        "not_exists"
+      ],
+      "targetRule": "String target for target-based comparisons."
+    },
+    {
+      "source": "status_code",
+      "property": "status_code",
+      "comparisons": [
+        "equals",
+        "not_equals",
+        "greater_than",
+        "less_than",
+        "is_number"
+      ],
+      "targetRule": "Range targets are numbers; equality also accepts a legacy numeric string."
+    },
+    {
+      "source": "body_text",
+      "property": "body",
+      "comparisons": [
+        "equals",
+        "not_equals",
+        "contains",
+        "not_contains",
+        "is_string"
+      ],
+      "targetRule": "String target for target-based comparisons."
+    }
+  ],
+  "jsonPathPolicy": {
+    "compatibilityTarget": "documented safe RFC 9535-compatible subset",
+    "supported": [
+      "root selector",
+      "child name selector",
+      "bracket name selector",
+      "non-negative array index",
+      "wildcard selector",
+      "single-predicate filter using @.<path> and ==, !=, <, <=, >, or >= against a string, number, boolean, or null literal"
+    ],
+    "rejectedInCore": [
+      "descendant selector",
+      "array slice",
+      "selector list or union",
+      "regex",
+      "function extension",
+      "arithmetic",
+      "nested filter",
+      "script expression",
+      "general boolean expression"
+    ]
+  },
+  "numericPolicy": {
+    "scalarCoercion": "Preserve v1 boolean and numeric-string equality for Core scalar comparisons.",
+    "decimalComparison": "Compare supported JSON numbers by exact decimal value rather than binary float approximation.",
+    "minimumSafeInteger": -9007199254740991,
+    "maximumSafeInteger": 9007199254740991,
+    "outOfRangeTarget": "invalid_configuration"
+  },
+  "multiMatchPolicy": "All selected values must satisfy the comparison. Use a filter plus exists for an at-least-one condition.",
+  "headerPolicy": {
+    "names": "case-insensitive",
+    "repeatedValues": "join received values in order with a literal comma and no added whitespace",
+    "exists": "true when at least one field value is present"
+  },
+  "noMatchPolicy": {
+    "v1": "Preserve legacy missing-path/null behavior.",
+    "v2": "No selected node is distinct from selected JSON null; only not_exists passes for no match."
+  },
+  "explicitNullTargetPolicy": "For no-target comparisons, explicit target null remains valid for compatibility but is canonically distinct from omission. New UI payloads omit target. Null is invalid for target-based equality.",
+  "invalidConfigurationPolicy": "Evaluate before AND/OR aggregation; a passing OR branch cannot hide invalid configuration.",
+  "operationalOutcomeTransport": {
+    "checkStatus": "notEvaluated",
+    "assertionOutcomeValues": [
+      "invalid_configuration",
+      "evaluation_unavailable"
+    ],
+    "requiredFields": [
+      "checkStatus",
+      "assertionOutcome",
+      "assertionOutcomeReason"
+    ],
+    "schedulerBehavior": "Record bounded operational telemetry, do not call state processing, do not increment down counters, do not publish to the processor, and schedule the next regular check at normal cadence.",
+    "customerBehavior": "Preserve monitor and incident state and send no customer alert.",
+    "assertionDiagnostics": "Omitted for notEvaluated outcomes; these are operational results, not incident snapshots."
+  },
+  "limits": {
+    "checksPerMonitor": {
+      "minimum": 1,
+      "maximum": 5
+    },
+    "propertyCharacters": 500,
+    "targetSerializedBytes": 2048,
+    "jsonPathDepth": 16,
+    "decompressedJsonBodyBytes": 1048576,
+    "selectedNodes": 100,
+    "evaluationMillisecondsPerAssertion": 50,
+    "actualSummaryCharacters": 256,
+    "diagnosticBytesPerAssertion": 1024,
+    "diagnosticBytesPerCheckResult": 8192
+  },
+  "cases": [
+    {
+      "id": "validate-jsonpath-child",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.data.status",
+          "comparison": "equals",
+          "target": "ok"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "source": "body_json"
+      }
+    },
+    {
+      "id": "validate-jsonpath-bracket-name",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$['data']['status']",
+          "comparison": "equals",
+          "target": "ok"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "source": "body_json"
+      }
+    },
+    {
+      "id": "validate-jsonpath-array-index",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.items[0].id",
+          "comparison": "is_number"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "source": "body_json",
+        "targetPresence": "absent"
+      }
+    },
+    {
+      "id": "validate-jsonpath-wildcard",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.items[*].id",
+          "comparison": "is_number"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "source": "body_json"
+      }
+    },
+    {
+      "id": "validate-jsonpath-filter-literals",
+      "area": "validation",
+      "input": {
+        "paths": [
+          "$.items[?(@.name == 'ready')].id",
+          "$.items[?(@.count >= 2)].id",
+          "$.items[?(@.active == true)].id",
+          "$.items[?(@.deleted != null)].id"
+        ]
+      },
+      "expected": {
+        "valid": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "source": "body_json"
+      }
+    },
+    {
+      "id": "reject-jsonpath-descendant",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$..id",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_jsonpath",
+        "reason": "unsupported_descendant_selector"
+      }
+    },
+    {
+      "id": "reject-jsonpath-slice",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.items[0:2]",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_jsonpath",
+        "reason": "unsupported_array_slice"
+      }
+    },
+    {
+      "id": "reject-jsonpath-selector-list",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$['id','name']",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_jsonpath",
+        "reason": "unsupported_selector_list"
+      }
+    },
+    {
+      "id": "reject-jsonpath-regex",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.items[?(@.name =~ /ready/)]",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_jsonpath",
+        "reason": "unsupported_regex"
+      }
+    },
+    {
+      "id": "reject-jsonpath-function",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.items[?length(@.name)]",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_jsonpath",
+        "reason": "unsupported_function"
+      }
+    },
+    {
+      "id": "reject-jsonpath-arithmetic",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.items[?(@.price + 1 > 10)]",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_jsonpath",
+        "reason": "unsupported_arithmetic"
+      }
+    },
+    {
+      "id": "reject-jsonpath-boolean-expression",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.items[?(@.active == true && @.ready == true)]",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_jsonpath",
+        "reason": "unsupported_boolean_expression"
+      }
+    },
+    {
+      "id": "reject-jsonpath-script-expression",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$[(@.length-1)]",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_jsonpath",
+        "reason": "unsupported_script_expression"
+      }
+    },
+    {
+      "id": "validate-header-source",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "headers.content-type",
+          "comparison": "contains",
+          "target": "application/json"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "source": "header",
+        "selector": "content-type"
+      }
+    },
+    {
+      "id": "reject-empty-header-name",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "headers.",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_property",
+        "reason": "header_name_required"
+      }
+    },
+    {
+      "id": "validate-status-equality-legacy-string",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "status_code",
+          "comparison": "equals",
+          "target": "200"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "source": "status_code"
+      }
+    },
+    {
+      "id": "reject-status-range-string-target",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "status_code",
+          "comparison": "greater_than",
+          "target": "199"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "numeric_target_required"
+      }
+    },
+    {
+      "id": "reject-status-exists",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "status_code",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_comparison_for_source"
+      }
+    },
+    {
+      "id": "validate-raw-body-source",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "body",
+          "comparison": "contains",
+          "target": "ready"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "source": "body_text"
+      }
+    },
+    {
+      "id": "reject-raw-body-type-mismatch-comparison",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "body",
+          "comparison": "is_number"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_comparison_for_source"
+      }
+    },
+    {
+      "id": "validate-no-target-explicit-null",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.value",
+          "comparison": "is_null",
+          "target": null
+        }
+      },
+      "expected": {
+        "valid": true,
+        "targetPresence": "explicit_null"
+      }
+    },
+    {
+      "id": "reject-null-equality-target",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.value",
+          "comparison": "equals",
+          "target": null
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "use_is_null"
+      }
+    },
+    {
+      "id": "reject-structured-equality-target",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.value",
+          "comparison": "equals",
+          "target": {
+            "id": 1
+          }
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "structured_targets_not_supported_in_core"
+      }
+    },
+    {
+      "id": "reject-number-outside-interoperable-range",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.value",
+          "comparison": "equals",
+          "target": 9007199254740992
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "number_outside_interoperable_range"
+      }
+    },
+    {
+      "id": "evaluate-v1-missing-path-is-null",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {},
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"present\":true}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.missing",
+              "comparison": "is_null",
+              "target": null
+            }
+          ]
+        }
+      },
+      "expected": {
+        "semanticsVersion": 1,
+        "outcome": "passed",
+        "passed": true
+      }
+    },
+    {
+      "id": "evaluate-v1-missing-path-negative-comparisons",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {},
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"present\":true}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.missing",
+              "comparison": "not_equals",
+              "target": "value"
+            },
+            {
+              "property": "$.missing",
+              "comparison": "not_contains",
+              "target": "value"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "semanticsVersion": 1,
+        "outcome": "passed",
+        "passed": true
+      }
+    },
+    {
+      "id": "evaluate-v2-missing-path-is-not-null-comparison-fails",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"present\":true}"
+        },
+        "assertions": {
+          "logic": "OR",
+          "checks": [
+            {
+              "property": "$.missing",
+              "comparison": "is_null",
+              "target": null
+            },
+            {
+              "property": "$.missing",
+              "comparison": "is_not_null",
+              "target": null
+            },
+            {
+              "property": "$.missing",
+              "comparison": "not_equals",
+              "target": "value"
+            },
+            {
+              "property": "$.missing",
+              "comparison": "not_contains",
+              "target": "value"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "failed",
+        "passed": false,
+        "results": [
+          {
+            "index": 0,
+            "passed": false,
+            "selectedCount": 0,
+            "failureReason": "no_match"
+          },
+          {
+            "index": 1,
+            "passed": false,
+            "selectedCount": 0,
+            "failureReason": "no_match"
+          },
+          {
+            "index": 2,
+            "passed": false,
+            "selectedCount": 0,
+            "failureReason": "no_match"
+          },
+          {
+            "index": 3,
+            "passed": false,
+            "selectedCount": 0,
+            "failureReason": "no_match"
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-missing-path-not-exists",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"present\":true}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.missing",
+              "comparison": "not_exists"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "results": [
+          {
+            "index": 0,
+            "selectedCount": 0,
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-null-is-present-and-null",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"value\":null}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.value",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.value",
+              "comparison": "is_null",
+              "target": null
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "results": [
+          {
+            "index": 0,
+            "selectedCount": 1,
+            "passed": true
+          },
+          {
+            "index": 1,
+            "selectedCount": 1,
+            "actualTypes": [
+              "null"
+            ],
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-multi-match-all-pass",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"items\":[{\"status\":\"ok\"},{\"status\":\"ok\"}]}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.items[*].status",
+              "comparison": "equals",
+              "target": "ok"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "results": [
+          {
+            "index": 0,
+            "selectedCount": 2,
+            "failedCount": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-multi-match-one-fails",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"items\":[{\"status\":\"ok\"},{\"status\":\"failed\"},{\"status\":\"ok\"}]}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.items[*].status",
+              "comparison": "equals",
+              "target": "ok"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "failed",
+        "passed": false,
+        "results": [
+          {
+            "index": 0,
+            "selectedCount": 3,
+            "failedCount": 1,
+            "failureReason": "comparison_failed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-filter-plus-exists",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"items\":[{\"active\":false},{\"active\":true}]}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.items[?(@.active == true)]",
+              "comparison": "exists"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "results": [
+          {
+            "index": 0,
+            "selectedCount": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-header-case-and-repeated-values",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [
+            {
+              "name": "X-Feature",
+              "values": [
+                "alpha",
+                "beta"
+              ]
+            }
+          ],
+          "body": ""
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "headers.x-feature",
+              "comparison": "equals",
+              "target": "alpha,beta"
+            },
+            {
+              "property": "headers.X-FEATURE",
+              "comparison": "exists"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "results": [
+          {
+            "index": 0,
+            "actualSummary": "alpha,beta"
+          },
+          {
+            "index": 1,
+            "selectedCount": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-invalid-json-is-per-jsonpath-check",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "not json"
+        },
+        "assertions": {
+          "logic": "OR",
+          "checks": [
+            {
+              "property": "$.ready",
+              "comparison": "equals",
+              "target": true
+            },
+            {
+              "property": "status_code",
+              "comparison": "equals",
+              "target": 200
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "results": [
+          {
+            "index": 0,
+            "passed": false,
+            "failureReason": "response_not_json"
+          },
+          {
+            "index": 1,
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-invalid-config-cannot-hide-in-or",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"ready\":true}"
+        },
+        "assertions": {
+          "logic": "OR",
+          "checks": [
+            {
+              "property": "$..ready",
+              "comparison": "exists"
+            },
+            {
+              "property": "status_code",
+              "comparison": "equals",
+              "target": 200
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "invalid_configuration",
+        "passed": false,
+        "transport": {
+          "checkStatus": "notEvaluated",
+          "assertionOutcome": "invalid_configuration",
+          "assertionOutcomeReason": "invalid_jsonpath"
+        },
+        "assertionDiagnostics": null,
+        "stateChangeAllowed": false,
+        "customerAlertAllowed": false
+      }
+    },
+    {
+      "id": "evaluate-v2-type-checks",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"s\":\"value\",\"n\":42,\"b\":true,\"a\":[],\"o\":{}}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.s",
+              "comparison": "is_string"
+            },
+            {
+              "property": "$.n",
+              "comparison": "is_number"
+            },
+            {
+              "property": "$.b",
+              "comparison": "is_boolean"
+            },
+            {
+              "property": "$.a",
+              "comparison": "is_array"
+            },
+            {
+              "property": "$.o",
+              "comparison": "is_object"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true
+      }
+    },
+    {
+      "id": "evaluate-v2-preserves-scalar-coercion",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"bool\":true,\"boolText\":\"true\",\"number\":42,\"numberText\":\"42\",\"decimal\":0.1}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.bool",
+              "comparison": "equals",
+              "target": "true"
+            },
+            {
+              "property": "$.boolText",
+              "comparison": "equals",
+              "target": true
+            },
+            {
+              "property": "$.number",
+              "comparison": "equals",
+              "target": "42"
+            },
+            {
+              "property": "$.numberText",
+              "comparison": "equals",
+              "target": 42
+            },
+            {
+              "property": "$.decimal",
+              "comparison": "equals",
+              "target": 0.1
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "numericComparison": "exact_decimal"
+      }
+    },
+    {
+      "id": "evaluate-v2-safe-integer-boundary",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"value\":9007199254740991}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.value",
+              "comparison": "equals",
+              "target": 9007199254740991
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "numericComparison": "exact_decimal"
+      }
+    },
+    {
+      "id": "evaluate-v2-structured-actual-target-comparison",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"value\":{\"id\":1}}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.value",
+              "comparison": "equals",
+              "target": "value"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "failed",
+        "passed": false,
+        "results": [
+          {
+            "index": 0,
+            "failureReason": "unsupported_value_type"
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-status-assertion-after-success-code-gate",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "successStatusCodes": [
+          200
+        ],
+        "response": {
+          "status": 500,
+          "headers": [],
+          "body": ""
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "status_code",
+              "comparison": "equals",
+              "target": 500
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "http_status_not_allowed",
+        "assertionsEvaluated": false,
+        "monitorUp": false
+      }
+    },
+    {
+      "id": "canonical-reorder-is-not-material",
+      "area": "compatibility",
+      "input": {
+        "previous": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            },
+            {
+              "property": "$.b",
+              "comparison": "equals",
+              "target": 2
+            }
+          ]
+        },
+        "submitted": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.b",
+              "comparison": "equals",
+              "target": 2
+            },
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            }
+          ]
+        }
+      },
+      "expected": {
+        "materialChange": false,
+        "preserveStoredSemanticsVersion": true
+      }
+    },
+    {
+      "id": "canonical-duplicates-are-preserved",
+      "area": "compatibility",
+      "input": {
+        "previous": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            },
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            },
+            {
+              "property": "$.b",
+              "comparison": "equals",
+              "target": 2
+            }
+          ]
+        },
+        "submitted": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.b",
+              "comparison": "equals",
+              "target": 2
+            },
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            },
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            }
+          ]
+        }
+      },
+      "expected": {
+        "materialChange": false,
+        "preserveStoredSemanticsVersion": true
+      }
+    },
+    {
+      "id": "canonical-removing-duplicate-is-material",
+      "area": "compatibility",
+      "input": {
+        "previous": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            },
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            }
+          ]
+        },
+        "submitted": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            }
+          ]
+        }
+      },
+      "expected": {
+        "materialChange": true,
+        "assignedSemanticsVersion": 2
+      }
+    },
+    {
+      "id": "canonical-absent-target-differs-from-null",
+      "area": "compatibility",
+      "input": {
+        "previous": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "is_null"
+            }
+          ]
+        },
+        "submitted": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "is_null",
+              "target": null
+            }
+          ]
+        }
+      },
+      "expected": {
+        "materialChange": true,
+        "assignedSemanticsVersion": 2
+      }
+    },
+    {
+      "id": "canonical-header-and-logic-casing-is-not-material",
+      "area": "compatibility",
+      "input": {
+        "previous": {
+          "logic": "and",
+          "checks": [
+            {
+              "property": "headers.Content-Type",
+              "comparison": "contains",
+              "target": "json"
+            }
+          ]
+        },
+        "submitted": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "headers.content-type",
+              "comparison": "contains",
+              "target": "json"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "materialChange": false,
+        "preserveStoredSemanticsVersion": true
+      }
+    },
+    {
+      "id": "canonical-target-type-change-is-material",
+      "area": "compatibility",
+      "input": {
+        "previous": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.value",
+              "comparison": "equals",
+              "target": "42"
+            }
+          ]
+        },
+        "submitted": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.value",
+              "comparison": "equals",
+              "target": 42
+            }
+          ]
+        }
+      },
+      "expected": {
+        "materialChange": true,
+        "assignedSemanticsVersion": 2
+      }
+    },
+    {
+      "id": "assignment-new-monitor-is-v2",
+      "area": "compatibility",
+      "input": {
+        "operation": "create",
+        "assertionsPresent": true
+      },
+      "expected": {
+        "semanticsVersion": 2,
+        "persistMarker": true
+      }
+    },
+    {
+      "id": "assignment-unrelated-patch-preserves-v1",
+      "area": "compatibility",
+      "input": {
+        "operation": "patch",
+        "storedMarker": "missing",
+        "apiAssertionsField": "omitted"
+      },
+      "expected": {
+        "semanticsVersion": 1,
+        "persistMarker": false
+      }
+    },
+    {
+      "id": "assignment-identical-assertion-patch-preserves-v1",
+      "area": "compatibility",
+      "input": {
+        "operation": "patch",
+        "storedMarker": "missing",
+        "canonicalAssertionsEqual": true
+      },
+      "expected": {
+        "semanticsVersion": 1,
+        "persistMarker": false
+      }
+    },
+    {
+      "id": "assignment-material-assertion-patch-is-v2",
+      "area": "compatibility",
+      "input": {
+        "operation": "patch",
+        "storedMarker": "missing",
+        "canonicalAssertionsEqual": false
+      },
+      "expected": {
+        "semanticsVersion": 2,
+        "persistMarker": true
+      }
+    },
+    {
+      "id": "assignment-copy-is-v2",
+      "area": "compatibility",
+      "input": {
+        "operation": "copy_or_recreate",
+        "sourceMarker": "missing"
+      },
+      "expected": {
+        "semanticsVersion": 2,
+        "persistMarker": true,
+        "invalidLegacyAssertions": "reject_until_adjusted"
+      }
+    },
+    {
+      "id": "assignment-test-request-is-v2-without-persistence",
+      "area": "compatibility",
+      "input": {
+        "operation": "stateless_test_request",
+        "assertionsPresent": true
+      },
+      "expected": {
+        "semanticsVersion": 2,
+        "persistMarker": false
+      }
+    },
+    {
+      "id": "reject-contains-non-string-target",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.value",
+          "comparison": "contains",
+          "target": 1
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_target",
+        "reason": "string_target_required"
+      }
+    },
+    {
+      "id": "reject-more-than-five-checks",
+      "area": "validation",
+      "input": {
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.v0",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.v1",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.v2",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.v3",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.v4",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.v5",
+              "comparison": "exists"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "limit_exceeded",
+        "reason": "too_many_checks",
+        "maximum": 5
+      }
+    },
+    {
+      "id": "reject-property-over-character-limit",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "limit_exceeded",
+        "reason": "property_too_long",
+        "maximumCharacters": 500
+      }
+    },
+    {
+      "id": "reject-target-over-serialized-limit",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.value",
+          "comparison": "equals",
+          "target": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "limit_exceeded",
+        "reason": "target_too_large",
+        "maximumSerializedBytes": 2048
+      }
+    },
+    {
+      "id": "reject-jsonpath-over-depth-limit",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "limit_exceeded",
+        "reason": "jsonpath_too_deep",
+        "maximumDepth": 16
+      }
+    },
+    {
+      "id": "evaluate-v2-empty-values-exist",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"emptyString\":\"\",\"emptyArray\":[],\"emptyObject\":{}}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.emptyString",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.emptyArray",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.emptyObject",
+              "comparison": "exists"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "selectedCounts": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-empty-header-value-exists",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [
+            {
+              "name": "X-Empty",
+              "values": [
+                ""
+              ]
+            }
+          ],
+          "body": ""
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "headers.x-empty",
+              "comparison": "exists"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "results": [
+          {
+            "index": 0,
+            "selectedCount": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-response-type-mismatch-is-not-invalid-config",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"value\":true}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.value",
+              "comparison": "contains",
+              "target": "r"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "failed",
+        "passed": false,
+        "configurationValid": true,
+        "results": [
+          {
+            "index": 0,
+            "failureReason": "type_mismatch"
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-selected-node-cap-fails-without-partial-evaluation",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"items\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100]}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.items[*]",
+              "comparison": "is_number"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "failed",
+        "passed": false,
+        "results": [
+          {
+            "index": 0,
+            "selectedCount": 101,
+            "failureReason": "too_many_matches"
+          }
+        ],
+        "partialSubsetEvaluatedAsPassing": false
+      }
+    },
+    {
+      "id": "internal-marker-is-rejected-on-public-write",
+      "area": "compatibility",
+      "input": {
+        "operation": "public_create_or_update",
+        "config": {
+          "apiAssertionsSemanticsVersion": 2,
+          "apiAssertions": {
+            "logic": "AND",
+            "checks": [
+              {
+                "property": "$.ready",
+                "comparison": "exists"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "category": "reserved_internal_metadata"
+      }
+    },
+    {
+      "id": "internal-marker-is-stripped-from-public-read",
+      "area": "compatibility",
+      "input": {
+        "operation": "public_read",
+        "storedMonitorConfig": {
+          "apiAssertionsSemanticsVersion": 2,
+          "apiAssertions": {
+            "logic": "AND",
+            "checks": [
+              {
+                "property": "$.ready",
+                "comparison": "exists"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "responseConfig": {
+          "apiAssertions": {
+            "logic": "AND",
+            "checks": [
+              {
+                "property": "$.ready",
+                "comparison": "exists"
+              }
+            ]
+          }
+        },
+        "markerExposed": false
+      }
+    },
+    {
+      "id": "internal-marker-is-included-on-scheduler-checker-transport",
+      "area": "compatibility",
+      "input": {
+        "operation": "internal_scheduler_payload",
+        "storedMonitorConfig": {
+          "apiAssertionsSemanticsVersion": 2,
+          "apiAssertions": {
+            "logic": "AND",
+            "checks": [
+              {
+                "property": "$.ready",
+                "comparison": "exists"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "internalPayload": {
+          "apiAssertionsSemanticsVersion": 2,
+          "apiAssertions": {
+            "logic": "AND",
+            "checks": [
+              {
+                "property": "$.ready",
+                "comparison": "exists"
+              }
+            ]
+          }
+        },
+        "markerInsideApiAssertions": false
+      }
+    },
+    {
+      "id": "missing-marker-does-not-trigger-backfill",
+      "area": "compatibility",
+      "input": {
+        "operation": "read_or_evaluate",
+        "storedMarker": "missing"
+      },
+      "expected": {
+        "semanticsVersion": 1,
+        "persistMarker": false,
+        "backfillRequired": false
+      }
+    },
+    {
+      "id": "mixed-per-check-semantics-is-invalid",
+      "area": "compatibility",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "exists",
+              "semanticsVersion": 1
+            },
+            {
+              "property": "$.b",
+              "comparison": "exists",
+              "semanticsVersion": 2
+            }
+          ]
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "category": "reserved_internal_metadata",
+        "perCheckSemanticsAllowed": false
+      }
+    },
+    {
+      "id": "validate-jsonpath-root",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$",
+          "comparison": "is_object"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "source": "body_json"
+      }
+    },
+    {
+      "id": "validate-jsonpath-bracket-special-name",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$['a.b']['sp ace']",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "source": "body_json"
+      }
+    },
+    {
+      "id": "reject-jsonpath-negative-index",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.items[-1]",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_jsonpath",
+        "reason": "unsupported_negative_index"
+      }
+    },
+    {
+      "id": "evaluate-v2-is-not-null",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"nullValue\":null,\"value\":0}"
+        },
+        "assertions": {
+          "logic": "OR",
+          "checks": [
+            {
+              "property": "$.nullValue",
+              "comparison": "is_not_null",
+              "target": null
+            },
+            {
+              "property": "$.value",
+              "comparison": "is_not_null",
+              "target": null
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "results": [
+          {
+            "index": 0,
+            "selectedCount": 1,
+            "passed": false,
+            "failureReason": "comparison_failed"
+          },
+          {
+            "index": 1,
+            "selectedCount": 1,
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "evaluate-v2-not-exists-on-present-value",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"value\":false}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.value",
+              "comparison": "not_exists"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "failed",
+        "passed": false,
+        "results": [
+          {
+            "index": 0,
+            "selectedCount": 1,
+            "passed": false,
+            "failureReason": "value_present"
+          }
+        ]
+      }
+    },
+    {
+      "id": "reject-zero-checks",
+      "area": "validation",
+      "input": {
+        "assertions": {
+          "logic": "AND",
+          "checks": []
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "limit_exceeded",
+        "reason": "too_few_checks",
+        "minimum": 1
+      }
+    },
+    {
+      "id": "accept-five-checks",
+      "area": "validation",
+      "input": {
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.v0",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.v1",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.v2",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.v3",
+              "comparison": "exists"
+            },
+            {
+              "property": "$.v4",
+              "comparison": "exists"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "valid": true,
+        "maximumBoundary": 5
+      }
+    },
+    {
+      "id": "reject-malformed-jsonpath",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.items[",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_jsonpath",
+        "reason": "malformed_expression"
+      }
+    },
+    {
+      "id": "evaluate-v2-decompressed-body-cap",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [
+            {
+              "name": "Content-Encoding",
+              "values": [
+                "gzip"
+              ]
+            }
+          ],
+          "decompressedBodyBytes": 1048577
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.value",
+              "comparison": "exists"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "failed",
+        "passed": false,
+        "results": [
+          {
+            "index": 0,
+            "failureReason": "evaluation_limit_exceeded"
+          }
+        ],
+        "jsonDecoded": false,
+        "unboundedReadPerformed": false
+      }
+    },
+    {
+      "id": "evaluate-v2-jsonpath-time-cap",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "evaluationElapsedMilliseconds": 51,
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.items[*]",
+              "comparison": "exists"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "failed",
+        "passed": false,
+        "results": [
+          {
+            "index": 0,
+            "failureReason": "evaluation_limit_exceeded"
+          }
+        ],
+        "maximumMillisecondsPerAssertion": 50
+      }
+    },
+    {
+      "id": "evaluate-v2-exact-decimal-beyond-binary-float-precision",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"value\":0.3000000000000000000000001}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.value",
+              "comparison": "equals",
+              "target": "0.3000000000000000000000001"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "passed",
+        "passed": true,
+        "numericComparison": "exact_decimal",
+        "binaryFloatRoundingAllowed": false
+      }
+    },
+    {
+      "id": "canonical-default-and-is-not-material",
+      "area": "compatibility",
+      "input": {
+        "previous": {
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            }
+          ]
+        },
+        "submitted": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            }
+          ]
+        }
+      },
+      "expected": {
+        "materialChange": false,
+        "preserveStoredSemanticsVersion": true,
+        "canonicalDefaultLogic": "AND"
+      }
+    },
+    {
+      "id": "canonical-status-numeric-string-is-not-material",
+      "area": "compatibility",
+      "input": {
+        "previous": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "status_code",
+              "comparison": "equals",
+              "target": "200"
+            }
+          ]
+        },
+        "submitted": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "status_code",
+              "comparison": "equals",
+              "target": 200
+            }
+          ]
+        }
+      },
+      "expected": {
+        "materialChange": false,
+        "preserveStoredSemanticsVersion": true
+      }
+    },
+    {
+      "id": "canonical-optional-check-id-and-index-are-not-material",
+      "area": "compatibility",
+      "input": {
+        "previous": {
+          "logic": "AND",
+          "checks": [
+            {
+              "id": "legacy-id",
+              "index": 7,
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            }
+          ]
+        },
+        "submitted": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            }
+          ]
+        }
+      },
+      "expected": {
+        "materialChange": false,
+        "preserveStoredSemanticsVersion": true
+      }
+    },
+    {
+      "id": "canonical-identical-legacy-unknown-field-preserves-v1",
+      "area": "compatibility",
+      "input": {
+        "previous": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1,
+              "legacyField": "x"
+            }
+          ]
+        },
+        "submitted": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1,
+              "legacyField": "x"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "materialChange": false,
+        "preserveStoredSemanticsVersion": true
+      }
+    },
+    {
+      "id": "canonical-new-unknown-field-is-rejected",
+      "area": "compatibility",
+      "input": {
+        "previous": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1
+            }
+          ]
+        },
+        "submitted": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.a",
+              "comparison": "equals",
+              "target": 1,
+              "unknownField": "x"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "materialChange": true,
+        "accepted": false,
+        "category": "unknown_assertion_field"
+      }
+    },
+    {
+      "id": "assignment-existing-v2-unrelated-patch-preserves-v2",
+      "area": "compatibility",
+      "input": {
+        "operation": "patch",
+        "storedMarker": 2,
+        "apiAssertionsField": "omitted"
+      },
+      "expected": {
+        "semanticsVersion": 2,
+        "persistMarker": true
+      }
+    },
+    {
+      "id": "assignment-existing-v2-identical-patch-preserves-v2",
+      "area": "compatibility",
+      "input": {
+        "operation": "patch",
+        "storedMarker": 2,
+        "canonicalAssertionsEqual": true
+      },
+      "expected": {
+        "semanticsVersion": 2,
+        "persistMarker": true
+      }
+    },
+    {
+      "id": "assignment-patch-config-without-assertions-preserves-v1",
+      "area": "compatibility",
+      "input": {
+        "operation": "patch",
+        "storedMonitorConfig": {
+          "apiAssertions": {
+            "logic": "AND",
+            "checks": [
+              {
+                "property": "$.ready",
+                "comparison": "equals",
+                "target": true
+              }
+            ]
+          }
+        },
+        "request": {
+          "config": {
+            "applicationErrorRetries": 2
+          }
+        }
+      },
+      "expected": {
+        "semanticsVersion": 1,
+        "persistMarker": false
+      }
+    },
+    {
+      "id": "reject-api-monitor-create-without-assertions",
+      "area": "compatibility",
+      "input": {
+        "operation": "create",
+        "monitorType": "API",
+        "request": {
+          "config": {}
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "category": "api_assertions_required",
+        "markerPersisted": false
+      }
+    },
+    {
+      "id": "reject-removing-all-api-assertions",
+      "area": "compatibility",
+      "input": {
+        "operation": "patch",
+        "monitorType": "API",
+        "storedMarker": "missing",
+        "request": {
+          "config": {
+            "apiAssertions": null
+          }
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "category": "api_assertions_required",
+        "storedConfigChanged": false
+      }
+    },
+    {
+      "id": "existing-monitor-test-unchanged-assertions-use-v1",
+      "area": "compatibility",
+      "input": {
+        "operation": "existing_monitor_test",
+        "storedMarker": "missing",
+        "canonicalAssertionsEqual": true
+      },
+      "expected": {
+        "semanticsVersion": 1,
+        "persistMarker": false
+      }
+    },
+    {
+      "id": "existing-monitor-test-changed-assertions-use-v2-without-persistence",
+      "area": "compatibility",
+      "input": {
+        "operation": "existing_monitor_test",
+        "storedMarker": "missing",
+        "canonicalAssertionsEqual": false
+      },
+      "expected": {
+        "semanticsVersion": 2,
+        "persistMarker": false
+      }
+    },
+    {
+      "id": "bulk-update-without-assertions-preserves-each-monitor",
+      "area": "compatibility",
+      "input": {
+        "operation": "bulk_update",
+        "request": {
+          "friendlyName": "renamed"
+        },
+        "storedMarkers": [
+          "missing",
+          2
+        ]
+      },
+      "expected": {
+        "resultingSemanticsVersions": [
+          1,
+          2
+        ],
+        "backfillRequired": false
+      }
+    },
+    {
+      "id": "bulk-assertion-edit-evaluates-each-monitor",
+      "area": "compatibility",
+      "input": {
+        "operation": "bulk_assertion_edit",
+        "canonicalEqualityByMonitor": [
+          true,
+          false
+        ],
+        "storedMarkers": [
+          "missing",
+          "missing"
+        ]
+      },
+      "expected": {
+        "resultingSemanticsVersions": [
+          1,
+          2
+        ],
+        "oneSharedMarkerWriteAllowed": false
+      }
+    },
+    {
+      "id": "legacy-dot-before-index-remains-v1-only",
+      "area": "compatibility",
+      "input": {
+        "existingV1": {
+          "property": "$.[0].id",
+          "comparison": "equals",
+          "target": 1
+        },
+        "materialV2Submission": {
+          "property": "$.[0].id",
+          "comparison": "equals",
+          "target": 1
+        }
+      },
+      "expected": {
+        "existingV1Accepted": true,
+        "materialV2SubmissionAccepted": false,
+        "v2Reason": "invalid_jsonpath"
+      }
+    },
+    {
+      "id": "wildcard-multi-match-is-v2-only",
+      "area": "compatibility",
+      "input": {
+        "assertion": {
+          "property": "$.items[*].id",
+          "comparison": "is_number"
+        }
+      },
+      "expected": {
+        "v1Accepted": false,
+        "v2Accepted": true,
+        "v2Aggregation": "all"
+      }
+    },
+    {
+      "id": "api-gate-rejects-v2-values-before-runtime-readiness",
+      "area": "compatibility",
+      "input": {
+        "operation": "create_or_material_assertion_update",
+        "goRuntimeContractEnabled": false,
+        "assertion": {
+          "property": "$.ready",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "accepted": false,
+        "category": "feature_not_available",
+        "persisted": false
+      }
+    },
+    {
+      "id": "api-gate-keeps-existing-v1-round-trip-enabled",
+      "area": "compatibility",
+      "input": {
+        "operation": "read_or_unrelated_patch",
+        "goRuntimeContractEnabled": false,
+        "storedMarker": "missing"
+      },
+      "expected": {
+        "accepted": true,
+        "semanticsVersion": 1
+      }
+    },
+    {
+      "id": "validate-jsonpath-all-filter-comparison-operators",
+      "area": "validation",
+      "input": {
+        "paths": [
+          "$.items[?(@.n == 1)]",
+          "$.items[?(@.n != 1)]",
+          "$.items[?(@.n < 1)]",
+          "$.items[?(@.n <= 1)]",
+          "$.items[?(@.n > 1)]",
+          "$.items[?(@.n >= 1)]"
+        ]
+      },
+      "expected": {
+        "valid": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      }
+    },
+    {
+      "id": "validate-jsonpath-filter-number-forms",
+      "area": "validation",
+      "input": {
+        "paths": [
+          "$.items[?(@.n == -1)]",
+          "$.items[?(@.n == 1.25)]",
+          "$.items[?(@.n == 1e3)]"
+        ]
+      },
+      "expected": {
+        "valid": [
+          true,
+          true,
+          true
+        ]
+      }
+    },
+    {
+      "id": "validate-jsonpath-filter-nested-member-and-quoted-string",
+      "area": "validation",
+      "input": {
+        "paths": [
+          "$.items[?(@.meta.active == true)]",
+          "$.items[?(@.name == \"ready\")]",
+          "$.items[?(@.name == 'it\\'s ready')]"
+        ]
+      },
+      "expected": {
+        "valid": [
+          true,
+          true,
+          true
+        ]
+      }
+    },
+    {
+      "id": "validate-jsonpath-dot-wildcard",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.items.*.id",
+          "comparison": "is_number"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "source": "body_json"
+      }
+    },
+    {
+      "id": "reject-jsonpath-nested-filter",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.groups[?(@.items[?(@.active == true)])]",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "category": "invalid_jsonpath",
+        "reason": "unsupported_nested_filter"
+      }
+    },
+    {
+      "id": "accept-jsonpath-depth-boundary",
+      "area": "validation",
+      "input": {
+        "assertion": {
+          "property": "$.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a",
+          "comparison": "exists"
+        }
+      },
+      "expected": {
+        "valid": true,
+        "maximumDepth": 16
+      }
+    },
+    {
+      "id": "evaluate-v2-distinct-decimals-do-not-collapse",
+      "area": "evaluation",
+      "input": {
+        "monitorConfig": {
+          "apiAssertionsSemanticsVersion": 2
+        },
+        "response": {
+          "status": 200,
+          "headers": [],
+          "body": "{\"value\":0.3000000000000000000000001}"
+        },
+        "assertions": {
+          "logic": "AND",
+          "checks": [
+            {
+              "property": "$.value",
+              "comparison": "equals",
+              "target": "0.3000000000000000000000002"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "outcome": "failed",
+        "passed": false,
+        "numericComparison": "exact_decimal",
+        "binaryFloatRoundingAllowed": false,
+        "results": [
+          {
+            "index": 0,
+            "failureReason": "comparison_failed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "v2-runtime-suppression-does-not-fallback",
+      "area": "compatibility",
+      "input": {
+        "storedMarker": 2,
+        "runtimeV2Enabled": false
+      },
+      "expected": {
+        "semanticsVersion": 2,
+        "outcome": "evaluation_unavailable",
+        "reason": "v2_runtime_suppressed",
+        "transport": {
+          "checkStatus": "notEvaluated",
+          "assertionOutcome": "evaluation_unavailable",
+          "assertionOutcomeReason": "v2_runtime_suppressed"
+        },
+        "assertionDiagnostics": null,
+        "fallbackToV1": false,
+        "stateChangeAllowed": false,
+        "customerAlertAllowed": false
+      }
+    }
+  ]
+}

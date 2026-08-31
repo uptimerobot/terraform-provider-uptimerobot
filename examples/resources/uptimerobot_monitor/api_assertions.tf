@@ -13,14 +13,49 @@ resource "uptimerobot_monitor" "api_assertions" {
       logic = "AND"
       checks = [
         {
-          property   = "$.status"
+          # jsonencode is decoded once by the provider and sent as a native
+          # JSON array. Array order and nested JSON types remain significant.
+          property   = "$.expected_items"
           comparison = "equals"
-          target     = jsonencode("ok")
+          target = jsonencode([
+            {
+              status  = "active"
+              enabled = true
+            },
+            "complete",
+            null,
+          ])
         },
         {
-          property   = "$.count"
-          comparison = "greater_than"
+          # An object selected from the response contains this recursive
+          # object subset. Nested arrays, when present, still compare exactly.
+          property   = "$.metadata"
+          comparison = "contains"
+          target = jsonencode({
+            region = "eu"
+            flags = {
+              healthy = true
+            }
+          })
+        },
+        {
+          # An array contains an object only when one element is exactly equal
+          # to the target object; this is not object-subset matching.
+          property   = "$.items"
+          comparison = "contains"
+          target = jsonencode({
+            status  = "active"
+            enabled = true
+          })
+        },
+        {
+          property   = "$.items"
+          comparison = "length_greater_than"
           target     = jsonencode(0)
+        },
+        {
+          property   = "$.metadata"
+          comparison = "is_not_empty"
         },
       ]
     }
