@@ -377,12 +377,12 @@ resource "uptimerobot_monitor" "api_assertions_null_checks" {
 
 | Property source | Supported comparisons |
 | --- | --- |
-| JSON body (`$...`) | `equals`, `not_equals`, `contains`, `not_contains`, `greater_than`, `less_than`, `is_null`, `is_not_null`, `is_string`, `is_number`, `is_boolean`, `is_array`, `is_object`, `exists`, `not_exists` |
+| JSON body (`$...`) | `equals`, `not_equals`, `contains`, `not_contains`, `greater_than`, `less_than`, `is_null`, `is_not_null`, `is_string`, `is_number`, `is_boolean`, `is_array`, `is_object`, `exists`, `not_exists`, `is_empty`, `is_not_empty`, `length_equals`, `length_not_equals`, `length_greater_than`, `length_less_than` |
 | Header (`headers.<name>`) | `equals`, `not_equals`, `contains`, `not_contains`, `is_string`, `exists`, `not_exists` |
 | Status (`status_code`) | `equals`, `not_equals`, `greater_than`, `less_than`, `is_number` |
 | Raw body (`body`) | `equals`, `not_equals`, `contains`, `not_contains`, `is_string` |
 
-`equals`, `not_equals`, `contains`, `not_contains`, `greater_than`, and `less_than` require a target. Other comparisons require no concrete target; omit it or use `jsonencode(null)`. Targets are scalar values only in this release: array/object type checks are supported, but array/object equality targets are not.
+`equals`, `not_equals`, `contains`, `not_contains`, `greater_than`, `less_than`, and the four `length_*` comparisons require a target. Other comparisons require no concrete target; omit it or use `jsonencode(null)`. Parsed JSON-body equality and containment accept non-null scalar, array, and object targets. Structured equality is recursive and type-strict, object key order is ignored, and array order is significant. `is_empty` and `is_not_empty` apply to arrays and objects; `length_*` comparisons count array elements or object keys and require a non-negative safe integer target. Header and raw-body containment remain string-only, and numeric comparisons require numbers.
 
 JSONPath is the documented safe RFC 9535-compatible subset enforced by API Internal, not full RFC 9535. The provider validates the source shape, source/comparison/target matrix, and known limits without parsing or evaluating JSONPath. API errors remain authoritative for selector grammar and the 16-selector depth limit.
 
