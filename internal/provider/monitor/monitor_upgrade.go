@@ -1378,9 +1378,17 @@ func priorSchemaV5() *schema.Schema {
 	return &s
 }
 
-func upgradeMonitorFromV5(prior monitorResourceModel) monitorResourceModel {
+// monitorV5Model mirrors the v5 state shape. V5 and V6 share their top-level
+// attributes and differ only inside the nested config object, which decodes as
+// a generic types.Object, so one struct describes both. It must not be
+// monitorResourceModel: that now carries port_alert_condition, which the v5
+// schema does not define, and the framework rejects the mismatch before the
+// upgrade runs, blocking planning for every existing v5 monitor.
+type monitorV5Model = monitorV6Model
+
+func upgradeMonitorFromV5(prior monitorV5Model) monitorResourceModel {
 	prior.Config = retypeConfigToCurrent(prior.Config)
-	return prior
+	return upgradeMonitorFromV6(prior)
 }
 
 // V6 -> V7

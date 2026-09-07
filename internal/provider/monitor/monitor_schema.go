@@ -880,6 +880,16 @@ func applyPortAlertConditionPlanDefault(
 	configPortAlertCondition types.String,
 	resp *resource.ModifyPlanResponse,
 ) {
+	// The monitor type can itself be an apply-time expression, leaving the
+	// resolved type empty at plan time. Deciding anything here would be a
+	// guess: nulling the attribute drops an explicitly configured value and
+	// Terraform rejects the plan as inconsistent with the configuration, while
+	// defaulting it to CLOSED assumes a PORT monitor the type may not produce.
+	// Leave it untouched and let apply resolve it.
+	if planType == "" {
+		return
+	}
+
 	if planType != MonitorTypePORT {
 		if !plan.PortAlertCondition.IsNull() {
 			resp.Plan.SetAttribute(ctx, path.Root("port_alert_condition"), types.StringNull())
@@ -1058,7 +1068,7 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 		5: {
 			PriorSchema: priorSchemaV5(),
 			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
-				var prior monitorResourceModel
+				var prior monitorV5Model
 				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
 				if resp.Diagnostics.HasError() {
 					return

@@ -115,6 +115,43 @@ func TestApplyPortAlertConditionPlanDefault_PortType_ConfiguredUnknownStaysUnkno
 	}
 }
 
+func TestApplyPortAlertConditionPlanDefault_UnknownType_KeepsConfiguredValue(t *testing.T) {
+	t.Parallel()
+
+	// The monitor type can itself be an apply-time expression, in which case
+	// the resolved plan type is empty. Treating that as a known non-PORT type
+	// replaces an explicitly configured value with null, and Terraform then
+	// rejects the plan as inconsistent with the configuration.
+	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, PortAlertConditionOpen))
+	applyPortAlertConditionPlanDefault(context.Background(), "", monitorResourceModel{
+		Type:               types.StringUnknown(),
+		PortAlertCondition: types.StringValue(PortAlertConditionOpen),
+	}, types.StringValue(PortAlertConditionOpen), resp)
+
+	got := portAlertConditionFromPlanResponse(t, resp)
+	if got.IsNull() || got.ValueString() != PortAlertConditionOpen {
+		t.Fatalf("expected a configured port_alert_condition to survive an unresolved monitor type, got %v", got)
+	}
+}
+
+func TestApplyPortAlertConditionPlanDefault_UnknownType_LeavesOmittedUnresolved(t *testing.T) {
+	t.Parallel()
+
+	// Omitted plus an unresolved type must not be defaulted either: the type
+	// may still resolve to something other than PORT, where the attribute has
+	// to end up null rather than CLOSED.
+	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, tftypes.UnknownValue))
+	applyPortAlertConditionPlanDefault(context.Background(), "", monitorResourceModel{
+		Type:               types.StringUnknown(),
+		PortAlertCondition: types.StringUnknown(),
+	}, types.StringNull(), resp)
+
+	got := portAlertConditionFromPlanResponse(t, resp)
+	if !got.IsUnknown() {
+		t.Fatalf("expected an omitted port_alert_condition to stay unknown while the monitor type is unresolved, got %v", got)
+	}
+}
+
 func TestApplyPortAlertConditionPlanDefault_NonPortType_UnknownBecomesNull(t *testing.T) {
 	t.Parallel()
 

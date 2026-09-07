@@ -6,8 +6,11 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,6 +87,73 @@ func TestStateUpgrader_PriorSchemaV5_OmitsApplicationErrorRetries(t *testing.T) 
 	configAttr, ok := u5.PriorSchema.Attributes["config"].(schema.SingleNestedAttribute)
 	require.True(t, ok, "prior v5 schema config must be SingleNestedAttribute")
 	require.NotContains(t, configAttr.Attributes, "application_error_retries")
+}
+
+// runRegisteredUpgrader drives a registered StateUpgrader the way the framework
+// does, decoding a prior-schema state value rather than calling the upgrade
+// helper directly. A helper-level test cannot catch a mismatch between the
+// prior schema and the model the upgrader decodes into, because the decode is
+// exactly the step it skips.
+func runRegisteredUpgrader(t *testing.T, version int64, priorAttrs map[string]tftypes.Value) (monitorResourceModel, diag.Diagnostics) {
+	t.Helper()
+	ctx := context.Background()
+
+	r := &monitorResource{}
+	upgrader, ok := r.UpgradeState(ctx)[version]
+	require.True(t, ok, "missing state upgrader for version %d", version)
+
+	objType, ok := upgrader.PriorSchema.Type().TerraformType(ctx).(tftypes.Object)
+	require.True(t, ok, "prior schema must be an object type")
+
+	values := make(map[string]tftypes.Value, len(objType.AttributeTypes))
+	for name, attrType := range objType.AttributeTypes {
+		if supplied, found := priorAttrs[name]; found {
+			values[name] = supplied
+			continue
+		}
+		values[name] = tftypes.NewValue(attrType, nil)
+	}
+
+	current := monitorSchema(7, true, true)
+	req := resource.UpgradeStateRequest{
+		State: &tfsdk.State{Schema: *upgrader.PriorSchema, Raw: tftypes.NewValue(objType, values)},
+	}
+	resp := &resource.UpgradeStateResponse{State: tfsdk.State{Schema: current}}
+
+	upgrader.StateUpgrader(ctx, req, resp)
+	if resp.Diagnostics.HasError() {
+		return monitorResourceModel{}, resp.Diagnostics
+	}
+
+	var upgraded monitorResourceModel
+	diags := resp.State.Get(ctx, &upgraded)
+	return upgraded, diags
+}
+
+func TestStateUpgraderV5_DecodesPriorStateForPortMonitor(t *testing.T) {
+	t.Parallel()
+
+	upgraded, diags := runRegisteredUpgrader(t, 5, map[string]tftypes.Value{
+		"type": tftypes.NewValue(tftypes.String, MonitorTypePORT),
+	})
+
+	require.False(t, diags.HasError(), "v5 state must decode against the v5 prior schema: %+v", diags)
+	require.Equal(t, PortAlertConditionClosed, upgraded.PortAlertCondition.ValueString(),
+		"a PORT monitor upgraded from v5 should adopt the API default")
+}
+
+func TestStateUpgraderV5_DecodesPriorStateForNonPortMonitor(t *testing.T) {
+	t.Parallel()
+
+	// The regression blocked planning for every monitor, not only PORT ones,
+	// so an HTTP monitor is the case that proves the decode itself was broken.
+	upgraded, diags := runRegisteredUpgrader(t, 5, map[string]tftypes.Value{
+		"type": tftypes.NewValue(tftypes.String, MonitorTypeHTTP),
+	})
+
+	require.False(t, diags.HasError(), "v5 state must decode against the v5 prior schema: %+v", diags)
+	require.True(t, upgraded.PortAlertCondition.IsNull(),
+		"a non-PORT monitor must not gain a port_alert_condition value")
 }
 
 func TestUpgradeFromV0_Tags_NullToNullSet(t *testing.T) {
@@ -341,7 +411,7 @@ func TestUpgradeFromV5_Config_BackfillsApplicationErrorRetries(t *testing.T) {
 		"api_assertions":             apiAssertionsObjectType(),
 		"udp":                        udpObjectType(),
 	}
-	prior := monitorResourceModel{
+	prior := monitorV5Model{
 		Config: types.ObjectValueMust(v5ConfigTypes, map[string]attr.Value{
 			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
 			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
