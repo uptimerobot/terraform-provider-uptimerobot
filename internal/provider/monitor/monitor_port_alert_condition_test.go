@@ -60,7 +60,7 @@ func TestApplyPortAlertConditionPlanDefault_PortType_UnknownDefaultsToClosed(t *
 	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, tftypes.UnknownValue))
 	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypePORT, monitorResourceModel{
 		PortAlertCondition: types.StringUnknown(),
-	}, resp)
+	}, types.StringNull(), resp)
 
 	got := portAlertConditionFromPlanResponse(t, resp)
 	if got.ValueString() != PortAlertConditionClosed {
@@ -74,7 +74,7 @@ func TestApplyPortAlertConditionPlanDefault_PortType_NullDefaultsToClosed(t *tes
 	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, nil))
 	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypePORT, monitorResourceModel{
 		PortAlertCondition: types.StringNull(),
-	}, resp)
+	}, types.StringNull(), resp)
 
 	got := portAlertConditionFromPlanResponse(t, resp)
 	if got.ValueString() != PortAlertConditionClosed {
@@ -88,11 +88,30 @@ func TestApplyPortAlertConditionPlanDefault_PortType_KnownValueLeftUntouched(t *
 	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, PortAlertConditionOpen))
 	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypePORT, monitorResourceModel{
 		PortAlertCondition: types.StringValue(PortAlertConditionOpen),
-	}, resp)
+	}, types.StringValue(PortAlertConditionOpen), resp)
 
 	got := portAlertConditionFromPlanResponse(t, resp)
 	if got.ValueString() != PortAlertConditionOpen {
 		t.Fatalf("expected known port_alert_condition=OPEN on a PORT plan to be left untouched, got %q", got.ValueString())
+	}
+}
+
+func TestApplyPortAlertConditionPlanDefault_PortType_ConfiguredUnknownStaysUnknown(t *testing.T) {
+	t.Parallel()
+
+	// An unknown plan value has two very different causes: the attribute was
+	// omitted from configuration (default to CLOSED), or it was configured
+	// with an expression that is only resolvable at apply time. Defaulting the
+	// second case would silently plan CLOSED for a deferred expression that
+	// resolves to OPEN, inverting the alerting behaviour the user asked for.
+	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, tftypes.UnknownValue))
+	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypePORT, monitorResourceModel{
+		PortAlertCondition: types.StringUnknown(),
+	}, types.StringUnknown(), resp)
+
+	got := portAlertConditionFromPlanResponse(t, resp)
+	if !got.IsUnknown() {
+		t.Fatalf("expected an explicitly configured unknown port_alert_condition to stay unknown for apply-time resolution, got %q", got.ValueString())
 	}
 }
 
@@ -102,7 +121,7 @@ func TestApplyPortAlertConditionPlanDefault_NonPortType_UnknownBecomesNull(t *te
 	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, tftypes.UnknownValue))
 	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypeHTTP, monitorResourceModel{
 		PortAlertCondition: types.StringUnknown(),
-	}, resp)
+	}, types.StringNull(), resp)
 
 	got := portAlertConditionFromPlanResponse(t, resp)
 	if !got.IsNull() {
@@ -116,7 +135,7 @@ func TestApplyPortAlertConditionPlanDefault_NonPortType_NullLeftUntouched(t *tes
 	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, nil))
 	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypeHTTP, monitorResourceModel{
 		PortAlertCondition: types.StringNull(),
-	}, resp)
+	}, types.StringNull(), resp)
 
 	got := portAlertConditionFromPlanResponse(t, resp)
 	if !got.IsNull() {
@@ -136,7 +155,7 @@ func TestApplyPortAlertConditionPlanDefault_NonPortType_KnownValueClearedToNull(
 	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, PortAlertConditionOpen))
 	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypeHTTP, monitorResourceModel{
 		PortAlertCondition: types.StringValue(PortAlertConditionOpen),
-	}, resp)
+	}, types.StringNull(), resp)
 
 	got := portAlertConditionFromPlanResponse(t, resp)
 	if !got.IsNull() {

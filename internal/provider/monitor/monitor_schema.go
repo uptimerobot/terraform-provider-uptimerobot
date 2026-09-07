@@ -260,7 +260,7 @@ func monitorSchema(version int64, includeApplicationErrorRetries bool, includePo
 				},
 			},
 			"port_alert_condition": schema.StringAttribute{
-				Description: "Condition that triggers an alert for PORT monitors: CLOSED (default) alerts when the port is unreachable, OPEN alerts when the port becomes reachable. Only valid for type = \"PORT\".",
+				Description: "Condition that triggers an alert for PORT monitors: CLOSED (default) alerts when the port becomes unreachable, OPEN alerts when the port becomes reachable. Only valid when type = \"PORT\".",
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.String{
@@ -859,23 +859,38 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		)
 	}
 
-	applyPortAlertConditionPlanDefault(ctx, planType, plan, resp)
+	var configPortAlertCondition types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("port_alert_condition"), &configPortAlertCondition)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	applyPortAlertConditionPlanDefault(ctx, planType, plan, configPortAlertCondition, resp)
 }
 
-// applyPortAlertConditionPlanDefault ensures port_alert_condition always
-// resolves to a known value at plan time: CLOSED for PORT monitors that
-// omit it (so a config that never sets the attribute reads back cleanly
-// without a perpetual diff), and null for every other monitor type.
+// applyPortAlertConditionPlanDefault resolves port_alert_condition at plan
+// time: CLOSED for PORT monitors that omit it from configuration (so a config
+// that never sets the attribute reads back cleanly without a perpetual diff),
+// and null for every other monitor type. A value the configuration sets to an
+// apply-time expression is left unknown for Terraform to resolve.
 func applyPortAlertConditionPlanDefault(
 	ctx context.Context,
 	planType string,
 	plan monitorResourceModel,
+	configPortAlertCondition types.String,
 	resp *resource.ModifyPlanResponse,
 ) {
 	if planType != MonitorTypePORT {
 		if !plan.PortAlertCondition.IsNull() {
 			resp.Plan.SetAttribute(ctx, path.Root("port_alert_condition"), types.StringNull())
 		}
+		return
+	}
+
+	// A configured unknown resolves at apply time and may resolve to OPEN, so
+	// it must not be collapsed into the CLOSED default here. Only an omitted
+	// attribute, which is null in configuration, gets the default.
+	if configPortAlertCondition.IsUnknown() {
 		return
 	}
 
