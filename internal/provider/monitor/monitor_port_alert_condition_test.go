@@ -8,9 +8,121 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
+
+// -----------------------------------------------------------------------------
+// Plan-time defaulting (ModifyPlan)
+// -----------------------------------------------------------------------------
+
+// portAlertConditionOnlyPlanResponse builds a minimal ModifyPlanResponse
+// whose plan contains only the port_alert_condition attribute, so
+// applyPortAlertConditionPlanDefault's calls to resp.Plan.SetAttribute can be
+// exercised without constructing the full monitor schema/plan value.
+func portAlertConditionOnlyPlanResponse(t *testing.T, value tftypes.Value) *resource.ModifyPlanResponse {
+	t.Helper()
+
+	s := schema.Schema{
+		Attributes: map[string]schema.Attribute{
+			"port_alert_condition": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+			},
+		},
+	}
+	objType := s.Type().TerraformType(context.Background())
+	raw := tftypes.NewValue(objType, map[string]tftypes.Value{
+		"port_alert_condition": value,
+	})
+
+	return &resource.ModifyPlanResponse{
+		Plan: tfsdk.Plan{Schema: s, Raw: raw},
+	}
+}
+
+func portAlertConditionFromPlanResponse(t *testing.T, resp *resource.ModifyPlanResponse) types.String {
+	t.Helper()
+
+	var out types.String
+	diags := resp.Plan.GetAttribute(context.Background(), path.Root("port_alert_condition"), &out)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics reading back port_alert_condition: %+v", diags)
+	}
+	return out
+}
+
+func TestApplyPortAlertConditionPlanDefault_PortType_UnknownDefaultsToClosed(t *testing.T) {
+	t.Parallel()
+
+	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, tftypes.UnknownValue))
+	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypePORT, monitorResourceModel{
+		PortAlertCondition: types.StringUnknown(),
+	}, resp)
+
+	got := portAlertConditionFromPlanResponse(t, resp)
+	if got.ValueString() != PortAlertConditionClosed {
+		t.Fatalf("expected unknown port_alert_condition on a PORT plan to default to CLOSED, got %q", got.ValueString())
+	}
+}
+
+func TestApplyPortAlertConditionPlanDefault_PortType_NullDefaultsToClosed(t *testing.T) {
+	t.Parallel()
+
+	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, nil))
+	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypePORT, monitorResourceModel{
+		PortAlertCondition: types.StringNull(),
+	}, resp)
+
+	got := portAlertConditionFromPlanResponse(t, resp)
+	if got.ValueString() != PortAlertConditionClosed {
+		t.Fatalf("expected null port_alert_condition on a PORT plan to default to CLOSED, got %q", got.ValueString())
+	}
+}
+
+func TestApplyPortAlertConditionPlanDefault_PortType_KnownValueLeftUntouched(t *testing.T) {
+	t.Parallel()
+
+	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, PortAlertConditionOpen))
+	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypePORT, monitorResourceModel{
+		PortAlertCondition: types.StringValue(PortAlertConditionOpen),
+	}, resp)
+
+	got := portAlertConditionFromPlanResponse(t, resp)
+	if got.ValueString() != PortAlertConditionOpen {
+		t.Fatalf("expected known port_alert_condition=OPEN on a PORT plan to be left untouched, got %q", got.ValueString())
+	}
+}
+
+func TestApplyPortAlertConditionPlanDefault_NonPortType_UnknownBecomesNull(t *testing.T) {
+	t.Parallel()
+
+	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, tftypes.UnknownValue))
+	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypeHTTP, monitorResourceModel{
+		PortAlertCondition: types.StringUnknown(),
+	}, resp)
+
+	got := portAlertConditionFromPlanResponse(t, resp)
+	if !got.IsNull() {
+		t.Fatalf("expected unknown port_alert_condition on a non-PORT plan to resolve to null, got %q", got.ValueString())
+	}
+}
+
+func TestApplyPortAlertConditionPlanDefault_NonPortType_NullLeftUntouched(t *testing.T) {
+	t.Parallel()
+
+	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, nil))
+	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypeHTTP, monitorResourceModel{
+		PortAlertCondition: types.StringNull(),
+	}, resp)
+
+	got := portAlertConditionFromPlanResponse(t, resp)
+	if !got.IsNull() {
+		t.Fatalf("expected null port_alert_condition on a non-PORT plan to stay null, got %q", got.ValueString())
+	}
+}
 
 // -----------------------------------------------------------------------------
 // Schema
@@ -349,6 +461,35 @@ func TestApplyUpdatedMonitorToState_PortMonitor_DefaultsToClosedWhenAPIOmitsIt(t
 	}
 }
 
+func TestApplyUpdatedMonitorToState_PortMonitor_ReflectsAPIValue(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	condition := PortAlertConditionOpen
+	plan := monitorResourceModel{
+		Type:               types.StringValue(MonitorTypePORT),
+		Name:               types.StringValue("port monitor"),
+		Interval:           types.Int64Value(300),
+		Port:               types.Int64Value(22),
+		PortAlertCondition: types.StringValue(PortAlertConditionOpen),
+	}
+	resp := &resource.UpdateResponse{}
+
+	got := applyUpdatedMonitorToState(ctx, plan, monitorResourceModel{}, &client.Monitor{
+		Name:               "port monitor",
+		Type:               MonitorTypePORT,
+		Status:             "STARTED",
+		Timeout:            30,
+		PortAlertCondition: &condition,
+	}, "", false, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+	if got.PortAlertCondition.ValueString() != PortAlertConditionOpen {
+		t.Fatalf("expected port_alert_condition=OPEN, got %q", got.PortAlertCondition.ValueString())
+	}
+}
+
 func TestApplyUpdatedMonitorToState_NonPortMonitor_PortAlertConditionStaysNull(t *testing.T) {
 	t.Parallel()
 
@@ -443,6 +584,37 @@ func TestBuildComparableFromAPI_IncludesPortAlertCondition(t *testing.T) {
 	})
 	if got.PortAlertCondition == nil || *got.PortAlertCondition != PortAlertConditionClosed {
 		t.Fatalf("expected got.PortAlertCondition=CLOSED, got %#v", got.PortAlertCondition)
+	}
+}
+
+func TestFieldsStillDifferent_ReportsPortAlertConditionMismatch(t *testing.T) {
+	t.Parallel()
+
+	open := PortAlertConditionOpen
+	closed := PortAlertConditionClosed
+
+	diff := fieldsStillDifferent(
+		monComparable{PortAlertCondition: &open},
+		monComparable{PortAlertCondition: &closed},
+	)
+	found := false
+	for _, field := range diff {
+		if field == "port_alert_condition" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected fieldsStillDifferent to report port_alert_condition when values mismatch")
+	}
+
+	diff = fieldsStillDifferent(
+		monComparable{PortAlertCondition: &open},
+		monComparable{PortAlertCondition: &open},
+	)
+	for _, field := range diff {
+		if field == "port_alert_condition" {
+			t.Fatal("did not expect fieldsStillDifferent to report port_alert_condition when values match")
+		}
 	}
 }
 
