@@ -38,6 +38,7 @@ type CreateMonitorRequest struct {
 	HTTPUsername             string                `json:"httpUsername,omitempty"`
 	HTTPPassword             string                `json:"httpPassword,omitempty"`
 	Port                     int                   `json:"port,omitempty"`
+	PortAlertCondition       string                `json:"portAlertCondition,omitempty"`
 	KeywordType              string                `json:"keywordType,omitempty"`
 	KeywordValue             string                `json:"keywordValue,omitempty"`
 	KeywordCaseType          *int                  `json:"keywordCaseType,omitempty"`
@@ -74,6 +75,7 @@ type UpdateMonitorRequest struct {
 	HTTPUsername             string                 `json:"httpUsername,omitempty"`
 	HTTPPassword             string                 `json:"httpPassword,omitempty"`
 	Port                     int                    `json:"port,omitempty"`
+	PortAlertCondition       string                 `json:"portAlertCondition,omitempty"`
 	KeywordType              string                 `json:"keywordType,omitempty"`
 	KeywordValue             string                 `json:"keywordValue,omitempty"`
 	KeywordCaseType          *int                   `json:"keywordCaseType,omitempty"`
@@ -120,6 +122,7 @@ type Monitor struct {
 	PostValueType            *string             `json:"postValueType"`
 	PostValueData            json.RawMessage     `json:"postValueData"`
 	Port                     *int                `json:"port"`
+	PortAlertCondition       *string             `json:"portAlertCondition"`
 	GracePeriod              int                 `json:"gracePeriod"`
 	KeywordValue             string              `json:"keywordValue"`
 	KeywordCaseType          int                 `json:"keywordCaseType"`

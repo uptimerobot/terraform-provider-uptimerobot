@@ -335,6 +335,11 @@ func buildUpdateRequest(
 	if !plan.Port.IsNull() {
 		req.Port = int(plan.Port.ValueInt64())
 	}
+
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypePORT &&
+		!plan.PortAlertCondition.IsNull() && !plan.PortAlertCondition.IsUnknown() {
+		req.PortAlertCondition = plan.PortAlertCondition.ValueString()
+	}
 	// keyword fields are only supported for KEYWORD monitors
 	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD {
 		if !plan.KeywordValue.IsNull() && !plan.KeywordValue.IsUnknown() {
@@ -785,6 +790,17 @@ func applyUpdatedMonitorToState(
 		}
 	} else {
 		out.HTTPMethodType = types.StringNull()
+	}
+
+	// port_alert_condition reflected to state only for PORT
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypePORT {
+		if m.PortAlertCondition != nil && *m.PortAlertCondition != "" {
+			out.PortAlertCondition = types.StringValue(*m.PortAlertCondition)
+		} else {
+			out.PortAlertCondition = types.StringValue(PortAlertConditionClosed)
+		}
+	} else {
+		out.PortAlertCondition = types.StringNull()
 	}
 
 	// response_time_threshold set only if managed

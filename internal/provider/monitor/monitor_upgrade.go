@@ -1374,11 +1374,110 @@ func upgradeMonitorFromV4(ctx context.Context, prior monitorV4Model) (monitorRes
 // V5 -> V6
 
 func priorSchemaV5() *schema.Schema {
-	s := monitorSchema(5, false)
+	s := monitorSchema(5, false, false)
 	return &s
 }
 
 func upgradeMonitorFromV5(prior monitorResourceModel) monitorResourceModel {
 	prior.Config = retypeConfigToCurrent(prior.Config)
 	return prior
+}
+
+// V6 -> V7
+//
+// V7 adds the top-level port_alert_condition attribute. Existing state
+// predates the attribute entirely, so monitorV6Model mirrors
+// monitorResourceModel without it, and the upgrader derives the correct
+// value from the monitor's type: CLOSED for PORT monitors (matching the
+// API default for rows that never set it) and null for every other type.
+
+type monitorV6Model struct {
+	Type                     types.String         `tfsdk:"type"`
+	Interval                 types.Int64          `tfsdk:"interval"`
+	SSLExpirationReminder    types.Bool           `tfsdk:"ssl_expiration_reminder"`
+	DomainExpirationReminder types.Bool           `tfsdk:"domain_expiration_reminder"`
+	FollowRedirections       types.Bool           `tfsdk:"follow_redirections"`
+	AuthType                 types.String         `tfsdk:"auth_type"`
+	HTTPUsername             types.String         `tfsdk:"http_username"`
+	HTTPPassword             types.String         `tfsdk:"http_password"`
+	CustomHTTPHeaders        types.Map            `tfsdk:"custom_http_headers"`
+	CustomFields             types.Map            `tfsdk:"custom_fields"`
+	HTTPMethodType           types.String         `tfsdk:"http_method_type"`
+	SuccessHTTPResponseCodes types.Set            `tfsdk:"success_http_response_codes"`
+	Timeout                  types.Int64          `tfsdk:"timeout"`
+	PostValueType            types.String         `tfsdk:"post_value_type"`
+	PostValueData            jsontypes.Normalized `tfsdk:"post_value_data"`
+	PostValueKV              types.Map            `tfsdk:"post_value_kv"`
+	Port                     types.Int64          `tfsdk:"port"`
+	GracePeriod              types.Int64          `tfsdk:"grace_period"`
+	KeywordValue             types.String         `tfsdk:"keyword_value"`
+	KeywordCaseType          types.String         `tfsdk:"keyword_case_type"`
+	KeywordType              types.String         `tfsdk:"keyword_type"`
+	MaintenanceWindowIDs     types.Set            `tfsdk:"maintenance_window_ids"`
+	ID                       types.String         `tfsdk:"id"`
+	Name                     types.String         `tfsdk:"name"`
+	IsPaused                 types.Bool           `tfsdk:"is_paused"`
+	Status                   types.String         `tfsdk:"status"`
+	URL                      types.String         `tfsdk:"url"`
+	GroupID                  types.Int64          `tfsdk:"group_id"`
+	Tags                     types.Set            `tfsdk:"tags"`
+	AssignedAlertContacts    types.Set            `tfsdk:"assigned_alert_contacts"`
+	ResponseTimeThreshold    types.Int64          `tfsdk:"response_time_threshold"`
+	RegionalData             types.String         `tfsdk:"regional_data"`
+	RegionData               types.Object         `tfsdk:"region_data"`
+	CheckSSLErrors           types.Bool           `tfsdk:"check_ssl_errors"`
+	Config                   types.Object         `tfsdk:"config"`
+}
+
+func priorSchemaV6() *schema.Schema {
+	s := monitorSchema(6, true, false)
+	return &s
+}
+
+func upgradeMonitorFromV6(prior monitorV6Model) monitorResourceModel {
+	up := monitorResourceModel{
+		Type:                     prior.Type,
+		Interval:                 prior.Interval,
+		SSLExpirationReminder:    prior.SSLExpirationReminder,
+		DomainExpirationReminder: prior.DomainExpirationReminder,
+		FollowRedirections:       prior.FollowRedirections,
+		AuthType:                 prior.AuthType,
+		HTTPUsername:             prior.HTTPUsername,
+		HTTPPassword:             prior.HTTPPassword,
+		CustomHTTPHeaders:        prior.CustomHTTPHeaders,
+		CustomFields:             prior.CustomFields,
+		HTTPMethodType:           prior.HTTPMethodType,
+		SuccessHTTPResponseCodes: prior.SuccessHTTPResponseCodes,
+		Timeout:                  prior.Timeout,
+		PostValueType:            prior.PostValueType,
+		PostValueData:            prior.PostValueData,
+		PostValueKV:              prior.PostValueKV,
+		Port:                     prior.Port,
+		GracePeriod:              prior.GracePeriod,
+		KeywordValue:             prior.KeywordValue,
+		KeywordCaseType:          prior.KeywordCaseType,
+		KeywordType:              prior.KeywordType,
+		MaintenanceWindowIDs:     prior.MaintenanceWindowIDs,
+		ID:                       prior.ID,
+		Name:                     prior.Name,
+		IsPaused:                 prior.IsPaused,
+		Status:                   prior.Status,
+		URL:                      prior.URL,
+		GroupID:                  prior.GroupID,
+		Tags:                     prior.Tags,
+		AssignedAlertContacts:    prior.AssignedAlertContacts,
+		ResponseTimeThreshold:    prior.ResponseTimeThreshold,
+		RegionalData:             prior.RegionalData,
+		RegionData:               prior.RegionData,
+		CheckSSLErrors:           prior.CheckSSLErrors,
+		Config:                   prior.Config,
+	}
+
+	if strings.ToUpper(prior.Type.ValueString()) == MonitorTypePORT {
+		up.PortAlertCondition = types.StringValue(PortAlertConditionClosed)
+	} else {
+		up.PortAlertCondition = types.StringNull()
+	}
+
+	return up
 }

@@ -24,6 +24,7 @@ type monComparable struct {
 	HTTPUsername             *string
 	HTTPAuthType             *string
 	Port                     *int
+	PortAlertCondition       *string
 	KeywordValue             *string
 	KeywordType              *string
 	KeywordCaseType          *string
@@ -131,6 +132,10 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	if req.Port != 0 {
 		v := req.Port
 		c.Port = &v
+	}
+	if req.PortAlertCondition != "" {
+		s := req.PortAlertCondition
+		c.PortAlertCondition = &s
 	}
 	if req.KeywordValue != "" {
 		s := req.KeywordValue
@@ -308,6 +313,10 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		v := req.Port
 		c.Port = &v
 	}
+	if req.PortAlertCondition != "" {
+		s := req.PortAlertCondition
+		c.PortAlertCondition = &s
+	}
 	if req.KeywordValue != "" {
 		s := req.KeywordValue
 		c.KeywordValue = &s
@@ -470,6 +479,10 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 	if m.Port != nil && *m.Port != 0 {
 		v := *m.Port
 		c.Port = &v
+	}
+	if m.PortAlertCondition != nil && *m.PortAlertCondition != "" {
+		s := *m.PortAlertCondition
+		c.PortAlertCondition = &s
 	}
 	if m.KeywordValue != "" {
 		s := m.KeywordValue
@@ -828,6 +841,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.Port != nil && (got.Port == nil || *want.Port != *got.Port) {
 		return false
 	}
+	if want.PortAlertCondition != nil && (got.PortAlertCondition == nil || *want.PortAlertCondition != *got.PortAlertCondition) {
+		return false
+	}
 	if want.KeywordValue != nil && (got.KeywordValue == nil || *want.KeywordValue != *got.KeywordValue) {
 		return false
 	}
@@ -954,6 +970,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	}
 	if want.Port != nil && (got.Port == nil || *want.Port != *got.Port) {
 		f = append(f, "port")
+	}
+	if want.PortAlertCondition != nil && (got.PortAlertCondition == nil || *want.PortAlertCondition != *got.PortAlertCondition) {
+		f = append(f, "port_alert_condition")
 	}
 	if want.KeywordValue != nil && (got.KeywordValue == nil || *want.KeywordValue != *got.KeywordValue) {
 		f = append(f, "keyword_value")
