@@ -483,6 +483,14 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 	if m.PortAlertCondition != nil && *m.PortAlertCondition != "" {
 		s := *m.PortAlertCondition
 		c.PortAlertCondition = &s
+	} else if strings.ToUpper(m.Type) == MonitorTypePORT {
+		// The API never echoes portAlertCondition back for the CLOSED
+		// (default) case, so normalize an omitted value to CLOSED here.
+		// Otherwise an explicit want of "CLOSED" would never compare equal
+		// against the API response, and create/update would time out
+		// waiting for a confirmation the API will never send.
+		s := PortAlertConditionClosed
+		c.PortAlertCondition = &s
 	}
 	if m.KeywordValue != "" {
 		s := m.KeywordValue

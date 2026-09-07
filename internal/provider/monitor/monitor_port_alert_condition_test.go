@@ -124,6 +124,26 @@ func TestApplyPortAlertConditionPlanDefault_NonPortType_NullLeftUntouched(t *tes
 	}
 }
 
+func TestApplyPortAlertConditionPlanDefault_NonPortType_KnownValueClearedToNull(t *testing.T) {
+	t.Parallel()
+
+	// Simulates a monitor changing type away from PORT while a prior
+	// OPEN/CLOSED value is still carried in state: the UseStateForUnknown
+	// plan modifier resolves the attribute to that known value before this
+	// function runs, so it must be explicitly cleared here to avoid a
+	// "Provider produced inconsistent result after apply" error once the
+	// applied state comes back null for the new (non-PORT) type.
+	resp := portAlertConditionOnlyPlanResponse(t, tftypes.NewValue(tftypes.String, PortAlertConditionOpen))
+	applyPortAlertConditionPlanDefault(context.Background(), MonitorTypeHTTP, monitorResourceModel{
+		PortAlertCondition: types.StringValue(PortAlertConditionOpen),
+	}, resp)
+
+	got := portAlertConditionFromPlanResponse(t, resp)
+	if !got.IsNull() {
+		t.Fatalf("expected known port_alert_condition on a non-PORT plan to be cleared to null, got %q", got.ValueString())
+	}
+}
+
 // -----------------------------------------------------------------------------
 // Schema
 // -----------------------------------------------------------------------------
@@ -584,6 +604,23 @@ func TestBuildComparableFromAPI_IncludesPortAlertCondition(t *testing.T) {
 	})
 	if got.PortAlertCondition == nil || *got.PortAlertCondition != PortAlertConditionClosed {
 		t.Fatalf("expected got.PortAlertCondition=CLOSED, got %#v", got.PortAlertCondition)
+	}
+}
+
+func TestBuildComparableFromAPI_PortMonitor_OmittedConditionNormalizesToClosed(t *testing.T) {
+	t.Parallel()
+
+	// The API never echoes portAlertCondition back for the CLOSED (default)
+	// case, so an explicit want of "CLOSED" must still compare equal against
+	// an omitted API response. Without this normalization, creating or
+	// updating a PORT monitor with port_alert_condition = "CLOSED" set
+	// explicitly would never settle and would time out waiting for the API
+	// to "confirm" a value it will never send back.
+	got := buildComparableFromAPI(&client.Monitor{
+		Type: MonitorTypePORT,
+	})
+	if got.PortAlertCondition == nil || *got.PortAlertCondition != PortAlertConditionClosed {
+		t.Fatalf("expected an omitted port_alert_condition on a PORT monitor to normalize to CLOSED, got %#v", got.PortAlertCondition)
 	}
 }
 

@@ -873,7 +873,7 @@ func applyPortAlertConditionPlanDefault(
 	resp *resource.ModifyPlanResponse,
 ) {
 	if planType != MonitorTypePORT {
-		if plan.PortAlertCondition.IsUnknown() {
+		if !plan.PortAlertCondition.IsNull() {
 			resp.Plan.SetAttribute(ctx, path.Root("port_alert_condition"), types.StringNull())
 		}
 		return
