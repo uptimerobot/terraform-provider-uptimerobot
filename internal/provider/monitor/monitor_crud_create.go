@@ -378,6 +378,11 @@ func (r *monitorResource) buildCreateRequest(
 		req.Port = int(plan.Port.ValueInt64())
 	}
 
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypePORT &&
+		!plan.PortAlertCondition.IsNull() && !plan.PortAlertCondition.IsUnknown() {
+		req.PortAlertCondition = plan.PortAlertCondition.ValueString()
+	}
+
 	// keyword fields are only supported for KEYWORD monitors
 	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypeKEYWORD {
 		if !plan.KeywordValue.IsNull() && !plan.KeywordValue.IsUnknown() {
@@ -758,6 +763,17 @@ func (r *monitorResource) buildStateAfterCreate(
 		}
 	default:
 		plan.HTTPMethodType = types.StringNull()
+	}
+
+	// port_alert_condition presence in state only for PORT
+	if strings.ToUpper(plan.Type.ValueString()) == MonitorTypePORT {
+		if api.PortAlertCondition != nil && *api.PortAlertCondition != "" {
+			plan.PortAlertCondition = types.StringValue(*api.PortAlertCondition)
+		} else {
+			plan.PortAlertCondition = types.StringValue(PortAlertConditionClosed)
+		}
+	} else {
+		plan.PortAlertCondition = types.StringNull()
 	}
 
 	// keyword_case_type number transform to string

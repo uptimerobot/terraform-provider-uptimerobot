@@ -25,6 +25,7 @@ type monitorResourceModel struct {
 	PostValueData            jsontypes.Normalized `tfsdk:"post_value_data"`
 	PostValueKV              types.Map            `tfsdk:"post_value_kv"`
 	Port                     types.Int64          `tfsdk:"port"`
+	PortAlertCondition       types.String         `tfsdk:"port_alert_condition"`
 	GracePeriod              types.Int64          `tfsdk:"grace_period"`
 	KeywordValue             types.String         `tfsdk:"keyword_value"`
 	KeywordCaseType          types.String         `tfsdk:"keyword_case_type"`
