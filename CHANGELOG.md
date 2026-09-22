@@ -2,7 +2,7 @@
 
 ### Changed
 
-- Updated Go to 1.27.1 and refreshed Go dependencies.
+- Updated Go to 1.27.1 and refreshed Go dependencies, including gRPC, HCL, and documentation tooling.
 
 ## 1.11.0 — 2026-09-01
 
