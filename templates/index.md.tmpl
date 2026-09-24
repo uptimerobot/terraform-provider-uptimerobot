@@ -13,6 +13,8 @@ The UptimeRobot provider allows you to manage your UptimeRobot resources program
 
 {{tffile "examples/provider/provider.tf"}}
 
+This constraint allows updates within the `1.x` release line. Commit `.terraform.lock.hcl` to keep provider selections reproducible. If you use Renovate, also configure an `allowedVersions` rule of `<2.0.0` for `uptimerobot/uptimerobot` to prevent it from proposing a `2.x` constraint.
+
 ## Authentication
 
 The provider requires an UptimeRobot API key for authentication. You can obtain this from your UptimeRobot dashboard under "My Settings" → "API Settings" → "Main API Key".

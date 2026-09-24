@@ -21,7 +21,7 @@ terraform {
   required_providers {
     uptimerobot = {
       source  = "uptimerobot/uptimerobot"
-      version = "~> 1.9.1"
+      version = ">= 1.11.0, < 2.0.0"
     }
   }
 }
@@ -30,6 +30,8 @@ provider "uptimerobot" {
   # Configuration options
 }
 ```
+
+This constraint allows updates within the `1.x` release line. Commit `.terraform.lock.hcl` to keep provider selections reproducible. If you use Renovate, also configure an `allowedVersions` rule of `<2.0.0` for `uptimerobot/uptimerobot` to prevent it from proposing a `2.x` constraint.
 
 ## Provider Configuration
 
@@ -56,7 +58,7 @@ terraform {
   required_providers {
     uptimerobot = {
       source  = "uptimerobot/uptimerobot"
-      version = "~> 1.9.1"
+      version = ">= 1.11.0, < 2.0.0"
     }
   }
 }
