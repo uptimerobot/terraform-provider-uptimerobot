@@ -15,8 +15,8 @@ func TestAPIAssertionsSchemaSensitivityAndInternalMetadataBoundary(t *testing.T)
 	var schemaResponse resource.SchemaResponse
 	(&monitorResource{}).Schema(context.Background(), resource.SchemaRequest{}, &schemaResponse)
 	s := schemaResponse.Schema
-	if s.Version != 6 {
-		t.Fatalf("API assertions v2 must not require a state-shape version bump: got schema version %d", s.Version)
+	if s.Version != 7 {
+		t.Fatalf("API assertions v2 must not require a state-shape version bump beyond the current baseline: got schema version %d", s.Version)
 	}
 	config, ok := s.Attributes["config"].(resourceschema.SingleNestedAttribute)
 	if !ok {
