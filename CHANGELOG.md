@@ -7,10 +7,6 @@
 - Added optional `uptimerobot_monitor.port_alert_condition` for PORT monitors: `CLOSED` alerts when the port becomes unreachable, and `OPEN` alerts when it becomes reachable. Other monitor types, including UDP, reject this attribute.
 - Added create, update, refresh, and drift detection for port alert conditions. New PORT monitors default to `CLOSED` when the attribute is omitted; existing monitors retain their current condition when it is not managed in configuration.
 
-### Changed
-
-- Updated the build toolchain to Go 1.27.1 and refreshed Go dependencies, including gRPC, HCL, and documentation tooling.
-
 ### Fixed
 
 - Preserved version-5 monitor state upgrades for both PORT and non-PORT monitors, and added automatic version-6 state migration for the new attribute. Existing PORT state gains the `CLOSED` default before refresh; other monitor types keep the attribute null.
@@ -20,13 +16,11 @@
 ### Documentation
 
 - Added a PORT monitor example that alerts when a port becomes reachable and documented the new attribute in the monitor resource reference.
-- Updated general client examples to allow supported `1.x` provider releases while excluding `2.x`, with lock-file and Renovate guidance.
 
 ### Tests/CI
 
 - Added port alert condition lifecycle, validation, state-upgrade, and planning regression coverage.
 - Separated invalid non-PORT configuration tests from the PORT lifecycle test so validation errors do not prevent post-test cleanup.
-- Pinned GitHub Actions to immutable commit SHAs.
 
 ### Upgrade notes
 
@@ -38,6 +32,25 @@
 ### Known issues
 
 - Replacing an existing non-PORT monitor with a PORT monitor can produce an invalid plan when `type` is unknown until apply and `port_alert_condition` is explicitly configured. Use a type known during planning, such as `type = "PORT"`, for this transition.
+
+## 1.11.1 — 2026-09-29
+
+### Changed
+
+- Updated the build toolchain to Go 1.27.1 and refreshed Go dependencies, including gRPC, HCL, and documentation tooling.
+
+### Documentation
+
+- Updated general client examples to allow supported `1.x` provider releases while excluding `2.x`, with lock-file and Renovate guidance.
+
+### Tests/CI
+
+- Pinned GitHub Actions to immutable commit SHAs.
+
+### Upgrade notes
+
+- This maintenance release contains no provider resource implementation or state-schema changes relative to `1.11.0`. PORT alert conditions require `1.12.0` or later.
+- To remain on the `1.11.x` release line, use `version = "~> 1.11.1"`, run `terraform init -upgrade` (or `tofu init -upgrade`), and commit the updated `.terraform.lock.hcl`.
 
 ## 1.11.0 — 2026-09-01
 
