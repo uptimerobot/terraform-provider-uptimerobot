@@ -46,6 +46,9 @@ const (
 	IPVersionIPv4Only = "ipv4Only"
 	IPVersionIPv6Only = "ipv6Only"
 
+	PortAlertConditionClosed = "CLOSED"
+	PortAlertConditionOpen   = "OPEN"
+
 	customFieldsMaxKeys        = 20
 	customFieldsKeyMaxLength   = 64
 	customFieldsValueMaxLength = 255
@@ -84,10 +87,10 @@ func (r *monitorResource) Metadata(_ context.Context, req resource.MetadataReque
 
 // Schema defines the schema for the resource.
 func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = monitorSchema(6, true)
+	resp.Schema = monitorSchema(7, true, true)
 }
 
-func monitorSchema(version int64, includeApplicationErrorRetries bool) schema.Schema {
+func monitorSchema(version int64, includeApplicationErrorRetries bool, includePortAlertCondition bool) schema.Schema {
 	s := schema.Schema{
 		Version:     version,
 		Description: "Manages an UptimeRobot monitor.",
@@ -254,6 +257,17 @@ func monitorSchema(version int64, includeApplicationErrorRetries bool) schema.Sc
 				Optional:    true,
 				Validators: []validator.Int64{
 					int64validator.Between(0, 65535),
+				},
+			},
+			"port_alert_condition": schema.StringAttribute{
+				Description: "Condition that triggers an alert for PORT monitors: CLOSED (default) alerts when the port becomes unreachable, OPEN alerts when the port becomes reachable. Only valid when type = \"PORT\".",
+				Optional:    true,
+				Computed:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(PortAlertConditionClosed, PortAlertConditionOpen),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"grace_period": schema.Int64Attribute{
@@ -666,6 +680,10 @@ Advanced monitor configuration.
 		}
 	}
 
+	if !includePortAlertCondition {
+		delete(s.Attributes, "port_alert_condition")
+	}
+
 	return s
 }
 
@@ -841,6 +859,54 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		)
 	}
 
+	var configPortAlertCondition types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("port_alert_condition"), &configPortAlertCondition)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	applyPortAlertConditionPlanDefault(ctx, planType, plan, configPortAlertCondition, resp)
+}
+
+// applyPortAlertConditionPlanDefault resolves port_alert_condition at plan
+// time: CLOSED for PORT monitors that omit it from configuration (so a config
+// that never sets the attribute reads back cleanly without a perpetual diff),
+// and null for every other monitor type. A value the configuration sets to an
+// apply-time expression is left unknown for Terraform to resolve.
+func applyPortAlertConditionPlanDefault(
+	ctx context.Context,
+	planType string,
+	plan monitorResourceModel,
+	configPortAlertCondition types.String,
+	resp *resource.ModifyPlanResponse,
+) {
+	// The monitor type can itself be an apply-time expression, leaving the
+	// resolved type empty at plan time. Deciding anything here would be a
+	// guess: nulling the attribute drops an explicitly configured value and
+	// Terraform rejects the plan as inconsistent with the configuration, while
+	// defaulting it to CLOSED assumes a PORT monitor the type may not produce.
+	// Leave it untouched and let apply resolve it.
+	if planType == "" {
+		return
+	}
+
+	if planType != MonitorTypePORT {
+		if !plan.PortAlertCondition.IsNull() {
+			resp.Plan.SetAttribute(ctx, path.Root("port_alert_condition"), types.StringNull())
+		}
+		return
+	}
+
+	// A configured unknown resolves at apply time and may resolve to OPEN, so
+	// it must not be collapsed into the CLOSED default here. Only an omitted
+	// attribute, which is null in configuration, gets the default.
+	if configPortAlertCondition.IsUnknown() {
+		return
+	}
+
+	if plan.PortAlertCondition.IsNull() || plan.PortAlertCondition.IsUnknown() {
+		resp.Plan.SetAttribute(ctx, path.Root("port_alert_condition"), types.StringValue(PortAlertConditionClosed))
+	}
 }
 
 // ImportState imports an existing resource into Terraform.
@@ -1002,13 +1068,27 @@ func (r *monitorResource) UpgradeState(ctx context.Context) map[int64]resource.S
 		5: {
 			PriorSchema: priorSchemaV5(),
 			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
-				var prior monitorResourceModel
+				var prior monitorV5Model
 				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
 				if resp.Diagnostics.HasError() {
 					return
 				}
 
 				upgraded := upgradeMonitorFromV5(prior)
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
+			},
+		},
+		6: {
+			PriorSchema: priorSchemaV6(),
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				var prior monitorV6Model
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				upgraded := upgradeMonitorFromV6(prior)
 
 				resp.Diagnostics.Append(resp.State.Set(ctx, upgraded)...)
 			},

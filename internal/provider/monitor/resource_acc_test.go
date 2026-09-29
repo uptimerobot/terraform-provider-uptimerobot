@@ -4147,3 +4147,96 @@ resource "uptimerobot_monitor" "test" {
 		},
 	})
 }
+
+// TestAccMonitorResource_PortAlertCondition covers the full port_alert_condition
+// lifecycle for PORT monitors: create with an explicit OPEN value, updating it,
+// and confirming that omitting the attribute entirely reads back CLOSED without
+// ever producing a perpetual diff on repeated plans. It also confirms the
+// attribute is rejected at plan time on a non-PORT monitor type.
+func TestAccMonitorResource_PortAlertCondition(t *testing.T) {
+	name := acctest.RandomWithPrefix("test-port-alert-condition")
+	url := provideracctest.UniqueURL(name)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Create a PORT monitor without setting port_alert_condition; it
+			// must read back CLOSED and settle with no perpetual diff.
+			{
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+    name     = %q
+    url      = %q
+    type     = "PORT"
+    port     = 80
+    interval = 300
+    timeout  = 30
+}
+`, name, url),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "port_alert_condition", "CLOSED"),
+				),
+			},
+			{
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+    name     = %q
+    url      = %q
+    type     = "PORT"
+    port     = 80
+    interval = 300
+    timeout  = 30
+}
+`, name, url),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// Setting port_alert_condition = OPEN explicitly should update in place.
+			{
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+    name                  = %q
+    url                   = %q
+    type                  = "PORT"
+    port                  = 80
+    interval              = 300
+    timeout               = 30
+    port_alert_condition  = "OPEN"
+}
+`, name, url),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "port_alert_condition", "OPEN"),
+				),
+			},
+			{
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+    name                  = %q
+    url                   = %q
+    type                  = "PORT"
+    port                  = 80
+    interval              = 300
+    timeout               = 30
+    port_alert_condition  = "OPEN"
+}
+`, name, url),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+			// port_alert_condition is only valid for PORT monitors.
+			{
+				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+    name                  = %q
+    url                   = %q
+    type                  = "HTTP"
+    interval              = 300
+    port_alert_condition  = "OPEN"
+}
+`, name, url),
+				ExpectError: regexp.MustCompile("port_alert_condition is only valid when type is PORT"),
+			},
+		},
+	})
+}

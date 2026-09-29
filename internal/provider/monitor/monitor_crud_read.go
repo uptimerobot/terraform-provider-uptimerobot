@@ -177,6 +177,17 @@ func readApplyKeywordAndPort(state *monitorResourceModel, m *client.Monitor, isI
 	}
 
 	t := strings.ToUpper(state.Type.ValueString())
+
+	if t == MonitorTypePORT {
+		if m.PortAlertCondition != nil && *m.PortAlertCondition != "" {
+			state.PortAlertCondition = types.StringValue(*m.PortAlertCondition)
+		} else {
+			state.PortAlertCondition = types.StringValue(PortAlertConditionClosed)
+		}
+	} else {
+		state.PortAlertCondition = types.StringNull()
+	}
+
 	if t != MonitorTypeKEYWORD {
 		state.KeywordValue = types.StringNull()
 		state.KeywordType = types.StringNull()

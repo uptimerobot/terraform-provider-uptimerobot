@@ -178,6 +178,20 @@ resource "uptimerobot_monitor" "ssh_port" {
 
   tags = ["ssh", "server"]
 }
+
+resource "uptimerobot_monitor" "maintenance_port" {
+  name     = "Maintenance Port Watch"
+  type     = "PORT"
+  url      = "server.example.com"
+  port     = 8080
+  interval = 300
+
+  # Alert when this port becomes reachable instead of the default
+  # behaviour of alerting when it becomes unreachable.
+  port_alert_condition = "OPEN"
+
+  tags = ["maintenance"]
+}
 ```
 
 ### Ping Monitor
@@ -805,6 +819,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `maintenance_window_ids` (Set of Number) Omit maintenance_window_ids or set it to null to preserve existing maintenance windows on update.
 					To clear maintenance windows, set maintenance_window_ids = []. To manage them, set the exact IDs.
 - `port` (Number) The port to monitor
+- `port_alert_condition` (String) Condition that triggers an alert for PORT monitors: CLOSED (default) alerts when the port becomes unreachable, OPEN alerts when the port becomes reachable. Only valid when type = "PORT".
 - `post_value_data` (String) JSON body (use jsonencode). Mutually exclusive with post_value_kv.
 - `post_value_kv` (Map of String) Key/Value body for application/x-www-form-urlencoded. Mutually exclusive with post_value_data.
 - `region_data` (Attributes) Multi-region monitor settings. Uses the API v3 `regionData` object.

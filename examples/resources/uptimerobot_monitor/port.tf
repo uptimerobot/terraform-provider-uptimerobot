@@ -31,3 +31,17 @@ resource "uptimerobot_monitor" "ssh_port" {
 
   tags = ["ssh", "server"]
 }
+
+resource "uptimerobot_monitor" "maintenance_port" {
+  name     = "Maintenance Port Watch"
+  type     = "PORT"
+  url      = "server.example.com"
+  port     = 8080
+  interval = 300
+
+  # Alert when this port becomes reachable instead of the default
+  # behaviour of alerting when it becomes unreachable.
+  port_alert_condition = "OPEN"
+
+  tags = ["maintenance"]
+}

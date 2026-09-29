@@ -675,6 +675,14 @@ func validatePortMonitor(
 			"When type is PORT or UDP, you must set port.",
 		)
 	}
+
+	if !data.PortAlertCondition.IsNull() && !data.PortAlertCondition.IsUnknown() && monitorType != MonitorTypePORT {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("port_alert_condition"),
+			"port_alert_condition not allowed for this monitor type",
+			"port_alert_condition is only valid when type is PORT.",
+		)
+	}
 }
 
 func validateKeywordMonitor(
