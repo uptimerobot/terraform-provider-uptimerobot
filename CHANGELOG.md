@@ -12,6 +12,9 @@
 - Preserved version-5 monitor state upgrades for both PORT and non-PORT monitors, and added automatic version-6 state migration for the new attribute. Existing PORT state gains the `CLOSED` default before refresh; other monitor types keep the attribute null.
 - Preserved explicitly configured, apply-time `port_alert_condition` values and deferred condition normalization when creating a monitor whose type is unknown at plan time.
 - Normalized omitted API port alert conditions to `CLOSED` so default conditions do not cause perpetual diffs or confirmation timeouts.
+- Retried missing or under-reported PSP monitor counts during create, update, refresh, and import with bounded backoff. Healthy counts return immediately; delayed counts are retried for up to seven minutes, subject to cancellation. Persistent API inconsistencies produce a warning while retaining the PSP and latest API values in state, and missing counts remain null instead of becoming zero.
+- Preserved API totals that include monitors selected through tags, groups, or automatic selection. Explicit monitor IDs provide a minimum count, not an exact total; stale over-counts cannot be reliably identified without additional API information.
+- Retained the latest PSP response when membership settling times out and correctly reflected explicit empty monitor selections during refresh.
 
 ### Documentation
 
@@ -21,6 +24,7 @@
 
 - Added port alert condition lifecycle, validation, state-upgrade, and planning regression coverage.
 - Separated invalid non-PORT configuration tests from the PORT lifecycle test so validation errors do not prevent post-test cleanup.
+- Added PSP count retry, cancellation, state-retention, and dynamic-selection regression coverage. The monitor-count acceptance test now adds, removes, and re-adds membership while keeping the monitor itself alive, and verifies the count after refresh once the API has finished processing removal.
 
 ### Upgrade notes
 
