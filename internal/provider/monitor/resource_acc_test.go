@@ -4151,8 +4151,7 @@ resource "uptimerobot_monitor" "test" {
 // TestAccMonitorResource_PortAlertCondition covers the full port_alert_condition
 // lifecycle for PORT monitors: create with an explicit OPEN value, updating it,
 // and confirming that omitting the attribute entirely reads back CLOSED without
-// ever producing a perpetual diff on repeated plans. It also confirms the
-// attribute is rejected at plan time on a non-PORT monitor type.
+// ever producing a perpetual diff on repeated plans.
 func TestAccMonitorResource_PortAlertCondition(t *testing.T) {
 	name := acctest.RandomWithPrefix("test-port-alert-condition")
 	url := provideracctest.UniqueURL(name)
@@ -4224,7 +4223,23 @@ resource "uptimerobot_monitor" "test" {
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
 			},
-			// port_alert_condition is only valid for PORT monitors.
+		},
+	})
+}
+
+// TestAccMonitorResource_PortAlertCondition_RejectedForNonPort confirms the
+// attribute is rejected at plan time on a non-PORT monitor type. It is its own
+// test case so nothing is in state when it fails: a failing step after real
+// resources would leave this invalid config for the post-test destroy, which
+// then fails validation and leaves those resources behind.
+func TestAccMonitorResource_PortAlertCondition_RejectedForNonPort(t *testing.T) {
+	name := acctest.RandomWithPrefix("test-port-alert-condition-http")
+	url := provideracctest.UniqueURL(name)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
 			{
 				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
