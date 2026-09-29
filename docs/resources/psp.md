@@ -270,7 +270,7 @@ Set to an empty string (`""`) to clear the existing logo.
 
 - `id` (String) PSP identifier
 - `is_password_set` (Boolean) Whether a password is set for the PSP
-- `monitors_count` (Number) Number of monitors in the PSP
+- `monitors_count` (Number) Number of monitors in the PSP, including additional selection sources such as tags and groups. Create, update, and refresh retry missing or under-reported counts for up to seven minutes, subject to cancellation. If the API does not converge, the provider warns and keeps the latest API values; a missing count remains null.
 - `url_key` (String) URL key for the PSP
 
 <a id="nestedatt--custom_settings"></a>

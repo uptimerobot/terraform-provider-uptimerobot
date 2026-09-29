@@ -617,11 +617,13 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			// monitors_count is computed by the API from the amount of monitors in the monitor_ids
-			// Do not use UseStateForUnknown because this field is managed completly by the API.
+			// The API counts explicit monitors and additional selection sources.
+			// Do not preserve old counts with UseStateForUnknown.
 			"monitors_count": schema.Int64Attribute{
-				Description: "Number of monitors in the PSP",
-				Computed:    true,
+				Description: "Number of monitors in the PSP, including additional selection sources such as tags and groups. " +
+					"Create, update, and refresh retry missing or under-reported counts for up to seven minutes, subject to cancellation. " +
+					"If the API does not converge, the provider warns and keeps the latest API values; a missing count remains null.",
+				Computed: true,
 			},
 			"status": schema.StringAttribute{
 				Description: "Status of the PSP",
@@ -1222,10 +1224,15 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		expectedSubscription,
 		expectedMonitorSort,
 		120*time.Second,
-	); err == nil && settled != nil {
-		pspForState = settled
-	} else if err != nil {
-		resp.Diagnostics.AddWarning("PSP create settled slowly", err.Error())
+	); settled != nil || err != nil {
+		if settled != nil {
+			pspForState = settled
+		}
+		if err != nil {
+			resp.Diagnostics.AddWarning("PSP create settled slowly", err.Error())
+		} else {
+			pspForState = r.settleMonitorCount(ctx, pspForState, requestedMonitorIDs, &resp.Diagnostics)
+		}
 	}
 
 	if hasMonitorPlan {
@@ -1433,6 +1440,10 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		}
 	}
 
+	// Compare against the current API selection, not the previous state's count:
+	// external membership changes must still be reflected during refresh/import.
+	psp = r.settleMonitorCount(ctx, psp, nil, &resp.Diagnostics)
+
 	managedColors := state.CustomSettings != nil && state.CustomSettings.Colors != nil
 	managedFeatures := state.CustomSettings != nil && state.CustomSettings.Features != nil
 	managedFont := state.CustomSettings != nil && state.CustomSettings.Font != nil
@@ -1449,7 +1460,7 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		}
 	}
 
-	if len(psp.MonitorIDs) > 0 {
+	if psp.MonitorIDs != nil {
 		setVal, d := types.SetValueFrom(ctx, types.Int64Type, psp.MonitorIDs)
 		resp.Diagnostics.Append(d...)
 		updatedState.MonitorIDs = setVal
@@ -1457,7 +1468,7 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		// import or was unset represents "no monitors"
 		updatedState.MonitorIDs = types.SetValueMust(types.Int64Type, []attr.Value{})
 	} else {
-		// regular read and API returned nothing preserve prior state to avoid drift
+		// Preserve prior membership only when the API omitted the list entirely.
 		updatedState.MonitorIDs = state.MonitorIDs
 	}
 	resp.Diagnostics.Append(syncPSPAutoAddMonitorsFromMonitorIDs(ctx, &updatedState)...)
@@ -1799,10 +1810,15 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		expectedSubscription,
 		expectedMonitorSort,
 		120*time.Second,
-	); err == nil && settled != nil {
-		pspForState = settled
-	} else if err != nil {
-		resp.Diagnostics.AddWarning("PSP update settled slowly", err.Error())
+	); settled != nil || err != nil {
+		if settled != nil {
+			pspForState = settled
+		}
+		if err != nil {
+			resp.Diagnostics.AddWarning("PSP update settled slowly", err.Error())
+		} else {
+			pspForState = r.settleMonitorCount(ctx, pspForState, requestedMonitorIDs, &resp.Diagnostics)
+		}
 	}
 
 	if hasMonitorPlan {
@@ -2019,6 +2035,11 @@ func pspInt64SetElements(ctx context.Context, set types.Set) ([]int64, diag.Diag
 
 	var ids []int64
 	diags.Append(set.ElementsAs(ctx, &ids, false)...)
+	if ids == nil && !diags.HasError() {
+		// A known empty set means clear the selection; nil means unmanaged to
+		// the settling waiter.
+		ids = []int64{}
+	}
 	return ids, diags
 }
 
@@ -2215,7 +2236,7 @@ func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceMo
 	if psp.MonitorsCount != nil {
 		plan.MonitorsCount = types.Int64Value(int64(*psp.MonitorsCount))
 	} else {
-		plan.MonitorsCount = types.Int64Value(0)
+		plan.MonitorsCount = types.Int64Null()
 	}
 
 	if psp.HomepageLink != nil {

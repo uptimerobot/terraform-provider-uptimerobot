@@ -3,6 +3,7 @@
 package psp_test
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -11,8 +12,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	provideracctest "github.com/uptimerobot/terraform-provider-uptimerobot/internal/provider/acctest"
 )
 
@@ -114,7 +117,11 @@ resource "uptimerobot_psp" "test" {
 `, name)
 }
 
-func testAccPSPResourceConfigWithMonitor(name string) string {
+func testAccPSPResourceConfigMonitorCount(name string, attached bool) string {
+	monitorIDs := "[]"
+	if attached {
+		monitorIDs = "[uptimerobot_monitor.psp.id]"
+	}
 	return provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "psp" {
   name     = %q
@@ -126,9 +133,10 @@ resource "uptimerobot_monitor" "psp" {
 resource "uptimerobot_psp" "test" {
   name = %q
 
-  monitor_ids = [uptimerobot_monitor.psp.id]
+  monitor_ids = %s
+  tag_ids     = []
 }
-`, name, name, name)
+`, name, name, name, monitorIDs)
 }
 
 func testAccPSPResourceConfigCustomSettingsOmitDefaults(name string) string {
@@ -413,7 +421,7 @@ func TestAccPSPResource_MonitorCountFollowsMonitorIDs(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Step 1: PSP with one monitor
 			{
-				Config: testAccPSPResourceConfigWithMonitor(name),
+				Config: testAccPSPResourceConfigMonitorCount(name, true),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// one monitor in the set
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "1"),
@@ -421,16 +429,71 @@ func TestAccPSPResource_MonitorCountFollowsMonitorIDs(t *testing.T) {
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitors_count", "1"),
 				),
 			},
-			// Step 2: same PSP, no monitors
+			// Step 2: remove membership while retaining the monitor itself.
 			{
-				Config: testAccPSPResourceConfigWithoutMonitors(name),
+				Config: testAccPSPResourceConfigMonitorCount(name, false),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "0"),
+					// Only this fresh fixture is known to have no additional
+					// membership. A general PSP may still include group monitors.
+					testAccWaitPSPMonitorCount(0),
+				),
+			},
+			{
+				RefreshState: true,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "0"),
 					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitors_count", "0"),
 				),
 			},
+			{
+				Config: testAccPSPResourceConfigMonitorCount(name, true),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitor_ids.#", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_psp.test", "monitors_count", "1"),
+				),
+			},
 		},
 	})
+}
+
+// The test knows the entire fixture selection, so it can recognize a stale
+// over-count that the provider cannot distinguish from group-selected monitors.
+// Assert Terraform's stored count in a subsequent refresh, never rewrite state.
+func testAccWaitPSPMonitorCount(expected int) resource.TestCheckFunc {
+	return func(state *terraform.State) error {
+		pspState, ok := state.RootModule().Resources["uptimerobot_psp.test"]
+		if !ok || pspState.Primary == nil {
+			return fmt.Errorf("PSP is missing from state")
+		}
+		id, err := strconv.ParseInt(pspState.Primary.ID, 10, 64)
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 7*time.Minute)
+		defer cancel()
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		api := provideracctest.APIClient()
+		for {
+			psp, err := api.GetPSP(ctx, id)
+			if err != nil {
+				return fmt.Errorf("read PSP count: %w", err)
+			}
+			lastCount := "missing"
+			if psp.MonitorsCount != nil {
+				lastCount = strconv.Itoa(*psp.MonitorsCount)
+				if *psp.MonitorsCount == expected {
+					return nil
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("PSP API count did not reach %d (last %s): %w", expected, lastCount, ctx.Err())
+			case <-ticker.C:
+			}
+		}
+	}
 }
 
 func TestAccPSPResource_CustomSettings_OmittedDefaultsNotPersisted(t *testing.T) {
