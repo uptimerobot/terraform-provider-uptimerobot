@@ -32,7 +32,7 @@
 
 - To use `port_alert_condition`, select provider version `>= 1.12.0, < 2.0.0`, run `terraform init -upgrade` (or `tofu init -upgrade`), review the plan, and commit the updated `.terraform.lock.hcl`. Existing monitor state upgrades automatically; no manual state edits or re-imports are required.
 - Monitor state advances to schema version 7. Older provider releases cannot read the upgraded monitor state.
-- `port_alert_condition` requires an API endpoint that accepts and returns `portAlertCondition`. Deploy corresponding API support before upgrading clients that use a custom `api_url`; the provider sends this field for PORT monitors even when it is omitted from configuration.
+- `port_alert_condition` requires an API endpoint that accepts `portAlertCondition` and returns configured non-default values such as `OPEN`; an omitted or empty `portAlertCondition` in a PORT monitor response is treated as `CLOSED`. Deploy corresponding API support before upgrading clients that use a custom `api_url`; the provider sends this field for PORT monitors even when it is omitted from configuration.
 - Removing `port_alert_condition` from an existing configuration preserves the remote condition. Set it explicitly to `CLOSED` to restore alerting when the port becomes unreachable.
 
 ### Known issues
