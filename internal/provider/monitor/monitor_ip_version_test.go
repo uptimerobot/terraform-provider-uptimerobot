@@ -2,10 +2,12 @@ package monitor
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -350,13 +352,104 @@ func TestConfigPayloadForIPVersionClear_PreservesOtherFields(t *testing.T) {
 	if cfg == nil {
 		t.Fatalf("expected config payload, got nil")
 	}
-	if cfg.IPVersion != nil {
-		t.Fatalf("expected ipVersion to be omitted in clear payload")
+	if cfg.IPVersion != nil || !cfg.ClearIPVersion {
+		t.Fatalf("expected clear payload to send ipVersion as null")
 	}
 	if cfg.SSLExpirationPeriodDays == nil {
 		t.Fatalf("expected sslExpirationPeriodDays to be preserved")
 	}
 	if !slices.Equal(*cfg.SSLExpirationPeriodDays, []int64{7, 30}) {
 		t.Fatalf("unexpected sslExpirationPeriodDays: %#v", *cfg.SSLExpirationPeriodDays)
+	}
+}
+
+func ipVersionTestConfig(ipVersion types.String, udp types.Object) types.Object {
+	return types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"ip_version":                 ipVersion,
+		"udp":                        udp,
+		"application_error_retries":  types.Int64Unknown(),
+	})
+}
+
+func updateRequestConfigJSON(t *testing.T, monitorType string, planConfig, priorConfig types.Object) map[string]any {
+	t.Helper()
+
+	model := func(cfg types.Object) monitorResourceModel {
+		return monitorResourceModel{
+			Type:     types.StringValue(monitorType),
+			Name:     types.StringValue("ip version monitor"),
+			URL:      types.StringValue("example.com"),
+			Interval: types.Int64Value(300),
+			Port:     types.Int64Value(53),
+			Config:   cfg,
+		}
+	}
+	resp := &resource.UpdateResponse{}
+
+	req, _ := buildUpdateRequest(context.Background(), model(planConfig), model(priorConfig), false, true, true, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Config map[string]any `json:"config"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	return body.Config
+}
+
+func TestBuildUpdateRequest_ClearingIPVersionSendsExplicitNull(t *testing.T) {
+	t.Parallel()
+
+	udp := types.ObjectValueMust(udpObjectType().AttrTypes, map[string]attr.Value{
+		"payload":               types.StringValue("ping"),
+		"packet_loss_threshold": types.Int64Value(50),
+	})
+	cases := map[string]struct {
+		monitorType string
+		udp         types.Object
+	}{
+		"HTTP": {monitorType: MonitorTypeHTTP, udp: types.ObjectNull(udpObjectType().AttrTypes)},
+		"UDP":  {monitorType: MonitorTypeUDP, udp: udp},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := updateRequestConfigJSON(t, tc.monitorType,
+				ipVersionTestConfig(types.StringValue(""), tc.udp),
+				ipVersionTestConfig(types.StringValue(IPVersionIPv4Only), tc.udp),
+			)
+
+			if v, ok := cfg["ipVersion"]; !ok || v != nil {
+				t.Fatalf("expected explicit ipVersion null in update payload, got %#v", cfg)
+			}
+			if _, ok := cfg["udp"]; ok != !tc.udp.IsNull() {
+				t.Fatalf("expected udp in payload only when configured, got %#v", cfg)
+			}
+		})
+	}
+}
+
+func TestBuildUpdateRequest_ChangingIPVersionSendsNewValue(t *testing.T) {
+	t.Parallel()
+
+	cfg := updateRequestConfigJSON(t, MonitorTypeHTTP,
+		ipVersionTestConfig(types.StringValue(IPVersionIPv6Only), types.ObjectNull(udpObjectType().AttrTypes)),
+		ipVersionTestConfig(types.StringValue(IPVersionIPv4Only), types.ObjectNull(udpObjectType().AttrTypes)),
+	)
+
+	if got := cfg["ipVersion"]; got != IPVersionIPv6Only {
+		t.Fatalf("expected ipVersion=%s in update payload, got %#v", IPVersionIPv6Only, cfg)
 	}
 }

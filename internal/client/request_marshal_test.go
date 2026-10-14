@@ -470,7 +470,42 @@ func TestCreateMonitorRequest_Config_UDP_JSON(t *testing.T) {
 	}
 }
 
+func TestUpdateMonitorRequest_Config_IPVersionClear_JSON(t *testing.T) {
+	packetLossThreshold := int64(50)
+	configJSON := func(cfg *MonitorConfig) map[string]any {
+		t.Helper()
+		raw, err := json.Marshal(UpdateMonitorRequest{Name: "udp-monitor", Type: MonitorTypeUDP, Interval: 300, Config: cfg})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body struct {
+			Config map[string]any `json:"config"`
+		}
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatal(err)
+		}
+		return body.Config
+	}
+
+	cleared := configJSON(&MonitorConfig{
+		UDP:            &UDPMonitorConfig{PacketLossThreshold: &packetLossThreshold},
+		ClearIPVersion: true,
+	})
+	if v, ok := cleared["ipVersion"]; !ok || v != nil {
+		t.Fatalf("expected explicit ipVersion null when clearing, got %#v", cleared)
+	}
+	if _, ok := cleared["udp"]; !ok {
+		t.Fatalf("expected udp to be kept when clearing ipVersion, got %#v", cleared)
+	}
+
+	preserved := configJSON(&MonitorConfig{UDP: &UDPMonitorConfig{PacketLossThreshold: &packetLossThreshold}})
+	if _, ok := preserved["ipVersion"]; ok {
+		t.Fatalf("expected ipVersion to be omitted when not clearing, got %#v", preserved)
+	}
+}
+
 func TestMonitorRequest_RegionData_JSON(t *testing.T) {
+
 	reqThresholds := map[string]int{
 		"na": 3000,
 		"eu": 5000,

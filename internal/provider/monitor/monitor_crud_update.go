@@ -1055,14 +1055,15 @@ func expandOrClearConfigOnUpdate(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		// Send only if user actually set something or explicitly set empty sets to clear.
-		if touched {
-			req.Config = out
-			return
-		}
 		clearIPVersion, d := shouldClearIPVersionOnUpdate(ctx, plan.Config, priorConfig)
 		resp.Diagnostics.Append(d...)
 		if resp.Diagnostics.HasError() {
+			return
+		}
+		// Send only if user actually set something or explicitly set empty sets to clear.
+		if touched {
+			out.ClearIPVersion = clearIPVersion
+			req.Config = out
 			return
 		}
 		if clearIPVersion {
@@ -1109,7 +1110,7 @@ func configPayloadForIPVersionClear(
 	var diags diag.Diagnostics
 
 	if priorConfig.IsNull() || priorConfig.IsUnknown() {
-		return &client.MonitorConfig{}, diags
+		return &client.MonitorConfig{ClearIPVersion: true}, diags
 	}
 
 	prev, _, d := expandConfigToAPI(ctx, priorConfig)
@@ -1118,10 +1119,11 @@ func configPayloadForIPVersionClear(
 		return nil, diags
 	}
 	if prev == nil {
-		return &client.MonitorConfig{}, diags
+		return &client.MonitorConfig{ClearIPVersion: true}, diags
 	}
 
 	prev.IPVersion = nil
+	prev.ClearIPVersion = true
 	return prev, diags
 }
 

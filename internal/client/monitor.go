@@ -182,6 +182,19 @@ type MonitorConfig struct {
 	UDP                     *UDPMonitorConfig     `json:"udp,omitempty"`
 	IPVersion               *string               `json:"ipVersion,omitempty"`
 	ApplicationErrorRetries json.RawMessage       `json:"applicationErrorRetries,omitempty"`
+	ClearIPVersion          bool                  `json:"-"`
+}
+
+// MarshalJSON sends ipVersion as an explicit null when ClearIPVersion is set.
+func (c MonitorConfig) MarshalJSON() ([]byte, error) {
+	type monitorConfig MonitorConfig
+	if !c.ClearIPVersion || c.IPVersion != nil {
+		return json.Marshal(monitorConfig(c))
+	}
+	return json.Marshal(struct {
+		monitorConfig
+		IPVersion *string `json:"ipVersion"`
+	}{monitorConfig: monitorConfig(c)})
 }
 
 type UDPMonitorConfig struct {
