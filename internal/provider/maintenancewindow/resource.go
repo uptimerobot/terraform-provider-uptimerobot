@@ -752,6 +752,10 @@ func (r *maintenanceWindowResource) Update(ctx context.Context, req resource.Upd
 	}
 }
 
+// maintenanceWindowSettlePollInterval is the delay between reads while waiting
+// for the API to return a consistent maintenance window. Tests shorten it.
+var maintenanceWindowSettlePollInterval = 3 * time.Second
+
 func waitMaintenanceWindowSettled(
 	ctx context.Context,
 	c *client.Client,
@@ -796,7 +800,7 @@ func waitMaintenanceWindowSettled(
 		select {
 		case <-ctx.Done():
 			return lastMW, ctx.Err()
-		case <-time.After(3 * time.Second):
+		case <-time.After(maintenanceWindowSettlePollInterval):
 		}
 	}
 	wantAutoAdd := "<ignored>"
@@ -852,13 +856,23 @@ func (r *maintenanceWindowResource) stabilizeMaintenanceWindowReadSnapshot(
 		wantDays = nil
 	}
 
+	// auto_add_monitors is re-read like interval and days: a stale read right
+	// after an update would otherwise land in state and show a false diff.
+	// monitor_ids is left out because auto-added monitors change it server-side.
+	var wantAutoAdd *bool
+	if !state.AutoAddMonitors.IsNull() && !state.AutoAddMonitors.IsUnknown() {
+		v := state.AutoAddMonitors.ValueBool()
+		wantAutoAdd = &v
+	}
+
 	gotInterval := strings.ToLower(strings.TrimSpace(got.Interval))
 	gotDays := normalizeDays(got.Days)
-	if gotInterval == wantInterval && equalInt64Sets(wantDays, gotDays) {
+	autoAddMatches := wantAutoAdd == nil || got.AutoAddMonitors == *wantAutoAdd
+	if gotInterval == wantInterval && equalInt64Sets(wantDays, gotDays) && autoAddMatches {
 		return got
 	}
 
-	settled, err := waitMaintenanceWindowSettled(ctx, r.client, id, wantInterval, wantDays, nil, nil)
+	settled, err := waitMaintenanceWindowSettled(ctx, r.client, id, wantInterval, wantDays, nil, wantAutoAdd)
 	if err == nil && settled != nil {
 		return settled
 	}
