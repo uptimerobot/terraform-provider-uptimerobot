@@ -417,19 +417,35 @@ func TestBuildUpdateRequest_ClearingIPVersionSendsExplicitNull(t *testing.T) {
 	cases := map[string]struct {
 		monitorType string
 		udp         types.Object
+		prior       types.Object
 	}{
-		"HTTP": {monitorType: MonitorTypeHTTP, udp: types.ObjectNull(udpObjectType().AttrTypes)},
-		"UDP":  {monitorType: MonitorTypeUDP, udp: udp},
+		"HTTP": {
+			monitorType: MonitorTypeHTTP,
+			udp:         types.ObjectNull(udpObjectType().AttrTypes),
+			prior:       ipVersionTestConfig(types.StringValue(IPVersionIPv4Only), types.ObjectNull(udpObjectType().AttrTypes)),
+		},
+		"UDP": {
+			monitorType: MonitorTypeUDP,
+			udp:         udp,
+			prior:       ipVersionTestConfig(types.StringValue(IPVersionIPv4Only), udp),
+		},
+		"HTTP without prior config": {
+			monitorType: MonitorTypeHTTP,
+			udp:         types.ObjectNull(udpObjectType().AttrTypes),
+			prior:       types.ObjectNull(configObjectType().AttrTypes),
+		},
+		"UDP without prior config": {
+			monitorType: MonitorTypeUDP,
+			udp:         udp,
+			prior:       types.ObjectNull(configObjectType().AttrTypes),
+		},
 	}
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := updateRequestConfigJSON(t, tc.monitorType,
-				ipVersionTestConfig(types.StringValue(""), tc.udp),
-				ipVersionTestConfig(types.StringValue(IPVersionIPv4Only), tc.udp),
-			)
+			cfg := updateRequestConfigJSON(t, tc.monitorType, ipVersionTestConfig(types.StringValue(""), tc.udp), tc.prior)
 
 			if v, ok := cfg["ipVersion"]; !ok || v != nil {
 				t.Fatalf("expected explicit ipVersion null in update payload, got %#v", cfg)

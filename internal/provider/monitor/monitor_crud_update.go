@@ -1134,33 +1134,29 @@ func shouldClearIPVersionOnUpdate(
 ) (bool, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	if planConfig.IsNull() || planConfig.IsUnknown() || priorConfig.IsNull() || priorConfig.IsUnknown() {
+	if planConfig.IsNull() || planConfig.IsUnknown() {
 		return false, diags
 	}
 
-	var planCfg, prevCfg configTF
+	var planCfg configTF
 	diags.Append(planConfig.As(ctx, &planCfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+	if diags.HasError() || planCfg.IPVersion.IsUnknown() {
+		return false, diags
+	}
+	if !planCfg.IPVersion.IsNull() {
+		_, keep := normalizeIPVersionForAPI(planCfg.IPVersion.ValueString())
+		return !keep, diags
+	}
+
+	if priorConfig.IsNull() || priorConfig.IsUnknown() {
+		return false, diags
+	}
+
+	var prevCfg configTF
 	diags.Append(priorConfig.As(ctx, &prevCfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
-	if diags.HasError() {
+	if diags.HasError() || prevCfg.IPVersion.IsNull() || prevCfg.IPVersion.IsUnknown() {
 		return false, diags
 	}
-
-	if prevCfg.IPVersion.IsNull() || prevCfg.IPVersion.IsUnknown() {
-		return false, diags
-	}
-	if _, keep := normalizeIPVersionForAPI(prevCfg.IPVersion.ValueString()); !keep {
-		return false, diags
-	}
-
-	if planCfg.IPVersion.IsUnknown() {
-		return false, diags
-	}
-	if planCfg.IPVersion.IsNull() {
-		return true, diags
-	}
-	if _, keep := normalizeIPVersionForAPI(planCfg.IPVersion.ValueString()); !keep {
-		return true, diags
-	}
-
-	return false, diags
+	_, keep := normalizeIPVersionForAPI(prevCfg.IPVersion.ValueString())
+	return keep, diags
 }
