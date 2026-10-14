@@ -3327,9 +3327,9 @@ resource "uptimerobot_monitor" "test" {
 }
 `, name, url)
 
-	cfgOmitted := fmt.Sprintf(`
+	cfgIPVersionOmitted := fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
-  name     = "%s"
+  name     = "%s-renamed"
   type     = "HTTP"
   url      = "%s"
   interval = 300
@@ -3373,9 +3373,16 @@ resource "uptimerobot_monitor" "test" {
 				ExpectNonEmptyPlan: false,
 			},
 			{
-				Config:             cfgOmitted,
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: false,
+				Config: cfgIPVersionOmitted,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv6Only"),
+				),
+			},
+			{
+				RefreshState: true,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv6Only"),
+				),
 			},
 			{
 				Config: cfgCleared,
