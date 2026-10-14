@@ -1,5 +1,17 @@
 ## Unreleased
 
+### Fixed
+
+- Allowed `config.ip_version` on UDP monitors, which the UptimeRobot API supports. Validation previously rejected it with "ip_version only allowed for HTTP/KEYWORD/PING/PORT/API monitors", so the published UDP monitor examples failed `terraform validate`.
+
+### Documentation
+
+- Declared the `pagerduty_integration_key` variable in the PagerDuty integration example so it validates on its own.
+
+### Tests/CI
+
+- Replaced the acceptance test that expected UDP `ip_version` to be rejected with one that creates API and UDP monitors with `ip_version` and swaps the IP family on both.
+
 ## 1.12.0 — 2026-09-29
 
 ### Added
