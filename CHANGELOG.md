@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Changed
+
+- Updated Go to 1.27.2 and refreshed Go dependencies.
+
 ## 1.12.0 — 2026-09-29
 
 ### Added
