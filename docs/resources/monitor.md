@@ -793,7 +793,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - For `type = "API"` on create, set `config.api_assertions` with `logic` and 1-5 `checks`.
 - `dns_records` is only valid for DNS monitors.
 - `config.ssl_expiration_period_days` is only valid for HTTP/KEYWORD/API monitors.
-- `ip_version` is only valid for HTTP/KEYWORD/PING/PORT/API monitors.
+- `ip_version` is only valid for HTTP/KEYWORD/PING/PORT/API/UDP monitors.
 - `config.api_assertions` is only valid for API monitors.
 - `config.udp` is only valid for UDP monitors.
 - `config.application_error_retries` is only valid for HTTP/KEYWORD/API monitors and must be 0..3.
@@ -875,7 +875,7 @@ Optional:
 - Omit the attribute → **preserve** the remote value.
 - Set to `null` → **clear** the override; the API applies its own default.
 - `dns_records` (Attributes) DNS record lists for DNS monitors. If present on non-DNS types, validation fails. (see [below for nested schema](#nestedatt--config--dns_records))
-- `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT/API monitors. Use ipv4Only or ipv6Only. Set empty string to clear and fall back to API default behavior.
+- `ip_version` (String) IP family selection for HTTP/KEYWORD/PING/PORT/API/UDP monitors. Use ipv4Only or ipv6Only. Set empty string to clear and fall back to API default behavior.
 - `ssl_expiration_period_days` (Set of Number) Reminder days before SSL expiry (0..365). Max 10 items.
 
 - Omit the attribute → **preserve** remote values.
