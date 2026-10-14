@@ -417,6 +417,11 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 		}
 	}
 
+	if monitorType == MonitorTypePORT && !state.PortAlertCondition.IsNull() && !state.PortAlertCondition.IsUnknown() {
+		v := strings.ToUpper(strings.TrimSpace(state.PortAlertCondition.ValueString()))
+		want.PortAlertCondition = &v
+	}
+
 	if !state.MaintenanceWindowIDs.IsNull() && !state.MaintenanceWindowIDs.IsUnknown() {
 		var ids []int64
 		if diags := state.MaintenanceWindowIDs.ElementsAs(ctx, &ids, false); !diags.HasError() {
@@ -499,6 +504,7 @@ func hasMonitorReadStabilizationAssertions(want monComparable) bool {
 		want.SSLExpirationReminder != nil ||
 		want.DomainExpirationReminder != nil ||
 		want.CheckSSLErrors != nil ||
+		want.PortAlertCondition != nil ||
 		want.AssignedAlertContacts != nil ||
 		want.RegionData != nil ||
 		want.RegionalData != nil ||
