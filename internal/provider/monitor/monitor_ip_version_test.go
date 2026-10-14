@@ -8,8 +8,11 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -61,16 +64,23 @@ func TestBuildComparableFromAPI_AndEqualComparable_UsesIPVersion(t *testing.T) {
 	}
 }
 
-func TestWantFromUpdateReq_ExpectsIPVersionUnsetWhenConfigSentWithoutIPVersion(t *testing.T) {
+func TestWantFromUpdateReq_ExpectsIPVersionUnsetOnlyWhenClearing(t *testing.T) {
 	t.Parallel()
 
-	want := wantFromUpdateReq(&client.UpdateMonitorRequest{
+	preserved := wantFromUpdateReq(&client.UpdateMonitorRequest{
 		Type:   client.MonitorTypeHTTP,
 		Config: &client.MonitorConfig{},
 	})
+	if preserved.ExpectIPVersionUnset {
+		t.Fatalf("expected no ipVersion expectation when the update leaves it out, so the server keeps it")
+	}
 
-	if !want.ExpectIPVersionUnset {
-		t.Fatalf("expected comparable to require ipVersion unset when config is sent without ipVersion")
+	cleared := wantFromUpdateReq(&client.UpdateMonitorRequest{
+		Type:   client.MonitorTypeHTTP,
+		Config: &client.MonitorConfig{ClearIPVersion: true},
+	})
+	if !cleared.ExpectIPVersionUnset {
+		t.Fatalf("expected comparable to require ipVersion unset when the update clears it")
 	}
 }
 
@@ -243,7 +253,7 @@ func TestFlattenConfigToState_IPVersionEmptyStringSentinelIsPreservedWhenAPIOmit
 // Update Helpers: ip_version clear semantics
 // -----------------------------------------------------------------------------
 
-func TestShouldClearIPVersionOnUpdate_NullPlanPreservesRemote(t *testing.T) {
+func TestShouldClearIPVersionOnUpdate_NoValuePreservesRemote(t *testing.T) {
 	t.Parallel()
 
 	planCfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
@@ -350,7 +360,7 @@ func ipVersionTestConfig(ipVersion types.String, udp types.Object) types.Object 
 	})
 }
 
-func updateRequestConfigJSON(t *testing.T, monitorType string, planConfig, priorConfig types.Object) map[string]any {
+func updateRequestConfigJSON(t *testing.T, monitorType string, configured, planConfig, priorConfig types.Object) map[string]any {
 	t.Helper()
 
 	model := func(cfg types.Object) monitorResourceModel {
@@ -364,8 +374,12 @@ func updateRequestConfigJSON(t *testing.T, monitorType string, planConfig, prior
 		}
 	}
 	resp := &resource.UpdateResponse{}
+	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), configured)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
 
-	req, _ := buildUpdateRequest(context.Background(), model(planConfig), model(priorConfig), false, true, true, resp)
+	req, _ := buildUpdateRequest(context.Background(), model(planConfig), model(priorConfig), false, true, true, clearIPVersion, resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 	}
@@ -421,7 +435,8 @@ func TestBuildUpdateRequest_ClearingIPVersionSendsExplicitNull(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := updateRequestConfigJSON(t, tc.monitorType, ipVersionTestConfig(types.StringValue(""), tc.udp), tc.prior)
+			cleared := ipVersionTestConfig(types.StringValue(""), tc.udp)
+			cfg := updateRequestConfigJSON(t, tc.monitorType, cleared, cleared, tc.prior)
 
 			if v, ok := cfg["ipVersion"]; !ok || v != nil {
 				t.Fatalf("expected explicit ipVersion null in update payload, got %#v", cfg)
@@ -436,8 +451,8 @@ func TestBuildUpdateRequest_ClearingIPVersionSendsExplicitNull(t *testing.T) {
 func TestBuildUpdateRequest_ChangingIPVersionSendsNewValue(t *testing.T) {
 	t.Parallel()
 
-	cfg := updateRequestConfigJSON(t, MonitorTypeHTTP,
-		ipVersionTestConfig(types.StringValue(IPVersionIPv6Only), types.ObjectNull(udpObjectType().AttrTypes)),
+	ipv6 := ipVersionTestConfig(types.StringValue(IPVersionIPv6Only), types.ObjectNull(udpObjectType().AttrTypes))
+	cfg := updateRequestConfigJSON(t, MonitorTypeHTTP, ipv6, ipv6,
 		ipVersionTestConfig(types.StringValue(IPVersionIPv4Only), types.ObjectNull(udpObjectType().AttrTypes)),
 	)
 
@@ -493,13 +508,55 @@ func TestBuildUpdateRequest_NoIPVersionValueLeavesItOut(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := updateRequestConfigJSON(t, tc.monitorType,
-				ipVersionTestConfig(types.StringNull(), tc.udp),
-				ipVersionTestConfig(types.StringValue(IPVersionIPv4Only), tc.udp),
-			)
+			omitted := ipVersionTestConfig(types.StringNull(), tc.udp)
+			keptFromEarlierClear := ipVersionTestConfig(types.StringValue(""), tc.udp)
 
-			if _, ok := cfg["ipVersion"]; ok {
-				t.Fatalf("expected ipVersion to be left out so the server keeps it, got %#v", cfg)
+			for _, plan := range []types.Object{omitted, keptFromEarlierClear} {
+				cfg := updateRequestConfigJSON(t, tc.monitorType, omitted, plan, keptFromEarlierClear)
+				if _, ok := cfg["ipVersion"]; ok {
+					t.Fatalf("expected ipVersion to be left out so the server keeps it, got %#v", cfg)
+				}
+			}
+		})
+	}
+}
+
+func TestIPVersionPlanModifier_DoesNotCarryAnExplicitClearForward(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		state  types.String
+		config types.String
+		plan   types.String
+		want   types.String
+	}{
+		"explicit clear in state": {
+			state: types.StringValue(""), config: types.StringNull(), plan: types.StringUnknown(), want: types.StringUnknown(),
+		},
+		"value in state": {
+			state: types.StringValue(IPVersionIPv4Only), config: types.StringNull(), plan: types.StringUnknown(), want: types.StringValue(IPVersionIPv4Only),
+		},
+		"configured value": {
+			state: types.StringValue(""), config: types.StringValue(IPVersionIPv6Only), plan: types.StringValue(IPVersionIPv6Only), want: types.StringValue(IPVersionIPv6Only),
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			req := planmodifier.StringRequest{
+				State:       tfsdk.State{Raw: tftypes.NewValue(tftypes.Object{}, map[string]tftypes.Value{})},
+				StateValue:  tc.state,
+				ConfigValue: tc.config,
+				PlanValue:   tc.plan,
+			}
+			resp := &planmodifier.StringResponse{PlanValue: tc.plan}
+
+			ipVersionPlanModifier{}.PlanModifyString(context.Background(), req, resp)
+
+			if !resp.PlanValue.Equal(tc.want) {
+				t.Fatalf("expected plan %s, got %s", tc.want, resp.PlanValue)
 			}
 		})
 	}

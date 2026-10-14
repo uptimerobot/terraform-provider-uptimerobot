@@ -643,7 +643,7 @@ Advanced monitor configuration.
 							stringvalidator.OneOf("", IPVersionIPv4Only, IPVersionIPv6Only),
 						},
 						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
+							ipVersionPlanModifier{},
 						},
 					},
 					"application_error_retries": schema.Int64Attribute{
