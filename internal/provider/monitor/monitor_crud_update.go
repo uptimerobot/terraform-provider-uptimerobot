@@ -1055,7 +1055,7 @@ func expandOrClearConfigOnUpdate(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		clearIPVersion, d := shouldClearIPVersionOnUpdate(ctx, plan.Config, priorConfig)
+		clearIPVersion, d := shouldClearIPVersionOnUpdate(ctx, plan.Config)
 		resp.Diagnostics.Append(d...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -1130,7 +1130,6 @@ func configPayloadForIPVersionClear(
 func shouldClearIPVersionOnUpdate(
 	ctx context.Context,
 	planConfig types.Object,
-	priorConfig types.Object,
 ) (bool, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
@@ -1140,23 +1139,9 @@ func shouldClearIPVersionOnUpdate(
 
 	var planCfg configTF
 	diags.Append(planConfig.As(ctx, &planCfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
-	if diags.HasError() || planCfg.IPVersion.IsUnknown() {
+	if diags.HasError() || planCfg.IPVersion.IsNull() || planCfg.IPVersion.IsUnknown() {
 		return false, diags
 	}
-	if !planCfg.IPVersion.IsNull() {
-		_, keep := normalizeIPVersionForAPI(planCfg.IPVersion.ValueString())
-		return !keep, diags
-	}
-
-	if priorConfig.IsNull() || priorConfig.IsUnknown() {
-		return false, diags
-	}
-
-	var prevCfg configTF
-	diags.Append(priorConfig.As(ctx, &prevCfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
-	if diags.HasError() || prevCfg.IPVersion.IsNull() || prevCfg.IPVersion.IsUnknown() {
-		return false, diags
-	}
-	_, keep := normalizeIPVersionForAPI(prevCfg.IPVersion.ValueString())
-	return keep, diags
+	_, keep := normalizeIPVersionForAPI(planCfg.IPVersion.ValueString())
+	return !keep, diags
 }
