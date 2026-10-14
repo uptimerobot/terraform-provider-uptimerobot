@@ -255,10 +255,12 @@ func readApplyRegionalData(ctx context.Context, resp *resource.ReadResponse, sta
 			includeThresholds := len(apiRegionData.Thresholds) > 0
 			includeAutoSelect := apiRegionData.AutoSelect != nil && *apiRegionData.AutoSelect
 			includeRegions := !includeAutoSelect || includeThresholds
-			useRegionData := len(apiRegionData.Regions) > 1 ||
-				includeThresholds ||
-				includeAutoSelect ||
-				(len(apiRegionData.Regions) == 1 && !isDefaultRegion(apiRegionData.Regions[0]))
+			// The API reports every monitor created without region settings as
+			// auto-selected on the default carrier region (REGION=["na"],
+			// MANUAL_SELECTED=false). That shape is the server default, manual or
+			// not, so it imports as unmanaged; anything else is region_data.
+			defaultRegionOnly := len(apiRegionData.Regions) == 1 && isDefaultRegion(apiRegionData.Regions[0])
+			useRegionData := includeThresholds || !defaultRegionOnly
 			if useRegionData {
 				regionState, d := regionDataObjectValue(apiRegionData, includeRegions, includeThresholds, includeAutoSelect)
 				resp.Diagnostics.Append(d...)
