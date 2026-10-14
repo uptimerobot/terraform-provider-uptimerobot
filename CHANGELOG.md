@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Changed
+
+- Updated Go to 1.27.2 and refreshed Go dependencies.
+
 ### Fixed
 
 - Allowed `config.ip_version` on UDP monitors, which the UptimeRobot API supports. Validation previously rejected it with "ip_version only allowed for HTTP/KEYWORD/PING/PORT/API monitors", so the published UDP monitor examples failed `terraform validate`.
