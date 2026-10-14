@@ -7,6 +7,7 @@
 ### Fixed
 
 - Allowed `config.ip_version` on UDP monitors, which the UptimeRobot API supports. Validation previously rejected it with "ip_version only allowed for HTTP/KEYWORD/PING/PORT/API monitors", so the published UDP monitor examples failed `terraform validate`.
+- Stopped importing the API's default region settings as `region_data`. The API now reports monitors created without region settings as auto-selected on the default `na` region, which import turned into `region_data { auto_select = true }` and the next plan then removed. That default now imports as unset, like a manually selected `na` region; other regions, multiple regions and thresholds still import as `region_data`.
 
 ### Documentation
 
@@ -15,6 +16,7 @@
 ### Tests/CI
 
 - Replaced the acceptance test that expected UDP `ip_version` to be rejected with one that creates API and UDP monitors with `ip_version` and swaps the IP family on both.
+- Covered the API's default auto-selected region, auto-select on a non-default region, and auto-select with a threshold in the import region tests, and added an import step to the multi-region acceptance test so explicit regions and thresholds still round-trip.
 
 ## 1.12.0 — 2026-09-29
 

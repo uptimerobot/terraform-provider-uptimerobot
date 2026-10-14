@@ -1960,6 +1960,14 @@ resource "uptimerobot_monitor" "test" {
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "region_data.thresholds.eu", "5000"),
 				),
 			},
+			// Import keeps explicit multi-region settings; only the API's default
+			// single-region shape imports as unset.
+			{
+				ResourceName:            "uptimerobot_monitor.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"timeout", "status", "group_id", "name", "is_paused"},
+			},
 			{
 				Config: provideracctest.ProviderConfig() + fmt.Sprintf(`
 resource "uptimerobot_monitor" "test" {
