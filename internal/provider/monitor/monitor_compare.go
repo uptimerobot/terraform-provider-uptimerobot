@@ -416,7 +416,7 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 			c.IPVersion = &normalized
 		}
 	}
-	if req.Config != nil && req.Config.IPVersion == nil {
+	if req.Config != nil && req.Config.ClearIPVersion {
 		c.ExpectIPVersionUnset = true
 	}
 	if req.Config != nil {

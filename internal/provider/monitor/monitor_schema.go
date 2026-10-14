@@ -502,8 +502,7 @@ Advanced monitor configuration.
 - **Omit** the block → **preserve** remote values (no change). *(Exception: DNS/API on create require ` + "`config`" + `.)*
 - ` + "`config = {}`" + ` (empty block) → treat as **managed but keep** current remote values.
 - ` + "`ssl_expiration_period_days = []`" + ` → **clear** days on the server; non-empty list sets exactly those days (max 10).
-- Removing ` + "`ip_version`" + ` from a managed ` + "`config`" + ` block clears remote ` + "`ipVersion`" + ` (reverts to API default dual-stack behavior).
-- Setting ` + "`ip_version = \"\"`" + ` also acts as an explicit clear/default signal.
+- Omit ` + "`ip_version`" + ` to preserve the remote value; set ` + "`ip_version = \"\"`" + ` to clear it and return to the API default dual-stack behavior.
 - Omit ` + "`application_error_retries`" + ` to preserve the remote value; set ` + "`application_error_retries = null`" + ` to clear the remote override so the API applies its own default. Connection errors always retry (this setting only governs application/content failures).
 
 **Validation**
@@ -644,7 +643,7 @@ Advanced monitor configuration.
 							stringvalidator.OneOf("", IPVersionIPv4Only, IPVersionIPv6Only),
 						},
 						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
+							ipVersionPlanModifier{},
 						},
 					},
 					"application_error_retries": schema.Int64Attribute{

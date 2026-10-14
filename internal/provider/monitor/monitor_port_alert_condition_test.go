@@ -502,7 +502,7 @@ func TestBuildUpdateRequest_PortMonitor_SendsPortAlertCondition(t *testing.T) {
 	}
 	resp := &resource.UpdateResponse{}
 
-	req, _ := buildUpdateRequest(ctx, plan, monitorResourceModel{}, true, true, true, resp)
+	req, _ := buildUpdateRequest(ctx, plan, monitorResourceModel{}, true, true, true, false, resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 	}

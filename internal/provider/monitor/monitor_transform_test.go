@@ -324,7 +324,7 @@ func TestBuildUpdateRequest_CustomFieldsSemantics(t *testing.T) {
 		state := monitorResourceModel{CustomFields: types.MapNull(types.StringType)}
 		resp := &resource.UpdateResponse{}
 
-		req, _ := buildUpdateRequest(ctx, plan, state, true, true, false, resp)
+		req, _ := buildUpdateRequest(ctx, plan, state, true, true, false, false, resp)
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 		}
@@ -341,7 +341,7 @@ func TestBuildUpdateRequest_CustomFieldsSemantics(t *testing.T) {
 		})}
 		resp := &resource.UpdateResponse{}
 
-		req, _ := buildUpdateRequest(ctx, plan, state, true, true, false, resp)
+		req, _ := buildUpdateRequest(ctx, plan, state, true, true, false, false, resp)
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 		}
@@ -358,7 +358,7 @@ func TestBuildUpdateRequest_CustomFieldsSemantics(t *testing.T) {
 		})}
 		resp := &resource.UpdateResponse{}
 
-		req, _ := buildUpdateRequest(ctx, plan, state, true, true, false, resp)
+		req, _ := buildUpdateRequest(ctx, plan, state, true, true, false, false, resp)
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 		}
@@ -452,7 +452,7 @@ func TestBuildUpdateRequest_CustomHTTPHeadersSemantics(t *testing.T) {
 			state := monitorResourceModel{CustomHTTPHeaders: tt.stateHeaders}
 			resp := &resource.UpdateResponse{}
 
-			req, _ := buildUpdateRequest(ctx, plan, state, true, true, false, resp)
+			req, _ := buildUpdateRequest(ctx, plan, state, true, true, false, false, resp)
 			if resp.Diagnostics.HasError() {
 				t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 			}
@@ -592,7 +592,7 @@ func TestBuildUpdateRequest_HeartbeatOmitsServerGeneratedURL(t *testing.T) {
 	}
 	resp := &resource.UpdateResponse{}
 
-	req, _ := buildUpdateRequest(ctx, plan, monitorResourceModel{}, true, true, false, resp)
+	req, _ := buildUpdateRequest(ctx, plan, monitorResourceModel{}, true, true, false, false, resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 	}
@@ -636,7 +636,7 @@ func TestBuildUpdateRequest_APIMonitorOmitsLegacyHEADMethodWhenHTTPMethodOmitted
 	}
 	resp := &resource.UpdateResponse{}
 
-	req, effMethod := buildUpdateRequest(ctx, plan, state, false, true, true, resp)
+	req, effMethod := buildUpdateRequest(ctx, plan, state, false, true, true, false, resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 	}
@@ -672,7 +672,7 @@ func TestBuildUpdateRequest_APIMonitorOmitsLegacyNullMethodWhenConfigOmitted(t *
 	}
 	resp := &resource.UpdateResponse{}
 
-	req, stateMethod := buildUpdateRequest(ctx, plan, state, true, true, true, resp)
+	req, stateMethod := buildUpdateRequest(ctx, plan, state, true, true, true, false, resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 	}
@@ -704,7 +704,7 @@ func TestBuildUpdateRequest_APIMonitorSendsPOSTWhenBodyConfiguredAndMethodOmitte
 	}
 	resp := &resource.UpdateResponse{}
 
-	req, stateMethod := buildUpdateRequest(ctx, plan, state, true, true, true, resp)
+	req, stateMethod := buildUpdateRequest(ctx, plan, state, true, true, true, false, resp)
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", resp.Diagnostics)
 	}

@@ -37,6 +37,11 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 	configOmitted := configVal.IsNull() || configVal.IsUnknown()
 	applicationErrorRetriesOmitted := configAttributeOmitted(configVal, "application_error_retries")
+	clearIPVersion, diags := shouldClearIPVersionOnUpdate(ctx, configVal, plan.Config)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
 
 	var configHTTPMethodType types.String
 	if diags := req.Config.GetAttribute(ctx, path.Root("http_method_type"), &configHTTPMethodType); diags.HasError() {
@@ -59,7 +64,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, applicationErrorRetriesOmitted, httpMethodTypeOmitted, resp)
+	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, applicationErrorRetriesOmitted, httpMethodTypeOmitted, clearIPVersion, resp)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -293,6 +298,7 @@ func buildUpdateRequest(
 	configOmitted bool,
 	applicationErrorRetriesOmitted bool,
 	httpMethodTypeOmitted bool,
+	clearIPVersion bool,
 	resp *resource.UpdateResponse,
 ) (*client.UpdateMonitorRequest, string) {
 	req := &client.UpdateMonitorRequest{
@@ -426,7 +432,7 @@ func buildUpdateRequest(
 	}
 
 	// Config
-	expandOrClearConfigOnUpdate(ctx, plan, state.Config, configOmitted, applicationErrorRetriesOmitted, req, resp)
+	expandOrClearConfigOnUpdate(ctx, plan, configOmitted, applicationErrorRetriesOmitted, clearIPVersion, req, resp)
 
 	return req, stateMethod
 }
@@ -1023,9 +1029,9 @@ func applyUpdatedMonitorToState(
 func expandOrClearConfigOnUpdate(
 	ctx context.Context,
 	plan monitorResourceModel,
-	priorConfig types.Object,
 	configOmitted bool,
 	applicationErrorRetriesOmitted bool,
+	clearIPVersion bool,
 	req *client.UpdateMonitorRequest,
 	resp *resource.UpdateResponse,
 ) {
@@ -1057,21 +1063,12 @@ func expandOrClearConfigOnUpdate(
 		}
 		// Send only if user actually set something or explicitly set empty sets to clear.
 		if touched {
+			out.ClearIPVersion = clearIPVersion
 			req.Config = out
 			return
 		}
-		clearIPVersion, d := shouldClearIPVersionOnUpdate(ctx, plan.Config, priorConfig)
-		resp.Diagnostics.Append(d...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
 		if clearIPVersion {
-			cfg, d := configPayloadForIPVersionClear(ctx, priorConfig)
-			resp.Diagnostics.Append(d...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			req.Config = cfg
+			req.Config = &client.MonitorConfig{ClearIPVersion: true}
 		}
 	}
 }
@@ -1102,63 +1099,30 @@ func configWithApplicationErrorRetriesUnknown(cfg types.Object) (types.Object, d
 	return out, diags
 }
 
-func configPayloadForIPVersionClear(
-	ctx context.Context,
-	priorConfig types.Object,
-) (*client.MonitorConfig, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	if priorConfig.IsNull() || priorConfig.IsUnknown() {
-		return &client.MonitorConfig{}, diags
-	}
-
-	prev, _, d := expandConfigToAPI(ctx, priorConfig)
-	diags.Append(d...)
-	if diags.HasError() {
-		return nil, diags
-	}
-	if prev == nil {
-		return &client.MonitorConfig{}, diags
-	}
-
-	prev.IPVersion = nil
-	return prev, diags
-}
-
 func shouldClearIPVersionOnUpdate(
 	ctx context.Context,
-	planConfig types.Object,
-	priorConfig types.Object,
+	config types.Object,
+	plan types.Object,
 ) (bool, diag.Diagnostics) {
+	configured, diags := ipVersionExplicitlyEmpty(ctx, config)
+	if diags.HasError() || !configured {
+		return false, diags
+	}
+	return ipVersionExplicitlyEmpty(ctx, plan)
+}
+
+func ipVersionExplicitlyEmpty(ctx context.Context, config types.Object) (bool, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	if planConfig.IsNull() || planConfig.IsUnknown() || priorConfig.IsNull() || priorConfig.IsUnknown() {
+	if config.IsNull() || config.IsUnknown() {
 		return false, diags
 	}
 
-	var planCfg, prevCfg configTF
-	diags.Append(planConfig.As(ctx, &planCfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
-	diags.Append(priorConfig.As(ctx, &prevCfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
-	if diags.HasError() {
+	var cfg configTF
+	diags.Append(config.As(ctx, &cfg, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+	if diags.HasError() || cfg.IPVersion.IsNull() || cfg.IPVersion.IsUnknown() {
 		return false, diags
 	}
-
-	if prevCfg.IPVersion.IsNull() || prevCfg.IPVersion.IsUnknown() {
-		return false, diags
-	}
-	if _, keep := normalizeIPVersionForAPI(prevCfg.IPVersion.ValueString()); !keep {
-		return false, diags
-	}
-
-	if planCfg.IPVersion.IsUnknown() {
-		return false, diags
-	}
-	if planCfg.IPVersion.IsNull() {
-		return true, diags
-	}
-	if _, keep := normalizeIPVersionForAPI(planCfg.IPVersion.ValueString()); !keep {
-		return true, diags
-	}
-
-	return false, diags
+	_, keep := normalizeIPVersionForAPI(cfg.IPVersion.ValueString())
+	return !keep, diags
 }

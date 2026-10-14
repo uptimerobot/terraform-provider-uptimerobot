@@ -3327,6 +3327,30 @@ resource "uptimerobot_monitor" "test" {
 }
 `, name, url)
 
+	cfgIPVersionOmitted := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s-renamed"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {}
+}
+`, name, url)
+
+	cfgCleared := fmt.Sprintf(`
+resource "uptimerobot_monitor" "test" {
+  name     = "%s"
+  type     = "HTTP"
+  url      = "%s"
+  interval = 300
+
+  config = {
+    ip_version = ""
+  }
+}
+`, name, url)
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { provideracctest.PreCheck(t) },
 		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
@@ -3347,6 +3371,24 @@ resource "uptimerobot_monitor" "test" {
 				Config:             cfgIPv6,
 				PlanOnly:           true,
 				ExpectNonEmptyPlan: false,
+			},
+			{
+				Config: cfgIPVersionOmitted,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv6Only"),
+				),
+			},
+			{
+				RefreshState: true,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ip_version", "ipv6Only"),
+				),
+			},
+			{
+				Config: cfgCleared,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(res, "config.ip_version", ""),
+				),
 			},
 		},
 	})
@@ -3584,6 +3626,43 @@ resource "uptimerobot_monitor" "udp" {
 }
 `, apiName, apiURL, udpName, udpDomain)
 
+	cfgCleared := fmt.Sprintf(`
+resource "uptimerobot_monitor" "api" {
+  name     = "%s"
+  type     = "API"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = ""
+    api_assertions = {
+      logic = "AND"
+      checks = [{
+        property   = "$.status"
+        comparison = "is_not_null"
+      }]
+    }
+  }
+}
+
+resource "uptimerobot_monitor" "udp" {
+  name     = "%s"
+  type     = "UDP"
+  url      = "%s"
+  port     = 53
+  interval = 300
+
+  config = {
+    ip_version = ""
+    udp = {
+      payload               = "ping"
+      packet_loss_threshold = 100
+    }
+  }
+}
+`, apiName, apiURL, udpName, udpDomain)
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { provideracctest.PreCheck(t) },
 		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
@@ -3600,6 +3679,13 @@ resource "uptimerobot_monitor" "udp" {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.api", "config.ip_version", "ipv6Only"),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.udp", "config.ip_version", "ipv4Only"),
+				),
+			},
+			{
+				Config: cfgCleared,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.api", "config.ip_version", ""),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.udp", "config.ip_version", ""),
 				),
 			},
 		},

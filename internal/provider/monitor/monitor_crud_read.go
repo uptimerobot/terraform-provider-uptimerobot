@@ -431,6 +431,10 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 	}
 
 	if !state.Config.IsNull() && !state.Config.IsUnknown() {
+		if ipVersion, ok := state.Config.Attributes()["ip_version"].(types.String); ok &&
+			!ipVersion.IsNull() && !ipVersion.IsUnknown() && strings.TrimSpace(ipVersion.ValueString()) == "" {
+			want.ExpectIPVersionUnset = true
+		}
 		if cfg, touched, diags := expandConfigToAPI(ctx, state.Config); touched && !diags.HasError() && cfg != nil {
 			if cfg.DNSRecords != nil {
 				want.DNSRecords = normalizeDNSRecords(cfg.DNSRecords)

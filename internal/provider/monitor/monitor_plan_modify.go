@@ -78,3 +78,27 @@ func (m configNullIfOmitted) PlanModifyObject(ctx context.Context, req planmodif
 		resp.PlanValue = obj
 	}
 }
+
+type ipVersionPlanModifier struct{}
+
+func (m ipVersionPlanModifier) Description(context.Context) string {
+	return "Keep the prior ip_version when it is not configured, without carrying an explicit clear forward."
+}
+
+func (m ipVersionPlanModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m ipVersionPlanModifier) PlanModifyString(
+	_ context.Context,
+	req planmodifier.StringRequest,
+	resp *planmodifier.StringResponse,
+) {
+	if req.State.Raw.IsNull() || !req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	if !req.StateValue.IsNull() && req.StateValue.ValueString() == "" {
+		return
+	}
+	resp.PlanValue = req.StateValue
+}
