@@ -37,7 +37,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 	configOmitted := configVal.IsNull() || configVal.IsUnknown()
 	applicationErrorRetriesOmitted := configAttributeOmitted(configVal, "application_error_retries")
-	clearIPVersion, diags := shouldClearIPVersionOnUpdate(ctx, configVal)
+	clearIPVersion, diags := shouldClearIPVersionOnUpdate(ctx, configVal, plan.Config)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
@@ -432,7 +432,7 @@ func buildUpdateRequest(
 	}
 
 	// Config
-	expandOrClearConfigOnUpdate(ctx, plan, state.Config, configOmitted, applicationErrorRetriesOmitted, clearIPVersion, req, resp)
+	expandOrClearConfigOnUpdate(ctx, plan, configOmitted, applicationErrorRetriesOmitted, clearIPVersion, req, resp)
 
 	return req, stateMethod
 }
@@ -1029,7 +1029,6 @@ func applyUpdatedMonitorToState(
 func expandOrClearConfigOnUpdate(
 	ctx context.Context,
 	plan monitorResourceModel,
-	priorConfig types.Object,
 	configOmitted bool,
 	applicationErrorRetriesOmitted bool,
 	clearIPVersion bool,
@@ -1069,12 +1068,7 @@ func expandOrClearConfigOnUpdate(
 			return
 		}
 		if clearIPVersion {
-			cfg, d := configPayloadForIPVersionClear(ctx, priorConfig)
-			resp.Diagnostics.Append(d...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			req.Config = cfg
+			req.Config = &client.MonitorConfig{ClearIPVersion: true}
 		}
 	}
 }
@@ -1105,34 +1099,19 @@ func configWithApplicationErrorRetriesUnknown(cfg types.Object) (types.Object, d
 	return out, diags
 }
 
-func configPayloadForIPVersionClear(
-	ctx context.Context,
-	priorConfig types.Object,
-) (*client.MonitorConfig, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	if priorConfig.IsNull() || priorConfig.IsUnknown() {
-		return &client.MonitorConfig{ClearIPVersion: true}, diags
-	}
-
-	prev, _, d := expandConfigToAPI(ctx, priorConfig)
-	diags.Append(d...)
-	if diags.HasError() {
-		return nil, diags
-	}
-	if prev == nil {
-		return &client.MonitorConfig{ClearIPVersion: true}, diags
-	}
-
-	prev.IPVersion = nil
-	prev.ClearIPVersion = true
-	return prev, diags
-}
-
 func shouldClearIPVersionOnUpdate(
 	ctx context.Context,
 	config types.Object,
+	plan types.Object,
 ) (bool, diag.Diagnostics) {
+	configured, diags := ipVersionExplicitlyEmpty(ctx, config)
+	if diags.HasError() || !configured {
+		return false, diags
+	}
+	return ipVersionExplicitlyEmpty(ctx, plan)
+}
+
+func ipVersionExplicitlyEmpty(ctx context.Context, config types.Object) (bool, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if config.IsNull() || config.IsUnknown() {

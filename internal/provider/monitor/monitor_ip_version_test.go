@@ -3,7 +3,6 @@ package monitor
 import (
 	"context"
 	"encoding/json"
-	"slices"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -265,7 +264,7 @@ func TestShouldClearIPVersionOnUpdate_NoValuePreservesRemote(t *testing.T) {
 		"application_error_retries":  types.Int64Unknown(),
 	})
 
-	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), planCfg)
+	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), planCfg, planCfg)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", diags)
 	}
@@ -286,7 +285,7 @@ func TestShouldClearIPVersionOnUpdate_NoTransition(t *testing.T) {
 		"application_error_retries":  types.Int64Unknown(),
 	})
 
-	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), planCfg)
+	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), planCfg, planCfg)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", diags)
 	}
@@ -307,45 +306,12 @@ func TestShouldClearIPVersionOnUpdate_TransitionToEmptyString(t *testing.T) {
 		"application_error_retries":  types.Int64Unknown(),
 	})
 
-	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), planCfg)
+	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), planCfg, planCfg)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", diags)
 	}
 	if !clearIPVersion {
 		t.Fatalf("expected clearIPVersion=true on transition from set to empty-string sentinel")
-	}
-}
-
-func TestConfigPayloadForIPVersionClear_PreservesOtherFields(t *testing.T) {
-	t.Parallel()
-
-	prevCfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
-		"ssl_expiration_period_days": types.SetValueMust(types.Int64Type, []attr.Value{
-			types.Int64Value(7),
-			types.Int64Value(30),
-		}),
-		"dns_records":               types.ObjectNull(dnsRecordsObjectType().AttrTypes),
-		"api_assertions":            types.ObjectNull(apiAssertionsObjectType().AttrTypes),
-		"ip_version":                types.StringValue(IPVersionIPv4Only),
-		"udp":                       types.ObjectNull(udpObjectType().AttrTypes),
-		"application_error_retries": types.Int64Unknown(),
-	})
-
-	cfg, diags := configPayloadForIPVersionClear(context.Background(), prevCfg)
-	if diags.HasError() {
-		t.Fatalf("unexpected diagnostics: %+v", diags)
-	}
-	if cfg == nil {
-		t.Fatalf("expected config payload, got nil")
-	}
-	if cfg.IPVersion != nil || !cfg.ClearIPVersion {
-		t.Fatalf("expected clear payload to send ipVersion as null")
-	}
-	if cfg.SSLExpirationPeriodDays == nil {
-		t.Fatalf("expected sslExpirationPeriodDays to be preserved")
-	}
-	if !slices.Equal(*cfg.SSLExpirationPeriodDays, []int64{7, 30}) {
-		t.Fatalf("unexpected sslExpirationPeriodDays: %#v", *cfg.SSLExpirationPeriodDays)
 	}
 }
 
@@ -374,7 +340,7 @@ func updateRequestConfigJSON(t *testing.T, monitorType string, configured, planC
 		}
 	}
 	resp := &resource.UpdateResponse{}
-	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), configured)
+	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), configured, planConfig)
 	if diags.HasError() {
 		t.Fatalf("unexpected diagnostics: %+v", diags)
 	}
@@ -559,5 +525,48 @@ func TestIPVersionPlanModifier_DoesNotCarryAnExplicitClearForward(t *testing.T) 
 				t.Fatalf("expected plan %s, got %s", tc.want, resp.PlanValue)
 			}
 		})
+	}
+}
+
+func TestShouldClearIPVersionOnUpdate_IgnoredChangeKeepsPlannedValue(t *testing.T) {
+	t.Parallel()
+
+	configured := ipVersionTestConfig(types.StringValue(""), types.ObjectNull(udpObjectType().AttrTypes))
+	planned := ipVersionTestConfig(types.StringValue(IPVersionIPv4Only), types.ObjectNull(udpObjectType().AttrTypes))
+
+	clearIPVersion, diags := shouldClearIPVersionOnUpdate(context.Background(), configured, planned)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if clearIPVersion {
+		t.Fatalf("expected no clear when the plan keeps ipv4Only, for example through ignore_changes")
+	}
+
+	cfg := updateRequestConfigJSON(t, MonitorTypeHTTP, configured, planned, planned)
+	if got := cfg["ipVersion"]; got != IPVersionIPv4Only {
+		t.Fatalf("expected the planned ipVersion to be sent unchanged, got %#v", cfg)
+	}
+}
+
+func TestBuildUpdateRequest_ClearOnlySendsIPVersion(t *testing.T) {
+	t.Parallel()
+
+	prior := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+		"ssl_expiration_period_days": types.SetValueMust(types.Int64Type, []attr.Value{types.Int64Value(7), types.Int64Value(30)}),
+		"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+		"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+		"ip_version":                 types.StringValue(IPVersionIPv4Only),
+		"udp":                        types.ObjectNull(udpObjectType().AttrTypes),
+		"application_error_retries":  types.Int64Unknown(),
+	})
+	cleared := ipVersionTestConfig(types.StringValue(""), types.ObjectNull(udpObjectType().AttrTypes))
+
+	cfg := updateRequestConfigJSON(t, MonitorTypeHTTP, cleared, cleared, prior)
+
+	if len(cfg) != 1 || cfg["ipVersion"] != nil {
+		t.Fatalf("expected the clear to send only ipVersion as null, got %#v", cfg)
+	}
+	if _, ok := cfg["ipVersion"]; !ok {
+		t.Fatalf("expected ipVersion null in the clear payload, got %#v", cfg)
 	}
 }
