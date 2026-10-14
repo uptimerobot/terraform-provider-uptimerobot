@@ -3496,13 +3496,13 @@ resource "uptimerobot_monitor" "port" {
 	})
 }
 
-func TestAcc_Monitor_Config_IPVersion_AllowsAPI_RejectsUDP(t *testing.T) {
+func TestAcc_Monitor_Config_IPVersion_AllowedForAPIAndUDP(t *testing.T) {
 	apiName := acctest.RandomWithPrefix("acc-api-ipv")
 	udpName := acctest.RandomWithPrefix("acc-udp-ipv")
 	apiURL := provideracctest.UniqueURL(apiName)
-	udpURL := provideracctest.UniqueURL(udpName)
+	udpDomain := provideracctest.UniqueDomain(udpName)
 
-	cfgAPIAllowed := fmt.Sprintf(`
+	cfgInitial := fmt.Sprintf(`
 resource "uptimerobot_monitor" "api" {
   name     = "%s"
   type     = "API"
@@ -3521,9 +3521,44 @@ resource "uptimerobot_monitor" "api" {
     }
   }
 }
-`, apiName, apiURL)
 
-	cfgUnsupportedRejected := fmt.Sprintf(`
+resource "uptimerobot_monitor" "udp" {
+  name     = "%s"
+  type     = "UDP"
+  url      = "%s"
+  port     = 53
+  interval = 300
+
+  config = {
+    ip_version = "ipv6Only"
+    udp = {
+      payload               = "ping"
+      packet_loss_threshold = 100
+    }
+  }
+}
+`, apiName, apiURL, udpName, udpDomain)
+
+	cfgSwap := fmt.Sprintf(`
+resource "uptimerobot_monitor" "api" {
+  name     = "%s"
+  type     = "API"
+  url      = "%s"
+  interval = 300
+  timeout  = 30
+
+  config = {
+    ip_version = "ipv6Only"
+    api_assertions = {
+      logic = "AND"
+      checks = [{
+        property   = "$.status"
+        comparison = "is_not_null"
+      }]
+    }
+  }
+}
+
 resource "uptimerobot_monitor" "udp" {
   name     = "%s"
   type     = "UDP"
@@ -3539,20 +3574,24 @@ resource "uptimerobot_monitor" "udp" {
     }
   }
 }
-`, udpName, udpURL)
+`, apiName, apiURL, udpName, udpDomain)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { provideracctest.PreCheck(t) },
 		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config:      cfgUnsupportedRejected,
-				ExpectError: regexp.MustCompile(`(?i)ip_version[\s\S]*only[\s\S]*HTTP/KEYWORD/PING/PORT/API`),
-			},
-			{
-				Config: cfgAPIAllowed,
+				Config: cfgInitial,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.api", "config.ip_version", "ipv4Only"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.udp", "config.ip_version", "ipv6Only"),
+				),
+			},
+			{
+				Config: cfgSwap,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.api", "config.ip_version", "ipv6Only"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.udp", "config.ip_version", "ipv4Only"),
 				),
 			},
 		},
@@ -3610,7 +3649,7 @@ resource "uptimerobot_monitor" "test" {
 		Steps: []resource.TestStep{
 			{
 				Config:      cfgInvalidForDNS,
-				ExpectError: regexp.MustCompile(`(?i)ip_version[\s\S]*only[\s\S]*HTTP/KEYWORD/PING/PORT/API`),
+				ExpectError: regexp.MustCompile(`(?i)ip_version[\s\S]*only[\s\S]*HTTP/KEYWORD/PING/PORT/API/UDP`),
 			},
 			{
 				Config:      cfgMismatchIPv4,

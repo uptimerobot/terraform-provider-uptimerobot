@@ -693,6 +693,32 @@ func TestValidateConfig_UDP_AllowsUnknownPacketLossThresholdAtPlanTime(t *testin
 	}
 }
 
+func TestValidateConfig_UDP_AllowsIPVersionWithUDPConfig(t *testing.T) {
+	t.Parallel()
+
+	resp := &resource.ValidateConfigResponse{}
+	data := &monitorResourceModel{
+		URL: types.StringValue("dns.google"),
+		Config: types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+			"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+			"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+			"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+			"ip_version":                 types.StringValue(IPVersionIPv4Only),
+			"udp": types.ObjectValueMust(udpObjectType().AttrTypes, map[string]attr.Value{
+				"payload":               types.StringValue("ping"),
+				"packet_loss_threshold": types.Int64Value(50),
+			}),
+			"application_error_retries": types.Int64Null(),
+		}),
+	}
+
+	validateConfig(context.TODO(), MonitorTypeUDP, data, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for ip_version with udp config on UDP monitor, got: %v", resp.Diagnostics)
+	}
+}
+
 func TestValidateGracePeriodAndTimeout_PING_AllowsTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -890,19 +916,19 @@ func TestValidateConfigIPVersion_AllowsAPIType(t *testing.T) {
 	}
 }
 
-func TestValidateConfigIPVersion_RejectsUnsupportedType(t *testing.T) {
+func TestValidateConfigIPVersion_AllowsUDPType(t *testing.T) {
 	t.Parallel()
 
 	resp := &resource.ValidateConfigResponse{}
 	validateConfigIPVersion(
-		"UDP",
+		MonitorTypeUDP,
 		types.StringValue("1.1.1.1"),
 		types.StringValue(IPVersionIPv4Only),
 		resp,
 	)
 
-	if !resp.Diagnostics.HasError() {
-		t.Fatalf("expected an error for ip_version on UDP monitor, got: %v", resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no errors for ip_version on UDP monitor, got: %v", resp.Diagnostics)
 	}
 }
 
