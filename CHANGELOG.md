@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 1.12.1 — 2026-10-17
+
 ### Changed
 
 - Updated Go to 1.27.2 and refreshed Go dependencies.
@@ -9,7 +11,8 @@
 - Allowed `config.ip_version` on UDP monitors, which the UptimeRobot API supports. Validation previously rejected it with "ip_version only allowed for HTTP/KEYWORD/PING/PORT/API monitors", so the published UDP monitor examples failed `terraform validate`.
 - Stopped importing the API's default region settings as `region_data`. The API now reports monitors created without region settings as auto-selected on the default `na` region, which import turned into `region_data { auto_select = true }` and the next plan then removed. That default now imports as unset, like a manually selected `na` region; other regions, multiple regions and thresholds still import as `region_data`.
 - Re-read `uptimerobot_maintenance_window.auto_add_monitors` and PORT monitor `port_alert_condition` on refresh when the API returns a value that differs from state, the way interval, days and other monitor fields already are. A stale read right after an update no longer lands in state and shows a diff that reverts the change. `monitor_ids` stays out of this check because auto-added monitors change it on the server.
-- Made `ip_version = ""` clear the IP version on the server for all monitor types that support it. Updates omitted `ipVersion`, so the API kept the old value and apply failed with "Update did not settle in time". Refresh now also waits for the API to report the value as unset, instead of restoring it from a stale read, and a missing `ip_version` value never clears the server value.
+- Made `ip_version = ""` clear the IP version on the server for all monitor types that support it, including when the `config` block was previously omitted. Updates omitted `ipVersion`, so the API kept the old value and apply failed with "Update did not settle in time". Refresh now waits for the API to report the value as unset instead of restoring it from a stale read.
+- Preserved the remote IP version when `ip_version` is omitted or `lifecycle.ignore_changes` keeps its planned value. A previous explicit clear no longer causes later updates to clear a value set in the dashboard; a clear-only update also leaves other remote config fields unchanged.
 
 ### Documentation
 
@@ -21,7 +24,8 @@
 - Replaced the acceptance test that expected UDP `ip_version` to be rejected with one that creates API and UDP monitors with `ip_version` and swaps the IP family on both.
 - Covered the API's default auto-selected region, auto-select on a non-default region, and auto-select with a threshold in the import region tests, and added an import step to the multi-region acceptance test so explicit regions and thresholds still round-trip.
 - Added refresh stabilization tests for a stale `auto_add_monitors` and a stale `port_alert_condition` read, and for skipping the re-read when the value is unmanaged or already current.
-- Added steps that clear `ip_version` on HTTP, API, and UDP monitors, and a plan check that omitting it changes nothing.
+- Added steps that clear `ip_version` on HTTP, API, and UDP monitors, a plan check that omitting it changes nothing, and an update/refresh check that an omitted IP version remains unchanged.
+- Added unit coverage for explicit IP-version clears, previously omitted config, prior clear state, `ignore_changes`, and preservation of unrelated remote config fields.
 
 ## 1.12.0 — 2026-09-29
 
