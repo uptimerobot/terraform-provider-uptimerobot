@@ -6,6 +6,10 @@
 
 - Kept omitted or null `uptimerobot_monitor.maintenance_window_ids` unmanaged when maintenance windows are assigned through `uptimerobot_maintenance_window.monitor_ids` or outside Terraform. Updating a monitor no longer fails with an unexpected null-to-set state change. Explicit IDs still manage assignments, `[]` still clears them, and import still reads existing assignments.
 
+### Documentation
+
+- Added Dependabot guidance for ignoring the removed `2.0.0` release alongside the existing provider version constraints and Renovate guidance.
+
 ### Tests/CI
 
 - Added maintenance-window regression coverage for omitted IDs, updates from populated state, explicit assignments, clearing, drift detection, automatic windows, and import, plus a live lifecycle test covering assignment ownership and clean subsequent plans.
