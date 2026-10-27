@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Documentation
+
+- Added Dependabot guidance for ignoring the removed `2.0.0` release alongside the existing provider version constraints and Renovate guidance.
+
 ## 1.12.1 — 2026-10-17
 
 ### Changed

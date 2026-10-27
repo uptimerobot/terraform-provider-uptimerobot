@@ -33,7 +33,23 @@ variable "uptimerobot_api_key" {
 }
 ```
 
-This constraint allows updates within the `1.x` release line. Commit `.terraform.lock.hcl` to keep provider selections reproducible. If you use Renovate, also configure an `allowedVersions` rule of `<2.0.0` for `uptimerobot/uptimerobot` to prevent it from proposing a `2.x` constraint.
+This constraint allows updates within the `1.x` release line. Commit `.terraform.lock.hcl` to keep provider selections reproducible.
+
+### Dependency update tools
+
+OpenTofu indexed a briefly published `2.0.0` release that was later removed. Dependency update tools can still propose this unavailable version; see [issue #299](https://github.com/uptimerobot/terraform-provider-uptimerobot/issues/299). Keep the provider version constraint above and configure your update tool as follows.
+
+**Renovate:** Configure an `allowedVersions` rule of `<2.0.0` for `uptimerobot/uptimerobot` to prevent it from proposing a `2.x` constraint.
+
+**Dependabot:** In `.github/dependabot.yml`, merge the following fragment into each applicable `updates` entry with `package-ecosystem: "opentofu"`. Keep that entry's existing `directory` or `directories`, `schedule`, and any other `ignore` rules.
+
+```yaml
+ignore:
+  - dependency-name: "uptimerobot/uptimerobot"
+    versions: ["2.0.0"]
+```
+
+This [Dependabot ignore rule](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference#ignore) excludes only the removed `2.0.0` version from update proposals. The provider version constraint and lock file still control which version OpenTofu installs.
 
 ## Authentication
 
