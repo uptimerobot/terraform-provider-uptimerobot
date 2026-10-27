@@ -899,7 +899,7 @@ func (r *monitorResource) buildStateAfterCreate(
 			apiIDs = append(apiIDs, mw.ID)
 		}
 	}
-	mv, d := mwSetFromAPIRespectingShape(ctx, apiIDs, plan.MaintenanceWindowIDs)
+	mv, d := mwSetFromAPIRespectingShape(ctx, apiIDs, plan.MaintenanceWindowIDs, false)
 	resp.Diagnostics.Append(d...)
 	plan.MaintenanceWindowIDs = mv
 
