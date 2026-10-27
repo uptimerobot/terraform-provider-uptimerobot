@@ -1,8 +1,23 @@
 ## Unreleased
 
+## 1.12.2 — 2026-10-27
+
+### Fixed
+
+- Kept omitted or null `uptimerobot_monitor.maintenance_window_ids` unmanaged when maintenance windows are assigned through `uptimerobot_maintenance_window.monitor_ids` or outside Terraform. Updating a monitor no longer fails with an unexpected null-to-set state change. Explicit IDs still manage assignments, `[]` still clears them, and import still reads existing assignments.
+
 ### Documentation
 
 - Added Dependabot guidance for ignoring the removed `2.0.0` release alongside the existing provider version constraints and Renovate guidance.
+
+### Tests/CI
+
+- Added maintenance-window regression coverage for omitted IDs, updates from populated state, explicit assignments, clearing, drift detection, automatic windows, and import, plus a live lifecycle test covering assignment ownership and clean subsequent plans.
+- Updated the GoReleaser GitHub Action from 7.2.3 to 7.3.0.
+
+### Upgrade notes
+
+- Monitor state remains at schema version 7. No state migration, re-import, or resource replacement is required; existing populated state converges on the next apply when `maintenance_window_ids` is omitted. Remote assignments are preserved.
 
 ## 1.12.1 — 2026-10-17
 
