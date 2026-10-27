@@ -61,7 +61,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	readApplyCustomFields(ctx, resp, &state, monitor, isImport)
 	readApplySuccessCodes(ctx, resp, &state, monitor)
 	readApplyBooleans(&state, monitor, isImport)
-	readApplyMWIDs(ctx, resp, &state, monitor)
+	readApplyMWIDs(ctx, resp, &state, monitor, isImport)
 	readApplyConfig(ctx, resp, &state, monitor, isImport)
 
 	diags = resp.State.Set(ctx, &state)
@@ -564,14 +564,14 @@ func readApplyBooleans(state *monitorResourceModel, m *client.Monitor, isImport 
 	}
 }
 
-func readApplyMWIDs(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor) {
+func readApplyMWIDs(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	var apiIDs []int64
 	for _, mw := range m.MaintenanceWindows {
 		if !mw.AutoAddMonitors {
 			apiIDs = append(apiIDs, mw.ID)
 		}
 	}
-	v, d := mwSetFromAPIRespectingShape(ctx, apiIDs, state.MaintenanceWindowIDs)
+	v, d := mwSetFromAPIRespectingShape(ctx, apiIDs, state.MaintenanceWindowIDs, isImport)
 	resp.Diagnostics.Append(d...)
 	state.MaintenanceWindowIDs = v
 }

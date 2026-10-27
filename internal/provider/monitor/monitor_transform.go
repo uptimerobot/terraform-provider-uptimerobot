@@ -194,8 +194,11 @@ func sortAttrStringVals(vals []attr.Value) []attr.Value {
 // Maintenance windows transformation helpers
 
 // mwSetFromAPIRespectingShape returns a Set built from apiIDs.
-func mwSetFromAPIRespectingShape(ctx context.Context, apiIDs []int64, desiredShape types.Set) (types.Set, diag.Diagnostics) {
+func mwSetFromAPIRespectingShape(ctx context.Context, apiIDs []int64, desiredShape types.Set, isImport bool) (types.Set, diag.Diagnostics) {
 	var diags diag.Diagnostics
+	if !isImport && (desiredShape.IsNull() || desiredShape.IsUnknown()) {
+		return types.SetNull(types.Int64Type), diags
+	}
 	if len(apiIDs) == 0 {
 		if desiredShape.IsNull() || desiredShape.IsUnknown() {
 			return types.SetNull(types.Int64Type), diags

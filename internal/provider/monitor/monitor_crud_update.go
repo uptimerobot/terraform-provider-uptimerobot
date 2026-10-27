@@ -886,7 +886,7 @@ func applyUpdatedMonitorToState(
 				apiIDs = append(apiIDs, mw.ID)
 			}
 		}
-		v, d := mwSetFromAPIRespectingShape(ctx, apiIDs, plan.MaintenanceWindowIDs)
+		v, d := mwSetFromAPIRespectingShape(ctx, apiIDs, plan.MaintenanceWindowIDs, false)
 		resp.Diagnostics.Append(d...)
 		out.MaintenanceWindowIDs = v
 	}
