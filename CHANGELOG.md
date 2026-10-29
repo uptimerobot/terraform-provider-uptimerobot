@@ -9,6 +9,7 @@
 ### Fixed
 
 - Preserved `custom_settings.page` during PSP import, including an explicitly disabled monitor-group display setting. Import now reads the existing page settings instead of dropping them because the initial import state contains only the PSP ID.
+- Wait for the configured monitor-group display value to settle after create or update, preventing stale API reads from producing an inconsistent result. If confirmation times out, report an error while retaining the resource ID and latest API state for recovery.
 
 ### Documentation
 
@@ -16,7 +17,7 @@
 
 ### Tests/CI
 
-- Added regression coverage for boolean request encoding, resource and data-source reads, unmanaged settings, external drift, import of both boolean values, and legacy state upgrades.
+- Added regression coverage for boolean request encoding, resource and data-source reads, unmanaged settings, external drift, import of both boolean values, legacy state upgrades, delayed API responses, and timeout recovery for create and update.
 - Added a live PSP lifecycle acceptance test covering create, updates, data-source lookup by ID and name, drift repair, omission/null, removal of the settings block, import, and clean subsequent plans. Verified it with Terraform and OpenTofu, plus built-provider manual checks and an upgrade from v1.12.2 state.
 
 ### Upgrade notes

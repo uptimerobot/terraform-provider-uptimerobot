@@ -4,15 +4,112 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	datasourceschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
+
+func runPSPMonitorGroupsWrite(t *testing.T, ctx context.Context, operation string, c *client.Client, value bool) (pspResourceModel, diag.Diagnostics) {
+	t.Helper()
+	r := &pspResource{client: c}
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	model := pspResourceModel{
+		ID: types.StringValue("123"), Name: types.StringValue("groups-test"),
+		MonitorIDs: pspInt64SetValue(ctx, []int64{}), TagIDs: types.SetNull(types.Int64Type),
+		CustomSettings: &customSettingsModel{Page: &pageSettingsModel{ShowMonitorGroups: types.BoolValue(value)}},
+	}
+	plan := tfsdk.Plan{Schema: schemaResp.Schema}
+	if d := plan.Set(ctx, model); d.HasError() {
+		t.Fatal(d)
+	}
+	config := tfsdk.Config{Schema: schemaResp.Schema, Raw: plan.Raw}
+	state := tfsdk.State{Schema: schemaResp.Schema, Raw: plan.Raw}
+	var diagnostics diag.Diagnostics
+	if operation == "create" {
+		resp := resource.CreateResponse{State: tfsdk.State{Schema: schemaResp.Schema}}
+		r.Create(ctx, resource.CreateRequest{Plan: plan, Config: config}, &resp)
+		state, diagnostics = resp.State, resp.Diagnostics
+	} else {
+		resp := resource.UpdateResponse{State: state}
+		r.Update(ctx, resource.UpdateRequest{Plan: plan, Config: config, State: state}, &resp)
+		state, diagnostics = resp.State, resp.Diagnostics
+	}
+	if d := state.Get(context.Background(), &model); d.HasError() {
+		t.Fatal(d)
+	}
+	return model, diagnostics
+}
+
+func TestPSPShowMonitorGroupsWriteWaitsForStaleReads(t *testing.T) {
+	t.Parallel()
+	for _, operation := range []string{"create", "update"} {
+		for _, value := range []bool{false, true} {
+			t.Run(operation+"/"+types.BoolValue(value).String(), func(t *testing.T) {
+				t.Parallel()
+				var reads atomic.Int32
+				c := countTestClient(t, func(w http.ResponseWriter, req *http.Request) {
+					got := value
+					if req.Method == http.MethodGet && reads.Add(1) <= 3 {
+						got = !value
+					}
+					writeCountTestPSP(t, w, client.PSP{
+						ID: 123, Name: "groups-test", MonitorIDs: []int64{}, MonitorsCount: countPointer(0),
+						CustomSettings: &client.CustomSettingsResp{Page: &client.PageSettings{ShowMonitorsUnderGroups: &got}},
+					})
+				})
+				model, diagnostics := runPSPMonitorGroupsWrite(t, context.Background(), operation, c, value)
+				if diagnostics.HasError() || model.CustomSettings == nil || model.CustomSettings.Page == nil || !model.CustomSettings.Page.ShowMonitorGroups.Equal(types.BoolValue(value)) || reads.Load() < 6 {
+					t.Fatalf("grouping did not settle: state=%#v, reads=%d, diagnostics=%v", model.CustomSettings, reads.Load(), diagnostics)
+				}
+			})
+		}
+	}
+}
+
+func TestPSPShowMonitorGroupsWriteTimeoutRetainsState(t *testing.T) {
+	t.Parallel()
+	for _, operation := range []string{"create", "update"} {
+		for _, value := range []bool{false, true} {
+			for _, omitted := range []bool{false, true} {
+				t.Run(operation+"/"+types.BoolValue(value).String()+"/omitted="+types.BoolValue(omitted).String(), func(t *testing.T) {
+					t.Parallel()
+					remote := !value
+					c := countTestClient(t, func(w http.ResponseWriter, req *http.Request) {
+						if req.Method == http.MethodDelete {
+							t.Error("a grouping timeout must retain the PSP for recovery")
+						}
+						page := &client.PageSettings{ShowMonitorsUnderGroups: &remote}
+						if omitted {
+							page = nil
+						}
+						writeCountTestPSP(t, w, client.PSP{
+							ID: 123, Name: "groups-test", MonitorIDs: []int64{}, MonitorsCount: countPointer(0),
+							CustomSettings: &client.CustomSettingsResp{Page: page},
+						})
+					})
+					ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+					defer cancel()
+					model, diagnostics := runPSPMonitorGroupsWrite(t, ctx, operation, c, value)
+					if !diagnostics.HasError() || model.ID.ValueString() != "123" {
+						t.Fatalf("timeout must return an error and retain the ID: ID=%v, diagnostics=%v", model.ID, diagnostics)
+					}
+					if !omitted && (model.CustomSettings == nil || model.CustomSettings.Page == nil || !model.CustomSettings.Page.ShowMonitorGroups.Equal(types.BoolValue(remote))) {
+						t.Fatal("timeout must retain the actual API value, not restore the planned value")
+					}
+				})
+			}
+		}
+	}
+}
 
 func TestPSPShowMonitorGroupsImportRead(t *testing.T) {
 	t.Parallel()

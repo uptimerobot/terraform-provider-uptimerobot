@@ -123,6 +123,21 @@ func hasConfiguredBool(v types.Bool) bool {
 	return !v.IsNull() && !v.IsUnknown()
 }
 
+func configuredPSPMonitorGroups(model *pspResourceModel) *bool {
+	if model.CustomSettings == nil || model.CustomSettings.Page == nil || !hasConfiguredBool(model.CustomSettings.Page.ShowMonitorGroups) {
+		return nil
+	}
+	return model.CustomSettings.Page.ShowMonitorGroups.ValueBoolPointer()
+}
+
+func pspMonitorGroupsMatch(psp *client.PSP, expected *bool) bool {
+	if expected == nil {
+		return true
+	}
+	return psp != nil && psp.CustomSettings != nil && psp.CustomSettings.Page != nil &&
+		psp.CustomSettings.Page.ShowMonitorsUnderGroups != nil && *psp.CustomSettings.Page.ShowMonitorsUnderGroups == *expected
+}
+
 func maskOptionalTopLevelNullsFromPlan(plan *pspResourceModel, state *pspResourceModel) {
 	if plan == nil || state == nil {
 		return
@@ -1230,6 +1245,8 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	managedFont := plan.CustomSettings != nil && plan.CustomSettings.Font != nil
 	managedPage := plan.CustomSettings != nil && plan.CustomSettings.Page != nil
 
+	expectedMonitorGroups := configuredPSPMonitorGroups(&plan)
+	var groupingSettleErr error
 	pspForState := newPSP
 	if settled, err := waitPSPSettled(
 		ctx,
@@ -1241,16 +1258,24 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		expectedHomepageLink,
 		expectedSubscription,
 		expectedMonitorSort,
+		expectedMonitorGroups,
 		120*time.Second,
 	); settled != nil || err != nil {
 		if settled != nil {
 			pspForState = settled
 		}
 		if err != nil {
-			resp.Diagnostics.AddWarning("PSP create settled slowly", err.Error())
+			if expectedMonitorGroups != nil {
+				groupingSettleErr = err
+			} else {
+				resp.Diagnostics.AddWarning("PSP create settled slowly", err.Error())
+			}
 		} else {
 			pspForState = r.settleMonitorCount(ctx, pspForState, requestedMonitorIDs, &resp.Diagnostics)
 		}
+	}
+	if groupingSettleErr == nil && !pspMonitorGroupsMatch(pspForState, expectedMonitorGroups) {
+		groupingSettleErr = fmt.Errorf("the latest API response contains a different or missing grouping value")
 	}
 
 	if hasMonitorPlan {
@@ -1347,6 +1372,9 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 	resp.Diagnostics.Append(stateSet...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	if groupingSettleErr != nil {
+		resp.Diagnostics.AddError("PSP monitor grouping did not settle", fmt.Sprintf("PSP ID %d did not confirm show_monitor_groups=%t: %v. The resource ID and latest API state have been retained for recovery.", newPSP.ID, *expectedMonitorGroups, groupingSettleErr))
 	}
 }
 
@@ -1449,6 +1477,7 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 			expectedHomepageLink,
 			expectedSubscription,
 			expectedMonitorSort,
+			nil, // Accept remote grouping drift during refresh.
 			20*time.Second,
 		); err == nil && settled != nil {
 			psp = settled
@@ -1820,6 +1849,8 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		updatedPSP = pspWithFiles
 	}
 
+	expectedMonitorGroups := configuredPSPMonitorGroups(&plan)
+	var groupingSettleErr error
 	pspForState := updatedPSP
 	if settled, err := waitPSPSettled(
 		ctx,
@@ -1831,16 +1862,24 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		expectedHomepageLink,
 		expectedSubscription,
 		expectedMonitorSort,
+		expectedMonitorGroups,
 		120*time.Second,
 	); settled != nil || err != nil {
 		if settled != nil {
 			pspForState = settled
 		}
 		if err != nil {
-			resp.Diagnostics.AddWarning("PSP update settled slowly", err.Error())
+			if expectedMonitorGroups != nil {
+				groupingSettleErr = err
+			} else {
+				resp.Diagnostics.AddWarning("PSP update settled slowly", err.Error())
+			}
 		} else {
 			pspForState = r.settleMonitorCount(ctx, pspForState, requestedMonitorIDs, &resp.Diagnostics)
 		}
+	}
+	if groupingSettleErr == nil && !pspMonitorGroupsMatch(pspForState, expectedMonitorGroups) {
+		groupingSettleErr = fmt.Errorf("the latest API response contains a different or missing grouping value")
 	}
 
 	if hasMonitorPlan {
@@ -1897,6 +1936,9 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		resp.Diagnostics.Append(diags...)
 		return
 	}
+	if groupingSettleErr != nil {
+		resp.Diagnostics.AddError("PSP monitor grouping did not settle", fmt.Sprintf("PSP ID %d did not confirm show_monitor_groups=%t: %v. The resource ID and latest API state have been retained for recovery.", id, *expectedMonitorGroups, groupingSettleErr))
+	}
 }
 
 func (r *pspResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -1944,6 +1986,7 @@ func waitPSPSettled(
 	expectedHomepageLink *string,
 	expectedSubscription *bool,
 	expectedMonitorSort *int,
+	expectedMonitorGroups *bool, // nil means unmanaged; never wait for its prior value during refresh
 	timeout time.Duration,
 ) (*client.PSP, error) {
 
@@ -1987,8 +2030,9 @@ func waitPSPSettled(
 			homepageLinkOK := pspStringPtrMatches(psp.HomepageLink, expectedHomepageLink)
 			subscriptionOK := expectedSubscription == nil || psp.Subscription == *expectedSubscription
 			monitorSortOK := pspMonitorSortPtrMatches(psp.Sort, expectedMonitorSort)
+			monitorGroupsOK := pspMonitorGroupsMatch(psp, expectedMonitorGroups)
 
-			if nameOK && monitorsOK && tagsOK && homepageLinkOK && subscriptionOK && monitorSortOK {
+			if nameOK && monitorsOK && tagsOK && homepageLinkOK && subscriptionOK && monitorSortOK && monitorGroupsOK {
 				consecutiveMatches++
 				if consecutiveMatches >= requiredConsecutiveMatches {
 					return psp, nil
