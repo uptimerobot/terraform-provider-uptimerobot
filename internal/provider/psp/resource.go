@@ -91,9 +91,10 @@ type fontSettingsModel struct {
 }
 
 type pageSettingsModel struct {
-	Layout  types.String `tfsdk:"layout"`
-	Theme   types.String `tfsdk:"theme"`
-	Density types.String `tfsdk:"density"`
+	Layout            types.String `tfsdk:"layout"`
+	Theme             types.String `tfsdk:"theme"`
+	Density           types.String `tfsdk:"density"`
+	ShowMonitorGroups types.Bool   `tfsdk:"show_monitor_groups"`
 }
 
 type colorSettingsModel struct {
@@ -312,7 +313,10 @@ func customSettingsHasAnyConfiguredValue(cs *customSettingsModel) bool {
 	if cs.Font != nil && hasConfiguredString(cs.Font.Family) {
 		return true
 	}
-	if cs.Page != nil && (hasConfiguredString(cs.Page.Layout) || hasConfiguredString(cs.Page.Theme) || hasConfiguredString(cs.Page.Density)) {
+	if cs.Page != nil && (hasConfiguredString(cs.Page.Layout) ||
+		hasConfiguredString(cs.Page.Theme) ||
+		hasConfiguredString(cs.Page.Density) ||
+		hasConfiguredBool(cs.Page.ShowMonitorGroups)) {
 		return true
 	}
 	if cs.Colors != nil && (hasConfiguredString(cs.Colors.Main) || hasConfiguredString(cs.Colors.Text) || hasConfiguredString(cs.Colors.Link)) {
@@ -378,6 +382,9 @@ func maskCustomSettingsFromPlan(plan *pspResourceModel, state *pspResourceModel)
 		}
 		if plan.CustomSettings.Page.Density.IsNull() {
 			state.CustomSettings.Page.Density = types.StringNull()
+		}
+		if plan.CustomSettings.Page.ShowMonitorGroups.IsNull() {
+			state.CustomSettings.Page.ShowMonitorGroups = types.BoolNull()
 		}
 	}
 
@@ -474,6 +481,9 @@ func maskCustomSettingsFromPriorState(prior *pspResourceModel, next *pspResource
 		}
 		if prior.CustomSettings.Page.Density.IsNull() {
 			next.CustomSettings.Page.Density = types.StringNull()
+		}
+		if prior.CustomSettings.Page.ShowMonitorGroups.IsNull() {
+			next.CustomSettings.Page.ShowMonitorGroups = types.BoolNull()
 		}
 	}
 
@@ -770,6 +780,10 @@ func (r *pspResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 						Description: "Page settings",
 						Optional:    true,
 						Attributes: map[string]schema.Attribute{
+							"show_monitor_groups": schema.BoolAttribute{
+								Description: "Show monitors under their assigned monitor groups. Set false to disable grouping. When omitted, the existing remote setting is left unchanged.",
+								Optional:    true,
+							},
 							"layout": schema.StringAttribute{
 								Description: "Page layout",
 								Optional:    true,
@@ -1026,7 +1040,8 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 		if plan.CustomSettings.Page != nil &&
 			((!plan.CustomSettings.Page.Layout.IsNull() && !plan.CustomSettings.Page.Layout.IsUnknown()) ||
 				(!plan.CustomSettings.Page.Theme.IsNull() && !plan.CustomSettings.Page.Theme.IsUnknown()) ||
-				(!plan.CustomSettings.Page.Density.IsNull() && !plan.CustomSettings.Page.Density.IsUnknown())) {
+				(!plan.CustomSettings.Page.Density.IsNull() && !plan.CustomSettings.Page.Density.IsUnknown()) ||
+				hasConfiguredBool(plan.CustomSettings.Page.ShowMonitorGroups)) {
 			hasCustomSettings = true
 		}
 
@@ -1080,6 +1095,9 @@ func (r *pspResource) Create(ctx context.Context, req resource.CreateRequest, re
 				}
 				if !plan.CustomSettings.Page.Density.IsNull() && !plan.CustomSettings.Page.Density.IsUnknown() {
 					psp.CustomSettings.Page.Density = plan.CustomSettings.Page.Density.ValueString()
+				}
+				if hasConfiguredBool(plan.CustomSettings.Page.ShowMonitorGroups) {
+					psp.CustomSettings.Page.ShowMonitorsUnderGroups = plan.CustomSettings.Page.ShowMonitorGroups.ValueBoolPointer()
 				}
 			}
 
@@ -1485,7 +1503,7 @@ func (r *pspResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	if !managedFont && updatedState.CustomSettings != nil {
 		updatedState.CustomSettings.Font = nil
 	}
-	if !managedPage && updatedState.CustomSettings != nil {
+	if !isImport && !managedPage && updatedState.CustomSettings != nil {
 		updatedState.CustomSettings.Page = nil
 	}
 	if !isImport && state.CustomSettings == nil {
@@ -1684,7 +1702,8 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		if plan.CustomSettings.Page != nil &&
 			(hasConfiguredString(plan.CustomSettings.Page.Layout) ||
 				hasConfiguredString(plan.CustomSettings.Page.Theme) ||
-				hasConfiguredString(plan.CustomSettings.Page.Density)) {
+				hasConfiguredString(plan.CustomSettings.Page.Density) ||
+				hasConfiguredBool(plan.CustomSettings.Page.ShowMonitorGroups)) {
 			psp.CustomSettings.Page = &client.PageSettings{}
 			if v := plan.CustomSettings.Page.Layout; !v.IsNull() && !v.IsUnknown() {
 				psp.CustomSettings.Page.Layout = v.ValueString()
@@ -1694,6 +1713,9 @@ func (r *pspResource) Update(ctx context.Context, req resource.UpdateRequest, re
 			}
 			if v := plan.CustomSettings.Page.Density; !v.IsNull() && !v.IsUnknown() {
 				psp.CustomSettings.Page.Density = v.ValueString()
+			}
+			if hasConfiguredBool(plan.CustomSettings.Page.ShowMonitorGroups) {
+				psp.CustomSettings.Page.ShowMonitorsUnderGroups = plan.CustomSettings.Page.ShowMonitorGroups.ValueBoolPointer()
 			}
 		}
 
@@ -2298,7 +2320,8 @@ func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceMo
 	if psp.CustomSettings.Page != nil &&
 		(psp.CustomSettings.Page.Layout != "" ||
 			psp.CustomSettings.Page.Theme != "" ||
-			psp.CustomSettings.Page.Density != "") {
+			psp.CustomSettings.Page.Density != "" ||
+			psp.CustomSettings.Page.ShowMonitorsUnderGroups != nil) {
 
 		hasCustomSettings = true
 		layout := types.StringNull()
@@ -2317,9 +2340,10 @@ func pspToResourceData(ctx context.Context, psp *client.PSP, plan *pspResourceMo
 		}
 
 		pageSettings := &pageSettingsModel{
-			Layout:  layout,
-			Theme:   theme,
-			Density: density,
+			Layout:            layout,
+			Theme:             theme,
+			Density:           density,
+			ShowMonitorGroups: types.BoolPointerValue(psp.CustomSettings.Page.ShowMonitorsUnderGroups),
 		}
 		customSettings.Page = pageSettings
 	}

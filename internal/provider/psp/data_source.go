@@ -187,6 +187,10 @@ func pspCustomSettingsDataSourceAttribute() datasourceschema.SingleNestedAttribu
 				Computed:            true,
 				MarkdownDescription: "Page settings.",
 				Attributes: map[string]datasourceschema.Attribute{
+					"show_monitor_groups": datasourceschema.BoolAttribute{
+						Computed:            true,
+						MarkdownDescription: "Whether monitors are shown under their assigned monitor groups.",
+					},
 					"layout": datasourceschema.StringAttribute{
 						Computed:            true,
 						MarkdownDescription: "Page layout.",

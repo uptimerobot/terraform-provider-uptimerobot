@@ -60,9 +60,10 @@ type FontSettings struct {
 
 // PageSettings represents the page settings.
 type PageSettings struct {
-	Layout  string `json:"layout,omitempty"`
-	Theme   string `json:"theme,omitempty"`
-	Density string `json:"density,omitempty"`
+	Layout                  string `json:"layout,omitempty"`
+	Theme                   string `json:"theme,omitempty"`
+	Density                 string `json:"density,omitempty"`
+	ShowMonitorsUnderGroups *bool  `json:"showMonitorsUnderGroups,omitempty"`
 }
 
 // ColorSettings represents the color settings.
