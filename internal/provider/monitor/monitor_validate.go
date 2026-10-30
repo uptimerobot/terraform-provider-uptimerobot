@@ -74,12 +74,6 @@ func (r *monitorResource) ValidateConfig(
 
 }
 
-const (
-	responseTimeThresholdModeOff    = "off"
-	responseTimeThresholdModeManual = "manual"
-	responseTimeThresholdModeAuto   = "auto"
-)
-
 func validateHeartbeatInterval(
 	monitorType string,
 	interval types.Int64,
@@ -785,7 +779,7 @@ func validateResponseTimeThresholdMode(ctx context.Context, data *monitorResourc
 
 	if mode == responseTimeThresholdModeAuto && !data.Type.IsNull() && !data.Type.IsUnknown() {
 		switch strings.ToUpper(data.Type.ValueString()) {
-		case MonitorTypeHEARTBEAT, MonitorTypeDNS, "VISUAL_COMPARISON":
+		case MonitorTypeHEARTBEAT, MonitorTypeDNS, monitorTypeVisualComparison:
 			resp.Diagnostics.AddAttributeError(
 				path.Root("response_time_threshold_mode"),
 				"Automatic thresholds are not available for this monitor type",
@@ -800,7 +794,7 @@ func validateResponseTimeThresholdMode(ctx context.Context, data *monitorResourc
 		resp.Diagnostics.AddAttributeError(
 			path.Root("response_time_threshold"),
 			"Response time threshold conflicts with response_time_threshold_mode",
-			fmt.Sprintf("response_time_threshold cannot be set when response_time_threshold_mode is %q. Remove it, or set response_time_threshold_mode to \"manual\".", mode),
+			fmt.Sprintf("response_time_threshold must not be set to a positive value, or at all in auto, when response_time_threshold_mode is %q. Remove it, or set response_time_threshold_mode to \"manual\".", mode),
 		)
 	}
 

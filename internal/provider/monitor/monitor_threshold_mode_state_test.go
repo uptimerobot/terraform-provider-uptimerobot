@@ -149,7 +149,7 @@ func TestLearningRegionsWarning(t *testing.T) {
 	t.Run("names every region that is still learning, in a stable order", func(t *testing.T) {
 		t.Parallel()
 		var diags diag.Diagnostics
-		addLearningRegionsWarning(&diags, &client.Monitor{
+		addLearningRegionsWarning(&diags, "checkout api", &client.Monitor{
 			ResponseTimeThresholdMode: "auto",
 			AutoThresholds: map[string]client.AutoThreshold{
 				"oc": {Status: "learning", DaysCollected: 1},
@@ -160,8 +160,15 @@ func TestLearningRegionsWarning(t *testing.T) {
 		if len(diags.Warnings()) != 1 || diags.HasError() {
 			t.Fatalf("want exactly one warning, got %v", diags)
 		}
-		detail := diags.Warnings()[0].Detail()
-		if !strings.Contains(detail, "eu, oc") || strings.Contains(detail, "na") {
+		warning := diags.Warnings()[0]
+		if !strings.Contains(warning.Detail(), "checkout api") {
+			t.Fatalf("the warning must name the monitor, got %q", warning.Detail())
+		}
+		if withPath, ok := warning.(diag.DiagnosticWithPath); !ok || withPath.Path().String() != "auto_thresholds" {
+			t.Fatalf("the warning must point at auto_thresholds, got %#v", warning)
+		}
+		detail := warning.Detail()
+		if !strings.Contains(detail, "from eu, oc until") {
 			t.Fatalf("the warning must name eu and oc only, got %q", detail)
 		}
 	})
@@ -169,7 +176,7 @@ func TestLearningRegionsWarning(t *testing.T) {
 	t.Run("says nothing when every region is ready or stale", func(t *testing.T) {
 		t.Parallel()
 		var diags diag.Diagnostics
-		addLearningRegionsWarning(&diags, &client.Monitor{
+		addLearningRegionsWarning(&diags, "checkout api", &client.Monitor{
 			ResponseTimeThresholdMode: "auto",
 			AutoThresholds:            map[string]client.AutoThreshold{"na": {Status: "ready"}, "eu": {Status: "stale"}},
 		})
@@ -181,7 +188,7 @@ func TestLearningRegionsWarning(t *testing.T) {
 	t.Run("says nothing outside auto", func(t *testing.T) {
 		t.Parallel()
 		var diags diag.Diagnostics
-		addLearningRegionsWarning(&diags, &client.Monitor{
+		addLearningRegionsWarning(&diags, "checkout api", &client.Monitor{
 			ResponseTimeThresholdMode: "manual",
 			AutoThresholds:            map[string]client.AutoThreshold{"na": {Status: "learning"}},
 		})

@@ -7,11 +7,20 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
-const autoThresholdStatusLearning = "learning"
+const (
+	autoThresholdStatusLearning = "learning"
+
+	responseTimeThresholdModeOff    = "off"
+	responseTimeThresholdModeManual = "manual"
+	responseTimeThresholdModeAuto   = "auto"
+
+	monitorTypeVisualComparison = "VISUAL_COMPARISON"
+)
 
 // thresholdModeForRequest is the mode to send: only one the configuration sets. An omitted mode is not sent, so the
 // monitor keeps the mode it has and existing configurations plan and apply exactly as before.
@@ -60,7 +69,7 @@ func optionalInt64(v *int) types.Int64 {
 
 // addLearningRegionsWarning tells the user that regions still collecting history send no slow response alerts yet,
 // so an apply that succeeds does not read as a monitor that is already protected.
-func addLearningRegionsWarning(diags *diag.Diagnostics, m *client.Monitor) {
+func addLearningRegionsWarning(diags *diag.Diagnostics, monitorName string, m *client.Monitor) {
 	if m == nil || m.ResponseTimeThresholdMode != responseTimeThresholdModeAuto {
 		return
 	}
@@ -74,11 +83,12 @@ func addLearningRegionsWarning(diags *diag.Diagnostics, m *client.Monitor) {
 		return
 	}
 	sort.Strings(learning)
-	diags.AddWarning(
+	diags.AddAttributeWarning(
+		path.Root("auto_thresholds"),
 		"Automatic thresholds are still learning",
 		fmt.Sprintf(
-			"No slow response alerts are sent from %s until each region has collected enough response time history. The auto_thresholds attribute shows the progress.",
-			strings.Join(learning, ", "),
+			"Monitor %q sends no slow response alerts from %s until each region has collected enough response time history. This is informational and repeats until then; auto_thresholds shows the progress.",
+			monitorName, strings.Join(learning, ", "),
 		),
 	)
 }

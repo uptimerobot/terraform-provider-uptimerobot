@@ -2,12 +2,21 @@
 
 ### Added
 
-- Added `uptimerobot_monitor.response_time_threshold_mode` (`off`, `manual` or `auto`). In `auto`, UptimeRobot derives a response time threshold for each region from that region's own history, so `response_time_threshold` and `region_data.thresholds` must not be set together with it. The attribute is optional and computed: configurations that omit it keep the mode the monitor already has and plan exactly as before.
-- Added the computed `uptimerobot_monitor.auto_thresholds`, keyed by region, with each region's `status` (`learning`, `ready` or `stale`), `threshold_ms`, `usual_ms` and `days_collected`. Apply warns while a region is still learning, because no slow response alerts are sent from it yet.
+- Added `uptimerobot_monitor.response_time_threshold_mode` (`off`, `manual` or `auto`). In `auto`, UptimeRobot derives a response time threshold for each region from that region's own history. The attribute is optional and computed: configurations that omit it keep the mode the monitor already has.
+- Added the computed `uptimerobot_monitor.auto_thresholds`, keyed by region, with each region's `status` (`learning`, `ready` or `stale`), `threshold_ms`, `usual_ms` and `days_collected`.
+- Apply warns when a monitor enters `auto` while a region is still learning, because no slow response alerts are sent from that region yet.
+
+### Changed
+
+- Configuration validation now refuses `response_time_threshold_mode = "auto"` together with `response_time_threshold` or `region_data.thresholds`, `"off"` together with a positive threshold, `"manual"` without a positive threshold, and `"auto"` on HEARTBEAT, DNS and VISUAL_COMPARISON monitors. Only configurations that set the new attribute are affected.
+
+### Documentation
+
+- Documented the new attributes and added an example.
 
 ### Upgrade notes
 
-- Monitor state stays at schema version 7. No state migration, re-import or resource replacement is required.
+- Monitor state stays at schema version 7. No state migration, re-import or resource replacement is required, and existing monitors show no change on the next plan. Because the mode is computed, a plan that changes something else on a monitor lists `response_time_threshold_mode` and `auto_thresholds` as known after apply.
 
 ## 1.12.2 — 2026-10-27
 

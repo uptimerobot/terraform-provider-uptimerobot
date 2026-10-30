@@ -7,8 +7,6 @@ import (
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
-func strPtr(v string) *string { return &v }
-
 func TestWantFromCreateReqCarriesTheThresholdMode(t *testing.T) {
 	t.Parallel()
 
@@ -24,7 +22,7 @@ func TestWantFromCreateReqCarriesTheThresholdMode(t *testing.T) {
 func TestWantFromUpdateReqCarriesTheThresholdMode(t *testing.T) {
 	t.Parallel()
 
-	got := wantFromUpdateReq(&client.UpdateMonitorRequest{ResponseTimeThresholdMode: strPtr("manual")})
+	got := wantFromUpdateReq(&client.UpdateMonitorRequest{ResponseTimeThresholdMode: stringPtr("manual")})
 	if got.ResponseTimeThresholdMode == nil || *got.ResponseTimeThresholdMode != "manual" {
 		t.Fatalf("mode = %v, want manual", got.ResponseTimeThresholdMode)
 	}
@@ -54,10 +52,10 @@ func TestEqualComparableThresholdMode(t *testing.T) {
 		got  *string
 		same bool
 	}{
-		{"the same mode", strPtr("auto"), strPtr("auto"), true},
-		{"a different mode is not settled yet", strPtr("auto"), strPtr("manual"), false},
-		{"no mode wanted ignores whatever the API has", nil, strPtr("manual"), true},
-		{"an API that does not report the mode cannot contradict it", strPtr("auto"), nil, true},
+		{"the same mode", stringPtr("auto"), stringPtr("auto"), true},
+		{"a different mode is not settled yet", stringPtr("auto"), stringPtr("manual"), false},
+		{"no mode wanted ignores whatever the API has", nil, stringPtr("manual"), true},
+		{"an API that does not report the mode cannot contradict it", stringPtr("auto"), nil, true},
 	}
 	for _, tt := range tests {
 		tt := tt
@@ -81,7 +79,7 @@ func TestAutoModeIgnoresThresholdsTheServerDerives(t *testing.T) {
 	t.Parallel()
 
 	want := wantFromUpdateReq(&client.UpdateMonitorRequest{
-		ResponseTimeThresholdMode: strPtr("auto"),
+		ResponseTimeThresholdMode: stringPtr("auto"),
 		RegionData:                &client.RegionDataRequest{Regions: []string{"na", "eu"}, RegionsManaged: true},
 	})
 	got := buildComparableFromAPI(&client.Monitor{

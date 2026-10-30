@@ -10,15 +10,14 @@ resource "uptimerobot_monitor" "auto_threshold" {
   response_time_threshold_mode = "auto"
 }
 
-output "auto_threshold_status" {
-  value = uptimerobot_monitor.auto_threshold.auto_thresholds
-}
+# uptimerobot_monitor.auto_threshold.auto_thresholds lists each region with its status, threshold_ms, usual_ms and
+# days_collected.
 
 # Thresholds you set yourself.
 resource "uptimerobot_monitor" "manual_threshold" {
   name     = "Website with a fixed threshold"
   type     = "HTTP"
-  url      = "https://example.com"
+  url      = "https://example.org"
   interval = 300
 
   response_time_threshold_mode = "manual"

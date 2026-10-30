@@ -847,7 +847,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 
 ### Read-Only
 
-- `auto_thresholds` (Attributes Map) The state of each region's automatic threshold, keyed by region code. Empty unless response_time_threshold_mode is auto. (see [below for nested schema](#nestedatt--auto_thresholds))
+- `auto_thresholds` (Attributes Map) The state of each region's automatic threshold, keyed by region code. Empty unless `response_time_threshold_mode` is `auto`. (see [below for nested schema](#nestedatt--auto_thresholds))
 - `id` (String) Monitor ID
 - `post_value_type` (String) Computed body type used by UptimeRobot when sending the monitor request. Set automatically to RAW_JSON or KEY_VALUE.
 - `status` (String) Status of the monitor

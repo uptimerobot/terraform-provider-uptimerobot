@@ -90,6 +90,8 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 	resp.Schema = monitorSchema(7, true, true)
 }
 
+// monitorSchema builds the resource schema. includePortAlertCondition is false for the prior schemas (v6 and older),
+// which predate port_alert_condition and also the response_time_threshold_mode and auto_thresholds attributes.
 func monitorSchema(version int64, includeApplicationErrorRetries bool, includePortAlertCondition bool) schema.Schema {
 	s := schema.Schema{
 		Version:     version,
@@ -445,6 +447,8 @@ Alert contacts and integrations assigned to this monitor.
 					int64validator.Between(0, 60000),
 				},
 			},
+			// No UseStateForUnknown on purpose: the server derives the mode, so planning the old value would be
+			// contradicted after apply as soon as a threshold changes. It shows as "known after apply" on any update.
 			"response_time_threshold_mode": schema.StringAttribute{
 				Description: "How the response time threshold is set: off, manual or auto. In auto, UptimeRobot derives a threshold for each region from that region's own response time history, so response_time_threshold and region_data.thresholds must not be set. When omitted, the mode the monitor already has is kept.",
 				MarkdownDescription: "How the response time threshold is set: `off`, `manual` or `auto`.\n\n" +
@@ -459,8 +463,9 @@ Alert contacts and integrations assigned to this monitor.
 				},
 			},
 			"auto_thresholds": schema.MapNestedAttribute{
-				Description: "The state of each region's automatic threshold, keyed by region code. Empty unless response_time_threshold_mode is auto.",
-				Computed:    true,
+				Description:         "The state of each region's automatic threshold, keyed by region code. Empty unless response_time_threshold_mode is auto.",
+				MarkdownDescription: "The state of each region's automatic threshold, keyed by region code. Empty unless `response_time_threshold_mode` is `auto`.",
+				Computed:            true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"status": schema.StringAttribute{
