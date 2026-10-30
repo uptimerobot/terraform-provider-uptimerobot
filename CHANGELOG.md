@@ -1,5 +1,14 @@
 ## Unreleased
 
+### Added
+
+- Added `uptimerobot_monitor.response_time_threshold_mode` (`off`, `manual` or `auto`). In `auto`, UptimeRobot derives a response time threshold for each region from that region's own history, so `response_time_threshold` and `region_data.thresholds` must not be set together with it. The attribute is optional and computed: configurations that omit it keep the mode the monitor already has and plan exactly as before.
+- Added the computed `uptimerobot_monitor.auto_thresholds`, keyed by region, with each region's `status` (`learning`, `ready` or `stale`), `threshold_ms`, `usual_ms` and `days_collected`. Apply warns while a region is still learning, because no slow response alerts are sent from it yet.
+
+### Upgrade notes
+
+- Monitor state stays at schema version 7. No state migration, re-import or resource replacement is required.
+
 ## 1.12.2 — 2026-10-27
 
 ### Fixed
