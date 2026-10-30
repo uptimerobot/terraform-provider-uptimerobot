@@ -8,7 +8,7 @@
 
 ### Changed
 
-- Configuration validation now refuses `response_time_threshold_mode = "auto"` together with `response_time_threshold` or `region_data.thresholds`, `"off"` together with a positive threshold, `"manual"` without a positive threshold, and `"auto"` on HEARTBEAT, DNS and VISUAL_COMPARISON monitors. Only configurations that set the new attribute are affected.
+- Configuration validation now refuses `response_time_threshold_mode = "auto"` together with `response_time_threshold` or `region_data.thresholds`, `"off"` together with a positive threshold, `"manual"` without a positive threshold, `"auto"` or `"manual"` on HEARTBEAT, DNS and VISUAL_COMPARISON monitors, and a switch from `"auto"` to `"manual"` that leaves a selected region without a threshold in `region_data.thresholds`. Only configurations that set the new attribute are affected.
 
 ### Documentation
 

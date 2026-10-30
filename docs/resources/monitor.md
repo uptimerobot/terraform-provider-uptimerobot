@@ -834,7 +834,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `manual` uses the thresholds you set in `response_time_threshold` or `region_data.thresholds`, and needs at least one positive value. When you switch a monitor from `auto` to `manual`, set a threshold for every selected region: regions without one get a default.
 - `off` disables slow response alerts.
 
-`auto` is not available for HEARTBEAT, DNS and VISUAL_COMPARISON monitors, which have no slow response alert. When omitted, the mode the monitor already has is kept, so a configuration that sets `response_time_threshold` on a monitor that was switched to `auto` outside Terraform changes it back to `manual` on the next apply.
+`auto` and `manual` are not available for HEARTBEAT, DNS and VISUAL_COMPARISON monitors, which have no slow response alert. With `auto`, `region_data.thresholds` must not be set at all, not even as an empty map. When omitted, the mode the monitor already has is kept, so a configuration that sets `response_time_threshold` on a monitor that was switched to `auto` outside Terraform changes it back to `manual` on the next apply.
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
 - `success_http_response_codes` (Set of String) The expected HTTP response codes. If not set API applies defaults.
 - `tags` (Set of String) Tags for the monitor. Must be lowercase. Duplicates are removed by set semantics.
