@@ -113,6 +113,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, final)...)
+	addLearningRegionsWarning(&resp.Diagnostics, api)
 }
 
 // recoverMonitorCreatedDespiteError handles create calls that fail with the
@@ -408,6 +409,7 @@ func (r *monitorResource) buildCreateRequest(
 	if !plan.ResponseTimeThreshold.IsNull() && !plan.ResponseTimeThreshold.IsUnknown() {
 		req.ResponseTimeThreshold = int(plan.ResponseTimeThreshold.ValueInt64())
 	}
+	req.ResponseTimeThresholdMode = thresholdModeForRequest(plan.ResponseTimeThresholdMode)
 	if regionData, ok, d := expandRegionDataToAPI(ctx, plan.RegionData); d.HasError() {
 		resp.Diagnostics.Append(d...)
 		return nil, ""
@@ -722,6 +724,10 @@ func (r *monitorResource) buildStateAfterCreate(
 	plan.Name = types.StringValue(unescapeHTML(api.Name))
 	plan.URL = monitorURLForState(plan.Type.ValueString(), plan.URL, api.URL)
 	plan.Status = types.StringValue(api.Status)
+	plan.ResponseTimeThresholdMode = thresholdModeToState(plan.ResponseTimeThresholdMode, api)
+	autoThresholds, autoDiags := autoThresholdsToState(api)
+	resp.Diagnostics.Append(autoDiags...)
+	plan.AutoThresholds = autoThresholds
 	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
 		plan.IsPaused = types.BoolValue(isMonitorPausedStatus(api.Status))
 	} else {

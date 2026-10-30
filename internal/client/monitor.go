@@ -28,76 +28,78 @@ const (
 
 // CreateMonitorRequest represents the request to create a new monitor.
 type CreateMonitorRequest struct {
-	Name                     string                `json:"friendlyName"`
-	URL                      string                `json:"url,omitempty"`
-	Type                     MonitorType           `json:"type"`
-	Interval                 int                   `json:"interval"`
-	Timeout                  *int                  `json:"timeout,omitempty"`
-	HTTPAuthType             string                `json:"authType,omitempty"`
-	HTTPMethodType           string                `json:"httpMethodType,omitempty"`
-	HTTPUsername             string                `json:"httpUsername,omitempty"`
-	HTTPPassword             string                `json:"httpPassword,omitempty"`
-	Port                     int                   `json:"port,omitempty"`
-	PortAlertCondition       string                `json:"portAlertCondition,omitempty"`
-	KeywordType              string                `json:"keywordType,omitempty"`
-	KeywordValue             string                `json:"keywordValue,omitempty"`
-	KeywordCaseType          *int                  `json:"keywordCaseType,omitempty"`
-	AssignedAlertContacts    []AlertContactRequest `json:"assignedAlertContacts,omitempty"`
-	CheckSSLErrors           *bool                 `json:"checkSSLErrors,omitempty"`
-	SSLCheckEnabled          bool                  `json:"sslCheckEnabled,omitempty"`
-	CustomHTTPHeaders        map[string]string     `json:"customHttpHeaders,omitempty"`
-	CustomFields             map[string]string     `json:"customFields,omitempty"`
-	SuccessHTTPResponseCodes []string              `json:"successHttpResponseCodes,omitempty"`
-	MaintenanceWindowIDs     []int64               `json:"maintenanceWindowsIds,omitempty"`
-	Tags                     []string              `json:"tagNames"`
-	GracePeriod              *int                  `json:"gracePeriod,omitempty"`
-	PostValueType            string                `json:"postValueType,omitempty"`
-	PostValueData            interface{}           `json:"postValueData,omitempty"`
-	SSLExpirationReminder    bool                  `json:"sslExpirationReminder"`
-	DomainExpirationReminder bool                  `json:"domainExpirationReminder"`
-	FollowRedirections       bool                  `json:"followRedirections"`
-	ResponseTimeThreshold    int                   `json:"responseTimeThreshold,omitempty"`
-	RegionalData             string                `json:"regionalData,omitempty"`
-	RegionData               *RegionDataRequest    `json:"regionData,omitempty"`
-	Config                   *MonitorConfig        `json:"config,omitempty"`
-	GroupID                  *int                  `json:"groupId,omitempty"`
+	Name                      string                `json:"friendlyName"`
+	URL                       string                `json:"url,omitempty"`
+	Type                      MonitorType           `json:"type"`
+	Interval                  int                   `json:"interval"`
+	Timeout                   *int                  `json:"timeout,omitempty"`
+	HTTPAuthType              string                `json:"authType,omitempty"`
+	HTTPMethodType            string                `json:"httpMethodType,omitempty"`
+	HTTPUsername              string                `json:"httpUsername,omitempty"`
+	HTTPPassword              string                `json:"httpPassword,omitempty"`
+	Port                      int                   `json:"port,omitempty"`
+	PortAlertCondition        string                `json:"portAlertCondition,omitempty"`
+	KeywordType               string                `json:"keywordType,omitempty"`
+	KeywordValue              string                `json:"keywordValue,omitempty"`
+	KeywordCaseType           *int                  `json:"keywordCaseType,omitempty"`
+	AssignedAlertContacts     []AlertContactRequest `json:"assignedAlertContacts,omitempty"`
+	CheckSSLErrors            *bool                 `json:"checkSSLErrors,omitempty"`
+	SSLCheckEnabled           bool                  `json:"sslCheckEnabled,omitempty"`
+	CustomHTTPHeaders         map[string]string     `json:"customHttpHeaders,omitempty"`
+	CustomFields              map[string]string     `json:"customFields,omitempty"`
+	SuccessHTTPResponseCodes  []string              `json:"successHttpResponseCodes,omitempty"`
+	MaintenanceWindowIDs      []int64               `json:"maintenanceWindowsIds,omitempty"`
+	Tags                      []string              `json:"tagNames"`
+	GracePeriod               *int                  `json:"gracePeriod,omitempty"`
+	PostValueType             string                `json:"postValueType,omitempty"`
+	PostValueData             interface{}           `json:"postValueData,omitempty"`
+	SSLExpirationReminder     bool                  `json:"sslExpirationReminder"`
+	DomainExpirationReminder  bool                  `json:"domainExpirationReminder"`
+	FollowRedirections        bool                  `json:"followRedirections"`
+	ResponseTimeThreshold     int                   `json:"responseTimeThreshold,omitempty"`
+	ResponseTimeThresholdMode string                `json:"responseTimeThresholdMode,omitempty"`
+	RegionalData              string                `json:"regionalData,omitempty"`
+	RegionData                *RegionDataRequest    `json:"regionData,omitempty"`
+	Config                    *MonitorConfig        `json:"config,omitempty"`
+	GroupID                   *int                  `json:"groupId,omitempty"`
 }
 
 // UpdateMonitorRequest represents the request to update an existing monitor.
 type UpdateMonitorRequest struct {
-	Name                     string                 `json:"friendlyName"`
-	URL                      string                 `json:"url,omitempty"`
-	Type                     MonitorType            `json:"type"`
-	Interval                 int                    `json:"interval"`
-	Timeout                  *int                   `json:"timeout,omitempty"`
-	HTTPAuthType             string                 `json:"authType,omitempty"`
-	HTTPMethodType           string                 `json:"httpMethodType,omitempty"`
-	HTTPUsername             string                 `json:"httpUsername,omitempty"`
-	HTTPPassword             string                 `json:"httpPassword,omitempty"`
-	Port                     int                    `json:"port,omitempty"`
-	PortAlertCondition       string                 `json:"portAlertCondition,omitempty"`
-	KeywordType              string                 `json:"keywordType,omitempty"`
-	KeywordValue             string                 `json:"keywordValue,omitempty"`
-	KeywordCaseType          *int                   `json:"keywordCaseType,omitempty"`
-	AssignedAlertContacts    *[]AlertContactRequest `json:"assignedAlertContacts,omitempty"`
-	CheckSSLErrors           *bool                  `json:"checkSSLErrors,omitempty"`
-	SSLCheckEnabled          bool                   `json:"sslCheckEnabled,omitempty"`
-	CustomHTTPHeaders        *map[string]string     `json:"customHttpHeaders,omitempty"`
-	CustomFields             *map[string]string     `json:"customFields,omitempty"`
-	SuccessHTTPResponseCodes *[]string              `json:"successHttpResponseCodes,omitempty"`
-	MaintenanceWindowIDs     *[]int64               `json:"maintenanceWindowsIds,omitempty"`
-	Tags                     *[]string              `json:"tagNames,omitempty"`
-	GracePeriod              *int                   `json:"gracePeriod,omitempty"`
-	PostValueType            string                 `json:"postValueType,omitempty"`
-	PostValueData            interface{}            `json:"postValueData,omitempty"`
-	SSLExpirationReminder    bool                   `json:"sslExpirationReminder"`
-	DomainExpirationReminder bool                   `json:"domainExpirationReminder"`
-	FollowRedirections       bool                   `json:"followRedirections"`
-	ResponseTimeThreshold    *int                   `json:"responseTimeThreshold,omitempty"`
-	RegionalData             *string                `json:"regionalData,omitempty"`
-	RegionData               *RegionDataRequest     `json:"regionData,omitempty"`
-	Config                   *MonitorConfig         `json:"config,omitempty"`
-	GroupID                  *int                   `json:"groupId,omitempty"`
+	Name                      string                 `json:"friendlyName"`
+	URL                       string                 `json:"url,omitempty"`
+	Type                      MonitorType            `json:"type"`
+	Interval                  int                    `json:"interval"`
+	Timeout                   *int                   `json:"timeout,omitempty"`
+	HTTPAuthType              string                 `json:"authType,omitempty"`
+	HTTPMethodType            string                 `json:"httpMethodType,omitempty"`
+	HTTPUsername              string                 `json:"httpUsername,omitempty"`
+	HTTPPassword              string                 `json:"httpPassword,omitempty"`
+	Port                      int                    `json:"port,omitempty"`
+	PortAlertCondition        string                 `json:"portAlertCondition,omitempty"`
+	KeywordType               string                 `json:"keywordType,omitempty"`
+	KeywordValue              string                 `json:"keywordValue,omitempty"`
+	KeywordCaseType           *int                   `json:"keywordCaseType,omitempty"`
+	AssignedAlertContacts     *[]AlertContactRequest `json:"assignedAlertContacts,omitempty"`
+	CheckSSLErrors            *bool                  `json:"checkSSLErrors,omitempty"`
+	SSLCheckEnabled           bool                   `json:"sslCheckEnabled,omitempty"`
+	CustomHTTPHeaders         *map[string]string     `json:"customHttpHeaders,omitempty"`
+	CustomFields              *map[string]string     `json:"customFields,omitempty"`
+	SuccessHTTPResponseCodes  *[]string              `json:"successHttpResponseCodes,omitempty"`
+	MaintenanceWindowIDs      *[]int64               `json:"maintenanceWindowsIds,omitempty"`
+	Tags                      *[]string              `json:"tagNames,omitempty"`
+	GracePeriod               *int                   `json:"gracePeriod,omitempty"`
+	PostValueType             string                 `json:"postValueType,omitempty"`
+	PostValueData             interface{}            `json:"postValueData,omitempty"`
+	SSLExpirationReminder     bool                   `json:"sslExpirationReminder"`
+	DomainExpirationReminder  bool                   `json:"domainExpirationReminder"`
+	FollowRedirections        bool                   `json:"followRedirections"`
+	ResponseTimeThreshold     *int                   `json:"responseTimeThreshold,omitempty"`
+	ResponseTimeThresholdMode *string                `json:"responseTimeThresholdMode,omitempty"`
+	RegionalData              *string                `json:"regionalData,omitempty"`
+	RegionData                *RegionDataRequest     `json:"regionData,omitempty"`
+	Config                    *MonitorConfig         `json:"config,omitempty"`
+	GroupID                   *int                   `json:"groupId,omitempty"`
 }
 
 // Monitor represents a monitor.
@@ -145,7 +147,18 @@ type Monitor struct {
 	GroupID                  int64               `json:"groupId"`
 	RegionalData             interface{}         `json:"regionalData"`
 	ResponseTimeThreshold    int                 `json:"responseTimeThreshold"`
-	Config                   *MonitorConfig      `json:"config"`
+	// ResponseTimeThresholdMode and AutoThresholds are absent from responses that predate automatic thresholds.
+	ResponseTimeThresholdMode string                   `json:"responseTimeThresholdMode"`
+	AutoThresholds            map[string]AutoThreshold `json:"autoThresholds"`
+	Config                    *MonitorConfig           `json:"config"`
+}
+
+// AutoThreshold is the state of one region's automatic threshold.
+type AutoThreshold struct {
+	Status        string `json:"status"`
+	ThresholdMs   *int   `json:"thresholdMs"`
+	UsualMs       *int   `json:"usualMs"`
+	DaysCollected int    `json:"daysCollected"`
 }
 
 type Tag struct {
