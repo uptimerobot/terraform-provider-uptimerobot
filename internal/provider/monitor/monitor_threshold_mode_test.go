@@ -127,6 +127,72 @@ func TestValidateResponseTimeThresholdMode(t *testing.T) {
 			},
 		},
 		{
+			name:      "manual with no value at all, which the server would turn into off",
+			model:     monitorResourceModel{ResponseTimeThresholdMode: types.StringValue("manual")},
+			wantError: "manual",
+		},
+		{
+			name: "manual with a zero response time threshold",
+			model: monitorResourceModel{
+				ResponseTimeThresholdMode: types.StringValue("manual"),
+				ResponseTimeThreshold:     types.Int64Value(0),
+			},
+			wantError: "manual",
+		},
+		{
+			name: "manual with region thresholds that are all zero",
+			model: monitorResourceModel{
+				ResponseTimeThresholdMode: types.StringValue("manual"),
+				RegionData:                regionDataWithThresholds(t, map[string]int64{"na": 0}),
+			},
+			wantError: "manual",
+		},
+		{
+			name: "manual with a positive region threshold",
+			model: monitorResourceModel{
+				ResponseTimeThresholdMode: types.StringValue("manual"),
+				RegionData:                regionDataWithThresholds(t, map[string]int64{"na": 800}),
+			},
+		},
+		{
+			name: "manual with a threshold that is unknown during planning is not judged",
+			model: monitorResourceModel{
+				ResponseTimeThresholdMode: types.StringValue("manual"),
+				ResponseTimeThreshold:     types.Int64Unknown(),
+			},
+		},
+		{
+			name: "auto on a heartbeat monitor, which has no slow response alert",
+			model: monitorResourceModel{
+				Type:                      types.StringValue(MonitorTypeHEARTBEAT),
+				ResponseTimeThresholdMode: types.StringValue("auto"),
+			},
+			wantError: "auto",
+		},
+		{
+			name: "auto on a DNS monitor",
+			model: monitorResourceModel{
+				Type:                      types.StringValue(MonitorTypeDNS),
+				ResponseTimeThresholdMode: types.StringValue("auto"),
+			},
+			wantError: "auto",
+		},
+		{
+			name: "auto on a visual comparison monitor",
+			model: monitorResourceModel{
+				Type:                      types.StringValue("VISUAL_COMPARISON"),
+				ResponseTimeThresholdMode: types.StringValue("auto"),
+			},
+			wantError: "auto",
+		},
+		{
+			name: "auto on an HTTP monitor",
+			model: monitorResourceModel{
+				Type:                      types.StringValue(MonitorTypeHTTP),
+				ResponseTimeThresholdMode: types.StringValue("auto"),
+			},
+		},
+		{
 			name: "manual with values",
 			model: monitorResourceModel{
 				ResponseTimeThresholdMode: types.StringValue("manual"),

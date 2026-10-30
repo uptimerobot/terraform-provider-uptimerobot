@@ -449,9 +449,9 @@ Alert contacts and integrations assigned to this monitor.
 				Description: "How the response time threshold is set: off, manual or auto. In auto, UptimeRobot derives a threshold for each region from that region's own response time history, so response_time_threshold and region_data.thresholds must not be set. When omitted, the mode the monitor already has is kept.",
 				MarkdownDescription: "How the response time threshold is set: `off`, `manual` or `auto`.\n\n" +
 					"- `auto` lets UptimeRobot derive a threshold for each region from that region's own response time history and keep it up to date. `response_time_threshold` and `region_data.thresholds` must not be set, and the computed `auto_thresholds` shows the state of each region. A region without enough history yet is still learning and sends no slow response alerts.\n" +
-					"- `manual` uses the thresholds you set in `response_time_threshold` or `region_data.thresholds`.\n" +
+					"- `manual` uses the thresholds you set in `response_time_threshold` or `region_data.thresholds`, and needs at least one positive value. When you switch a monitor from `auto` to `manual`, set a threshold for every selected region: regions without one get a default.\n" +
 					"- `off` disables slow response alerts.\n\n" +
-					"When omitted, the mode the monitor already has is kept.",
+					"`auto` is not available for HEARTBEAT, DNS and VISUAL_COMPARISON monitors, which have no slow response alert. When omitted, the mode the monitor already has is kept, so a configuration that sets `response_time_threshold` on a monitor that was switched to `auto` outside Terraform changes it back to `manual` on the next apply.",
 				Optional: true,
 				Computed: true,
 				Validators: []validator.String{

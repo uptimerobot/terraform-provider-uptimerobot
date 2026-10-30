@@ -770,19 +770,33 @@ func validateHTTPPasswordWithoutUserName(
 	}
 }
 
-// Auto derives the thresholds on the server and Off has none, and the API rejects values sent with either, so the
-// configuration is refused here with the attribute to remove instead of failing at apply.
+// The server does not store the mode: it derives it, Auto when the monitor has automatic thresholds, else Manual when
+// any threshold is positive, else Off. So Auto and Off cannot be sent together with values, and Manual means nothing
+// without one (the server would report Off, and the monitor would never settle to the planned mode). The configuration
+// is refused here, naming what to change, instead of failing at apply.
 func validateResponseTimeThresholdMode(ctx context.Context, data *monitorResourceModel, resp *resource.ValidateConfigResponse) {
 	if data.ResponseTimeThresholdMode.IsNull() || data.ResponseTimeThresholdMode.IsUnknown() {
 		return
 	}
 	mode := data.ResponseTimeThresholdMode.ValueString()
-	if mode != responseTimeThresholdModeAuto && mode != responseTimeThresholdModeOff {
+	if mode != responseTimeThresholdModeAuto && mode != responseTimeThresholdModeOff && mode != responseTimeThresholdModeManual {
 		return
 	}
 
+	if mode == responseTimeThresholdModeAuto && !data.Type.IsNull() && !data.Type.IsUnknown() {
+		switch strings.ToUpper(data.Type.ValueString()) {
+		case MonitorTypeHEARTBEAT, MonitorTypeDNS, "VISUAL_COMPARISON":
+			resp.Diagnostics.AddAttributeError(
+				path.Root("response_time_threshold_mode"),
+				"Automatic thresholds are not available for this monitor type",
+				fmt.Sprintf("%s monitors have no slow response alert, so response_time_threshold_mode cannot be %q.", strings.ToUpper(data.Type.ValueString()), mode),
+			)
+		}
+	}
+
 	singleValueSet := !data.ResponseTimeThreshold.IsNull() && !data.ResponseTimeThreshold.IsUnknown()
-	if singleValueSet && (mode == responseTimeThresholdModeAuto || data.ResponseTimeThreshold.ValueInt64() > 0) {
+	singleValuePositive := singleValueSet && data.ResponseTimeThreshold.ValueInt64() > 0
+	if singleValueSet && mode != responseTimeThresholdModeManual && (mode == responseTimeThresholdModeAuto || singleValuePositive) {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("response_time_threshold"),
 			"Response time threshold conflicts with response_time_threshold_mode",
@@ -790,27 +804,50 @@ func validateResponseTimeThresholdMode(ctx context.Context, data *monitorResourc
 		)
 	}
 
-	if data.RegionData.IsNull() || data.RegionData.IsUnknown() {
-		return
-	}
-	var regionData regionDataTF
-	resp.Diagnostics.Append(data.RegionData.As(ctx, &regionData, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
-	if resp.Diagnostics.HasError() || regionData.Thresholds.IsNull() || regionData.Thresholds.IsUnknown() {
-		return
-	}
-	var thresholds map[string]int64
-	resp.Diagnostics.Append(regionData.Thresholds.ElementsAs(ctx, &thresholds, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	for _, value := range thresholds {
-		if value > 0 {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("region_data").AtName("thresholds"),
-				"Region thresholds conflict with response_time_threshold_mode",
-				fmt.Sprintf("region_data.thresholds cannot be set when response_time_threshold_mode is %q. Remove it, or set response_time_threshold_mode to \"manual\".", mode),
-			)
+	regionValuePositive := false
+	regionValuesUnknown := false
+	if !data.RegionData.IsNull() && !data.RegionData.IsUnknown() {
+		var regionData regionDataTF
+		resp.Diagnostics.Append(data.RegionData.As(ctx, &regionData, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
 			return
 		}
+		if regionData.Thresholds.IsUnknown() {
+			regionValuesUnknown = true
+		} else if !regionData.Thresholds.IsNull() {
+			var thresholds map[string]int64
+			resp.Diagnostics.Append(regionData.Thresholds.ElementsAs(ctx, &thresholds, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			for _, value := range thresholds {
+				if value > 0 {
+					regionValuePositive = true
+					break
+				}
+			}
+		}
+	} else if data.RegionData.IsUnknown() {
+		regionValuesUnknown = true
+	}
+
+	if mode == responseTimeThresholdModeManual {
+		valuesUnknown := data.ResponseTimeThreshold.IsUnknown() || regionValuesUnknown
+		if !singleValuePositive && !regionValuePositive && !valuesUnknown {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("response_time_threshold_mode"),
+				"Manual mode needs a threshold",
+				"response_time_threshold_mode \"manual\" needs a positive response_time_threshold or a positive value in region_data.thresholds. Without one the monitor has no threshold and is reported as \"off\". Set a threshold, or use \"off\" or \"auto\".",
+			)
+		}
+		return
+	}
+
+	if regionValuePositive {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("region_data").AtName("thresholds"),
+			"Region thresholds conflict with response_time_threshold_mode",
+			fmt.Sprintf("region_data.thresholds cannot be set when response_time_threshold_mode is %q. Remove it, or set response_time_threshold_mode to \"manual\".", mode),
+		)
 	}
 }
