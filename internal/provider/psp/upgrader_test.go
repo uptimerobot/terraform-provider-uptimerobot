@@ -86,3 +86,13 @@ func TestUpgradePSPFromV0_AutoAddMonitorsFromSentinel(t *testing.T) {
 	require.False(t, up.AutoAddMonitors.IsNull())
 	require.True(t, up.AutoAddMonitors.ValueBool())
 }
+
+func TestUpgradePSPFromV0_MonitorGroupsRemainUnmanaged(t *testing.T) {
+	prior := pspV0Model{CustomSettings: &pspV0CustomSettings{
+		Page: &pspV0Page{Theme: types.StringValue("dark")},
+	}}
+	up, diags := upgradePSPFromV0(context.Background(), prior)
+	require.False(t, diags.HasError())
+	require.Equal(t, "dark", up.CustomSettings.Page.Theme.ValueString())
+	require.True(t, up.CustomSettings.Page.ShowMonitorGroups.IsNull())
+}

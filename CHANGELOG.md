@@ -1,5 +1,33 @@
 ## Unreleased
 
+## 1.13.0 — 2026-10-30
+
+### Added
+
+- Added `custom_settings.page.show_monitor_groups` to the `uptimerobot_psp` resource and data source, matching the dashboard's **Show monitors under their groups** option. Explicit `true` enables grouping and `false` disables it; omitting the setting or using `null` preserves the remote value without managing it in Terraform.
+
+### Fixed
+
+- Preserved `custom_settings.page` during PSP import, including an explicitly disabled monitor-group display setting. Import now reads the existing page settings instead of dropping them because the initial import state contains only the PSP ID.
+- Wait for the configured monitor-group display value to settle after create or update, preventing stale API reads from producing an inconsistent result. If confirmation times out, report an error while retaining the resource ID and latest API state for recovery.
+- Retry PSP data-source name lookups when the list endpoint has not yet exposed a newly created or renamed status page. Retries are bounded and respect cancellation; missing and ambiguous names still produce errors.
+
+### Documentation
+
+- Added a monitor-group status-page example and documented enable/disable, omission/null, data-source, and import behavior. Clarified that the display setting does not change monitor selection or group membership.
+
+### Tests/CI
+
+- Added regression coverage for boolean request encoding, resource and data-source reads, unmanaged settings, external drift, import of both boolean values, legacy state upgrades, delayed API responses, and timeout recovery for create and update.
+- Added PSP name-lookup regressions for delayed list visibility, exhausted retries, cancellation, ambiguous names, API errors, and direct ID lookups.
+- Wait past the API's 60-second response-cache lifetime after acceptance-test writes and deliberate external drift before subsequent checks. Verify data-source lookups by ID and name for both boolean values in separate steps after writes have settled.
+- Added a live PSP lifecycle acceptance test covering create, updates, data-source lookup by ID and name, drift repair, omission/null, removal of the settings block, import, and clean subsequent plans. Verified it with Terraform and OpenTofu, plus built-provider manual checks and an upgrade from v1.12.2 state.
+
+### Upgrade notes
+
+- PSP state remains at schema version 1. No state upgrader, re-import, or resource replacement is required; existing configurations that omit the new setting preserve the remote value.
+- The new setting requires a UptimeRobot API deployment that supports `customSettings.page.showMonitorsUnderGroups`.
+
 ## 1.12.2 — 2026-10-27
 
 ### Fixed

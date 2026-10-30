@@ -93,6 +93,33 @@ resource "uptimerobot_psp" "all_monitors" {
 }
 ```
 
+### Status Page with Monitor Groups
+
+```terraform
+resource "uptimerobot_monitor_group" "services" {
+  name = "Services"
+}
+
+resource "uptimerobot_monitor" "service" {
+  name     = "Service"
+  type     = "HTTP"
+  url      = "https://example.com"
+  interval = 300
+  group_id = uptimerobot_monitor_group.services.id
+}
+
+resource "uptimerobot_psp" "grouped" {
+  name        = "Service Status"
+  monitor_ids = [uptimerobot_monitor.service.id]
+
+  custom_settings = {
+    page = {
+      show_monitor_groups = true
+    }
+  }
+}
+```
+
 ### Password Protected Status Page
 
 ```terraform
@@ -203,6 +230,10 @@ You can include specific monitors in your status page by providing their IDs in 
 You can also include monitors by tag with `tag_ids`. The UptimeRobot API resolves matching monitors server-side, and `tag_ids` are additive with `monitor_ids`.
 
 Set `auto_add_monitors = true` to automatically include all current and future monitors in the public status page. This uses the UptimeRobot API auto-add mode and should not be combined with explicit `monitor_ids`. Existing configurations that use `monitor_ids = [0]` for the API sentinel continue to work, but `auto_add_monitors` is preferred for new Terraform configuration.
+
+Set `custom_settings.page.show_monitor_groups = true` to display the selected monitors under their assigned monitor groups, matching the dashboard's **Show monitors under their groups** option. Assign monitors to groups using `uptimerobot_monitor.group_id`; this display setting does not change monitor selection or group membership.
+
+Set the value to `false` to disable grouping. Omitting it or setting it to `null` leaves the remote value unchanged and stops Terraform from managing it. Import reads the existing setting, and the `uptimerobot_psp` data source exposes it as well. This setting requires an API deployment that supports `customSettings.page.showMonitorsUnderGroups`.
 
 Use `monitor_sort` to control how monitors are ordered on the public status page. Supported values are:
 - `friendly_name_asc`
@@ -324,4 +355,5 @@ Optional:
 
 - `density` (String) Page density
 - `layout` (String) Page layout
+- `show_monitor_groups` (Boolean) Show monitors under their assigned monitor groups. Set false to disable grouping. When omitted, the existing remote setting is left unchanged.
 - `theme` (String) Page theme
