@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -22,6 +23,14 @@ var (
 	_ datasource.DataSource              = &pspDataSource{}
 	_ datasource.DataSourceWithConfigure = &pspDataSource{}
 )
+
+var pspListLookupBackoffs = []time.Duration{
+	2 * time.Second,
+	4 * time.Second,
+	8 * time.Second,
+	15 * time.Second,
+	30 * time.Second,
+}
 
 // NewDataSource returns the PSP lookup data source.
 func NewDataSource() datasource.DataSource {
@@ -318,7 +327,7 @@ func (d *pspDataSource) lookupPSP(ctx context.Context, filters pspFilters) (*cli
 		return statusPage, nil
 	}
 
-	statusPages, err := d.client.ListAllPSPs(ctx)
+	statusPages, err := d.listPSPsForLookup(ctx, filters)
 	if err != nil {
 		return nil, fmt.Errorf("could not list PSPs: %w", err)
 	}
@@ -340,6 +349,26 @@ func (d *pspDataSource) lookupPSP(ctx context.Context, filters pspFilters) (*cli
 			filters.Name,
 			pspIDs(matches),
 		)
+	}
+}
+
+// listPSPsForLookup tolerates delayed list visibility after a PSP write. Only
+// missing name matches are retried; API errors and ambiguous matches are returned.
+func (d *pspDataSource) listPSPsForLookup(ctx context.Context, filters pspFilters) ([]client.PSP, error) {
+	for attempt := 0; ; attempt++ {
+		statusPages, err := d.client.ListAllPSPs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if filters.Name == "" || len(filterPSPs(statusPages, filters)) > 0 || attempt == len(pspListLookupBackoffs) {
+			return statusPages, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(pspListLookupBackoffs[attempt]):
+		}
 	}
 }
 
