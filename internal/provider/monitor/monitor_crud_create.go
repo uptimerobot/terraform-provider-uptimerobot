@@ -114,6 +114,7 @@ func (r *monitorResource) Create(ctx context.Context, req resource.CreateRequest
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, final)...)
 	addLearningRegionsWarning(&resp.Diagnostics, plan.Name.ValueString(), api)
+	addModeNotReportedWarning(&resp.Diagnostics, plan.Name.ValueString(), thresholdModeForRequest(plan.ResponseTimeThresholdMode), api)
 }
 
 // recoverMonitorCreatedDespiteError handles create calls that fail with the

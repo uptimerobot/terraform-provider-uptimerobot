@@ -777,12 +777,14 @@ func validateResponseTimeThresholdMode(ctx context.Context, data *monitorResourc
 		return
 	}
 
-	if mode == responseTimeThresholdModeAuto && !data.Type.IsNull() && !data.Type.IsUnknown() {
+	// These types have no slow response alert: the server drops their thresholds and reports "off", so "auto" is
+	// refused and "manual" would never settle to the planned mode.
+	if mode != responseTimeThresholdModeOff && !data.Type.IsNull() && !data.Type.IsUnknown() {
 		switch strings.ToUpper(data.Type.ValueString()) {
 		case MonitorTypeHEARTBEAT, MonitorTypeDNS, monitorTypeVisualComparison:
 			resp.Diagnostics.AddAttributeError(
 				path.Root("response_time_threshold_mode"),
-				"Automatic thresholds are not available for this monitor type",
+				"Response time thresholds are not available for this monitor type",
 				fmt.Sprintf("%s monitors have no slow response alert, so response_time_threshold_mode cannot be %q.", strings.ToUpper(data.Type.ValueString()), mode),
 			)
 		}
@@ -819,6 +821,11 @@ func validateResponseTimeThresholdMode(ctx context.Context, data *monitorResourc
 					regionValuePositive = true
 					break
 				}
+			}
+			// In auto the server derives every region's threshold, so even an empty map is a managed attribute that
+			// the API would contradict on the next read.
+			if mode == responseTimeThresholdModeAuto {
+				regionValuePositive = true
 			}
 		}
 	} else if data.RegionData.IsUnknown() {

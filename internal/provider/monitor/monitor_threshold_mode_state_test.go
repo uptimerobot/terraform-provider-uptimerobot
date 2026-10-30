@@ -1,10 +1,12 @@
 package monitor
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -194,6 +196,99 @@ func TestLearningRegionsWarning(t *testing.T) {
 		})
 		if len(diags) != 0 {
 			t.Fatalf("want no diagnostics, got %v", diags)
+		}
+	})
+}
+
+func TestMissingRegionThresholds(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	regionData := func(regions []string, thresholds map[string]int64) types.Object {
+		regionValues := make([]attr.Value, 0, len(regions))
+		for _, region := range regions {
+			regionValues = append(regionValues, types.StringValue(region))
+		}
+		var thresholdsValue types.Map
+		if thresholds == nil {
+			thresholdsValue = types.MapNull(types.Int64Type)
+		} else {
+			elements := map[string]attr.Value{}
+			for region, value := range thresholds {
+				elements[region] = types.Int64Value(value)
+			}
+			thresholdsValue = types.MapValueMust(types.Int64Type, elements)
+		}
+		return types.ObjectValueMust(regionDataObjectType().AttrTypes, map[string]attr.Value{
+			"regions":     types.SetValueMust(types.StringType, regionValues),
+			"auto_select": types.BoolNull(),
+			"thresholds":  thresholdsValue,
+		})
+	}
+
+	tests := []struct {
+		name      string
+		stateMode types.String
+		planMode  types.String
+		data      types.Object
+		want      []string
+	}{
+		{"leaving auto with thresholds for only some regions", types.StringValue("auto"), types.StringValue("manual"),
+			regionData([]string{"na", "eu", "as"}, map[string]int64{"na": 500}), []string{"as", "eu"}},
+		{"leaving auto with every region covered", types.StringValue("auto"), types.StringValue("manual"),
+			regionData([]string{"na", "eu"}, map[string]int64{"na": 500, "eu": 600}), nil},
+		{"a region with a zero threshold is not covered", types.StringValue("auto"), types.StringValue("manual"),
+			regionData([]string{"na", "eu"}, map[string]int64{"na": 500, "eu": 0}), []string{"eu"}},
+		{"staying in manual is not a switch", types.StringValue("manual"), types.StringValue("manual"),
+			regionData([]string{"na", "eu"}, map[string]int64{"na": 500}), nil},
+		{"a switch with no per-region thresholds uses the single value for every region", types.StringValue("auto"), types.StringValue("manual"),
+			regionData([]string{"na", "eu"}, nil), nil},
+		{"an omitted mode is not a switch", types.StringValue("auto"), types.StringUnknown(),
+			regionData([]string{"na", "eu"}, map[string]int64{"na": 500}), nil},
+		{"no region data", types.StringValue("auto"), types.StringValue("manual"), types.ObjectNull(regionDataObjectType().AttrTypes), nil},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, diags := missingRegionThresholds(ctx, tt.stateMode, tt.planMode, tt.data)
+			if diags.HasError() {
+				t.Fatalf("diags: %v", diags)
+			}
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestModeNotReportedWarning(t *testing.T) {
+	t.Parallel()
+
+	t.Run("warns when a mode was requested and the API reports none", func(t *testing.T) {
+		t.Parallel()
+		var diags diag.Diagnostics
+		addModeNotReportedWarning(&diags, "checkout api", "auto", &client.Monitor{})
+		if len(diags.Warnings()) != 1 || !strings.Contains(diags.Warnings()[0].Detail(), "checkout api") {
+			t.Fatalf("want one warning naming the monitor, got %v", diags)
+		}
+	})
+
+	t.Run("says nothing when the API reports a mode", func(t *testing.T) {
+		t.Parallel()
+		var diags diag.Diagnostics
+		addModeNotReportedWarning(&diags, "checkout api", "auto", &client.Monitor{ResponseTimeThresholdMode: "auto"})
+		if len(diags) != 0 {
+			t.Fatalf("want none, got %v", diags)
+		}
+	})
+
+	t.Run("says nothing when no mode was requested", func(t *testing.T) {
+		t.Parallel()
+		var diags diag.Diagnostics
+		addModeNotReportedWarning(&diags, "checkout api", "", &client.Monitor{})
+		if len(diags) != 0 {
+			t.Fatalf("want none, got %v", diags)
 		}
 	})
 }

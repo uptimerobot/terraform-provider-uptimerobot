@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
 
@@ -100,4 +102,50 @@ func readApplyThresholdMode(state *monitorResourceModel, m *client.Monitor) diag
 	autoThresholds, diags := autoThresholdsToState(m)
 	state.AutoThresholds = autoThresholds
 	return diags
+}
+
+// addModeNotReportedWarning covers an API that does not report the mode at all: a configured mode would then read
+// back as configured without the server ever having applied it, and the monitor would look protected when it is not.
+func addModeNotReportedWarning(diags *diag.Diagnostics, monitorName, requested string, m *client.Monitor) {
+	if requested == "" || m == nil || m.ResponseTimeThresholdMode != "" {
+		return
+	}
+	diags.AddAttributeWarning(
+		path.Root("response_time_threshold_mode"),
+		"The API did not report the response time threshold mode",
+		fmt.Sprintf("Monitor %q was sent response_time_threshold_mode %q, but the API response does not include a mode, so it cannot be confirmed that it was applied. Check the monitor in UptimeRobot.", monitorName, requested),
+	)
+}
+
+// missingRegionThresholds lists the selected regions a switch from auto to manual leaves without a threshold. The
+// server fills such regions with a default and then reports thresholds the plan never held, which Terraform rejects
+// after the change has already been made, so the switch is refused up front.
+func missingRegionThresholds(ctx context.Context, stateMode, planMode types.String, planRegionData types.Object) ([]string, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if stateMode.ValueString() != responseTimeThresholdModeAuto || planMode.ValueString() != responseTimeThresholdModeManual {
+		return nil, diags
+	}
+	if planRegionData.IsNull() || planRegionData.IsUnknown() {
+		return nil, diags
+	}
+	var data regionDataTF
+	diags.Append(planRegionData.As(ctx, &data, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+	if diags.HasError() || data.Regions.IsNull() || data.Regions.IsUnknown() || data.Thresholds.IsNull() || data.Thresholds.IsUnknown() {
+		return nil, diags
+	}
+	var regions []string
+	diags.Append(data.Regions.ElementsAs(ctx, &regions, false)...)
+	var thresholds map[string]int64
+	diags.Append(data.Thresholds.ElementsAs(ctx, &thresholds, false)...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	var missing []string
+	for _, raw := range normalizeRegions(regions) {
+		if thresholds[raw] <= 0 {
+			missing = append(missing, raw)
+		}
+	}
+	sort.Strings(missing)
+	return missing, diags
 }

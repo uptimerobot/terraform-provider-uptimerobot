@@ -149,6 +149,7 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		resp.Diagnostics.Append(diags...)
 		return
 	}
+	addModeNotReportedWarning(&resp.Diagnostics, plan.Name.ValueString(), thresholdModeForRequest(plan.ResponseTimeThresholdMode), updated)
 	// Only when the monitor just entered auto: an unrelated edit during the learning week must not warn again.
 	if state.ResponseTimeThresholdMode.ValueString() != responseTimeThresholdModeAuto {
 		addLearningRegionsWarning(&resp.Diagnostics, plan.Name.ValueString(), updated)

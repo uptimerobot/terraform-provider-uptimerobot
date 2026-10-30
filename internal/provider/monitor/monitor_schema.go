@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -759,6 +760,18 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	}
 
 	planType := strings.ToUpper(firstNonEmpty(stringOrEmpty(plan.Type), stringOrEmpty(state.Type)))
+
+	if missing, d := missingRegionThresholds(ctx, state.ResponseTimeThresholdMode, plan.ResponseTimeThresholdMode, plan.RegionData); d.HasError() {
+		resp.Diagnostics.Append(d...)
+		return
+	} else if len(missing) > 0 {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("region_data").AtName("thresholds"),
+			"Set a threshold for every selected region",
+			fmt.Sprintf("Switching response_time_threshold_mode from auto to manual needs a threshold for every selected region; none is set for %s. UptimeRobot would fill them with a default that this configuration does not describe.", strings.Join(missing, ", ")),
+		)
+		return
+	}
 
 	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
 		var acs []alertContactTF

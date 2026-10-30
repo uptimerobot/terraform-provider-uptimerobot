@@ -83,10 +83,27 @@ func TestValidateResponseTimeThresholdMode(t *testing.T) {
 			wantError: "region_data.thresholds",
 		},
 		{
-			name: "auto with an empty thresholds map",
+			name: "auto with an empty thresholds map, which the server would fill in and leave a permanent diff",
 			model: monitorResourceModel{
 				ResponseTimeThresholdMode: types.StringValue("auto"),
 				RegionData:                regionDataWithThresholds(t, map[string]int64{}),
+			},
+			wantError: "region_data.thresholds",
+		},
+		{
+			name: "manual on a heartbeat monitor, where the server drops the thresholds and reports off",
+			model: monitorResourceModel{
+				Type:                      types.StringValue(MonitorTypeHEARTBEAT),
+				ResponseTimeThresholdMode: types.StringValue("manual"),
+				ResponseTimeThreshold:     types.Int64Value(800),
+			},
+			wantError: "manual",
+		},
+		{
+			name: "off on a heartbeat monitor is what the server reports anyway",
+			model: monitorResourceModel{
+				Type:                      types.StringValue(MonitorTypeHEARTBEAT),
+				ResponseTimeThresholdMode: types.StringValue("off"),
 			},
 		},
 		{
