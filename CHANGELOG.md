@@ -20,6 +20,7 @@
 
 - Added regression coverage for boolean request encoding, resource and data-source reads, unmanaged settings, external drift, import of both boolean values, legacy state upgrades, delayed API responses, and timeout recovery for create and update.
 - Added PSP name-lookup regressions for delayed list visibility, exhausted retries, cancellation, ambiguous names, API errors, and direct ID lookups.
+- Wait past the API's 60-second response-cache lifetime after acceptance-test writes and deliberate external drift before subsequent checks. Verify data-source lookups by ID and name for both boolean values in separate steps after writes have settled.
 - Added a live PSP lifecycle acceptance test covering create, updates, data-source lookup by ID and name, drift repair, omission/null, removal of the settings block, import, and clean subsequent plans. Verified it with Terraform and OpenTofu, plus built-provider manual checks and an upgrade from v1.12.2 state.
 
 ### Upgrade notes
