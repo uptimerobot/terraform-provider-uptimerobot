@@ -66,12 +66,19 @@ func (r *monitorResource) ValidateConfig(
 	validateAssignedAlertContacts(ctx, &data, resp)
 	validateConfig(ctx, t, &data, resp)
 	validateRegionData(ctx, &data, resp)
+	validateResponseTimeThresholdMode(ctx, &data, resp)
 	validateHeadersCasingDuplication(ctx, &data, resp)
 	validatePortMonitor(ctx, t, &data, resp)
 	validateKeywordMonitor(ctx, t, &data, resp)
 	validateHTTPPasswordWithoutUserName(ctx, &data, resp)
 
 }
+
+const (
+	responseTimeThresholdModeOff    = "off"
+	responseTimeThresholdModeManual = "manual"
+	responseTimeThresholdModeAuto   = "auto"
+)
 
 func validateHeartbeatInterval(
 	monitorType string,
@@ -760,5 +767,50 @@ func validateHTTPPasswordWithoutUserName(
 			"Password set without username",
 			"Set http_username when http_password is provided.",
 		)
+	}
+}
+
+// Auto derives the thresholds on the server and Off has none, and the API rejects values sent with either, so the
+// configuration is refused here with the attribute to remove instead of failing at apply.
+func validateResponseTimeThresholdMode(ctx context.Context, data *monitorResourceModel, resp *resource.ValidateConfigResponse) {
+	if data.ResponseTimeThresholdMode.IsNull() || data.ResponseTimeThresholdMode.IsUnknown() {
+		return
+	}
+	mode := data.ResponseTimeThresholdMode.ValueString()
+	if mode != responseTimeThresholdModeAuto && mode != responseTimeThresholdModeOff {
+		return
+	}
+
+	singleValueSet := !data.ResponseTimeThreshold.IsNull() && !data.ResponseTimeThreshold.IsUnknown()
+	if singleValueSet && (mode == responseTimeThresholdModeAuto || data.ResponseTimeThreshold.ValueInt64() > 0) {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("response_time_threshold"),
+			"Response time threshold conflicts with response_time_threshold_mode",
+			fmt.Sprintf("response_time_threshold cannot be set when response_time_threshold_mode is %q. Remove it, or set response_time_threshold_mode to \"manual\".", mode),
+		)
+	}
+
+	if data.RegionData.IsNull() || data.RegionData.IsUnknown() {
+		return
+	}
+	var regionData regionDataTF
+	resp.Diagnostics.Append(data.RegionData.As(ctx, &regionData, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+	if resp.Diagnostics.HasError() || regionData.Thresholds.IsNull() || regionData.Thresholds.IsUnknown() {
+		return
+	}
+	var thresholds map[string]int64
+	resp.Diagnostics.Append(regionData.Thresholds.ElementsAs(ctx, &thresholds, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	for _, value := range thresholds {
+		if value > 0 {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("region_data").AtName("thresholds"),
+				"Region thresholds conflict with response_time_threshold_mode",
+				fmt.Sprintf("region_data.thresholds cannot be set when response_time_threshold_mode is %q. Remove it, or set response_time_threshold_mode to \"manual\".", mode),
+			)
+			return
+		}
 	}
 }

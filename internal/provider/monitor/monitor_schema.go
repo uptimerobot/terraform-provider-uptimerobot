@@ -445,6 +445,43 @@ Alert contacts and integrations assigned to this monitor.
 					int64validator.Between(0, 60000),
 				},
 			},
+			"response_time_threshold_mode": schema.StringAttribute{
+				Description: "How the response time threshold is set: off, manual or auto. In auto, UptimeRobot derives a threshold for each region from that region's own response time history, so response_time_threshold and region_data.thresholds must not be set. When omitted, the mode the monitor already has is kept.",
+				MarkdownDescription: "How the response time threshold is set: `off`, `manual` or `auto`.\n\n" +
+					"- `auto` lets UptimeRobot derive a threshold for each region from that region's own response time history and keep it up to date. `response_time_threshold` and `region_data.thresholds` must not be set, and the computed `auto_thresholds` shows the state of each region. A region without enough history yet is still learning and sends no slow response alerts.\n" +
+					"- `manual` uses the thresholds you set in `response_time_threshold` or `region_data.thresholds`.\n" +
+					"- `off` disables slow response alerts.\n\n" +
+					"When omitted, the mode the monitor already has is kept.",
+				Optional: true,
+				Computed: true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(responseTimeThresholdModeOff, responseTimeThresholdModeManual, responseTimeThresholdModeAuto),
+				},
+			},
+			"auto_thresholds": schema.MapNestedAttribute{
+				Description: "The state of each region's automatic threshold, keyed by region code. Empty unless response_time_threshold_mode is auto.",
+				Computed:    true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"status": schema.StringAttribute{
+							Description: "learning (not enough history yet, no slow response alerts from this region), ready, or stale (the last threshold is kept because no recent data came in).",
+							Computed:    true,
+						},
+						"threshold_ms": schema.Int64Attribute{
+							Description: "The threshold in effect in milliseconds. Null while the region is learning.",
+							Computed:    true,
+						},
+						"usual_ms": schema.Int64Attribute{
+							Description: "The usual response time of the region in milliseconds. Null while the region is learning.",
+							Computed:    true,
+						},
+						"days_collected": schema.Int64Attribute{
+							Description: "Days of response time history collected so far, up to the seven needed.",
+							Computed:    true,
+						},
+					},
+				},
+			},
 			"regional_data": schema.StringAttribute{
 				Description:        "Legacy single region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania). Use region_data for new multi-region monitor settings.",
 				DeprecationMessage: "Use region_data instead. regional_data only supports the legacy single-region API shape.",
@@ -681,6 +718,10 @@ Advanced monitor configuration.
 
 	if !includePortAlertCondition {
 		delete(s.Attributes, "port_alert_condition")
+		// Prior schemas (v6 and older) predate the threshold mode attributes too. Those were added without a version
+		// bump: state written before them simply lacks them and reads back as null.
+		delete(s.Attributes, "response_time_threshold_mode")
+		delete(s.Attributes, "auto_thresholds")
 	}
 
 	return s

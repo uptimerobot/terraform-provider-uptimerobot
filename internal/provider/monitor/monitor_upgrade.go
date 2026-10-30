@@ -1479,6 +1479,9 @@ func upgradeMonitorFromV6(prior monitorV6Model) monitorResourceModel {
 		RegionData:               prior.RegionData,
 		CheckSSLErrors:           prior.CheckSSLErrors,
 		Config:                   prior.Config,
+
+		ResponseTimeThresholdMode: types.StringNull(),
+		AutoThresholds:            types.MapNull(autoThresholdObjectType()),
 	}
 
 	if strings.ToUpper(prior.Type.ValueString()) == MonitorTypePORT {
