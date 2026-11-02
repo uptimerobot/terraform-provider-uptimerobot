@@ -89,7 +89,7 @@ func addLearningRegionsWarning(diags *diag.Diagnostics, monitorName string, m *c
 		path.Root("auto_thresholds"),
 		"Automatic thresholds are still learning",
 		fmt.Sprintf(
-			"Monitor %q sends no slow response alerts from %s until each region has collected enough response time history. This is informational and repeats until then; auto_thresholds shows the progress.",
+			"Monitor %q sends no slow response alerts from %s until each region has collected enough response time history. This is informational; auto_thresholds shows the progress.",
 			monitorName, strings.Join(learning, ", "),
 		),
 	)
