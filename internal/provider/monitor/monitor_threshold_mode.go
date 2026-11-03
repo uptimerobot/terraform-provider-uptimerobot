@@ -96,9 +96,13 @@ func addLearningRegionsWarning(diags *diag.Diagnostics, monitorName string, m *c
 }
 
 // readApplyThresholdMode refreshes the mode and the per-region automatic thresholds from the API. A mode changed
-// outside Terraform shows as drift against a configuration that sets one.
+// outside Terraform shows as drift against a configuration that sets one. In auto the configured single threshold is
+// no longer applied, so it reads as null and a configuration that sets it plans the update back to manual.
 func readApplyThresholdMode(state *monitorResourceModel, m *client.Monitor) diag.Diagnostics {
 	state.ResponseTimeThresholdMode = thresholdModeToState(state.ResponseTimeThresholdMode, m)
+	if state.ResponseTimeThresholdMode.ValueString() == responseTimeThresholdModeAuto {
+		state.ResponseTimeThreshold = types.Int64Null()
+	}
 	autoThresholds, diags := autoThresholdsToState(m)
 	state.AutoThresholds = autoThresholds
 	return diags

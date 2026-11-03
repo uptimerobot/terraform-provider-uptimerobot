@@ -16,6 +16,11 @@ import (
 
 func readMonitorState(t *testing.T, api client.Monitor) monitorResourceModel {
 	t.Helper()
+	return readMonitorStateFrom(t, nil, api)
+}
+
+func readMonitorStateFrom(t *testing.T, prior map[string]tftypes.Value, api client.Monitor) monitorResourceModel {
+	t.Helper()
 	ctx := context.Background()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -40,6 +45,15 @@ func readMonitorState(t *testing.T, api client.Monitor) monitorResourceModel {
 	values := make(map[string]tftypes.Value, len(objType.AttributeTypes))
 	for name, attrType := range objType.AttributeTypes {
 		values[name] = tftypes.NewValue(attrType, nil)
+	}
+	if prior != nil {
+		values["name"] = tftypes.NewValue(tftypes.String, api.Name)
+		values["type"] = tftypes.NewValue(tftypes.String, api.Type)
+		values["url"] = tftypes.NewValue(tftypes.String, api.URL)
+		values["interval"] = tftypes.NewValue(tftypes.Number, api.Interval)
+	}
+	for name, value := range prior {
+		values[name] = value
 	}
 	values["id"] = tftypes.NewValue(tftypes.String, "42")
 	state := tfsdk.State{Schema: s, Raw: tftypes.NewValue(objType, values)}
@@ -109,5 +123,40 @@ func TestApplyUpdatedMonitorToStateTakesTheModeFromTheAPIWhenOmitted(t *testing.
 	}
 	if got.AutoThresholds.IsUnknown() {
 		t.Fatal("auto_thresholds must be known after update")
+	}
+}
+
+func TestReadDropsAManagedScalarThresholdOnceTheMonitorIsSwitchedToAutoOutsideTerraform(t *testing.T) {
+	t.Parallel()
+
+	got := readMonitorStateFrom(t, map[string]tftypes.Value{
+		"response_time_threshold":      tftypes.NewValue(tftypes.Number, 1500),
+		"response_time_threshold_mode": tftypes.NewValue(tftypes.String, "manual"),
+	}, client.Monitor{
+		ID: 42, Name: "switched", Type: MonitorTypeHTTP, URL: "https://example.com", Interval: 300, Timeout: 30,
+		ResponseTimeThresholdMode: "auto",
+		AutoThresholds: map[string]client.AutoThreshold{
+			"na": {Status: "learning", DaysCollected: 2},
+		},
+	})
+
+	if !got.ResponseTimeThreshold.IsNull() {
+		t.Fatalf("in auto the configured threshold is no longer applied, so it must read as drift, got %v", got.ResponseTimeThreshold)
+	}
+}
+
+func TestReadKeepsTheManagedScalarThresholdOnceManualIsRestored(t *testing.T) {
+	t.Parallel()
+
+	got := readMonitorStateFrom(t, map[string]tftypes.Value{
+		"response_time_threshold":      tftypes.NewValue(tftypes.Number, 1500),
+		"response_time_threshold_mode": tftypes.NewValue(tftypes.String, "manual"),
+	}, client.Monitor{
+		ID: 42, Name: "restored", Type: MonitorTypeHTTP, URL: "https://example.com", Interval: 300, Timeout: 30,
+		ResponseTimeThresholdMode: "manual", ResponseTimeThreshold: 1500,
+	})
+
+	if !got.ResponseTimeThreshold.Equal(types.Int64Value(1500)) {
+		t.Fatalf("a restored manual threshold must plan clean, got %v", got.ResponseTimeThreshold)
 	}
 }
