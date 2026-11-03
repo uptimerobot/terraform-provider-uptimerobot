@@ -832,7 +832,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 
 - `auto` lets UptimeRobot derive a threshold for each region from that region's own response time history and keep it up to date. `response_time_threshold` and `region_data.thresholds` must not be set, and the computed `auto_thresholds` shows the state of each region. A region without enough history yet is still learning and sends no slow response alerts.
 - `manual` uses the thresholds you set in `response_time_threshold` or `region_data.thresholds`, and needs at least one positive value. When you switch a monitor from `auto` to `manual`, set a threshold for every selected region: regions without one get a default.
-- `off` disables slow response alerts.
+- `off` disables slow response alerts. `region_data.thresholds` must then be empty or unset, and zero values are refused too.
 
 `auto` and `manual` are not available for HEARTBEAT, DNS and VISUAL_COMPARISON monitors, which have no slow response alert. With `auto`, `region_data.thresholds` must not be set at all, not even as an empty map. When omitted, the mode the monitor already has is kept, so a configuration that sets `response_time_threshold` on a monitor that was switched to `auto` outside Terraform changes it back to `manual` on the next apply.
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
