@@ -29,18 +29,29 @@ func planRegionData(schemaObj tftypes.Object, regions []string, thresholds map[s
 	for _, region := range regions {
 		regionValues = append(regionValues, tftypes.NewValue(tftypes.String, region))
 	}
-	thresholdValues := map[string]tftypes.Value{}
-	for region, value := range thresholds {
-		thresholdValues[region] = tftypes.NewValue(tftypes.Number, value)
+	// A nil thresholds map is an unset region_data.thresholds.
+	thresholdsValue := tftypes.NewValue(objType.AttributeTypes["thresholds"], nil)
+	if thresholds != nil {
+		thresholdValues := map[string]tftypes.Value{}
+		for region, value := range thresholds {
+			thresholdValues[region] = tftypes.NewValue(tftypes.Number, value)
+		}
+		thresholdsValue = tftypes.NewValue(objType.AttributeTypes["thresholds"], thresholdValues)
 	}
 	return tftypes.NewValue(objType, map[string]tftypes.Value{
 		"regions":     tftypes.NewValue(objType.AttributeTypes["regions"], regionValues),
 		"auto_select": tftypes.NewValue(tftypes.Bool, nil),
-		"thresholds":  tftypes.NewValue(objType.AttributeTypes["thresholds"], thresholdValues),
+		"thresholds":  thresholdsValue,
 	})
 }
 
 func modifyPlanFor(t *testing.T, stateMode, planMode string, regions []string, thresholds map[string]int) *resource.ModifyPlanResponse {
+	t.Helper()
+	return modifyPlanWithThreshold(t, stateMode, planMode, nil, regions, thresholds)
+}
+
+// modifyPlanWithThreshold also plans response_time_threshold when threshold is not nil.
+func modifyPlanWithThreshold(t *testing.T, stateMode, planMode string, threshold *int, regions []string, thresholds map[string]int) *resource.ModifyPlanResponse {
 	t.Helper()
 	ctx := context.Background()
 
@@ -78,8 +89,14 @@ func modifyPlanFor(t *testing.T, stateMode, planMode string, regions []string, t
 		configModeValue = tftypes.NewValue(tftypes.String, nil)
 	}
 
+	thresholdValue := tftypes.NewValue(tftypes.Number, nil)
+	if threshold != nil {
+		thresholdValue = tftypes.NewValue(tftypes.Number, *threshold)
+	}
+
 	planRaw := rawMonitorOf(t, objType, with(map[string]tftypes.Value{
 		"response_time_threshold_mode": planModeValue,
+		"response_time_threshold":      thresholdValue,
 		"region_data":                  planRegionData(objType, regions, thresholds),
 	}))
 	stateRaw := rawMonitorOf(t, objType, with(map[string]tftypes.Value{
@@ -87,6 +104,7 @@ func modifyPlanFor(t *testing.T, stateMode, planMode string, regions []string, t
 	}))
 	configRaw := rawMonitorOf(t, objType, with(map[string]tftypes.Value{
 		"response_time_threshold_mode": configModeValue,
+		"response_time_threshold":      thresholdValue,
 		"region_data":                  planRegionData(objType, regions, thresholds),
 	}))
 
@@ -149,12 +167,92 @@ func TestModifyPlanRefusesAnImplicitLeaveFromAutoThatLeavesRegionsWithoutAThresh
 	}
 }
 
-func TestModifyPlanAcceptsAnOmittedModeWithOnlyZeroThresholds(t *testing.T) {
+func mentionsThresholdsKeptInAuto(resp *resource.ModifyPlanResponse) bool {
+	for _, d := range resp.Diagnostics.Errors() {
+		if strings.Contains(d.Summary(), "Region thresholds cannot be managed while the monitor stays in auto") {
+			return true
+		}
+	}
+	return false
+}
+
+func TestModifyPlanRefusesAnOmittedModeWithOnlyZeroThresholdsOnAnAutoMonitor(t *testing.T) {
 	t.Parallel()
 
-	resp := modifyPlanFor(t, "auto", "", []string{"na", "eu"}, map[string]int{"na": 0})
+	for name, thresholds := range map[string]map[string]int{
+		"zero values": {"na": 0},
+		"empty map":   {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	if mentionsMissingThresholds(resp) {
-		t.Fatalf("zero thresholds do not switch the monitor to manual, got: %v", resp.Diagnostics)
+			resp := modifyPlanFor(t, "auto", "", []string{"na", "eu"}, thresholds)
+
+			if !mentionsThresholdsKeptInAuto(resp) {
+				t.Fatalf("the monitor stays in auto, which derives its own thresholds, got: %v", resp.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestModifyPlanAcceptsAnOmittedModeWithoutRegionThresholdsOnAnAutoMonitor(t *testing.T) {
+	t.Parallel()
+
+	resp := modifyPlanFor(t, "auto", "", []string{"na", "eu"}, nil)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unset region thresholds leave auto alone, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestModifyPlanAcceptsZeroThresholdsOnAManualMonitor(t *testing.T) {
+	t.Parallel()
+
+	resp := modifyPlanFor(t, "manual", "", []string{"na", "eu"}, map[string]int{"na": 0})
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("a monitor that is not in auto keeps today's behaviour, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestModifyPlanChecksRegionCoverageWhenAThresholdSwitchesAnAutoMonitorImplicitly(t *testing.T) {
+	t.Parallel()
+
+	threshold := 1500
+	for name, thresholds := range map[string]map[string]int{
+		"zero values": {"na": 0},
+		"empty map":   {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			resp := modifyPlanWithThreshold(t, "auto", "", &threshold, []string{"na", "eu"}, thresholds)
+
+			if !mentionsMissingThresholds(resp) {
+				t.Fatalf("a positive response_time_threshold switches the monitor to manual, so the map must cover every region, got: %v", resp.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestModifyPlanAcceptsAThresholdThatSwitchesAnAutoMonitorWithoutRegionThresholds(t *testing.T) {
+	t.Parallel()
+
+	threshold := 1500
+	resp := modifyPlanWithThreshold(t, "auto", "", &threshold, []string{"na", "eu"}, nil)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("the API applies response_time_threshold to every selected region, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestModifyPlanChecksRegionCoverageForAnExplicitManualSwitchWithAThreshold(t *testing.T) {
+	t.Parallel()
+
+	threshold := 1500
+	resp := modifyPlanWithThreshold(t, "auto", "manual", &threshold, []string{"na", "eu"}, map[string]int{})
+
+	if !mentionsMissingThresholds(resp) {
+		t.Fatalf("the explicit switch already refuses a map that leaves regions without a threshold, got: %v", resp.Diagnostics)
 	}
 }

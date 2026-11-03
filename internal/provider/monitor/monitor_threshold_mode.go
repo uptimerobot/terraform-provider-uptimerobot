@@ -124,8 +124,9 @@ func addModeNotReportedWarning(diags *diag.Diagnostics, monitorName, requested s
 // missingRegionThresholds lists the selected regions a switch from auto to manual leaves without a threshold. The
 // server fills such regions with a default and then reports thresholds the plan never held, which Terraform rejects
 // after the change has already been made, so the switch is refused up front. With the mode omitted, a positive
-// threshold makes the same switch implicitly.
-func missingRegionThresholds(ctx context.Context, stateMode, planMode types.String, planRegionData types.Object) ([]string, diag.Diagnostics) {
+// threshold, in region_data.thresholds or in response_time_threshold, makes the same switch implicitly. Without one
+// the monitor stays in auto, which derives its own thresholds, so a managed region_data.thresholds map is refused.
+func missingRegionThresholds(ctx context.Context, stateMode, planMode types.String, planThreshold types.Int64, planRegionData types.Object) ([]string, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	explicit := planMode.ValueString() == responseTimeThresholdModeManual
 	if stateMode.ValueString() != responseTimeThresholdModeAuto || (!explicit && !planMode.IsUnknown()) {
@@ -146,7 +147,12 @@ func missingRegionThresholds(ctx context.Context, stateMode, planMode types.Stri
 	if diags.HasError() {
 		return nil, diags
 	}
-	if !explicit && !anyPositive(thresholds) {
+	if !explicit && !anyPositive(thresholds) && !(planThreshold.ValueInt64() > 0) {
+		diags.AddAttributeError(
+			path.Root("region_data").AtName("thresholds"),
+			"Region thresholds cannot be managed while the monitor stays in auto",
+			"The monitor is in auto and no positive threshold switches it to manual, so UptimeRobot keeps deriving every region's threshold and would contradict region_data.thresholds. Remove region_data.thresholds, or set a positive threshold for every selected region to switch to manual.",
+		)
 		return nil, diags
 	}
 	var missing []string

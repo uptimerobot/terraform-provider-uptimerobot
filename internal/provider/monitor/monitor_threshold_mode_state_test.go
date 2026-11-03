@@ -245,15 +245,15 @@ func TestMissingRegionThresholds(t *testing.T) {
 			regionData([]string{"na", "eu"}, nil), nil},
 		{"an omitted mode with a positive threshold is an implicit switch", types.StringValue("auto"), types.StringUnknown(),
 			regionData([]string{"na", "eu"}, map[string]int64{"na": 500}), []string{"eu"}},
-		{"an omitted mode with only zero thresholds is not a switch", types.StringValue("auto"), types.StringUnknown(),
-			regionData([]string{"na", "eu"}, map[string]int64{"na": 0}), nil},
+		{"an omitted mode without region thresholds is not a switch", types.StringValue("auto"), types.StringUnknown(),
+			regionData([]string{"na", "eu"}, nil), nil},
 		{"no region data", types.StringValue("auto"), types.StringValue("manual"), types.ObjectNull(regionDataObjectType().AttrTypes), nil},
 	}
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, diags := missingRegionThresholds(ctx, tt.stateMode, tt.planMode, tt.data)
+			got, diags := missingRegionThresholds(ctx, tt.stateMode, tt.planMode, types.Int64Null(), tt.data)
 			if diags.HasError() {
 				t.Fatalf("diags: %v", diags)
 			}

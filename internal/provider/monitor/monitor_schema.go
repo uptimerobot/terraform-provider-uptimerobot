@@ -761,7 +761,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 
 	planType := strings.ToUpper(firstNonEmpty(stringOrEmpty(plan.Type), stringOrEmpty(state.Type)))
 
-	if missing, d := missingRegionThresholds(ctx, state.ResponseTimeThresholdMode, plan.ResponseTimeThresholdMode, plan.RegionData); d.HasError() {
+	if missing, d := missingRegionThresholds(ctx, state.ResponseTimeThresholdMode, plan.ResponseTimeThresholdMode, plan.ResponseTimeThreshold, plan.RegionData); d.HasError() {
 		resp.Diagnostics.Append(d...)
 		return
 	} else if len(missing) > 0 {
