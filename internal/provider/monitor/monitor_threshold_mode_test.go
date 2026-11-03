@@ -137,10 +137,18 @@ func TestValidateResponseTimeThresholdMode(t *testing.T) {
 			wantError: "region_data.thresholds",
 		},
 		{
-			name: "off with only zero per-region thresholds",
+			name: "off with only zero per-region thresholds, which the server drops and reports as an empty map",
 			model: monitorResourceModel{
 				ResponseTimeThresholdMode: types.StringValue("off"),
 				RegionData:                regionDataWithThresholds(t, map[string]int64{"na": 0}),
+			},
+			wantError: "region_data.thresholds",
+		},
+		{
+			name: "off with an empty thresholds map, which is what the server reports",
+			model: monitorResourceModel{
+				ResponseTimeThresholdMode: types.StringValue("off"),
+				RegionData:                regionDataWithThresholds(t, map[string]int64{}),
 			},
 		},
 		{

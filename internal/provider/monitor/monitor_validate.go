@@ -823,8 +823,9 @@ func validateResponseTimeThresholdMode(ctx context.Context, data *monitorResourc
 				}
 			}
 			// In auto the server derives every region's threshold, so even an empty map is a managed attribute that
-			// the API would contradict on the next read.
-			if mode == responseTimeThresholdModeAuto {
+			// the API would contradict on the next read. In off it drops every entry, zero values included, and
+			// reports an empty map.
+			if mode == responseTimeThresholdModeAuto || (mode == responseTimeThresholdModeOff && len(thresholds) > 0) {
 				regionValuePositive = true
 			}
 		}
