@@ -243,8 +243,10 @@ func TestMissingRegionThresholds(t *testing.T) {
 			regionData([]string{"na", "eu"}, map[string]int64{"na": 500}), nil},
 		{"a switch with no per-region thresholds uses the single value for every region", types.StringValue("auto"), types.StringValue("manual"),
 			regionData([]string{"na", "eu"}, nil), nil},
-		{"an omitted mode is not a switch", types.StringValue("auto"), types.StringUnknown(),
-			regionData([]string{"na", "eu"}, map[string]int64{"na": 500}), nil},
+		{"an omitted mode with a positive threshold is an implicit switch", types.StringValue("auto"), types.StringUnknown(),
+			regionData([]string{"na", "eu"}, map[string]int64{"na": 500}), []string{"eu"}},
+		{"an omitted mode with only zero thresholds is not a switch", types.StringValue("auto"), types.StringUnknown(),
+			regionData([]string{"na", "eu"}, map[string]int64{"na": 0}), nil},
 		{"no region data", types.StringValue("auto"), types.StringValue("manual"), types.ObjectNull(regionDataObjectType().AttrTypes), nil},
 	}
 	for _, tt := range tests {

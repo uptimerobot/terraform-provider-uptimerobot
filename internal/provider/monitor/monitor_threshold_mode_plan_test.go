@@ -70,15 +70,23 @@ func modifyPlanFor(t *testing.T, stateMode, planMode string, regions []string, t
 		return out
 	}
 
+	// An empty planMode is an omitted mode: unknown in the plan of an update, null in the configuration.
+	planModeValue := tftypes.NewValue(tftypes.String, planMode)
+	configModeValue := planModeValue
+	if planMode == "" {
+		planModeValue = tftypes.NewValue(tftypes.String, tftypes.UnknownValue)
+		configModeValue = tftypes.NewValue(tftypes.String, nil)
+	}
+
 	planRaw := rawMonitorOf(t, objType, with(map[string]tftypes.Value{
-		"response_time_threshold_mode": tftypes.NewValue(tftypes.String, planMode),
+		"response_time_threshold_mode": planModeValue,
 		"region_data":                  planRegionData(objType, regions, thresholds),
 	}))
 	stateRaw := rawMonitorOf(t, objType, with(map[string]tftypes.Value{
 		"response_time_threshold_mode": tftypes.NewValue(tftypes.String, stateMode),
 	}))
 	configRaw := rawMonitorOf(t, objType, with(map[string]tftypes.Value{
-		"response_time_threshold_mode": tftypes.NewValue(tftypes.String, planMode),
+		"response_time_threshold_mode": configModeValue,
 		"region_data":                  planRegionData(objType, regions, thresholds),
 	}))
 
@@ -128,5 +136,25 @@ func TestModifyPlanLeavesManualToManualAlone(t *testing.T) {
 
 	if mentionsMissingThresholds(resp) {
 		t.Fatalf("a monitor that is already manual keeps today's behaviour, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestModifyPlanRefusesAnImplicitLeaveFromAutoThatLeavesRegionsWithoutAThreshold(t *testing.T) {
+	t.Parallel()
+
+	resp := modifyPlanFor(t, "auto", "", []string{"na", "eu"}, map[string]int{"na": 500})
+
+	if !mentionsMissingThresholds(resp) {
+		t.Fatalf("a positive threshold switches the monitor to manual even with the mode omitted, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestModifyPlanAcceptsAnOmittedModeWithOnlyZeroThresholds(t *testing.T) {
+	t.Parallel()
+
+	resp := modifyPlanFor(t, "auto", "", []string{"na", "eu"}, map[string]int{"na": 0})
+
+	if mentionsMissingThresholds(resp) {
+		t.Fatalf("zero thresholds do not switch the monitor to manual, got: %v", resp.Diagnostics)
 	}
 }

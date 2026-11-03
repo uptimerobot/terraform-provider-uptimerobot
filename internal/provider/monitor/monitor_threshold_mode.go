@@ -123,10 +123,12 @@ func addModeNotReportedWarning(diags *diag.Diagnostics, monitorName, requested s
 
 // missingRegionThresholds lists the selected regions a switch from auto to manual leaves without a threshold. The
 // server fills such regions with a default and then reports thresholds the plan never held, which Terraform rejects
-// after the change has already been made, so the switch is refused up front.
+// after the change has already been made, so the switch is refused up front. With the mode omitted, a positive
+// threshold makes the same switch implicitly.
 func missingRegionThresholds(ctx context.Context, stateMode, planMode types.String, planRegionData types.Object) ([]string, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	if stateMode.ValueString() != responseTimeThresholdModeAuto || planMode.ValueString() != responseTimeThresholdModeManual {
+	explicit := planMode.ValueString() == responseTimeThresholdModeManual
+	if stateMode.ValueString() != responseTimeThresholdModeAuto || (!explicit && !planMode.IsUnknown()) {
 		return nil, diags
 	}
 	if planRegionData.IsNull() || planRegionData.IsUnknown() {
@@ -144,6 +146,9 @@ func missingRegionThresholds(ctx context.Context, stateMode, planMode types.Stri
 	if diags.HasError() {
 		return nil, diags
 	}
+	if !explicit && !anyPositive(thresholds) {
+		return nil, diags
+	}
 	var missing []string
 	for _, raw := range normalizeRegions(regions) {
 		if thresholds[raw] <= 0 {
@@ -152,4 +157,13 @@ func missingRegionThresholds(ctx context.Context, stateMode, planMode types.Stri
 	}
 	sort.Strings(missing)
 	return missing, diags
+}
+
+func anyPositive(thresholds map[string]int64) bool {
+	for _, value := range thresholds {
+		if value > 0 {
+			return true
+		}
+	}
+	return false
 }

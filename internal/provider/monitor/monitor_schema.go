@@ -768,7 +768,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		resp.Diagnostics.AddAttributeError(
 			path.Root("region_data").AtName("thresholds"),
 			"Set a threshold for every selected region",
-			fmt.Sprintf("Switching response_time_threshold_mode from auto to manual needs a threshold for every selected region; none is set for %s. UptimeRobot would fill them with a default that this configuration does not describe.", strings.Join(missing, ", ")),
+			fmt.Sprintf("Switching response_time_threshold_mode from auto to manual, which a positive threshold also does when the mode is omitted, needs a threshold for every selected region; none is set for %s. UptimeRobot would fill them with a default that this configuration does not describe.", strings.Join(missing, ", ")),
 		)
 		return
 	}
