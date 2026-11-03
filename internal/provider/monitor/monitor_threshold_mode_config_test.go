@@ -122,7 +122,7 @@ func TestThresholdModeAttributeAcceptsOnlyOffManualAndAuto(t *testing.T) {
 func TestStateUpgradersLeaveTheThresholdModeUnset(t *testing.T) {
 	t.Parallel()
 
-	for _, version := range []int64{5, 6} {
+	for _, version := range []int64{0, 1, 2, 3, 4, 5, 6} {
 		upgraded, diags := runRegisteredUpgrader(t, version, map[string]tftypes.Value{
 			"type": tftypes.NewValue(tftypes.String, MonitorTypeHTTP),
 		})
