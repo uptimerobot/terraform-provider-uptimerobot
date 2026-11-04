@@ -135,3 +135,88 @@ func TestStateUpgradersLeaveTheThresholdModeUnset(t *testing.T) {
 		}
 	}
 }
+
+func regionDataConfig(t *testing.T, regions, thresholds tftypes.Value) tftypes.Value {
+	t.Helper()
+	ctx := context.Background()
+
+	r := &monitorResource{}
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	objType, ok := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	if !ok {
+		t.Fatal("schema must be an object type")
+	}
+	regionDataType, ok := objType.AttributeTypes["region_data"].(tftypes.Object)
+	if !ok {
+		t.Fatal("region_data must be an object type")
+	}
+	values := make(map[string]tftypes.Value, len(regionDataType.AttributeTypes))
+	for name, attrType := range regionDataType.AttributeTypes {
+		values[name] = tftypes.NewValue(attrType, nil)
+	}
+	values["regions"] = regions
+	values["thresholds"] = thresholds
+	return tftypes.NewValue(regionDataType, values)
+}
+
+func knownRegions(codes ...string) tftypes.Value {
+	elements := make([]tftypes.Value, 0, len(codes))
+	for _, code := range codes {
+		elements = append(elements, tftypes.NewValue(tftypes.String, code))
+	}
+	return tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, elements)
+}
+
+func thresholdsWithUnknownValue(region string) tftypes.Value {
+	return tftypes.NewValue(tftypes.Map{ElementType: tftypes.Number}, map[string]tftypes.Value{
+		region: tftypes.NewValue(tftypes.Number, tftypes.UnknownValue),
+	})
+}
+
+func TestValidateConfigDefersUnknownRegionThresholdValuesInManual(t *testing.T) {
+	t.Parallel()
+
+	resp := validateConfigOf(t, httpMonitorConfig(map[string]tftypes.Value{
+		"response_time_threshold_mode": tftypes.NewValue(tftypes.String, "manual"),
+		"region_data":                  regionDataConfig(t, knownRegions("na"), thresholdsWithUnknownValue("na")),
+	}))
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("an unknown region threshold value must be checked once known, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestValidateConfigRefusesRegionThresholdEntriesInAutoEvenWhenAValueIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	resp := validateConfigOf(t, httpMonitorConfig(map[string]tftypes.Value{
+		"response_time_threshold_mode": tftypes.NewValue(tftypes.String, "auto"),
+		"region_data":                  regionDataConfig(t, knownRegions("na"), thresholdsWithUnknownValue("na")),
+	}))
+
+	for _, d := range resp.Diagnostics.Errors() {
+		if d.Summary() == "Region thresholds conflict with response_time_threshold_mode" {
+			return
+		}
+	}
+	t.Fatalf("expected the region threshold conflict in auto, got: %v", resp.Diagnostics)
+}
+
+func TestValidateConfigDefersUnknownRegionCodes(t *testing.T) {
+	t.Parallel()
+
+	regions := tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{
+		tftypes.NewValue(tftypes.String, tftypes.UnknownValue),
+	})
+	thresholds := tftypes.NewValue(tftypes.Map{ElementType: tftypes.Number}, map[string]tftypes.Value{
+		"na": tftypes.NewValue(tftypes.Number, 500),
+	})
+	resp := validateConfigOf(t, httpMonitorConfig(map[string]tftypes.Value{
+		"region_data": regionDataConfig(t, regions, thresholds),
+	}))
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("an unknown region code must be checked once known, got: %v", resp.Diagnostics)
+	}
+}

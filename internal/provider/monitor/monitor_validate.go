@@ -3,9 +3,11 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
@@ -810,6 +812,12 @@ func validateResponseTimeThresholdMode(ctx context.Context, data *monitorResourc
 		}
 		if regionData.Thresholds.IsUnknown() {
 			regionValuesUnknown = true
+		} else if anyUnknown(slices.Collect(maps.Values(regionData.Thresholds.Elements()))) {
+			regionValuesUnknown = true
+			entries := len(regionData.Thresholds.Elements())
+			if mode == responseTimeThresholdModeAuto || (mode == responseTimeThresholdModeOff && entries > 0) {
+				regionValuePositive = true
+			}
 		} else if !regionData.Thresholds.IsNull() {
 			var thresholds map[string]int64
 			resp.Diagnostics.Append(regionData.Thresholds.ElementsAs(ctx, &thresholds, false)...)

@@ -3,6 +3,8 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -166,7 +168,7 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 		return
 	}
 
-	if regionData.Regions.IsUnknown() {
+	if regionData.Regions.IsUnknown() || anyUnknown(regionData.Regions.Elements()) {
 		return
 	}
 
@@ -199,6 +201,9 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 		return
 	}
 
+	if anyUnknown(slices.Collect(maps.Values(regionData.Thresholds.Elements()))) {
+		return
+	}
 	var thresholds map[string]int64
 	resp.Diagnostics.Append(regionData.Thresholds.ElementsAs(ctx, &thresholds, false)...)
 	if resp.Diagnostics.HasError() {
