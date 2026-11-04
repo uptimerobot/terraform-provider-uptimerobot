@@ -2,12 +2,114 @@ package psp
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
 )
+
+func TestPSPDataSourceLookupListVisibility(t *testing.T) {
+	oldBackoffs := pspListLookupBackoffs
+	pspListLookupBackoffs = []time.Duration{time.Millisecond, time.Millisecond}
+	t.Cleanup(func() { pspListLookupBackoffs = oldBackoffs })
+
+	for _, tc := range []struct {
+		name      string
+		responses []string
+		status    int
+		filters   pspFilters
+		wantError string
+		wantLists int32
+		wantGets  int32
+	}{
+		{
+			name: "delayed visibility",
+			responses: []string{
+				`{"data":[]}`,
+				`{"data":[{"id":101,"friendlyName":"old-name"}]}`,
+				`{"data":[{"id":101,"friendlyName":"eventual"}]}`,
+			},
+			filters: pspFilters{Name: "eventual"}, wantLists: 3, wantGets: 1,
+		},
+		{
+			name: "missing after bounded retries", responses: []string{`{"data":[]}`},
+			filters: pspFilters{Name: "eventual"}, wantLists: 3, wantError: `no PSP found with name "eventual"`,
+		},
+		{
+			name:      "ambiguous name is not retried",
+			responses: []string{`{"data":[{"id":102,"friendlyName":"eventual"},{"id":101,"friendlyName":"eventual"}]}`},
+			filters:   pspFilters{Name: "eventual"}, wantLists: 1, wantError: "101, 102; configure id to select one",
+		},
+		{
+			name: "API error is not treated as missing", status: http.StatusForbidden,
+			responses: []string{`{"message":"Forbidden"}`},
+			filters:   pspFilters{Name: "eventual"}, wantLists: 1, wantError: "could not list PSPs",
+		},
+		{
+			name: "ID bypasses the list", filters: pspFilters{ID: "101"}, wantGets: 1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var lists, gets atomic.Int32
+			c := countTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/psps":
+					n := int(lists.Add(1)) - 1
+					if tc.status != 0 {
+						w.WriteHeader(tc.status)
+					}
+					if len(tc.responses) == 0 {
+						t.Error("unexpected list request")
+						return
+					}
+					_, _ = w.Write([]byte(tc.responses[min(n, len(tc.responses)-1)]))
+				case "/psps/101":
+					gets.Add(1)
+					_, _ = w.Write([]byte(`{"id":101,"friendlyName":"eventual","customSettings":{"page":{"showMonitorsUnderGroups":false}}}`))
+				default:
+					t.Errorf("unexpected request %s", r.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+				}
+			})
+			d := pspDataSource{client: c}
+			page, err := d.lookupPSP(t.Context(), tc.filters)
+			if tc.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+					t.Fatalf("expected error containing %q, got %v", tc.wantError, err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			} else if page.ID != 101 || page.CustomSettings == nil || page.CustomSettings.Page == nil || page.CustomSettings.Page.ShowMonitorsUnderGroups == nil || *page.CustomSettings.Page.ShowMonitorsUnderGroups {
+				t.Fatalf("lookup did not read the full PSP with explicit false: %#v", page)
+			}
+			if lists.Load() != tc.wantLists || gets.Load() != tc.wantGets {
+				t.Fatalf("list/detail calls = %d/%d, want %d/%d", lists.Load(), gets.Load(), tc.wantLists, tc.wantGets)
+			}
+		})
+	}
+}
+
+func TestPSPDataSourceLookupCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var calls atomic.Int32
+	c := countTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(`{"data":[]}`))
+		// Cancel after the response so the name-lookup retry wait is interrupted.
+		time.AfterFunc(50*time.Millisecond, cancel)
+	})
+	d := pspDataSource{client: c}
+	_, err := d.lookupPSP(ctx, pspFilters{Name: "missing"})
+	if !errors.Is(err, context.Canceled) || calls.Load() != 1 {
+		t.Fatalf("expected cancellation after one request, got %v after %d requests", err, calls.Load())
+	}
+}
 
 func TestPSPLookupFiltersRequireSelectorAndValidateID(t *testing.T) {
 	t.Parallel()

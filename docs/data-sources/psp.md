@@ -115,4 +115,5 @@ Read-Only:
 
 - `density` (String) Page density.
 - `layout` (String) Page layout.
+- `show_monitor_groups` (Boolean) Whether monitors are shown under their assigned monitor groups.
 - `theme` (String) Page theme.
