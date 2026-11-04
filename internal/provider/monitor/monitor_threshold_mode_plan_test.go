@@ -298,3 +298,14 @@ func TestModifyPlanAcceptsAZeroThresholdWithAnOmittedModeOnAManualMonitor(t *tes
 		t.Fatalf("a monitor that is not in auto keeps today's behaviour, got: %v", resp.Diagnostics)
 	}
 }
+
+func TestModifyPlanAcceptsAZeroThresholdWhenOffIsSetOnAnAutoMonitor(t *testing.T) {
+	t.Parallel()
+
+	threshold := 0
+	resp := modifyPlanWithThreshold(t, "auto", "off", &threshold, []string{"na", "eu"}, nil)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("an explicit off leaves auto, got: %v", resp.Diagnostics)
+	}
+}
