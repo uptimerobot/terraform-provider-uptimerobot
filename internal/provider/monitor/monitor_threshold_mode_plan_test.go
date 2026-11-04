@@ -376,3 +376,22 @@ func TestModifyPlanDefersTheRegionCoverageCheckUntilEveryRegionThresholdIsKnown(
 		t.Fatalf("a region threshold known only at apply time is checked once it is known, got: %v", resp.Diagnostics)
 	}
 }
+
+func TestModifyPlanDefersTheRegionCoverageCheckUntilEverySelectedRegionIsKnown(t *testing.T) {
+	t.Parallel()
+
+	resp := modifyPlanWithRegionData(t, "auto", "manual", nil, func(objType tftypes.Object) tftypes.Value {
+		dataType := objType.AttributeTypes["region_data"].(tftypes.Object)
+		return tftypes.NewValue(dataType, map[string]tftypes.Value{
+			"regions":     tftypes.NewValue(dataType.AttributeTypes["regions"], []tftypes.Value{tftypes.NewValue(tftypes.String, "na"), tftypes.NewValue(tftypes.String, tftypes.UnknownValue)}),
+			"auto_select": tftypes.NewValue(tftypes.Bool, nil),
+			"thresholds": tftypes.NewValue(dataType.AttributeTypes["thresholds"], map[string]tftypes.Value{
+				"na": tftypes.NewValue(tftypes.Number, 500),
+			}),
+		})
+	})
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("a selected region known only at apply time is checked once it is known, got: %v", resp.Diagnostics)
+	}
+}
