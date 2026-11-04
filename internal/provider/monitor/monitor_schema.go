@@ -773,6 +773,15 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		return
 	}
 
+	if zeroThresholdKeptInAuto(ctx, state.ResponseTimeThresholdMode, plan.ResponseTimeThresholdMode, plan.ResponseTimeThreshold, plan.RegionData) {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("response_time_threshold"),
+			"Response time threshold cannot be zero while the monitor stays in auto",
+			"The monitor is in auto and no positive threshold switches it to manual, so UptimeRobot keeps deriving every region's threshold and does not report response_time_threshold. Remove response_time_threshold, set a positive value to switch to manual, or set response_time_threshold_mode to \"off\" to disable slow response alerts.",
+		)
+		return
+	}
+
 	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
 		var acs []alertContactTF
 		resp.Diagnostics.Append(plan.AssignedAlertContacts.ElementsAs(ctx, &acs, false)...)

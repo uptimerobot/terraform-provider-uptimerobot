@@ -256,3 +256,45 @@ func TestModifyPlanChecksRegionCoverageForAnExplicitManualSwitchWithAThreshold(t
 		t.Fatalf("the explicit switch already refuses a map that leaves regions without a threshold, got: %v", resp.Diagnostics)
 	}
 }
+
+func mentionsZeroThresholdKeptInAuto(resp *resource.ModifyPlanResponse) bool {
+	for _, d := range resp.Diagnostics.Errors() {
+		if strings.Contains(d.Summary(), "Response time threshold cannot be zero while the monitor stays in auto") {
+			return true
+		}
+	}
+	return false
+}
+
+func TestModifyPlanRefusesAZeroThresholdWithAnOmittedModeOnAnAutoMonitor(t *testing.T) {
+	t.Parallel()
+
+	threshold := 0
+	resp := modifyPlanWithThreshold(t, "auto", "", &threshold, []string{"na", "eu"}, nil)
+
+	if !mentionsZeroThresholdKeptInAuto(resp) {
+		t.Fatalf("the monitor stays in auto and its read drops the zero, so the plan would never settle, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestModifyPlanAcceptsAZeroThresholdWhenRegionThresholdsSwitchAnAutoMonitorToManual(t *testing.T) {
+	t.Parallel()
+
+	threshold := 0
+	resp := modifyPlanWithThreshold(t, "auto", "", &threshold, []string{"na", "eu"}, map[string]int{"na": 500, "eu": 600})
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("positive region thresholds switch the monitor to manual, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestModifyPlanAcceptsAZeroThresholdWithAnOmittedModeOnAManualMonitor(t *testing.T) {
+	t.Parallel()
+
+	threshold := 0
+	resp := modifyPlanWithThreshold(t, "manual", "", &threshold, []string{"na", "eu"}, nil)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("a monitor that is not in auto keeps today's behaviour, got: %v", resp.Diagnostics)
+	}
+}

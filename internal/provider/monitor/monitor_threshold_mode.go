@@ -173,3 +173,26 @@ func anyPositive(thresholds map[string]int64) bool {
 	}
 	return false
 }
+
+// zeroThresholdKeptInAuto reports a response_time_threshold of 0 that leaves an auto monitor in auto because the mode
+// is omitted and no region threshold switches it to manual. The read then drops the zero, so the plan never settles.
+func zeroThresholdKeptInAuto(ctx context.Context, stateMode, planMode types.String, planThreshold types.Int64, planRegionData types.Object) bool {
+	if stateMode.ValueString() != responseTimeThresholdModeAuto || !planMode.IsUnknown() {
+		return false
+	}
+	if planThreshold.IsNull() || planThreshold.IsUnknown() || planThreshold.ValueInt64() != 0 {
+		return false
+	}
+	if planRegionData.IsNull() || planRegionData.IsUnknown() {
+		return true
+	}
+	var data regionDataTF
+	if planRegionData.As(ctx, &data, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}).HasError() || data.Thresholds.IsNull() || data.Thresholds.IsUnknown() {
+		return true
+	}
+	var thresholds map[string]int64
+	if data.Thresholds.ElementsAs(ctx, &thresholds, false).HasError() {
+		return true
+	}
+	return !anyPositive(thresholds)
+}
