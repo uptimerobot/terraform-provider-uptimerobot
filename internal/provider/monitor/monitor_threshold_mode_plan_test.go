@@ -53,6 +53,14 @@ func modifyPlanFor(t *testing.T, stateMode, planMode string, regions []string, t
 // modifyPlanWithThreshold also plans response_time_threshold when threshold is not nil.
 func modifyPlanWithThreshold(t *testing.T, stateMode, planMode string, threshold *int, regions []string, thresholds map[string]int) *resource.ModifyPlanResponse {
 	t.Helper()
+	return modifyPlanWithRegionData(t, stateMode, planMode, threshold, func(objType tftypes.Object) tftypes.Value {
+		return planRegionData(objType, regions, thresholds)
+	})
+}
+
+// modifyPlanWithRegionData plans region_data as regionData builds it, so a test can plan values unknown until apply.
+func modifyPlanWithRegionData(t *testing.T, stateMode, planMode string, threshold *int, regionData func(tftypes.Object) tftypes.Value) *resource.ModifyPlanResponse {
+	t.Helper()
 	ctx := context.Background()
 
 	r := &monitorResource{}
@@ -97,7 +105,7 @@ func modifyPlanWithThreshold(t *testing.T, stateMode, planMode string, threshold
 	planRaw := rawMonitorOf(t, objType, with(map[string]tftypes.Value{
 		"response_time_threshold_mode": planModeValue,
 		"response_time_threshold":      thresholdValue,
-		"region_data":                  planRegionData(objType, regions, thresholds),
+		"region_data":                  regionData(objType),
 	}))
 	stateRaw := rawMonitorOf(t, objType, with(map[string]tftypes.Value{
 		"response_time_threshold_mode": tftypes.NewValue(tftypes.String, stateMode),
@@ -105,7 +113,7 @@ func modifyPlanWithThreshold(t *testing.T, stateMode, planMode string, threshold
 	configRaw := rawMonitorOf(t, objType, with(map[string]tftypes.Value{
 		"response_time_threshold_mode": configModeValue,
 		"response_time_threshold":      thresholdValue,
-		"region_data":                  planRegionData(objType, regions, thresholds),
+		"region_data":                  regionData(objType),
 	}))
 
 	req := resource.ModifyPlanRequest{
@@ -307,5 +315,64 @@ func TestModifyPlanAcceptsAZeroThresholdWhenOffIsSetOnAnAutoMonitor(t *testing.T
 
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("an explicit off leaves auto, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestModifyPlanDefersTheZeroThresholdCheckUntilRegionThresholdsAreKnown(t *testing.T) {
+	t.Parallel()
+
+	threshold := 0
+	for name, regionData := range map[string]func(tftypes.Object) tftypes.Value{
+		"unknown region_data": func(objType tftypes.Object) tftypes.Value {
+			return tftypes.NewValue(objType.AttributeTypes["region_data"], tftypes.UnknownValue)
+		},
+		"unknown thresholds": func(objType tftypes.Object) tftypes.Value {
+			dataType := objType.AttributeTypes["region_data"].(tftypes.Object)
+			return tftypes.NewValue(dataType, map[string]tftypes.Value{
+				"regions":     tftypes.NewValue(dataType.AttributeTypes["regions"], []tftypes.Value{tftypes.NewValue(tftypes.String, "na")}),
+				"auto_select": tftypes.NewValue(tftypes.Bool, nil),
+				"thresholds":  tftypes.NewValue(dataType.AttributeTypes["thresholds"], tftypes.UnknownValue),
+			})
+		},
+		"unknown threshold value": func(objType tftypes.Object) tftypes.Value {
+			dataType := objType.AttributeTypes["region_data"].(tftypes.Object)
+			return tftypes.NewValue(dataType, map[string]tftypes.Value{
+				"regions":     tftypes.NewValue(dataType.AttributeTypes["regions"], []tftypes.Value{tftypes.NewValue(tftypes.String, "na")}),
+				"auto_select": tftypes.NewValue(tftypes.Bool, nil),
+				"thresholds": tftypes.NewValue(dataType.AttributeTypes["thresholds"], map[string]tftypes.Value{
+					"na": tftypes.NewValue(tftypes.Number, tftypes.UnknownValue),
+				}),
+			})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			resp := modifyPlanWithRegionData(t, "auto", "", &threshold, regionData)
+
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("region thresholds known only at apply time may switch the monitor to manual, got: %v", resp.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestModifyPlanDefersTheRegionCoverageCheckUntilEveryRegionThresholdIsKnown(t *testing.T) {
+	t.Parallel()
+
+	resp := modifyPlanWithRegionData(t, "auto", "manual", nil, func(objType tftypes.Object) tftypes.Value {
+		dataType := objType.AttributeTypes["region_data"].(tftypes.Object)
+		return tftypes.NewValue(dataType, map[string]tftypes.Value{
+			"regions":     tftypes.NewValue(dataType.AttributeTypes["regions"], []tftypes.Value{tftypes.NewValue(tftypes.String, "na"), tftypes.NewValue(tftypes.String, "eu")}),
+			"auto_select": tftypes.NewValue(tftypes.Bool, nil),
+			"thresholds": tftypes.NewValue(dataType.AttributeTypes["thresholds"], map[string]tftypes.Value{
+				"na": tftypes.NewValue(tftypes.Number, 500),
+				"eu": tftypes.NewValue(tftypes.Number, tftypes.UnknownValue),
+			}),
+		})
+	})
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("a region threshold known only at apply time is checked once it is known, got: %v", resp.Diagnostics)
 	}
 }

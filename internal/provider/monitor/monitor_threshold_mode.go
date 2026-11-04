@@ -3,6 +3,8 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -140,6 +142,9 @@ func missingRegionThresholds(ctx context.Context, stateMode, planMode types.Stri
 	if diags.HasError() || data.Regions.IsNull() || data.Regions.IsUnknown() || data.Thresholds.IsNull() || data.Thresholds.IsUnknown() {
 		return nil, diags
 	}
+	if anyUnknown(data.Regions.Elements()) || anyUnknown(slices.Collect(maps.Values(data.Thresholds.Elements()))) {
+		return nil, diags
+	}
 	var regions []string
 	diags.Append(data.Regions.ElementsAs(ctx, &regions, false)...)
 	var thresholds map[string]int64
@@ -165,6 +170,15 @@ func missingRegionThresholds(ctx context.Context, stateMode, planMode types.Stri
 	return missing, diags
 }
 
+func anyUnknown(elements []attr.Value) bool {
+	for _, element := range elements {
+		if element.IsUnknown() {
+			return true
+		}
+	}
+	return false
+}
+
 func anyPositive(thresholds map[string]int64) bool {
 	for _, value := range thresholds {
 		if value > 0 {
@@ -176,6 +190,7 @@ func anyPositive(thresholds map[string]int64) bool {
 
 // zeroThresholdKeptInAuto reports a response_time_threshold of 0 that leaves an auto monitor in auto because the mode
 // is omitted and no region threshold switches it to manual. The read then drops the zero, so the plan never settles.
+// Region thresholds known only at apply time may still switch the monitor to manual, so they are not refused.
 func zeroThresholdKeptInAuto(ctx context.Context, stateMode, planMode types.String, planThreshold types.Int64, planRegionData types.Object) bool {
 	if stateMode.ValueString() != responseTimeThresholdModeAuto || !planMode.IsUnknown() {
 		return false
@@ -183,16 +198,23 @@ func zeroThresholdKeptInAuto(ctx context.Context, stateMode, planMode types.Stri
 	if planThreshold.IsNull() || planThreshold.IsUnknown() || planThreshold.ValueInt64() != 0 {
 		return false
 	}
-	if planRegionData.IsNull() || planRegionData.IsUnknown() {
+	if planRegionData.IsUnknown() {
+		return false
+	}
+	if planRegionData.IsNull() {
 		return true
 	}
 	var data regionDataTF
-	if planRegionData.As(ctx, &data, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}).HasError() || data.Thresholds.IsNull() || data.Thresholds.IsUnknown() {
+	if planRegionData.As(ctx, &data, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}).HasError() || data.Thresholds.IsNull() {
 		return true
 	}
-	var thresholds map[string]int64
-	if data.Thresholds.ElementsAs(ctx, &thresholds, false).HasError() {
-		return true
+	if data.Thresholds.IsUnknown() {
+		return false
 	}
-	return !anyPositive(thresholds)
+	for _, element := range data.Thresholds.Elements() {
+		if value, ok := element.(types.Int64); !ok || value.IsUnknown() || value.ValueInt64() > 0 {
+			return false
+		}
+	}
+	return true
 }
