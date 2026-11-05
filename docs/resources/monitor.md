@@ -828,6 +828,13 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must be selected regions and values must be between `0` and `60000`. (see [below for nested schema](#nestedatt--region_data))
 - `regional_data` (String, Deprecated) Legacy single region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania). Use region_data for new multi-region monitor settings.
 - `response_time_threshold` (Number) Response time threshold in milliseconds. Response time over this threshold will trigger an incident
+- `response_time_threshold_mode` (String) How the response time threshold is set: `off`, `manual` or `auto`.
+
+- `auto` lets UptimeRobot derive a threshold for each region from that region's own response time history and keep it up to date. `response_time_threshold` and `region_data.thresholds` must not be set, and the computed `auto_thresholds` shows the state of each region. A region without enough history yet is still learning and sends no slow response alerts.
+- `manual` uses the thresholds you set in `response_time_threshold` or `region_data.thresholds`, and needs at least one positive value. When you switch a monitor from `auto` to `manual`, set a threshold for every selected region: regions without one get a default.
+- `off` disables slow response alerts. `region_data.thresholds` must then be empty or unset, and zero values are refused too.
+
+`auto` and `manual` are not available for HEARTBEAT, DNS and VISUAL_COMPARISON monitors, which have no slow response alert. With `auto`, `region_data.thresholds` must not be set at all, not even as an empty map. When omitted, the mode is unmanaged: the monitor keeps its mode, except that a positive `response_time_threshold` or `region_data.thresholds` value switches a monitor in `auto` to `manual`, so a configuration that sets `response_time_threshold` on a monitor that was switched to `auto` outside Terraform changes it back to `manual` on the next apply.
 - `ssl_expiration_reminder` (Boolean) Whether to enable SSL expiration reminders
 - `success_http_response_codes` (Set of String) The expected HTTP response codes. If not set API applies defaults.
 - `tags` (Set of String) Tags for the monitor. Must be lowercase. Duplicates are removed by set semantics.
@@ -840,6 +847,7 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 
 ### Read-Only
 
+- `auto_thresholds` (Attributes Map) The state of each region's automatic threshold, keyed by region code. Empty unless `response_time_threshold_mode` is `auto`. (see [below for nested schema](#nestedatt--auto_thresholds))
 - `id` (String) Monitor ID
 - `post_value_type` (String) Computed body type used by UptimeRobot when sending the monitor request. Set automatically to RAW_JSON or KEY_VALUE.
 - `status` (String) Status of the monitor
@@ -943,3 +951,14 @@ Optional:
 - `auto_select` (Boolean) When true, UptimeRobot automatically chooses the monitoring region. Regions can be omitted in this mode. When omitted or false, configured regions are used as manually selected regions.
 - `regions` (Set of String) Active monitoring regions: na (North America), eu (Europe), as (Asia), oc (Oceania). Required unless auto_select is true.
 - `thresholds` (Map of Number) Optional per-region response-time thresholds in milliseconds. Keys must be selected regions.
+
+
+<a id="nestedatt--auto_thresholds"></a>
+### Nested Schema for `auto_thresholds`
+
+Read-Only:
+
+- `days_collected` (Number) Days of response time history collected so far, up to the seven needed.
+- `status` (String) learning (not enough history yet, no slow response alerts from this region), ready, or stale (the last threshold is kept because no recent data came in).
+- `threshold_ms` (Number) The threshold in effect in milliseconds. Null while the region is learning.
+- `usual_ms` (Number) The usual response time of the region in milliseconds. Null while the region is learning.
