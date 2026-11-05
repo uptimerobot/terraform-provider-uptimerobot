@@ -201,17 +201,10 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 		return
 	}
 
-	if anyUnknown(slices.Collect(maps.Values(regionData.Thresholds.Elements()))) {
-		return
-	}
-	var thresholds map[string]int64
-	resp.Diagnostics.Append(regionData.Thresholds.ElementsAs(ctx, &thresholds, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
+	// Keys are known even while a value is not, so they are checked now and only the values wait for apply time.
+	elements := regionData.Thresholds.Elements()
 	if !regionsManaged {
-		if len(thresholds) > 0 {
+		if len(elements) > 0 {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("region_data").AtName("regions"),
 				"Missing regions",
@@ -229,7 +222,7 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 		}
 	}
 
-	for raw, v := range thresholds {
+	for raw := range elements {
 		region, ok := normalizeRegionCode(raw)
 		if !ok {
 			resp.Diagnostics.AddAttributeError(
@@ -245,6 +238,22 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 				"Threshold region is not selected",
 				fmt.Sprintf("Threshold key %q must also be present in region_data.regions.", region),
 			)
+		}
+	}
+
+	if anyUnknown(slices.Collect(maps.Values(elements))) {
+		return
+	}
+	var thresholds map[string]int64
+	resp.Diagnostics.Append(regionData.Thresholds.ElementsAs(ctx, &thresholds, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	for raw, v := range thresholds {
+		region, ok := normalizeRegionCode(raw)
+		if !ok {
+			continue
 		}
 		if v < 0 || v > 60000 {
 			resp.Diagnostics.AddAttributeError(

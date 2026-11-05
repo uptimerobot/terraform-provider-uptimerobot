@@ -737,6 +737,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	if req.Plan.Raw.IsNull() {
 		return
 	}
+	defer keepThresholdModeStateWhenNothingChanges(ctx, req, resp)
 
 	// Retrieve values from plan and state
 	var plan monitorResourceModel
@@ -759,9 +760,15 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		return
 	}
 
+	var configMode types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("response_time_threshold_mode"), &configMode)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	planType := strings.ToUpper(firstNonEmpty(stringOrEmpty(plan.Type), stringOrEmpty(state.Type)))
 
-	if missing, d := missingRegionThresholds(ctx, state.ResponseTimeThresholdMode, plan.ResponseTimeThresholdMode, plan.ResponseTimeThreshold, plan.RegionData); d.HasError() {
+	if missing, d := missingRegionThresholds(ctx, state.ResponseTimeThresholdMode, configMode, plan.ResponseTimeThreshold, plan.RegionData); d.HasError() {
 		resp.Diagnostics.Append(d...)
 		return
 	} else if len(missing) > 0 {
@@ -773,7 +780,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 		return
 	}
 
-	if zeroThresholdKeptInAuto(ctx, state.ResponseTimeThresholdMode, plan.ResponseTimeThresholdMode, plan.ResponseTimeThreshold, plan.RegionData) {
+	if zeroThresholdKeptInAuto(ctx, state.ResponseTimeThresholdMode, configMode, plan.ResponseTimeThreshold, plan.RegionData) {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("response_time_threshold"),
 			"Response time threshold cannot be zero while the monitor stays in auto",

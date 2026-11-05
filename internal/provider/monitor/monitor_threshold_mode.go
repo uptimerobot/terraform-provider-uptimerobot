@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/uptimerobot/terraform-provider-uptimerobot/internal/client"
@@ -127,11 +128,13 @@ func addModeNotReportedWarning(diags *diag.Diagnostics, monitorName, requested s
 // server fills such regions with a default and then reports thresholds the plan never held, which Terraform rejects
 // after the change has already been made, so the switch is refused up front. With the mode omitted, a positive
 // threshold, in region_data.thresholds or in response_time_threshold, makes the same switch implicitly. Without one
-// the monitor stays in auto, which derives its own thresholds, so a managed region_data.thresholds map is refused.
-func missingRegionThresholds(ctx context.Context, stateMode, planMode types.String, planThreshold types.Int64, planRegionData types.Object) ([]string, diag.Diagnostics) {
+// the monitor stays in auto, which derives its own thresholds, so a managed region_data.thresholds map is refused, also
+// when auto_select leaves the region list to the server. configMode is the configured mode: null when omitted. A mode
+// configured as an expression known only at apply time may resolve to any transition, so the checks wait for it.
+func missingRegionThresholds(ctx context.Context, stateMode, configMode types.String, planThreshold types.Int64, planRegionData types.Object) ([]string, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	explicit := planMode.ValueString() == responseTimeThresholdModeManual
-	if stateMode.ValueString() != responseTimeThresholdModeAuto || (!explicit && !planMode.IsUnknown()) {
+	explicit := configMode.ValueString() == responseTimeThresholdModeManual
+	if stateMode.ValueString() != responseTimeThresholdModeAuto || configMode.IsUnknown() || (!explicit && !configMode.IsNull()) {
 		return nil, diags
 	}
 	if planRegionData.IsNull() || planRegionData.IsUnknown() {
@@ -139,25 +142,28 @@ func missingRegionThresholds(ctx context.Context, stateMode, planMode types.Stri
 	}
 	var data regionDataTF
 	diags.Append(planRegionData.As(ctx, &data, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
-	if diags.HasError() || data.Regions.IsNull() || data.Regions.IsUnknown() || data.Thresholds.IsNull() || data.Thresholds.IsUnknown() {
+	if diags.HasError() || data.Thresholds.IsNull() || data.Thresholds.IsUnknown() || anyUnknown(slices.Collect(maps.Values(data.Thresholds.Elements()))) {
 		return nil, diags
 	}
-	if anyUnknown(data.Regions.Elements()) || anyUnknown(slices.Collect(maps.Values(data.Thresholds.Elements()))) {
-		return nil, diags
-	}
-	var regions []string
-	diags.Append(data.Regions.ElementsAs(ctx, &regions, false)...)
 	var thresholds map[string]int64
 	diags.Append(data.Thresholds.ElementsAs(ctx, &thresholds, false)...)
 	if diags.HasError() {
 		return nil, diags
 	}
-	if !explicit && !anyPositive(thresholds) && !(planThreshold.ValueInt64() > 0) {
+	if !explicit && !anyPositive(thresholds) && planThreshold.ValueInt64() <= 0 {
 		diags.AddAttributeError(
 			path.Root("region_data").AtName("thresholds"),
 			"Region thresholds cannot be managed while the monitor stays in auto",
 			"The monitor is in auto and no positive threshold switches it to manual, so UptimeRobot keeps deriving every region's threshold and would contradict region_data.thresholds. Remove region_data.thresholds, or set a positive threshold for every selected region to switch to manual.",
 		)
+		return nil, diags
+	}
+	if data.Regions.IsNull() || data.Regions.IsUnknown() || anyUnknown(data.Regions.Elements()) {
+		return nil, diags
+	}
+	var regions []string
+	diags.Append(data.Regions.ElementsAs(ctx, &regions, false)...)
+	if diags.HasError() {
 		return nil, diags
 	}
 	var missing []string
@@ -190,9 +196,10 @@ func anyPositive(thresholds map[string]int64) bool {
 
 // zeroThresholdKeptInAuto reports a response_time_threshold of 0 that leaves an auto monitor in auto because the mode
 // is omitted and no region threshold switches it to manual. The read then drops the zero, so the plan never settles.
-// Region thresholds known only at apply time may still switch the monitor to manual, so they are not refused.
-func zeroThresholdKeptInAuto(ctx context.Context, stateMode, planMode types.String, planThreshold types.Int64, planRegionData types.Object) bool {
-	if stateMode.ValueString() != responseTimeThresholdModeAuto || !planMode.IsUnknown() {
+// Region thresholds known only at apply time may still switch the monitor to manual, so they are not refused. configMode
+// is the configured mode, so a mode configured as an expression known only at apply time is not taken for an omitted one.
+func zeroThresholdKeptInAuto(ctx context.Context, stateMode, configMode types.String, planThreshold types.Int64, planRegionData types.Object) bool {
+	if stateMode.ValueString() != responseTimeThresholdModeAuto || !configMode.IsNull() {
 		return false
 	}
 	if planThreshold.IsNull() || planThreshold.IsUnknown() || planThreshold.ValueInt64() != 0 {
@@ -217,4 +224,28 @@ func zeroThresholdKeptInAuto(ctx context.Context, stateMode, planMode types.Stri
 		}
 	}
 	return true
+}
+
+// keepThresholdModeStateWhenNothingChanges plans the state values of the two server-derived threshold attributes when
+// they are the only difference from state. Terraform marks them unknown whenever the configuration differs from state,
+// even when plan modifiers then settle that difference, as with reordered API assertions, and the plan would never be
+// empty. With any other change they stay unknown: the update can change what the server reports for them.
+func keepThresholdModeStateWhenNothingChanges(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if resp.Diagnostics.HasError() || req.State.Raw.IsNull() || resp.Plan.Raw.IsNull() {
+		return
+	}
+	var mode types.String
+	var autoThresholds types.Map
+	if req.State.GetAttribute(ctx, path.Root("response_time_threshold_mode"), &mode).HasError() ||
+		req.State.GetAttribute(ctx, path.Root("auto_thresholds"), &autoThresholds).HasError() {
+		return
+	}
+	candidate := resp.Plan
+	if candidate.SetAttribute(ctx, path.Root("response_time_threshold_mode"), mode).HasError() ||
+		candidate.SetAttribute(ctx, path.Root("auto_thresholds"), autoThresholds).HasError() {
+		return
+	}
+	if candidate.Raw.Equal(req.State.Raw) {
+		resp.Plan = candidate
+	}
 }
