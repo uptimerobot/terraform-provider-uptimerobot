@@ -134,7 +134,7 @@ func addModeNotReportedWarning(diags *diag.Diagnostics, monitorName, requested s
 func missingRegionThresholds(ctx context.Context, stateMode, configMode types.String, planThreshold types.Int64, planRegionData types.Object) ([]string, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	explicit := configMode.ValueString() == responseTimeThresholdModeManual
-	if stateMode.ValueString() != responseTimeThresholdModeAuto || configMode.IsUnknown() || (!explicit && !configMode.IsNull()) {
+	if stateMode.ValueString() != responseTimeThresholdModeAuto || (!explicit && !configMode.IsNull()) {
 		return nil, diags
 	}
 	if planRegionData.IsNull() || planRegionData.IsUnknown() {
