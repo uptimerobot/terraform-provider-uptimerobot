@@ -92,6 +92,10 @@ func upgradeMonitorFromV0(ctx context.Context, prior monitorV0Model) (monitorRes
 	diags.Append(d...)
 
 	up := monitorResourceModel{
+		ResponseTimeThresholdMode: types.StringNull(),
+		AutoThresholds:            types.MapNull(autoThresholdObjectType()),
+		CustomFields:              types.MapNull(types.StringType),
+
 		Type:                     prior.Type,
 		Interval:                 prior.Interval,
 		SSLExpirationReminder:    prior.SSLExpirationReminder,
@@ -383,6 +387,10 @@ func upgradeMonitorFromV1(ctx context.Context, prior monitorV1Model) (monitorRes
 
 	// Only difference is in PostValueData type
 	up := monitorResourceModel{
+		ResponseTimeThresholdMode: types.StringNull(),
+		AutoThresholds:            types.MapNull(autoThresholdObjectType()),
+		CustomFields:              types.MapNull(types.StringType),
+
 		Type:                     prior.Type,
 		Interval:                 prior.Interval,
 		SSLExpirationReminder:    prior.SSLExpirationReminder,
@@ -669,6 +677,10 @@ func upgradeMonitorFromV2(ctx context.Context, prior monitorV2Model) (monitorRes
 	diags.Append(d...)
 
 	up := monitorResourceModel{
+		ResponseTimeThresholdMode: types.StringNull(),
+		AutoThresholds:            types.MapNull(autoThresholdObjectType()),
+		CustomFields:              types.MapNull(types.StringType),
+
 		Type:                     prior.Type,
 		Interval:                 prior.Interval,
 		SSLExpirationReminder:    prior.SSLExpirationReminder,
@@ -994,6 +1006,10 @@ func upgradeMonitorFromV3(ctx context.Context, prior monitorV3Model) (monitorRes
 	config := retypeConfigToCurrent(prior.Config)
 
 	up := monitorResourceModel{
+		ResponseTimeThresholdMode: types.StringNull(),
+		AutoThresholds:            types.MapNull(autoThresholdObjectType()),
+		CustomFields:              types.MapNull(types.StringType),
+
 		Type:                     prior.Type,
 		Interval:                 prior.Interval,
 		SSLExpirationReminder:    prior.SSLExpirationReminder,
@@ -1328,6 +1344,10 @@ func upgradeMonitorFromV4(ctx context.Context, prior monitorV4Model) (monitorRes
 	config := retypeConfigToCurrent(prior.Config)
 
 	up := monitorResourceModel{
+		ResponseTimeThresholdMode: types.StringNull(),
+		AutoThresholds:            types.MapNull(autoThresholdObjectType()),
+		CustomFields:              types.MapNull(types.StringType),
+
 		Type:                     prior.Type,
 		Interval:                 prior.Interval,
 		SSLExpirationReminder:    prior.SSLExpirationReminder,
@@ -1479,6 +1499,9 @@ func upgradeMonitorFromV6(prior monitorV6Model) monitorResourceModel {
 		RegionData:               prior.RegionData,
 		CheckSSLErrors:           prior.CheckSSLErrors,
 		Config:                   prior.Config,
+
+		ResponseTimeThresholdMode: types.StringNull(),
+		AutoThresholds:            types.MapNull(autoThresholdObjectType()),
 	}
 
 	if strings.ToUpper(prior.Type.ValueString()) == MonitorTypePORT {

@@ -3,9 +3,11 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
@@ -66,6 +68,7 @@ func (r *monitorResource) ValidateConfig(
 	validateAssignedAlertContacts(ctx, &data, resp)
 	validateConfig(ctx, t, &data, resp)
 	validateRegionData(ctx, &data, resp)
+	validateResponseTimeThresholdMode(ctx, &data, resp)
 	validateHeadersCasingDuplication(ctx, &data, resp)
 	validatePortMonitor(ctx, t, &data, resp)
 	validateKeywordMonitor(ctx, t, &data, resp)
@@ -759,6 +762,102 @@ func validateHTTPPasswordWithoutUserName(
 			path.Root("http_username"),
 			"Password set without username",
 			"Set http_username when http_password is provided.",
+		)
+	}
+}
+
+// The server does not store the mode: it derives it, Auto when the monitor has automatic thresholds, else Manual when
+// any threshold is positive, else Off. So Auto and Off cannot be sent together with values, and Manual means nothing
+// without one (the server would report Off, and the monitor would never settle to the planned mode). The configuration
+// is refused here, naming what to change, instead of failing at apply.
+func validateResponseTimeThresholdMode(ctx context.Context, data *monitorResourceModel, resp *resource.ValidateConfigResponse) {
+	if data.ResponseTimeThresholdMode.IsNull() || data.ResponseTimeThresholdMode.IsUnknown() {
+		return
+	}
+	mode := data.ResponseTimeThresholdMode.ValueString()
+	if mode != responseTimeThresholdModeAuto && mode != responseTimeThresholdModeOff && mode != responseTimeThresholdModeManual {
+		return
+	}
+
+	// These types have no slow response alert: the server drops their thresholds and reports "off", so "auto" is
+	// refused and "manual" would never settle to the planned mode.
+	if mode != responseTimeThresholdModeOff && !data.Type.IsNull() && !data.Type.IsUnknown() {
+		switch strings.ToUpper(data.Type.ValueString()) {
+		case MonitorTypeHEARTBEAT, MonitorTypeDNS, monitorTypeVisualComparison:
+			resp.Diagnostics.AddAttributeError(
+				path.Root("response_time_threshold_mode"),
+				"Response time thresholds are not available for this monitor type",
+				fmt.Sprintf("%s monitors have no slow response alert, so response_time_threshold_mode cannot be %q.", strings.ToUpper(data.Type.ValueString()), mode),
+			)
+		}
+	}
+
+	singleValueSet := !data.ResponseTimeThreshold.IsNull() && !data.ResponseTimeThreshold.IsUnknown()
+	singleValuePositive := singleValueSet && data.ResponseTimeThreshold.ValueInt64() > 0
+	if singleValueSet && mode != responseTimeThresholdModeManual && (mode == responseTimeThresholdModeAuto || singleValuePositive) {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("response_time_threshold"),
+			"Response time threshold conflicts with response_time_threshold_mode",
+			fmt.Sprintf("response_time_threshold must not be set to a positive value, or at all in auto, when response_time_threshold_mode is %q. Remove it, or set response_time_threshold_mode to \"manual\".", mode),
+		)
+	}
+
+	regionValuePositive := false
+	regionValuesUnknown := false
+	if !data.RegionData.IsNull() && !data.RegionData.IsUnknown() {
+		var regionData regionDataTF
+		resp.Diagnostics.Append(data.RegionData.As(ctx, &regionData, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if regionData.Thresholds.IsUnknown() {
+			regionValuesUnknown = true
+		} else if anyUnknown(slices.Collect(maps.Values(regionData.Thresholds.Elements()))) {
+			regionValuesUnknown = true
+			entries := len(regionData.Thresholds.Elements())
+			if mode == responseTimeThresholdModeAuto || (mode == responseTimeThresholdModeOff && entries > 0) {
+				regionValuePositive = true
+			}
+		} else if !regionData.Thresholds.IsNull() {
+			var thresholds map[string]int64
+			resp.Diagnostics.Append(regionData.Thresholds.ElementsAs(ctx, &thresholds, false)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			for _, value := range thresholds {
+				if value > 0 {
+					regionValuePositive = true
+					break
+				}
+			}
+			// In auto the server derives every region's threshold, so even an empty map is a managed attribute that
+			// the API would contradict on the next read. In off it drops every entry, zero values included, and
+			// reports an empty map.
+			if mode == responseTimeThresholdModeAuto || (mode == responseTimeThresholdModeOff && len(thresholds) > 0) {
+				regionValuePositive = true
+			}
+		}
+	} else if data.RegionData.IsUnknown() {
+		regionValuesUnknown = true
+	}
+
+	if mode == responseTimeThresholdModeManual {
+		valuesUnknown := data.ResponseTimeThreshold.IsUnknown() || regionValuesUnknown
+		if !singleValuePositive && !regionValuePositive && !valuesUnknown {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("response_time_threshold_mode"),
+				"Manual mode needs a threshold",
+				"response_time_threshold_mode \"manual\" needs a positive response_time_threshold or a positive value in region_data.thresholds. Without one the monitor has no threshold and is reported as \"off\". Set a threshold, or use \"off\" or \"auto\".",
+			)
+		}
+		return
+	}
+
+	if regionValuePositive {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("region_data").AtName("thresholds"),
+			"Region thresholds conflict with response_time_threshold_mode",
+			fmt.Sprintf("region_data.thresholds cannot be set when response_time_threshold_mode is %q. Remove it, or set response_time_threshold_mode to \"manual\".", mode),
 		)
 	}
 }
