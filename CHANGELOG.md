@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Changed
+
+- Updated Go to 1.27.3 and refreshed Go dependencies, including gRPC, go-cty, and the Terraform CLI wrapper used by acceptance tests. Go 1.27.3 fixes the `crypto/x509` vulnerability GO-2026-6809, which the provider reaches when verifying the API's TLS certificate.
+
 ## 1.13.0 — 2026-10-30
 
 ### Added
