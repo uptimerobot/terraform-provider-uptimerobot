@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
@@ -1142,6 +1143,41 @@ func TestExpandConfigToAPI_UDPTouched(t *testing.T) {
 	}
 	if out.UDP.PacketLossThreshold == nil || *out.UDP.PacketLossThreshold != 50 {
 		t.Fatalf("expected packetLossThreshold=50, got %#v", out.UDP.PacketLossThreshold)
+	}
+}
+
+// TestExpandConfigToAPI_UDPPayloadKeepsWhitespace guards the payload against trimming:
+// whitespace is part of what is sent, and " 0x41" must stay text rather than become hex.
+func TestExpandConfigToAPI_UDPPayloadKeepsWhitespace(t *testing.T) {
+	t.Parallel()
+
+	for _, payload := range []string{" 0x41", "0x41 ", "ping\n", "\tping", "  "} {
+		t.Run(fmt.Sprintf("%q", payload), func(t *testing.T) {
+			t.Parallel()
+
+			cfg := types.ObjectValueMust(configObjectType().AttrTypes, map[string]attr.Value{
+				"ssl_expiration_period_days": types.SetNull(types.Int64Type),
+				"dns_records":                types.ObjectNull(dnsRecordsObjectType().AttrTypes),
+				"ip_version":                 types.StringNull(),
+				"api_assertions":             types.ObjectNull(apiAssertionsObjectType().AttrTypes),
+				"udp": types.ObjectValueMust(udpObjectType().AttrTypes, map[string]attr.Value{
+					"payload":               types.StringValue(payload),
+					"packet_loss_threshold": types.Int64Value(50),
+				}),
+				"application_error_retries": types.Int64Unknown(),
+			})
+
+			out, _, diags := expandConfigToAPI(context.Background(), cfg)
+			if diags.HasError() {
+				t.Fatalf("unexpected diagnostics: %+v", diags)
+			}
+			if out == nil || out.UDP == nil || out.UDP.Payload == nil {
+				t.Fatalf("expected udp payload to be set, got %#v", out)
+			}
+			if *out.UDP.Payload != payload {
+				t.Fatalf("payload = %q, want %q", *out.UDP.Payload, payload)
+			}
+		})
 	}
 }
 

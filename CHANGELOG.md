@@ -3,6 +3,20 @@
 ### Changed
 
 - Updated Go to 1.27.3 and refreshed Go dependencies, including gRPC, go-cty, and the Terraform CLI wrapper used by acceptance tests. Go 1.27.3 fixes the `crypto/x509` vulnerability GO-2026-6809, which the provider reaches when verifying the API's TLS certificate.
+- Limited the UDP monitor's `config.udp.payload` to 1000 characters, matching the API. Longer payloads now fail at `terraform plan` instead of at apply. The limit counts characters, not bytes.
+
+### Fixed
+
+- The UDP monitor's `config.udp.payload` is now sent exactly as configured. The provider used to trim leading and trailing whitespace, so a payload such as `"ping\n"` lost its newline and `" 0x41"` was sent as the hex value `0x41` instead of as text.
+
+### Documentation
+
+- Documented the hex form of the UDP monitor's `config.udp.payload`: a value that starts with `0x` followed by an even number of hex digits is sent as raw bytes (for example, `0x33444333` sends `33 44 43 33`), and any other value is sent as text. The provider passes the value to the API unchanged. The attribute reference also states the 1000-character limit.
+
+### Tests/CI
+
+- Added schema tests for the UDP payload limit at and over 1000 characters, including multi-byte characters.
+- Added a regression test that UDP payloads keep their leading and trailing whitespace.
 
 ## 1.13.0 — 2026-10-30
 

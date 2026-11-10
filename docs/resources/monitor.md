@@ -931,7 +931,7 @@ Optional:
 Optional:
 
 - `packet_loss_threshold` (Number) Packet loss threshold percentage.
-- `payload` (String) Optional UDP payload to send.
+- `payload` (String) Optional UDP payload to send, up to 1000 characters. A value that starts with `0x` followed by an even number of hex digits (case-insensitive) is sent as raw bytes; for example, `0x33444333` sends the bytes `33 44 43 33`. Any other value, including `0x` with odd-length or non-hex digits, is sent as text.
 
 
 

@@ -345,7 +345,9 @@ func expandConfigToAPI(
 		udp := &client.UDPMonitorConfig{}
 		fieldTouched := false
 		if !tf.Payload.IsUnknown() && !tf.Payload.IsNull() {
-			v := strings.TrimSpace(tf.Payload.ValueString())
+			// Sent as configured: whitespace is part of the payload, and trimming
+			// " 0x41" would turn a text value into a hex one.
+			v := tf.Payload.ValueString()
 			udp.Payload = &v
 			fieldTouched = true
 		}
