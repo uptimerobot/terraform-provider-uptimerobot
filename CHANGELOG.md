@@ -4,6 +4,10 @@
 
 - Updated Go to 1.27.3 and refreshed Go dependencies, including gRPC, go-cty, and the Terraform CLI wrapper used by acceptance tests. Go 1.27.3 fixes the `crypto/x509` vulnerability GO-2026-6809, which the provider reaches when verifying the API's TLS certificate.
 
+### Documentation
+
+- Documented the hex form of the UDP monitor's `config.udp.payload`: a value that starts with `0x` followed by an even number of hex digits is sent as raw bytes (for example, `0x33444333` sends `33 44 43 33`), and any other value is sent as text. The provider passes the value to the API unchanged.
+
 ## 1.13.0 — 2026-10-30
 
 ### Added
