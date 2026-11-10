@@ -12,6 +12,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
+// udpPayloadValidators returns the validators declared on config.udp.payload in the
+// monitor resource schema.
 func udpPayloadValidators(t *testing.T) []validator.String {
 	t.Helper()
 
@@ -36,6 +38,8 @@ func udpPayloadValidators(t *testing.T) []validator.String {
 	return payload.Validators
 }
 
+// validateUDPPayload runs every config.udp.payload validator on value and reports
+// whether it passed all of them.
 func validateUDPPayload(t *testing.T, value types.String) bool {
 	t.Helper()
 
@@ -50,6 +54,8 @@ func validateUDPPayload(t *testing.T, value types.String) bool {
 	return !resp.Diagnostics.HasError()
 }
 
+// TestUDPPayloadSchemaLengthLimit checks the 1000-character limit on config.udp.payload,
+// counted in characters rather than bytes.
 func TestUDPPayloadSchemaLengthLimit(t *testing.T) {
 	t.Parallel()
 
