@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 1.13.1 — 2026-11-11
+
 ### Changed
 
 - Updated Go to 1.27.3 and refreshed Go dependencies, including gRPC, go-cty, and the Terraform CLI wrapper used by acceptance tests. Go 1.27.3 fixes the `crypto/x509` vulnerability GO-2026-6809, which the provider reaches when verifying the API's TLS certificate.
@@ -8,6 +10,7 @@
 ### Fixed
 
 - The UDP monitor's `config.udp.payload` is now sent exactly as configured. The provider used to trim leading and trailing whitespace, so a payload such as `"ping\n"` lost its newline and `" 0x41"` was sent as the hex value `0x41` instead of as text.
+- Confirm UDP payload updates using the exact configured value, including whitespace. Cached API responses that differ only by whitespace no longer count as settled or overwrite the planned payload in state.
 
 ### Documentation
 
@@ -17,6 +20,18 @@
 
 - Added schema tests for the UDP payload limit at and over 1000 characters, including multi-byte characters.
 - Added a regression test that UDP payloads keep their leading and trailing whitespace.
+- Added resource-update regression coverage for cached API responses during newline, hex-to-text, and whitespace-only payload changes, plus a fresh-response case.
+- Raised acceptance job timeouts to 65 minutes so the 60-minute test command has time for setup and cleanup.
+- Grouped Dependabot updates and added cooldowns for version updates.
+
+### Upgrade notes
+
+- Existing UDP configurations with leading or trailing payload whitespace may show a one-time update to send the value exactly as written. Remove that whitespace explicitly from the configuration if the previously trimmed payload was intended.
+- No state migration, re-import, or resource replacement is required.
+
+### Known issues
+
+- The API counts supplementary Unicode characters, such as emoji, as two UTF-16 code units, while the provider's length validator counts each as one character. Some payloads containing these characters can pass plan-time validation and exceed the API's 1000-character limit at apply.
 
 ## 1.13.0 — 2026-10-30
 
