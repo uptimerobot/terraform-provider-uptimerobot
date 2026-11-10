@@ -1143,7 +1143,7 @@ func normalizeUDPConfig(in *client.UDPMonitorConfig) *udpComparable {
 	}
 	out := &udpComparable{}
 	if in.Payload != nil {
-		v := strings.TrimSpace(*in.Payload)
+		v := *in.Payload
 		out.Payload = &v
 	}
 	if in.PacketLossThreshold != nil {
