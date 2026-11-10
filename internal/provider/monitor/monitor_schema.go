@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -52,6 +53,8 @@ const (
 	customFieldsMaxKeys        = 20
 	customFieldsKeyMaxLength   = 64
 	customFieldsValueMaxLength = 255
+
+	udpPayloadMaxLength = 1000
 )
 
 // NewResource is a helper function to simplify the provider implementation.
@@ -618,12 +621,18 @@ Advanced monitor configuration.
 						Computed:    true,
 						Attributes: map[string]schema.Attribute{
 							"payload": schema.StringAttribute{
-								Description: "Optional UDP payload to send. A value that starts with 0x followed by an even number of hex digits (case-insensitive) is sent as raw bytes; for example, 0x33444333 sends the bytes 33 44 43 33. Any other value, including 0x with odd-length or non-hex digits, is sent as text.",
-								MarkdownDescription: "Optional UDP payload to send. A value that starts with `0x` followed by an even number of hex digits (case-insensitive) " +
-									"is sent as raw bytes; for example, `0x33444333` sends the bytes `33 44 43 33`. " +
-									"Any other value, including `0x` with odd-length or non-hex digits, is sent as text.",
+								Description: fmt.Sprintf("Optional UDP payload to send, up to %d characters. A value that starts with 0x followed by an even number of hex digits (case-insensitive) is sent as raw bytes; for example, 0x33444333 sends the bytes 33 44 43 33. Any other value, including 0x with odd-length or non-hex digits, is sent as text.", udpPayloadMaxLength),
+								MarkdownDescription: fmt.Sprintf("Optional UDP payload to send, up to %d characters. "+
+									"A value that starts with `0x` followed by an even number of hex digits (case-insensitive) "+
+									"is sent as raw bytes; for example, `0x33444333` sends the bytes `33 44 43 33`. "+
+									"Any other value, including `0x` with odd-length or non-hex digits, is sent as text.", udpPayloadMaxLength),
 								Optional: true,
 								Computed: true,
+								Validators: []validator.String{
+									// Characters, not bytes: the API counts characters, so a
+									// non-ASCII payload within its limit must not fail here.
+									stringvalidator.UTF8LengthAtMost(udpPayloadMaxLength),
+								},
 								PlanModifiers: []planmodifier.String{
 									stringplanmodifier.UseStateForUnknown(),
 								},
