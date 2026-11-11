@@ -1137,13 +1137,15 @@ func normalizeAPIAssertions(in *client.APIMonitorAssertions) *apiAssertionsCompa
 	return out
 }
 
+// normalizeUDPConfig preserves payload bytes because whitespace changes the UDP
+// content and whether a value is interpreted as hexadecimal data.
 func normalizeUDPConfig(in *client.UDPMonitorConfig) *udpComparable {
 	if in == nil {
 		return nil
 	}
 	out := &udpComparable{}
 	if in.Payload != nil {
-		v := strings.TrimSpace(*in.Payload)
+		v := *in.Payload
 		out.Payload = &v
 	}
 	if in.PacketLossThreshold != nil {
