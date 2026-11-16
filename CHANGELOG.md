@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Changed
+
+- Updated Go to 1.27.4 and refreshed indirect Go dependencies (`golang.org/x/crypto`, `golang.org/x/mod`, `golang.org/x/text`, `golang.org/x/exp`, `genproto`, and `go-diff`). Go 1.27.4 includes the `net/http` fix for GO-2026-6859, which `govulncheck` reported for the provider on Go 1.27.3. The flaw is in the HTTP/1 server, which the provider does not run, so no user action is needed.
+
 ## 1.13.1 — 2026-11-11
 
 ### Changed
