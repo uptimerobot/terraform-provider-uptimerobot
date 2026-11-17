@@ -7,13 +7,14 @@ on:
 
   workflow_dispatch:
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   release:
     timeout-minutes: 15
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Code
