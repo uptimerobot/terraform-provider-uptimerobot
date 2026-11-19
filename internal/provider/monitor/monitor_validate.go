@@ -18,6 +18,25 @@ import (
 
 const heartbeatMonitorIntervalMax int64 = 31 * 24 * 60 * 60
 
+func warnMonitorURLCase(value types.String, diagnostics *diag.Diagnostics) {
+	if value.IsNull() || value.IsUnknown() {
+		return
+	}
+	raw := strings.TrimSpace(value.ValueString())
+	normalized := normalizeMonitorURLCase(raw)
+	if normalized == raw {
+		return
+	}
+	parts := monitorURLParts.FindStringSubmatch(normalized)
+	diagnostics.AddAttributeWarning(
+		path.Root("url"),
+		"URL scheme and host are stored in lowercase",
+		fmt.Sprintf("UptimeRobot stores the URL scheme and ASCII host characters in lowercase (%s). "+
+			"The provider treats this as equivalent and preserves your configured spelling in state. "+
+			"Use lowercase scheme and ASCII host characters in the configuration to avoid this warning.", parts[1]+parts[3]),
+	)
+}
+
 func (r *monitorResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
 		resourcevalidator.Conflicting(

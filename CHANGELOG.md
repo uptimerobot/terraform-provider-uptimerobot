@@ -4,6 +4,17 @@
 
 - Updated Go to 1.27.4 and refreshed indirect Go dependencies (`golang.org/x/crypto`, `golang.org/x/mod`, `golang.org/x/text`, `golang.org/x/exp`, `genproto`, and `go-diff`). Go 1.27.4 includes the `net/http` fix for GO-2026-6859, which `govulncheck` reported for the provider on Go 1.27.3. The flaw is in the HTTP/1 server, which the provider does not run, so no user action is needed.
 
+## 1.13.2 (unreleased)
+
+### Fixed
+
+- Treat the API's URL scheme and ASCII host case normalization as equivalent during monitor create, update, refresh, and create recovery. This prevents settle timeouts and inconsistent results while preserving the configured URL spelling in state. Path, query, userinfo, and non-ASCII host characters remain case-sensitive; bare hostnames remain unchanged.
+- Apply the same URL matching to the single-monitor and monitor-list data sources, including legacy stored casing and PING/PORT scheme handling.
+
+### Documentation
+
+- Document the API's URL case normalization and warn at plan time when a configured scheme or ASCII host will be lowercased. Lowercase those components in configuration to suppress the warning.
+
 ## 1.13.1 — 2026-11-11
 
 ### Changed

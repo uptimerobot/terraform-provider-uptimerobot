@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -800,12 +801,34 @@ func monitorURLForState(monitorType string, configured types.String, apiURL stri
 }
 
 func monitorURLsEquivalentForState(monitorType, configuredURL, apiURL string) bool {
+	configuredURL = normalizeMonitorURLCase(strings.TrimSpace(configuredURL))
+	apiURL = normalizeMonitorURLCase(strings.TrimSpace(apiURL))
 	switch strings.ToUpper(strings.TrimSpace(monitorType)) {
 	case MonitorTypePING, MonitorTypePORT:
 		return monitorURLTargetWithoutScheme(configuredURL) == monitorURLTargetWithoutScheme(apiURL)
 	default:
 		return strings.TrimSpace(configuredURL) == strings.TrimSpace(apiURL)
 	}
+}
+
+// Match the API's scheme/userinfo/host/rest split without parsing and reserializing
+// the URL, which could change escaping or other case-sensitive components.
+// A backslash ends the authority, just like the API's WHATWG-compatible split.
+var monitorURLParts = regexp.MustCompile(`^([a-zA-Z][a-zA-Z\d+.-]*://)([^/?#\\]*@)?(\[[^\]]*\]|[^/?#:@\\]*)([\s\S]*)$`)
+
+func normalizeMonitorURLCase(raw string) string {
+	parts := monitorURLParts.FindStringSubmatch(raw)
+	if parts == nil {
+		// The API leaves bare hostnames and values without scheme:// unchanged.
+		return raw
+	}
+	host := []byte(parts[3])
+	for i, c := range host {
+		if c >= 'A' && c <= 'Z' {
+			host[i] = c + ('a' - 'A')
+		}
+	}
+	return strings.ToLower(parts[1]) + parts[2] + string(host) + parts[4]
 }
 
 func monitorURLTargetWithoutScheme(raw string) string {

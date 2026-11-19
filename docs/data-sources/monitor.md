@@ -47,7 +47,7 @@ output "api_monitor_tags" {
 - `id` (String) The monitor ID. Configure this for an exact lookup, or omit it and configure one or more stable filters (`name`, `url`, `tags`, `group_id`, or `custom_fields`).
 - `name` (String) The exact monitor name. Monitor names are not guaranteed unique; if multiple monitors match, configure `id` or additional filters.
 - `tags` (Set of String) Lowercase tag names assigned to the monitor. When configured, all listed tags must be present on the selected monitor.
-- `url` (String) The exact monitor URL or target returned by the API. When configured, it is used as a stable lookup filter.
+- `url` (String) The monitor URL or target. When configured, it is used as a lookup filter with the same URL equivalence rules as the monitor resource, including lowercase scheme and ASCII host normalization for URLs with a scheme:// prefix. Equivalent configured spelling is preserved in state.
 
 ### Read-Only
 

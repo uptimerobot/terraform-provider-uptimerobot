@@ -141,7 +141,7 @@ func (d *monitorDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 			"url": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The exact monitor URL or target returned by the API. When configured, it is used as a stable lookup filter.",
+				MarkdownDescription: "The monitor URL or target. When configured, it is used as a lookup filter with the same URL equivalence rules as the monitor resource, including lowercase scheme and ASCII host normalization for URLs with a scheme:// prefix. Equivalent configured spelling is preserved in state.",
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -200,7 +200,7 @@ func (d *monitorsDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 			},
 			"url": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Optional exact monitor URL or target filter.",
+				MarkdownDescription: "Optional monitor URL or target filter with the same URL equivalence rules as the monitor resource, including lowercase scheme and ASCII host normalization for URLs with a scheme:// prefix.",
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -310,6 +310,11 @@ func (d *monitorDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	}
 
 	state := monitorState(ctx, monitor)
+	if !config.URL.IsNull() && !config.URL.IsUnknown() {
+		// lookupMonitor already verified equivalence. Keep the filter's exact
+		// spelling without changing URL escaping or other data-source behavior.
+		state.URL = config.URL
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -555,7 +560,7 @@ func monitorMatches(monitor client.Monitor, filters monitorFilters) bool {
 	if filters.Name != "" && monitor.Name != filters.Name {
 		return false
 	}
-	if filters.URL != "" && monitor.URL != filters.URL {
+	if filters.URL != "" && !monitorURLsEquivalentForState(monitor.Type, filters.URL, monitor.URL) {
 		return false
 	}
 	if filters.GroupID != nil && monitor.GroupID != *filters.GroupID {
@@ -613,9 +618,10 @@ func monitorFiltersShouldRetryEmptyResult(filters monitorFilters) bool {
 }
 
 func monitorClientFilters(filters monitorFilters) client.MonitorListFilters {
+	// Match URLs locally: an API-side substring filter can exclude equivalent
+	// URLs (including legacy casing and PING/PORT targets without a scheme).
 	return client.MonitorListFilters{
 		Name:         filters.Name,
-		URL:          filters.URL,
 		Tags:         filters.Tags,
 		GroupID:      filters.GroupID,
 		CustomFields: filters.CustomFields,

@@ -64,6 +64,19 @@ func TestRecoverMonitorCreatedDespiteErrorAdopts(t *testing.T) {
 			],"nextCursorId":null}`,
 			wantID: 201,
 		},
+		"404 on http create with normalized scheme and host": {
+			createStatus: http.StatusNotFound,
+			createBody:   `{"message":"Monitor not found","code":"000-004"}`,
+			createReq: &client.CreateMonitorRequest{
+				Name: "api-prod", Type: client.MonitorTypeHTTP,
+				URL: "HTTPS://EXAMPLE.com/Health", Interval: 300,
+			},
+			listBody: `{"data":[
+				{"id":201,"friendlyName":"api-prod","type":"HTTP","url":"https://example.com/Health"},
+				{"id":202,"friendlyName":"api-prod","type":"HTTP","url":"https://example.com/health"}
+			],"nextCursorId":null}`,
+			wantID: 201,
+		},
 		"404 with HTML-escaped name": {
 			createStatus: http.StatusNotFound,
 			createBody:   `{"message":"Monitor not found","code":"000-004"}`,

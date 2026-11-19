@@ -61,7 +61,7 @@ output "production_api_monitors" {
 - `group_id` (Number) Optional monitor group ID filter. Use `0` for the default group.
 - `name` (String) Optional exact monitor name filter.
 - `tags` (Set of String) Optional tag filter. Every configured tag must be present on a returned monitor.
-- `url` (String) Optional exact monitor URL or target filter.
+- `url` (String) Optional monitor URL or target filter with the same URL equivalence rules as the monitor resource, including lowercase scheme and ASCII host normalization for URLs with a scheme:// prefix.
 
 ### Read-Only
 
