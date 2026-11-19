@@ -1,19 +1,30 @@
 ## Unreleased
 
+## 1.13.2 — 2026-11-19
+
+### Fixed
+
+- Treat the API's scheme and ASCII host case normalization as equivalent during monitor create, update, refresh, and create recovery. Case-only differences no longer cause settle timeouts or inconsistent results, and Terraform state preserves the configured spelling. Path, query, userinfo, and non-ASCII host characters retain their existing comparisons; bare hostnames remain unchanged.
+- Apply the same URL equivalence to the single-monitor and monitor-list data sources. URL matching runs locally so API filtering cannot exclude legacy casing or equivalent PING/PORT targets. The single-monitor data source preserves a configured URL's spelling without altering query strings or existing ID-only reads. Whitespace-only URL filters are rejected before lookup.
+
 ### Changed
 
 - Updated Go to 1.27.4 and refreshed indirect Go dependencies (`golang.org/x/crypto`, `golang.org/x/mod`, `golang.org/x/text`, `golang.org/x/exp`, `genproto`, and `go-diff`). Go 1.27.4 includes the `net/http` fix for GO-2026-6859, which `govulncheck` reported for the provider on Go 1.27.3. The flaw is in the HTTP/1 server, which the provider does not run, so no user action is needed.
 
-## 1.13.2 (unreleased)
-
-### Fixed
-
-- Treat the API's URL scheme and ASCII host case normalization as equivalent during monitor create, update, refresh, and create recovery. This prevents settle timeouts and inconsistent results while preserving the configured URL spelling in state. Path, query, userinfo, and non-ASCII host characters remain case-sensitive; bare hostnames remain unchanged.
-- Apply the same URL matching to the single-monitor and monitor-list data sources, including legacy stored casing and PING/PORT scheme handling.
-
 ### Documentation
 
-- Document the API's URL case normalization and warn at plan time when a configured scheme or ASCII host will be lowercased. Lowercase those components in configuration to suppress the warning.
+- Document the API's URL case normalization and warn at plan time when a configured scheme or ASCII host will be lowercased. The warning shows the normalized scheme and host without repeating credentials or query values; malformed host details are omitted. Use lowercase scheme and ASCII host characters to suppress it.
+
+### Tests/CI
+
+- Add regression coverage for normalization boundaries, significant URL differences, IPv6 and Unicode, state preservation, settling, create recovery, plan warnings, and data-source lookup and query preservation.
+- Add a Terraform/OpenTofu acceptance lifecycle for uppercase creation, case-only URL edits, other-field updates, URL data sources, stable monitor IDs, and empty subsequent plans.
+- Scope the release workflow's write permission to the release job.
+
+### Upgrade notes
+
+- No state migration, re-import, or monitor replacement is required. Existing mixed-case URLs remain valid, and the provider continues sending configured URLs unchanged.
+- Changing only scheme or host case in configuration still produces a Terraform update; the API target remains equivalent.
 
 ## 1.13.1 — 2026-11-11
 

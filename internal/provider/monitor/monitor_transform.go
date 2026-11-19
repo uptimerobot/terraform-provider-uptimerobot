@@ -801,13 +801,22 @@ func monitorURLForState(monitorType string, configured types.String, apiURL stri
 }
 
 func monitorURLsEquivalentForState(monitorType, configuredURL, apiURL string) bool {
-	configuredURL = normalizeMonitorURLCase(strings.TrimSpace(configuredURL))
-	apiURL = normalizeMonitorURLCase(strings.TrimSpace(apiURL))
+	configuredURL = strings.TrimSpace(configuredURL)
+	apiURL = strings.TrimSpace(apiURL)
 	switch strings.ToUpper(strings.TrimSpace(monitorType)) {
 	case MonitorTypePING, MonitorTypePORT:
-		return monitorURLTargetWithoutScheme(configuredURL) == monitorURLTargetWithoutScheme(apiURL)
+		configuredTarget := monitorURLTargetWithoutScheme(configuredURL)
+		apiTarget := monitorURLTargetWithoutScheme(apiURL)
+		if configuredTarget != configuredURL || apiTarget != apiURL {
+			// A scheme-prefixed target can be read back without its scheme,
+			// including legacy bare targets whose host casing is still intact.
+			// Give both targets a comparison-only scheme to normalize their hosts.
+			return normalizeMonitorURLCase("http://"+configuredTarget) == normalizeMonitorURLCase("http://"+apiTarget)
+		}
+		// The API does not normalize bare-versus-bare targets.
+		return configuredTarget == apiTarget
 	default:
-		return strings.TrimSpace(configuredURL) == strings.TrimSpace(apiURL)
+		return normalizeMonitorURLCase(configuredURL) == normalizeMonitorURLCase(apiURL)
 	}
 }
 

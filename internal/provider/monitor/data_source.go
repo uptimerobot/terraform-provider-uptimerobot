@@ -467,6 +467,9 @@ func monitorFiltersFromConfig(ctx context.Context, id, name, url types.String, t
 		Name: monitorValueString(name),
 		URL:  monitorValueString(url),
 	}
+	if !url.IsNull() && !url.IsUnknown() && filters.URL == "" {
+		return monitorFilters{}, fmt.Errorf("url must contain a non-whitespace character")
+	}
 
 	if filters.ID != "" {
 		id, err := strconv.ParseInt(filters.ID, 10, 64)

@@ -3,10 +3,12 @@
 package monitor_test
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -70,9 +72,7 @@ data "uptimerobot_monitors" "by_url" {
 					{Config: testAccMonitorResourceConfigWithURL(name+"-updated", upperURL), PlanOnly: true},
 					{
 						PreConfig: func() {
-							if err := testAccCheckMonitorVisibleInList(name + "-updated")(nil); err != nil {
-								t.Fatal(err)
-							}
+							waitForURLCaseMonitorInList(t, createdID, lowerURL)
 						},
 						Config: lookupConfig,
 						Check: resource.ComposeAggregateTestCheckFunc(
@@ -87,5 +87,29 @@ data "uptimerobot_monitors" "by_url" {
 				},
 			})
 		})
+	}
+}
+
+// URL-only lookups read the unfiltered list, which has a separate API cache from
+// name-filtered lists. Wait for that exact list to expose the created monitor.
+func waitForURLCaseMonitorInList(t *testing.T, id, url string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	api := provideracctest.APIClient()
+	for {
+		monitors, err := api.GetMonitors(ctx)
+		if err == nil {
+			for _, monitor := range monitors {
+				if strconv.FormatInt(monitor.ID, 10) == id && monitor.URL == url {
+					return
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("monitor %s with URL %q was not visible in the unfiltered list: %v (last API error: %v)", id, url, ctx.Err(), err)
+		case <-time.After(5 * time.Second):
+		}
 	}
 }

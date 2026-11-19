@@ -22,6 +22,7 @@ func TestMonitorDataSource_URLCase(t *testing.T) {
 		{"id filter", MonitorTypeHTTP, "HTTPS://EXAMPLE.com/Health", "https://example.com/Health", "42"},
 		{"ping", MonitorTypePING, "HTTPS://EXAMPLE.com/Health", "example.com/Health", ""},
 		{"port", MonitorTypePORT, "HTTPS://EXAMPLE.com/Health", "example.com/Health", ""},
+		{"legacy ping", MonitorTypePING, "HTTPS://EXAMPLE.com/Health", "EXAMPLE.com/Health", ""},
 		{"query preserved", MonitorTypeHTTP, "HTTPS://EXAMPLE.com/?a=1&param=2", "https://example.com/?a=1&param=2", ""},
 		{"id-only query preserved", MonitorTypeHTTP, "", "https://example.com/?a=1&reg=2", "42"},
 	} {
@@ -79,6 +80,20 @@ func TestMonitorDataSource_URLCase(t *testing.T) {
 				t.Fatalf("URL = %s, want %q", got, want)
 			}
 		})
+	}
+}
+
+func TestMonitorDataSource_RejectsBlankURLFilter(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{"", " ", "\t\n"} {
+		_, err := monitorLookupFilters(t.Context(), monitorDataSourceModel{ID: types.StringValue("42"), URL: types.StringValue(raw)})
+		if err == nil {
+			t.Fatalf("expected blank URL %q to be rejected even when ID is set", raw)
+		}
+		_, err = monitorListFilters(t.Context(), monitorsDataSourceModel{URL: types.StringValue(raw)})
+		if err == nil {
+			t.Fatalf("expected blank list URL %q to be rejected", raw)
+		}
 	}
 }
 

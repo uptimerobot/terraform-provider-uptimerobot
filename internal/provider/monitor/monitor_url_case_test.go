@@ -85,6 +85,12 @@ func TestMonitorURLsEquivalentForState_Case(t *testing.T) {
 		{"bare host unchanged", MonitorTypePING, "EXAMPLE.com", "example.com", false},
 		{"ping scheme", MonitorTypePING, "HTTPS://EXAMPLE.com/Path", "example.com/Path", true},
 		{"port scheme", MonitorTypePORT, "HTTPS://[2001:DB8::1]:443/Path", "[2001:db8::1]:443/Path", true},
+		{"ping legacy host", MonitorTypePING, "HTTPS://EXAMPLE.com/Health", "EXAMPLE.com/Health", true},
+		{"ping legacy mixed host", MonitorTypePING, "https://example.com/Health", "ExAmPlE.com/Health", true},
+		{"port legacy host", MonitorTypePORT, "HTTPS://EXAMPLE.com/Health", "EXAMPLE.com/Health", true},
+		{"port bare host unchanged", MonitorTypePORT, "EXAMPLE.com/Health", "example.com/Health", false},
+		{"ping unicode host unchanged", MonitorTypePING, "HTTPS://ΟΣ.COM/Health", "οσ.com/Health", false},
+		{"port legacy path", MonitorTypePORT, "HTTPS://EXAMPLE.com/Health", "EXAMPLE.com/health", false},
 		{"ping path", MonitorTypePING, "HTTPS://EXAMPLE.com/Path", "example.com/path", false},
 		{"http requires scheme", MonitorTypeHTTP, "HTTPS://EXAMPLE.com/Path", "example.com/Path", false},
 		{"udp scheme unchanged", MonitorTypeUDP, "HTTPS://EXAMPLE.com/Path", "example.com/Path", false},
@@ -97,6 +103,9 @@ func TestMonitorURLsEquivalentForState_Case(t *testing.T) {
 			}
 			if got := monitorURLsEquivalentForState(tc.monitorType, tc.api, tc.configured); got != tc.equal {
 				t.Fatal("equivalence must be symmetric")
+			}
+			if tc.equal && monitorURLForState(tc.monitorType, types.StringValue(tc.configured), tc.api).ValueString() != tc.configured {
+				t.Fatal("equivalent URL should preserve configured spelling in state")
 			}
 		})
 	}
@@ -132,6 +141,38 @@ func TestWarnMonitorURLCase(t *testing.T) {
 		if strings.Contains(detail, secret) {
 			t.Fatalf("warning disclosed URL component %q", secret)
 		}
+	}
+}
+
+func TestWarnMonitorURLCase_MalformedBracketedHost(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{
+		"HTTPS://[::1/?token=Secret]",
+		"HTTPS://[::1#Secret]",
+		`HTTPS://[::1\Secret]`,
+		"HTTPS://[::1@Secret]",
+	} {
+		var diagnostics diag.Diagnostics
+		warnMonitorURLCase(types.StringValue(raw), &diagnostics)
+		if diagnostics.HasError() || diagnostics.WarningsCount() != 1 {
+			t.Fatalf("expected one warning for %q, got %v", raw, diagnostics)
+		}
+		if strings.Contains(strings.ToLower(diagnostics[0].Detail()), "secret") {
+			t.Fatalf("warning disclosed malformed URL contents: %s", diagnostics[0].Detail())
+		}
+	}
+}
+
+func TestWarnMonitorURLCase_IPv6(t *testing.T) {
+	t.Parallel()
+	var diagnostics diag.Diagnostics
+	warnMonitorURLCase(types.StringValue("HTTPS://[2001:DB8::1]:8443/Private?Token=Secret"), &diagnostics)
+	if diagnostics.HasError() || diagnostics.WarningsCount() != 1 {
+		t.Fatalf("expected one IPv6 warning, got %v", diagnostics)
+	}
+	detail := diagnostics[0].Detail()
+	if !strings.Contains(detail, "https://[2001:db8::1]") || strings.Contains(detail, "Secret") || strings.Contains(detail, "Private") {
+		t.Fatalf("unexpected IPv6 warning: %s", detail)
 	}
 }
 

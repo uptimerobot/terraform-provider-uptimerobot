@@ -28,12 +28,18 @@ func warnMonitorURLCase(value types.String, diagnostics *diag.Diagnostics) {
 		return
 	}
 	parts := monitorURLParts.FindStringSubmatch(normalized)
+	storedForm := ""
+	// Keep the comparison split identical to the API, but do not display a
+	// malformed bracketed host that has swallowed path, query, or userinfo text.
+	if _, err := url.Parse(raw); err == nil && !strings.ContainsAny(parts[3], "/?#\\@") {
+		storedForm = " (" + parts[1] + parts[3] + ")"
+	}
 	diagnostics.AddAttributeWarning(
 		path.Root("url"),
 		"URL scheme and host are stored in lowercase",
-		fmt.Sprintf("UptimeRobot stores the URL scheme and ASCII host characters in lowercase (%s). "+
+		fmt.Sprintf("UptimeRobot stores the URL scheme and ASCII host characters in lowercase%s. "+
 			"The provider treats this as equivalent and preserves your configured spelling in state. "+
-			"Use lowercase scheme and ASCII host characters in the configuration to avoid this warning.", parts[1]+parts[3]),
+			"Use lowercase scheme and ASCII host characters in the configuration to avoid this warning.", storedForm),
 	)
 }
 
