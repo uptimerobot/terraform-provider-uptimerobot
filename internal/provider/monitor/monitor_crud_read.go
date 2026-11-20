@@ -104,11 +104,7 @@ func readApplyOptionalDefaults(state *monitorResourceModel, m *client.Monitor, i
 			state.AuthType = types.StringNull()
 		}
 	}
-	if m.HTTPUsername != "" {
-		state.HTTPUsername = types.StringValue(m.HTTPUsername)
-	} else if !state.HTTPUsername.IsNull() {
-		state.HTTPUsername = types.StringNull()
-	}
+	state.HTTPUsername = httpUsernameForState(state.HTTPUsername, m.HTTPUsername)
 
 	if isImport || state.HTTPMethodType.IsNull() || state.HTTPMethodType.IsUnknown() {
 		if m.HTTPMethodType != "" {
@@ -391,6 +387,14 @@ func (r *monitorResource) stabilizeMonitorReadSnapshot(
 
 func monitorReadStabilizationWant(ctx context.Context, state monitorResourceModel) monComparable {
 	want := monComparable{skipMWIDsCompare: true}
+	if isMethodHTTPLike(state.Type) && !state.HTTPUsername.IsNull() && !state.HTTPUsername.IsUnknown() {
+		username := state.HTTPUsername.ValueString()
+		want.HTTPUsername = &username
+	}
+	if isMethodHTTPLike(state.Type) && !state.AuthType.IsNull() && !state.AuthType.IsUnknown() {
+		authType := state.AuthType.ValueString()
+		want.HTTPAuthType = &authType
+	}
 
 	if !state.Name.IsNull() && !state.Name.IsUnknown() {
 		v := unescapeHTML(state.Name.ValueString())
@@ -501,6 +505,8 @@ func monitorReadStabilizationWant(ctx context.Context, state monitorResourceMode
 
 func hasMonitorReadStabilizationAssertions(want monComparable) bool {
 	if want.Name != nil ||
+		want.HTTPUsername != nil ||
+		want.HTTPAuthType != nil ||
 		want.URL != nil ||
 		want.Timeout != nil ||
 		want.GracePeriod != nil ||

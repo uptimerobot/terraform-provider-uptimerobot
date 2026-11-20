@@ -1,5 +1,26 @@
 ## Unreleased
 
+## 1.13.3 — 2026-11-21
+
+### Fixed
+
+- Allow monitor HTTP usernames and passwords to be cleared independently with an explicit empty string. Clearing credentials now sends empty values to API v3, verifies username clearing, and preserves empty values during refresh so subsequent plans remain stable (#329).
+- Preserve remote credentials when `http_username` or `http_password` is omitted or null, including removal from an existing configuration. Unrelated updates no longer resend unmanaged or unchanged credentials, including attributes covered by `lifecycle.ignore_changes`.
+- Retry stale username and authentication-mode reads for HTTP, Keyword, and API monitors, while retaining drift detection for persistent remote changes.
+
+### Documentation
+
+- Document credential preservation, explicit clearing, and disabling authentication with `auth_type = "NONE"`. The existing `HTTP_BASIC` default is unchanged. Configured passwords remain sensitive in Terraform state and are not read back from the API.
+
+### Tests/CI
+
+- Cover credential serialization, independent clearing, omission, unknown values, state normalization, ignored changes, stale reads, and an API that fails to clear the username.
+- Add Terraform/OpenTofu acceptance lifecycles for HTTP, Keyword, and API monitors, including external drift, deferred expressions, import, stable monitor IDs, empty subsequent plans, and upgrading from v1.13.2.
+
+### Upgrade notes
+
+- No state migration, re-import, or monitor replacement is required. To remove stored credentials, set `http_username = ""` and `http_password = ""`; removing those attributes preserves their remote values.
+
 ## 1.13.2 — 2026-11-19
 
 ### Fixed

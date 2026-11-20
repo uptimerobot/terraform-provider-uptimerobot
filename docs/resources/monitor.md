@@ -142,6 +142,20 @@ variable "api_key" {
 }
 ```
 
+Omitting `http_username` or `http_password`, or setting either to `null`, preserves that credential on an existing monitor. This also applies when removing a previously configured credential. Set an explicit empty string to clear a credential.
+
+To disable authentication and clear both stored credentials, update the existing resource with:
+
+```hcl
+auth_type     = "NONE"
+http_username = ""
+http_password = ""
+```
+
+Keep `auth_type = "NONE"` to keep authentication disabled: omitting `auth_type` uses the existing default, `HTTP_BASIC`. Setting `NONE` alone preserves stored credentials. After clearing credentials, the empty strings may remain in configuration without causing further changes. Omitting the attributes leaves future external changes unmanaged.
+
+The provider reads usernames from the API to detect drift. Passwords are sensitive and retained in Terraform state after configuration, but are never read back from the API, including during import. Omitting a previously configured password preserves its last known state value; changing a password outside Terraform is not detected. Use `lifecycle.ignore_changes` for externally managed credentials that remain in configuration.
+
 ### Port Monitor
 
 ```terraform
@@ -809,8 +823,8 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 - `grace_period` (Number) The grace period (in seconds). Only for HEARTBEAT monitors
 - `group_id` (Number) Monitor group ID to assign monitor to. Use 0 for default group.
 - `http_method_type` (String) The HTTP method type (HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS, QUERY). HEAD is not supported for API monitors; use HTTP monitors for status/header-only HEAD checks.
-- `http_password` (String, Sensitive) The password for HTTP authentication
-- `http_username` (String) The username for HTTP authentication
+- `http_password` (String, Sensitive) The password for HTTP authentication. Omit or set null to preserve the remote password; set an empty string to clear it. The provider retains configured passwords in state but does not read passwords from the API.
+- `http_username` (String) The username for HTTP authentication. Omit or set null to preserve the remote username; set an empty string to clear it.
 - `is_paused` (Boolean) Controls monitor run state. Set true to pause, false to start. Omit to preserve remote state (unmanaged).
 - `keyword_case_type` (String) Case sensitivity for keyword. One of: CaseSensitive, CaseInsensitive. Omit to leave server as-is.
 - `keyword_type` (String) The type of keyword check (ALERT_EXISTS, ALERT_NOT_EXISTS)
