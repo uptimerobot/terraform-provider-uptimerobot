@@ -843,6 +843,8 @@ terraform import 'uptimerobot_monitor.monitors["www_production"]' 800123456
 				Do not configure an arbitrary URL or heartbeat key. After create/import, read the generated heartbeat URL from state.
 				For all other monitor types, `url` is required.
 
+				For URLs with a scheme:// prefix, UptimeRobot stores the scheme and ASCII host characters in lowercase. The provider preserves equivalent configured spelling in state and warns at plan time; use lowercase scheme and ASCII host characters to avoid the warning. Path, query, and userinfo case remains significant.
+
 				Tip: Write url as plain text (do not use HTML entities like `&amp;`). UptimeRobot may return HTML-escaped values; the provider normalizes them to plain text on read/import.
 
 ### Read-Only
@@ -939,7 +941,7 @@ Optional:
 Optional:
 
 - `packet_loss_threshold` (Number) Packet loss threshold percentage.
-- `payload` (String) Optional UDP payload to send.
+- `payload` (String) Optional UDP payload to send, up to 1000 characters. A value that starts with `0x` followed by an even number of hex digits (case-insensitive) is sent as raw bytes; for example, `0x33444333` sends the bytes `33 44 43 33`. Any other value, including `0x` with odd-length or non-hex digits, is sent as text.
 
 
 

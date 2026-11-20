@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -345,7 +346,9 @@ func expandConfigToAPI(
 		udp := &client.UDPMonitorConfig{}
 		fieldTouched := false
 		if !tf.Payload.IsUnknown() && !tf.Payload.IsNull() {
-			v := strings.TrimSpace(tf.Payload.ValueString())
+			// Sent as configured: whitespace is part of the payload, and trimming
+			// " 0x41" would turn a text value into a hex one.
+			v := tf.Payload.ValueString()
 			udp.Payload = &v
 			fieldTouched = true
 		}
@@ -798,12 +801,43 @@ func monitorURLForState(monitorType string, configured types.String, apiURL stri
 }
 
 func monitorURLsEquivalentForState(monitorType, configuredURL, apiURL string) bool {
+	configuredURL = strings.TrimSpace(configuredURL)
+	apiURL = strings.TrimSpace(apiURL)
 	switch strings.ToUpper(strings.TrimSpace(monitorType)) {
 	case MonitorTypePING, MonitorTypePORT:
-		return monitorURLTargetWithoutScheme(configuredURL) == monitorURLTargetWithoutScheme(apiURL)
+		configuredTarget := monitorURLTargetWithoutScheme(configuredURL)
+		apiTarget := monitorURLTargetWithoutScheme(apiURL)
+		if configuredTarget != configuredURL || apiTarget != apiURL {
+			// A scheme-prefixed target can be read back without its scheme,
+			// including legacy bare targets whose host casing is still intact.
+			// Give both targets a comparison-only scheme to normalize their hosts.
+			return normalizeMonitorURLCase("http://"+configuredTarget) == normalizeMonitorURLCase("http://"+apiTarget)
+		}
+		// The API does not normalize bare-versus-bare targets.
+		return configuredTarget == apiTarget
 	default:
-		return strings.TrimSpace(configuredURL) == strings.TrimSpace(apiURL)
+		return normalizeMonitorURLCase(configuredURL) == normalizeMonitorURLCase(apiURL)
 	}
+}
+
+// Match the API's scheme/userinfo/host/rest split without parsing and reserializing
+// the URL, which could change escaping or other case-sensitive components.
+// A backslash ends the authority, just like the API's WHATWG-compatible split.
+var monitorURLParts = regexp.MustCompile(`^([a-zA-Z][a-zA-Z\d+.-]*://)([^/?#\\]*@)?(\[[^\]]*\]|[^/?#:@\\]*)([\s\S]*)$`)
+
+func normalizeMonitorURLCase(raw string) string {
+	parts := monitorURLParts.FindStringSubmatch(raw)
+	if parts == nil {
+		// The API leaves bare hostnames and values without scheme:// unchanged.
+		return raw
+	}
+	host := []byte(parts[3])
+	for i, c := range host {
+		if c >= 'A' && c <= 'Z' {
+			host[i] = c + ('a' - 'A')
+		}
+	}
+	return strings.ToLower(parts[1]) + parts[2] + string(host) + parts[4]
 }
 
 func monitorURLTargetWithoutScheme(raw string) string {

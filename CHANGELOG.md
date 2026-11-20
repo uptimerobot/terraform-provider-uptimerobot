@@ -18,6 +18,65 @@
 
 - Monitor state stays at schema version 7. No state migration, re-import or resource replacement is required, and existing monitors show no change on the next plan. Because the mode is computed, a plan that changes something else on a monitor lists `response_time_threshold_mode` and `auto_thresholds` as known after apply.
 
+## 1.13.2 — 2026-11-19
+
+### Fixed
+
+- Treat the API's scheme and ASCII host case normalization as equivalent during monitor create, update, refresh, and create recovery. Case-only differences no longer cause settle timeouts or inconsistent results, and Terraform state preserves the configured spelling. Path, query, userinfo, and non-ASCII host characters retain their existing comparisons; bare hostnames remain unchanged.
+- Apply the same URL equivalence to the single-monitor and monitor-list data sources. URL matching runs locally so API filtering cannot exclude legacy casing or equivalent PING/PORT targets. The single-monitor data source preserves a configured URL's spelling without altering query strings or existing ID-only reads. Whitespace-only URL filters are rejected before lookup.
+
+### Changed
+
+- Updated Go to 1.27.4 and refreshed indirect Go dependencies (`golang.org/x/crypto`, `golang.org/x/mod`, `golang.org/x/text`, `golang.org/x/exp`, `genproto`, and `go-diff`). Go 1.27.4 includes the `net/http` fix for GO-2026-6859, which `govulncheck` reported for the provider on Go 1.27.3. The flaw is in the HTTP/1 server, which the provider does not run, so no user action is needed.
+
+### Documentation
+
+- Document the API's URL case normalization and warn at plan time when a configured scheme or ASCII host will be lowercased. The warning shows the normalized scheme and host without repeating credentials or query values; malformed host details are omitted. Use lowercase scheme and ASCII host characters to suppress it.
+
+### Tests/CI
+
+- Add regression coverage for normalization boundaries, significant URL differences, IPv6 and Unicode, state preservation, settling, create recovery, plan warnings, and data-source lookup and query preservation.
+- Add a Terraform/OpenTofu acceptance lifecycle for uppercase creation, case-only URL edits, other-field updates, URL data sources, stable monitor IDs, and empty subsequent plans.
+- Scope the release workflow's write permission to the release job.
+
+### Upgrade notes
+
+- No state migration, re-import, or monitor replacement is required. Existing mixed-case URLs remain valid, and the provider continues sending configured URLs unchanged.
+- Changing only scheme or host case in configuration still produces a Terraform update; the API target remains equivalent.
+
+## 1.13.1 — 2026-11-11
+
+### Changed
+
+- Updated Go to 1.27.3 and refreshed Go dependencies, including gRPC, go-cty, and the Terraform CLI wrapper used by acceptance tests. Go 1.27.3 fixes the `crypto/x509` vulnerability GO-2026-6809, which the provider reaches when verifying the API's TLS certificate.
+- Limited the UDP monitor's `config.udp.payload` to 1000 characters, matching the API. Longer payloads now fail at `terraform plan` instead of at apply. The limit counts characters, not bytes.
+
+### Fixed
+
+- The UDP monitor's `config.udp.payload` is now sent exactly as configured. The provider used to trim leading and trailing whitespace, so a payload such as `"ping\n"` lost its newline and `" 0x41"` was sent as the hex value `0x41` instead of as text.
+- Confirm UDP payload updates using the exact configured value, including whitespace. Cached API responses that differ only by whitespace no longer count as settled or overwrite the planned payload in state.
+
+### Documentation
+
+- Documented the hex form of the UDP monitor's `config.udp.payload`: a value that starts with `0x` followed by an even number of hex digits is sent as raw bytes (for example, `0x33444333` sends `33 44 43 33`), and any other value is sent as text. The provider passes the value to the API unchanged. The attribute reference also states the 1000-character limit.
+
+### Tests/CI
+
+- Added schema tests for the UDP payload limit at and over 1000 characters, including multi-byte characters.
+- Added a regression test that UDP payloads keep their leading and trailing whitespace.
+- Added resource-update regression coverage for cached API responses during newline, hex-to-text, and whitespace-only payload changes, plus a fresh-response case.
+- Raised acceptance job timeouts to 65 minutes so the 60-minute test command has time for setup and cleanup.
+- Grouped Dependabot updates and added cooldowns for version updates.
+
+### Upgrade notes
+
+- Existing UDP configurations with leading or trailing payload whitespace may show a one-time update to send the value exactly as written. Remove that whitespace explicitly from the configuration if the previously trimmed payload was intended.
+- No state migration, re-import, or resource replacement is required.
+
+### Known issues
+
+- The API counts supplementary Unicode characters, such as emoji, as two UTF-16 code units, while the provider's length validator counts each as one character. Some payloads containing these characters can pass plan-time validation and exceed the API's 1000-character limit at apply.
+
 ## 1.13.0 — 2026-10-30
 
 ### Added
