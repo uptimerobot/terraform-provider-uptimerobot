@@ -13,10 +13,12 @@
 ### Documentation
 
 - Documented the new attributes and added an example.
+- Clarified that switching from Auto to Manual with automatically selected regions requires omitting `region_data.thresholds` when using the scalar threshold. An explicitly empty map is rejected once the values are known because the API fills a threshold for every region.
 
 ### Upgrade notes
 
 - Monitor state stays at schema version 7. No state migration, re-import or resource replacement is required, and existing monitors show no change on the next plan. Because the mode is computed, a plan that changes something else on a monitor lists `response_time_threshold_mode` and `auto_thresholds` as known after apply.
+- Automatic thresholds require slow response alert access and the feature enabled for the account. Upgrading the provider does not enable Auto; requesting it on an account without access fails at apply. Existing configurations that do not select Auto retain their current behavior.
 
 ## 1.13.2 — 2026-11-19
 

@@ -187,6 +187,26 @@ func TestValidateConfigDefersUnknownRegionThresholdValuesInManual(t *testing.T) 
 	}
 }
 
+func TestValidateConfigRejectsScalarConflictWithUnknownRegionalValues(t *testing.T) {
+	t.Parallel()
+
+	for _, scalar := range []int{0, 500} {
+		resp := validateConfigOf(t, httpMonitorConfig(map[string]tftypes.Value{
+			"response_time_threshold": tftypes.NewValue(tftypes.Number, scalar),
+			"region_data":             regionDataConfig(t, knownRegions("na"), thresholdsWithUnknownValue("na")),
+		}))
+		conflicts := 0
+		for _, diagnostic := range resp.Diagnostics.Errors() {
+			if diagnostic.Summary() == "Conflicting response-time threshold settings" {
+				conflicts++
+			}
+		}
+		if conflicts != 1 {
+			t.Fatalf("scalar %d: want exactly one conflict, got: %v", scalar, resp.Diagnostics)
+		}
+	}
+}
+
 func TestValidateConfigRefusesRegionThresholdEntriesInAutoEvenWhenAValueIsUnknown(t *testing.T) {
 	t.Parallel()
 

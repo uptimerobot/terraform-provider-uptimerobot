@@ -1,5 +1,6 @@
 # Let UptimeRobot derive a slow response threshold for each region from that region's own response time history.
 # Do not set response_time_threshold or region_data.thresholds together with mode "auto".
+# Auto requires slow response alert access and automatic thresholds enabled for the account.
 # A region without enough history yet sends no slow response alerts; auto_thresholds shows the progress.
 resource "uptimerobot_monitor" "auto_threshold" {
   name     = "Website with automatic thresholds"

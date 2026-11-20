@@ -241,6 +241,15 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 		}
 	}
 
+	if len(elements) > 0 &&
+		!data.ResponseTimeThreshold.IsNull() && !data.ResponseTimeThreshold.IsUnknown() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("response_time_threshold"),
+			"Conflicting response-time threshold settings",
+			"Use either response_time_threshold with region_data.regions for one threshold across all selected regions, or region_data.thresholds for per-region thresholds.",
+		)
+	}
+
 	if anyUnknown(slices.Collect(maps.Values(elements))) {
 		return
 	}
@@ -262,15 +271,6 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 				fmt.Sprintf("Threshold for %q must be between 0 and 60000 milliseconds.", region),
 			)
 		}
-	}
-
-	if len(thresholds) > 0 &&
-		!data.ResponseTimeThreshold.IsNull() && !data.ResponseTimeThreshold.IsUnknown() {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("response_time_threshold"),
-			"Conflicting response-time threshold settings",
-			"Use either response_time_threshold with region_data.regions for one threshold across all selected regions, or region_data.thresholds for per-region thresholds.",
-		)
 	}
 }
 

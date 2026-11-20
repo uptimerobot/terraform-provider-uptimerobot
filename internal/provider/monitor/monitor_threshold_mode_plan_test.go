@@ -71,6 +71,16 @@ func modifyPlanWithThreshold(t *testing.T, stateMode, planMode string, threshold
 // modifyPlanWithRegionData plans region_data as regionData builds it, so a test can plan values unknown until apply.
 func modifyPlanWithRegionData(t *testing.T, stateMode, planMode string, threshold *int, regionData func(tftypes.Object) tftypes.Value) *resource.ModifyPlanResponse {
 	t.Helper()
+	thresholdValue := tftypes.NewValue(tftypes.Number, nil)
+	if threshold != nil {
+		thresholdValue = tftypes.NewValue(tftypes.Number, *threshold)
+	}
+	return modifyPlanWithThresholdValue(t, stateMode, planMode, thresholdValue, regionData)
+}
+
+// modifyPlanWithThresholdValue also supports a scalar threshold known only at apply time.
+func modifyPlanWithThresholdValue(t *testing.T, stateMode, planMode string, thresholdValue tftypes.Value, regionData func(tftypes.Object) tftypes.Value) *resource.ModifyPlanResponse {
+	t.Helper()
 	ctx := context.Background()
 
 	r := &monitorResource{}
@@ -110,11 +120,6 @@ func modifyPlanWithRegionData(t *testing.T, stateMode, planMode string, threshol
 	case configuredUnknownMode:
 		planModeValue = tftypes.NewValue(tftypes.String, tftypes.UnknownValue)
 		configModeValue = planModeValue
-	}
-
-	thresholdValue := tftypes.NewValue(tftypes.Number, nil)
-	if threshold != nil {
-		thresholdValue = tftypes.NewValue(tftypes.Number, *threshold)
 	}
 
 	planRaw := rawMonitorOf(t, objType, with(map[string]tftypes.Value{
@@ -450,6 +455,104 @@ func TestModifyPlanAcceptsAutomaticRegionSelectionWithoutThresholdsOnAnAutoMonit
 
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unset region thresholds leave auto alone, got: %v", resp.Diagnostics)
+	}
+}
+
+func TestModifyPlanChecksAnUnknownScalarOnceItResolves(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name      string
+		value     interface{}
+		wantError bool
+	}{
+		{name: "unknown", value: tftypes.UnknownValue},
+		{name: "positive", value: 1500, wantError: true},
+		{name: "zero", value: 0, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			resp := modifyPlanWithThresholdValue(t, "auto", "", tftypes.NewValue(tftypes.Number, test.value), autoSelectedRegionData(map[string]int{}))
+			if resp.Diagnostics.HasError() != test.wantError {
+				t.Fatalf("want error %t, got: %v", test.wantError, resp.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestModifyPlanChecksEmptyThresholdsWhenLeavingAutoWithAutomaticRegions(t *testing.T) {
+	t.Parallel()
+
+	threshold := 1500
+	for _, mode := range []string{"", "manual"} {
+		for _, thresholds := range []map[string]int{nil, {}} {
+			resp := modifyPlanWithRegionData(t, "auto", mode, &threshold, autoSelectedRegionData(thresholds))
+			wantError := thresholds != nil
+			if resp.Diagnostics.HasError() != wantError {
+				t.Fatalf("mode %q, thresholds %v: want error %t, got: %v", mode, thresholds, wantError, resp.Diagnostics)
+			}
+		}
+	}
+}
+
+func TestModifyPlanPreservesAnExplicitModeWhenNothingElseChanges(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name       string
+		state      string
+		config     interface{}
+		wantChange bool
+	}{
+		{name: "off to auto", state: "off", config: "auto", wantChange: true},
+		{name: "auto to off", state: "auto", config: "off", wantChange: true},
+		{name: "unchanged off", state: "off", config: "off"},
+		{name: "unchanged auto", state: "auto", config: "auto"},
+		{name: "unknown mode", state: "off", config: tftypes.UnknownValue, wantChange: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			r := &monitorResource{}
+			var schemaResp resource.SchemaResponse
+			r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+			objType, ok := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+			if !ok {
+				t.Fatal("schema must be an object type")
+			}
+			configMode := tftypes.NewValue(tftypes.String, test.config)
+			attrs := httpMonitorConfig(map[string]tftypes.Value{
+				"id":                           tftypes.NewValue(tftypes.String, "42"),
+				"interval":                     tftypes.NewValue(tftypes.Number, 300),
+				"response_time_threshold_mode": tftypes.NewValue(tftypes.String, test.state),
+				"auto_thresholds":              tftypes.NewValue(objType.AttributeTypes["auto_thresholds"], map[string]tftypes.Value{}),
+			})
+			stateRaw := rawMonitorOf(t, objType, attrs)
+			attrs["response_time_threshold_mode"] = configMode
+			attrs["auto_thresholds"] = tftypes.NewValue(objType.AttributeTypes["auto_thresholds"], tftypes.UnknownValue)
+			planRaw := rawMonitorOf(t, objType, attrs)
+			attrs["id"] = tftypes.NewValue(tftypes.String, nil)
+			attrs["auto_thresholds"] = tftypes.NewValue(objType.AttributeTypes["auto_thresholds"], nil)
+			req := resource.ModifyPlanRequest{
+				Config: tfsdk.Config{Schema: schemaResp.Schema, Raw: rawMonitorOf(t, objType, attrs)},
+				Plan:   tfsdk.Plan{Schema: schemaResp.Schema, Raw: planRaw},
+				State:  tfsdk.State{Schema: schemaResp.Schema, Raw: stateRaw},
+			}
+			resp := &resource.ModifyPlanResponse{Plan: req.Plan}
+			r.ModifyPlan(ctx, req, resp)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+			}
+			if got := plannedAttribute(t, resp, "response_time_threshold_mode"); !got.Equal(configMode) {
+				t.Fatalf("planned mode %v, want configured mode %v", got, configMode)
+			}
+			if got := !resp.Plan.Raw.Equal(stateRaw); got != test.wantChange {
+				t.Fatalf("want change %t, got %t", test.wantChange, got)
+			}
+			if got := plannedAttribute(t, resp, "auto_thresholds").IsKnown(); got == test.wantChange {
+				t.Fatalf("automatic thresholds known = %t with mode change = %t", got, test.wantChange)
+			}
+		})
 	}
 }
 

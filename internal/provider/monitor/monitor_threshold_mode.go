@@ -150,11 +150,22 @@ func missingRegionThresholds(ctx context.Context, stateMode, configMode types.St
 	if diags.HasError() {
 		return nil, diags
 	}
+	if !explicit && !anyPositive(thresholds) && planThreshold.IsUnknown() {
+		return nil, diags
+	}
 	if !explicit && !anyPositive(thresholds) && planThreshold.ValueInt64() <= 0 {
 		diags.AddAttributeError(
 			path.Root("region_data").AtName("thresholds"),
 			"Region thresholds cannot be managed while the monitor stays in auto",
 			"The monitor is in auto and no positive threshold switches it to manual, so UptimeRobot keeps deriving every region's threshold and would contradict region_data.thresholds. Remove region_data.thresholds, or set a positive threshold for every selected region to switch to manual.",
+		)
+		return nil, diags
+	}
+	if data.Regions.IsNull() && data.AutoSelect.ValueBool() && len(thresholds) == 0 {
+		diags.AddAttributeError(
+			path.Root("region_data").AtName("thresholds"),
+			"Empty region thresholds conflict with switching to manual",
+			"When switching from auto to manual, UptimeRobot fills a threshold for every automatically selected region. Remove region_data.thresholds and use response_time_threshold for a common value, or explicitly select regions and set a positive threshold for each one.",
 		)
 		return nil, diags
 	}
@@ -229,7 +240,8 @@ func zeroThresholdKeptInAuto(ctx context.Context, stateMode, configMode types.St
 // keepThresholdModeStateWhenNothingChanges plans the state values of the two server-derived threshold attributes when
 // they are the only difference from state. Terraform marks them unknown whenever the configuration differs from state,
 // even when plan modifiers then settle that difference, as with reordered API assertions, and the plan would never be
-// empty. With any other change they stay unknown: the update can change what the server reports for them.
+// empty. Explicitly configured modes stay in the plan, including unknown expressions. With any other change the
+// computed attributes stay unknown: the update can change what the server reports for them.
 func keepThresholdModeStateWhenNothingChanges(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	if resp.Diagnostics.HasError() || req.State.Raw.IsNull() || resp.Plan.Raw.IsNull() {
 		return
@@ -240,9 +252,15 @@ func keepThresholdModeStateWhenNothingChanges(ctx context.Context, req resource.
 		req.State.GetAttribute(ctx, path.Root("auto_thresholds"), &autoThresholds).HasError() {
 		return
 	}
+	var configMode types.String
+	if req.Config.GetAttribute(ctx, path.Root("response_time_threshold_mode"), &configMode).HasError() {
+		return
+	}
 	candidate := resp.Plan
-	if candidate.SetAttribute(ctx, path.Root("response_time_threshold_mode"), mode).HasError() ||
-		candidate.SetAttribute(ctx, path.Root("auto_thresholds"), autoThresholds).HasError() {
+	if configMode.IsNull() && candidate.SetAttribute(ctx, path.Root("response_time_threshold_mode"), mode).HasError() {
+		return
+	}
+	if candidate.SetAttribute(ctx, path.Root("auto_thresholds"), autoThresholds).HasError() {
 		return
 	}
 	if candidate.Raw.Equal(req.State.Raw) {
