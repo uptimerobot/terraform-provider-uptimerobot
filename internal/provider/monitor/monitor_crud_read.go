@@ -57,6 +57,7 @@ func (r *monitorResource) Read(ctx context.Context, req resource.ReadRequest, re
 	readApplyIdentity(&state, monitor)
 	readApplyPausedState(&state, monitor, isImport)
 	readApplyRegionalData(ctx, resp, &state, monitor, isImport)
+	resp.Diagnostics.Append(readApplyThresholdMode(&state, monitor)...)
 	readApplyTagsHeadersAC(ctx, resp, &state, monitor, isImport)
 	readApplyCustomFields(ctx, resp, &state, monitor, isImport)
 	readApplySuccessCodes(ctx, resp, &state, monitor)
@@ -252,7 +253,8 @@ func readApplyPausedState(state *monitorResourceModel, m *client.Monitor, isImpo
 func readApplyRegionalData(ctx context.Context, resp *resource.ReadResponse, state *monitorResourceModel, m *client.Monitor, isImport bool) {
 	if isImport {
 		if apiRegionData, ok := normalizeRegionDataFromAPI(m.RegionalData); ok {
-			includeThresholds := len(apiRegionData.Thresholds) > 0
+			// Auto derives these thresholds, so a config that sets none would show a diff against them.
+			includeThresholds := len(apiRegionData.Thresholds) > 0 && m.ResponseTimeThresholdMode != responseTimeThresholdModeAuto
 			includeAutoSelect := apiRegionData.AutoSelect != nil && *apiRegionData.AutoSelect
 			includeRegions := !includeAutoSelect || includeThresholds
 			// The API reports every monitor created without region settings as

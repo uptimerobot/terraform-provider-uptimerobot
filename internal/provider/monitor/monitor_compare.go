@@ -14,28 +14,29 @@ import (
 
 type monComparable struct {
 	// Pointers here mean "assert this field" and nil means "ignore in this operation"
-	Type                     *string
-	URL                      *string
-	Name                     *string
-	Interval                 *int
-	Timeout                  *int
-	GracePeriod              *int
-	HTTPMethodType           *string
-	HTTPUsername             *string
-	HTTPAuthType             *string
-	Port                     *int
-	PortAlertCondition       *string
-	KeywordValue             *string
-	KeywordType              *string
-	KeywordCaseType          *string
-	FollowRedirections       *bool
-	SSLExpirationReminder    *bool
-	DomainExpirationReminder *bool
-	CheckSSLErrors           *bool
-	ResponseTimeThreshold    *int
-	RegionalData             *string
-	RegionData               *regionDataComparable
-	GroupID                  *int
+	Type                      *string
+	URL                       *string
+	Name                      *string
+	Interval                  *int
+	Timeout                   *int
+	GracePeriod               *int
+	HTTPMethodType            *string
+	HTTPUsername              *string
+	HTTPAuthType              *string
+	Port                      *int
+	PortAlertCondition        *string
+	KeywordValue              *string
+	KeywordType               *string
+	KeywordCaseType           *string
+	FollowRedirections        *bool
+	SSLExpirationReminder     *bool
+	DomainExpirationReminder  *bool
+	CheckSSLErrors            *bool
+	ResponseTimeThreshold     *int
+	ResponseTimeThresholdMode *string
+	RegionalData              *string
+	RegionData                *regionDataComparable
+	GroupID                   *int
 
 	// Collections compared as sets and maps when present
 	SuccessCodes         []string
@@ -178,6 +179,10 @@ func wantFromCreateReq(req *client.CreateMonitorRequest) monComparable {
 	if req.ResponseTimeThreshold != 0 {
 		v := req.ResponseTimeThreshold
 		c.ResponseTimeThreshold = &v
+	}
+	if req.ResponseTimeThresholdMode != "" {
+		v := req.ResponseTimeThresholdMode
+		c.ResponseTimeThresholdMode = &v
 	}
 	if req.RegionalData != "" {
 		s := strings.ToLower(strings.TrimSpace(req.RegionalData))
@@ -357,6 +362,10 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		v := *req.ResponseTimeThreshold
 		c.ResponseTimeThreshold = &v
 	}
+	if req.ResponseTimeThresholdMode != nil {
+		v := *req.ResponseTimeThresholdMode
+		c.ResponseTimeThresholdMode = &v
+	}
 	if req.RegionalData != nil {
 		s := strings.ToLower(strings.TrimSpace(*req.RegionalData))
 		c.RegionalData = &s
@@ -529,6 +538,10 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 	if m.ResponseTimeThreshold > 0 {
 		v := m.ResponseTimeThreshold
 		c.ResponseTimeThreshold = &v
+	}
+	if m.ResponseTimeThresholdMode != "" {
+		v := m.ResponseTimeThresholdMode
+		c.ResponseTimeThresholdMode = &v
 	}
 
 	// API may return an object. Normalization to a string should be performed
@@ -876,6 +889,9 @@ func equalComparable(want, got monComparable) bool {
 	if want.ResponseTimeThreshold != nil && got.ResponseTimeThreshold != nil && *want.ResponseTimeThreshold != *got.ResponseTimeThreshold {
 		return false
 	}
+	if want.ResponseTimeThresholdMode != nil && got.ResponseTimeThresholdMode != nil && *want.ResponseTimeThresholdMode != *got.ResponseTimeThresholdMode {
+		return false
+	}
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		return false
 	}
@@ -1020,6 +1036,9 @@ func fieldsStillDifferent(want, got monComparable) []string {
 	}
 	if want.ResponseTimeThreshold != nil && got.ResponseTimeThreshold != nil && *want.ResponseTimeThreshold != *got.ResponseTimeThreshold {
 		f = append(f, "response_time_threshold")
+	}
+	if want.ResponseTimeThresholdMode != nil && got.ResponseTimeThresholdMode != nil && *want.ResponseTimeThresholdMode != *got.ResponseTimeThresholdMode {
+		f = append(f, "response_time_threshold_mode")
 	}
 	if want.RegionalData != nil && (got.RegionalData == nil || *want.RegionalData != *got.RegionalData) {
 		f = append(f, "regional_data")
