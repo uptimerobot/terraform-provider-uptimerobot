@@ -779,11 +779,11 @@ func validateHTTPPasswordWithoutUserName(
 	resp *resource.ValidateConfigResponse,
 ) {
 	if !data.HTTPPassword.IsNull() && !data.HTTPPassword.IsUnknown() &&
-		(data.HTTPUsername.IsNull() || data.HTTPUsername.IsUnknown()) {
+		data.HTTPPassword.ValueString() != "" && data.HTTPUsername.IsNull() {
 		resp.Diagnostics.AddAttributeWarning(
 			path.Root("http_username"),
 			"Password set without username",
-			"Set http_username when http_password is provided.",
+			"Set http_username when creating a monitor with a password. On update, omitting http_username preserves the existing remote username.",
 		)
 	}
 }

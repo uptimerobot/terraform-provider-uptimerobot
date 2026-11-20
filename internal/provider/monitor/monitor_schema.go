@@ -152,15 +152,20 @@ func monitorSchema(version int64, includeApplicationErrorRetries bool, includePo
 				},
 			},
 			"http_username": schema.StringAttribute{
-				Description: "The username for HTTP authentication",
+				Description: "The username for HTTP authentication. Omit or set null to preserve the remote username; set an empty string to clear it.",
 				Optional:    true,
+				Computed:    true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtMost(255),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"http_password": schema.StringAttribute{
-				Description: "The password for HTTP authentication",
+				Description: "The password for HTTP authentication. Omit or set null to preserve the remote password; set an empty string to clear it. The provider retains configured passwords in state but does not read passwords from the API.",
 				Optional:    true,
+				Computed:    true,
 				Sensitive:   true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtMost(255),
