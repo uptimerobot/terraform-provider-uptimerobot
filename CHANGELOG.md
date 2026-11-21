@@ -1,5 +1,22 @@
 ## Unreleased
 
+### Added
+
+- Publish public status page announcements immediately by setting `status = "published"` and omitting `start_date` or setting it to `null`. The API-assigned start date is recorded in Terraform state without a recurring plan difference.
+
+### Documentation
+
+- Document immediate publication, scheduling ownership, updates, and the existing default `pending` status; add a publish-now example.
+
+### Tests/CI
+
+- Cover optional dates in requests, validation, create, update, refresh, data-source reads, import, and clean plans with unit and live acceptance tests.
+- Wait for API response caches to expire before the HTTP-credentials acceptance test imports its recently updated monitor. Exclude changing runtime health status from equality checks while retaining credential and configuration verification.
+
+### Upgrade notes
+
+- Existing announcements with an explicit `start_date` retain their scheduling behavior. No state migration, re-import, or replacement is required. Omitting an existing date leaves its value managed by the API.
+
 ## 1.13.3 — 2026-11-21
 
 ### Fixed

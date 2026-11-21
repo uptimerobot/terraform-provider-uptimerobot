@@ -31,6 +31,25 @@ resource "uptimerobot_psp_announcement" "maintenance" {
 }
 ```
 
+## Publish Immediately
+
+Set `status = "published"` and omit `start_date` (or set it to `null`) to publish immediately. The API assigns the start time, and Terraform records it as a computed value. You do not need `timestamp()` or `ignore_changes`.
+
+```terraform
+resource "uptimerobot_psp_announcement" "service_update" {
+  psp_id  = tonumber(uptimerobot_psp.public_status.id)
+  title   = "Service update"
+  content = "All systems are operational."
+  status  = "published"
+  type    = "info"
+  # start_date is assigned by the API when omitted.
+}
+```
+
+When `start_date` is omitted, subsequent refreshes use the API's value. Editing the title or content preserves the existing start date. Removing an explicitly configured date leaves the current API value in place; it does not reset the clock or publish the announcement again. Set an explicit date when Terraform should manage scheduling and correct date drift.
+
+`status` still defaults to `pending`; omitting the date alone does not request immediate publication. Updates, import, pin ownership, and archive-on-destroy continue to work as usual.
+
 ## Status And Type
 
 `status` accepts `offline`, `pending`, `published`, or `archived`.
@@ -68,13 +87,13 @@ terraform import uptimerobot_psp_announcement.example 123456:789012
 
 - `content` (String) Announcement content.
 - `psp_id` (Number) Public status page ID that owns this announcement.
-- `start_date` (String) Announcement start date as an RFC3339 timestamp, for example 2030-01-01T00:00:00Z.
 - `title` (String) Announcement title.
 
 ### Optional
 
 - `end_date` (String) Optional announcement end date as an RFC3339 timestamp. Omit or set to null to leave the announcement without an end date.
 - `is_pinned` (Boolean) Whether this announcement is pinned on its public status page. Omit this attribute to leave pinned-announcement ownership unmanaged by this resource.
+- `start_date` (String) Announcement start date as an RFC3339 timestamp, for example 2030-01-01T00:00:00Z. Omit or set to null with status = published to publish immediately. When omitted, the API manages the start date and Terraform records the returned value.
 - `status` (String) Announcement status. Valid values are offline, pending, published, and archived.
 - `type` (String) Announcement type. Valid values are info, maintenance, and issue.
 
