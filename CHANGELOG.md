@@ -11,6 +11,7 @@
 ### Tests/CI
 
 - Cover optional dates in requests, validation, create, update, refresh, data-source reads, import, and clean plans with unit and live acceptance tests.
+- Wait for API response caches to expire before the HTTP-credentials acceptance test imports its recently updated monitor. Exclude changing runtime health status from equality checks while retaining credential and configuration verification.
 
 ### Upgrade notes
 
