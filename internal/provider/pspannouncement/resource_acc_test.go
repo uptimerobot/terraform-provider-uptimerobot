@@ -122,6 +122,93 @@ func TestAccPSPAnnouncementResource_PinUnpin(t *testing.T) {
 	})
 }
 
+func TestAccPSPAnnouncementResource_PublishNow(t *testing.T) {
+	name := provideracctest.RandomName("acc-publish-now")
+	resourceName := "uptimerobot_psp_announcement.test"
+	var initialID, initialDate string
+	publishedAfter := time.Now().UTC().Add(-time.Minute)
+	checkPublished := func(s *terraform.State) error {
+		rs := s.RootModule().Resources[resourceName]
+		if rs == nil {
+			return fmt.Errorf("announcement missing from state")
+		}
+		start, err := time.Parse(time.RFC3339, rs.Primary.Attributes["start_date"])
+		if err != nil || start.Before(publishedAfter) || start.After(time.Now().UTC().Add(time.Minute)) {
+			return fmt.Errorf("expected an API-assigned current start date, got %q", rs.Primary.Attributes["start_date"])
+		}
+		if initialID == "" {
+			initialID, initialDate = rs.Primary.ID, rs.Primary.Attributes["start_date"]
+		} else if rs.Primary.ID != initialID || rs.Primary.Attributes["start_date"] != initialDate {
+			return fmt.Errorf("editing content or omitting the date changed the announcement ID or published date")
+		}
+		return nil
+	}
+	config := func(title, startDate string) string {
+		return provideracctest.ProviderConfig() + fmt.Sprintf(`
+resource "uptimerobot_psp" "test" {
+  name         = %q
+  subscription = true
+}
+
+resource "uptimerobot_psp_announcement" "test" {
+  psp_id  = tonumber(uptimerobot_psp.test.id)
+  title   = %q
+  content = "Temporary provider acceptance test."
+  status  = "published"
+  %s
+}
+
+data "uptimerobot_psp_announcement" "test" {
+  psp_id = tonumber(uptimerobot_psp.test.id)
+  id     = uptimerobot_psp_announcement.test.id
+  depends_on = [uptimerobot_psp_announcement.test]
+}
+`, name, title, startDate)
+	}
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { provideracctest.PreCheck(t) },
+		ProtoV6ProviderFactories: provideracctest.ProtoV6ProviderFactories,
+		CheckDestroy:             provideracctest.CheckPSPDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: config("Publish now", ""),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "status", "published"),
+					resource.TestCheckResourceAttrPair(resourceName, "start_date", "data.uptimerobot_psp_announcement.test", "start_date"),
+					checkPublished,
+				),
+			},
+			{Config: config("Publish now", "start_date = null"), PlanOnly: true},
+			{
+				Config: config("Publish now edited", "start_date = null"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "title", "Publish now edited"),
+					checkPublished,
+				),
+			},
+			{Config: config("Publish now edited", ""), PlanOnly: true},
+			{
+				ResourceName: resourceName, ImportState: true, ImportStateVerify: true,
+				ImportStateIdFunc: testAccPSPAnnouncementImportStateID,
+			},
+			{
+				Config: config("Publish now edited", "start_date = \"2030-01-01T00:00:00Z\""),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "start_date", "2030-01-01T00:00:00Z"),
+					func(s *terraform.State) error {
+						if s.RootModule().Resources[resourceName].Primary.ID != initialID {
+							return fmt.Errorf("setting an explicit date replaced the announcement")
+						}
+						return nil
+					},
+				),
+			},
+			// Removing an explicit date transfers ownership to the API without resetting it.
+			{Config: config("Publish now edited", ""), PlanOnly: true},
+		},
+	})
+}
+
 func testAccPSPAnnouncementResourceConfig(
 	name string,
 	title string,

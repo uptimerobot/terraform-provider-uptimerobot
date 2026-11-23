@@ -49,14 +49,26 @@ http_password = ""`
 					{Config: config("-omitted", `auth_type = "NONE"`), PlanOnly: true},
 					{Config: config("-unmanaged", `auth_type = "NONE"`), Check: check("", "", "NONE")},
 					{Config: config("-unmanaged", credentials), Check: check("user", "password", "HTTP_BASIC")},
-					{ResourceName: "uptimerobot_monitor.test", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"http_password"}, ImportStateCheck: func(states []*terraform.InstanceState) error {
-						for _, state := range states {
-							if state.Attributes["http_password"] != "" {
-								return fmt.Errorf("import must not copy the remote password into state")
+					{ResourceName: "uptimerobot_monitor.test", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"http_password", "status"},
+						// Runtime health status may change between reads and is not configuration.
+						// Import has no prior state to distinguish a stale API response.
+						// A matching read from one process does not expire another process's
+						// 60-second response cache. Keep the strict import checks after expiry.
+						PreConfig: func() {
+							select {
+							case <-t.Context().Done():
+								t.Fatal(t.Context().Err())
+							case <-time.After(65 * time.Second):
 							}
-						}
-						return nil
-					}},
+						},
+						ImportStateCheck: func(states []*terraform.InstanceState) error {
+							for _, state := range states {
+								if state.Attributes["http_password"] != "" {
+									return fmt.Errorf("import must not copy the remote password into state")
+								}
+							}
+							return nil
+						}},
 					{Config: config("-unmanaged", credentials), PlanOnly: true},
 				},
 			})

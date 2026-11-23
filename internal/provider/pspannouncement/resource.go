@@ -122,8 +122,10 @@ func (r *pspAnnouncementResource) Schema(_ context.Context, _ resource.SchemaReq
 				},
 			},
 			"start_date": schema.StringAttribute{
-				Description: "Announcement start date as an RFC3339 timestamp, for example 2030-01-01T00:00:00Z.",
-				Required:    true,
+				// Leave unknown on updates so an omitted date is not written back to the API.
+				Description: "Announcement start date as an RFC3339 timestamp, for example 2030-01-01T00:00:00Z. Omit or set to null with status = published to publish immediately. When omitted, the API manages the start date and Terraform records the returned value.",
+				Optional:    true,
+				Computed:    true,
 			},
 			"end_date": schema.StringAttribute{
 				Description: "Optional announcement end date as an RFC3339 timestamp. Omit or set to null to leave the announcement without an end date.",
@@ -371,11 +373,13 @@ func pspAnnouncementCreateRequest(plan pspAnnouncementResourceModel) (*client.Cr
 	}
 
 	req := &client.CreatePSPAnnouncementRequest{
-		Title:     pspAnnouncementStringPtr(expected.Title),
-		Content:   pspAnnouncementStringPtr(expected.Content),
-		Status:    pspAnnouncementStringPtr(apiPSPAnnouncementStatus(expected.Status)),
-		Type:      pspAnnouncementStringPtr(apiPSPAnnouncementType(expected.Type)),
-		StartDate: pspAnnouncementStringPtr(expected.StartDate),
+		Title:   pspAnnouncementStringPtr(expected.Title),
+		Content: pspAnnouncementStringPtr(expected.Content),
+		Status:  pspAnnouncementStringPtr(apiPSPAnnouncementStatus(expected.Status)),
+		Type:    pspAnnouncementStringPtr(apiPSPAnnouncementType(expected.Type)),
+	}
+	if expected.StartDate != "" {
+		req.StartDate = pspAnnouncementStringPtr(expected.StartDate)
 	}
 	if expected.EndDate != nil {
 		req.EndDate = pspAnnouncementStringPtr(*expected.EndDate)
@@ -391,11 +395,13 @@ func pspAnnouncementUpdateRequest(plan, state pspAnnouncementResourceModel) (*cl
 	}
 
 	req := &client.UpdatePSPAnnouncementRequest{
-		Title:     pspAnnouncementStringPtr(expected.Title),
-		Content:   pspAnnouncementStringPtr(expected.Content),
-		Status:    pspAnnouncementStringPtr(apiPSPAnnouncementStatus(expected.Status)),
-		Type:      pspAnnouncementStringPtr(apiPSPAnnouncementType(expected.Type)),
-		StartDate: pspAnnouncementStringPtr(expected.StartDate),
+		Title:   pspAnnouncementStringPtr(expected.Title),
+		Content: pspAnnouncementStringPtr(expected.Content),
+		Status:  pspAnnouncementStringPtr(apiPSPAnnouncementStatus(expected.Status)),
+		Type:    pspAnnouncementStringPtr(apiPSPAnnouncementType(expected.Type)),
+	}
+	if expected.StartDate != "" {
+		req.StartDate = pspAnnouncementStringPtr(expected.StartDate)
 	}
 	if expected.EndDate != nil {
 		req.EndDate = pspAnnouncementStringPtr(*expected.EndDate)
@@ -408,9 +414,13 @@ func pspAnnouncementUpdateRequest(plan, state pspAnnouncementResourceModel) (*cl
 }
 
 func pspAnnouncementExpectedFromPlan(plan pspAnnouncementResourceModel) (pspAnnouncementExpected, error) {
-	startDate, err := normalizePSPAnnouncementTimestamp(plan.StartDate.ValueString())
-	if err != nil {
-		return pspAnnouncementExpected{}, fmt.Errorf("invalid start_date: %w", err)
+	var startDate string
+	if !plan.StartDate.IsNull() && !plan.StartDate.IsUnknown() {
+		normalizedStartDate, err := normalizePSPAnnouncementTimestamp(plan.StartDate.ValueString())
+		if err != nil {
+			return pspAnnouncementExpected{}, fmt.Errorf("invalid start_date: %w", err)
+		}
+		startDate = normalizedStartDate
 	}
 
 	var endDate *string
@@ -666,7 +676,7 @@ func pspAnnouncementMatches(announcement *client.PSPAnnouncement, expected pspAn
 		pspAnnouncementStringPtrMatches(announcement.Content, expected.Content) &&
 		normalizePSPAnnouncementStatus(pspAnnouncementStringValue(announcement.Status)) == expected.Status &&
 		normalizePSPAnnouncementType(pspAnnouncementStringValue(announcement.Type)) == expected.Type &&
-		pspAnnouncementStringValue(startDate) == expected.StartDate &&
+		(expected.StartDate == "" || pspAnnouncementStringValue(startDate) == expected.StartDate) &&
 		pspAnnouncementOptionalStringPtrEqual(endDate, expected.EndDate)
 }
 
