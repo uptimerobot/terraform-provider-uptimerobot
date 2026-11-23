@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 1.14.0 — 2026-11-23
+
 ### Added
 
 - Publish public status page announcements immediately by setting `status = "published"` and omitting `start_date` or setting it to `null`. The API-assigned start date is recorded in Terraform state without a recurring plan difference.
