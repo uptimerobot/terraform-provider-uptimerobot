@@ -64,7 +64,16 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	updateReq, effMethod := buildUpdateRequest(ctx, plan, state, configOmitted, applicationErrorRetriesOmitted, httpMethodTypeOmitted, clearIPVersion, resp)
+	var configUsername, configPassword types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("http_username"), &configUsername)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("http_password"), &configPassword)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	requestPlan := plan
+	requestPlan.HTTPUsername = httpCredentialForUpdate(plan.HTTPUsername, configUsername, state.HTTPUsername)
+	requestPlan.HTTPPassword = httpCredentialForUpdate(plan.HTTPPassword, configPassword, state.HTTPPassword)
+	updateReq, effMethod := buildUpdateRequest(ctx, requestPlan, state, configOmitted, applicationErrorRetriesOmitted, httpMethodTypeOmitted, clearIPVersion, resp)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -334,10 +343,12 @@ func buildUpdateRequest(
 
 	// auth and creds send only if known
 	if !plan.HTTPUsername.IsNull() && !plan.HTTPUsername.IsUnknown() {
-		req.HTTPUsername = plan.HTTPUsername.ValueString()
+		username := plan.HTTPUsername.ValueString()
+		req.HTTPUsername = &username
 	}
 	if !plan.HTTPPassword.IsNull() && !plan.HTTPPassword.IsUnknown() {
-		req.HTTPPassword = plan.HTTPPassword.ValueString()
+		password := plan.HTTPPassword.ValueString()
+		req.HTTPPassword = &password
 	}
 	if !plan.AuthType.IsNull() && !plan.AuthType.IsUnknown() {
 		req.HTTPAuthType = plan.AuthType.ValueString()
@@ -762,6 +773,7 @@ func applyUpdatedMonitorToState(
 	resp *resource.UpdateResponse,
 ) monitorResourceModel {
 	out := plan
+	resolveHTTPCredentials(&out, m)
 	out.Name = types.StringValue(unescapeHTML(m.Name))
 	out.URL = monitorURLForState(plan.Type.ValueString(), plan.URL, m.URL)
 	out.Status = prev.Status

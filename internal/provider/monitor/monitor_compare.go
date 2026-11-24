@@ -304,10 +304,7 @@ func wantFromUpdateReq(req *client.UpdateMonitorRequest) monComparable {
 		s := req.HTTPMethodType
 		c.HTTPMethodType = &s
 	}
-	if req.HTTPUsername != "" {
-		s := req.HTTPUsername
-		c.HTTPUsername = &s
-	}
+	c.HTTPUsername = req.HTTPUsername
 	// DO NOT assert password it is a write only field
 
 	if req.HTTPAuthType != "" {
@@ -477,10 +474,8 @@ func buildComparableFromAPI(m *client.Monitor) monComparable {
 		s := m.HTTPMethodType
 		c.HTTPMethodType = &s
 	}
-	if m.HTTPUsername != "" {
-		s := m.HTTPUsername
-		c.HTTPUsername = &s
-	}
+	username := m.HTTPUsername
+	c.HTTPUsername = &username
 	if m.AuthType != "" {
 		s := m.AuthType
 		c.HTTPAuthType = &s

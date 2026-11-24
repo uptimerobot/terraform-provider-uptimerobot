@@ -73,8 +73,8 @@ type UpdateMonitorRequest struct {
 	Timeout                   *int                   `json:"timeout,omitempty"`
 	HTTPAuthType              string                 `json:"authType,omitempty"`
 	HTTPMethodType            string                 `json:"httpMethodType,omitempty"`
-	HTTPUsername              string                 `json:"httpUsername,omitempty"`
-	HTTPPassword              string                 `json:"httpPassword,omitempty"`
+	HTTPUsername              *string                `json:"httpUsername,omitempty"`
+	HTTPPassword              *string                `json:"httpPassword,omitempty"`
 	Port                      int                    `json:"port,omitempty"`
 	PortAlertCondition        string                 `json:"portAlertCondition,omitempty"`
 	KeywordType               string                 `json:"keywordType,omitempty"`

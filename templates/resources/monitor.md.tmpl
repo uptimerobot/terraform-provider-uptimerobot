@@ -27,6 +27,20 @@ description: |-
 
 {{tffile "examples/resources/uptimerobot_monitor/auth.tf"}}
 
+Omitting `http_username` or `http_password`, or setting either to `null`, preserves that credential on an existing monitor. This also applies when removing a previously configured credential. Set an explicit empty string to clear a credential.
+
+To disable authentication and clear both stored credentials, update the existing resource with:
+
+```hcl
+auth_type     = "NONE"
+http_username = ""
+http_password = ""
+```
+
+Keep `auth_type = "NONE"` to keep authentication disabled: omitting `auth_type` uses the existing default, `HTTP_BASIC`. Setting `NONE` alone preserves stored credentials. After clearing credentials, the empty strings may remain in configuration without causing further changes. Omitting the attributes leaves future external changes unmanaged.
+
+The provider reads usernames from the API to detect drift. Passwords are sensitive and retained in Terraform state after configuration, but are never read back from the API, including during import. Omitting a previously configured password preserves its last known state value; changing a password outside Terraform is not detected. Use `lifecycle.ignore_changes` for externally managed credentials that remain in configuration.
+
 ### Port Monitor
 
 {{tffile "examples/resources/uptimerobot_monitor/port.tf"}}

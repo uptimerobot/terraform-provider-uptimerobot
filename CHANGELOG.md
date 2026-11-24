@@ -20,6 +20,46 @@
 - Monitor state stays at schema version 7. No state migration, re-import or resource replacement is required, and existing monitors show no change on the next plan. Because the mode is computed, a plan that changes something else on a monitor lists `response_time_threshold_mode` and `auto_thresholds` as known after apply.
 - Automatic thresholds require slow response alert access and the feature enabled for the account. Upgrading the provider does not enable Auto; requesting it on an account without access fails at apply. Existing configurations that do not select Auto retain their current behavior.
 
+## 1.14.0 — 2026-11-23
+
+### Added
+
+- Publish public status page announcements immediately by setting `status = "published"` and omitting `start_date` or setting it to `null`. The API-assigned start date is recorded in Terraform state without a recurring plan difference.
+
+### Documentation
+
+- Document immediate publication, scheduling ownership, updates, and the existing default `pending` status; add a publish-now example.
+
+### Tests/CI
+
+- Cover optional dates in requests, validation, create, update, refresh, data-source reads, import, and clean plans with unit and live acceptance tests.
+- Wait for API response caches to expire before the HTTP-credentials acceptance test imports its recently updated monitor. Exclude changing runtime health status from equality checks while retaining credential and configuration verification.
+
+### Upgrade notes
+
+- Existing announcements with an explicit `start_date` retain their scheduling behavior. No state migration, re-import, or replacement is required. Omitting an existing date leaves its value managed by the API.
+
+## 1.13.3 — 2026-11-21
+
+### Fixed
+
+- Allow monitor HTTP usernames and passwords to be cleared independently with an explicit empty string. Clearing credentials now sends empty values to API v3, verifies username clearing, and preserves empty values during refresh so subsequent plans remain stable (#329).
+- Preserve remote credentials when `http_username` or `http_password` is omitted or null, including removal from an existing configuration. Unrelated updates no longer resend unmanaged or unchanged credentials, including attributes covered by `lifecycle.ignore_changes`.
+- Retry stale username and authentication-mode reads for HTTP, Keyword, and API monitors, while retaining drift detection for persistent remote changes.
+
+### Documentation
+
+- Document credential preservation, explicit clearing, and disabling authentication with `auth_type = "NONE"`. The existing `HTTP_BASIC` default is unchanged. Configured passwords remain sensitive in Terraform state and are not read back from the API.
+
+### Tests/CI
+
+- Cover credential serialization, independent clearing, omission, unknown values, state normalization, ignored changes, stale reads, and an API that fails to clear the username.
+- Add Terraform/OpenTofu acceptance lifecycles for HTTP, Keyword, and API monitors, including external drift, deferred expressions, import, stable monitor IDs, empty subsequent plans, and upgrading from v1.13.2.
+
+### Upgrade notes
+
+- No state migration, re-import, or monitor replacement is required. To remove stored credentials, set `http_username = ""` and `http_password = ""`; removing those attributes preserves their remote values.
+
 ## 1.13.2 — 2026-11-19
 
 ### Fixed

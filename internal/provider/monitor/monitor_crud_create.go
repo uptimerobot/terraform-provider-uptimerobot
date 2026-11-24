@@ -722,6 +722,7 @@ func (r *monitorResource) buildStateAfterCreate(
 	effMethod string,
 	resp *resource.CreateResponse,
 ) monitorResourceModel {
+	resolveHTTPCredentials(&plan, api)
 	plan.Name = types.StringValue(unescapeHTML(api.Name))
 	plan.URL = monitorURLForState(plan.Type.ValueString(), plan.URL, api.URL)
 	plan.Status = types.StringValue(api.Status)

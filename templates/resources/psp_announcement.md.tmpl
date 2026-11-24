@@ -13,6 +13,16 @@ description: |-
 
 {{tffile "examples/resources/uptimerobot_psp_announcement/resource.tf"}}
 
+## Publish Immediately
+
+Set `status = "published"` and omit `start_date` (or set it to `null`) to publish immediately. The API assigns the start time, and Terraform records it as a computed value. You do not need `timestamp()` or `ignore_changes`.
+
+{{tffile "examples/resources/uptimerobot_psp_announcement/publish_now.tf"}}
+
+When `start_date` is omitted, subsequent refreshes use the API's value. Editing the title or content preserves the existing start date. Removing an explicitly configured date leaves the current API value in place; it does not reset the clock or publish the announcement again. Set an explicit date when Terraform should manage scheduling and correct date drift.
+
+`status` still defaults to `pending`; omitting the date alone does not request immediate publication. Updates, import, pin ownership, and archive-on-destroy continue to work as usual.
+
 ## Status And Type
 
 `status` accepts `offline`, `pending`, `published`, or `archived`.
