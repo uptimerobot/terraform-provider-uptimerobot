@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 1.15.0 — 2026-11-25
+
 ### Added
 
 - Added `uptimerobot_monitor.response_time_threshold_mode` (`off`, `manual` or `auto`). In `auto`, UptimeRobot derives a response time threshold for each region from that region's own history. The attribute is optional and computed: configurations that omit it leave the mode unmanaged. The monitor keeps its mode, except that a positive `response_time_threshold` or `region_data.thresholds` value switches a monitor in `auto` to `manual`.
@@ -14,6 +16,10 @@
 
 - Documented the new attributes and added an example.
 - Clarified that switching from Auto to Manual with automatically selected regions requires omitting `region_data.thresholds` when using the scalar threshold. An explicitly empty map is rejected once the values are known because the API fills a threshold for every region.
+
+### Tests/CI
+
+- Wait for API response caches to expire before acceptance tests refresh monitors with externally changed HTTP credentials. Keep strict drift checks and report mismatched field names without exposing credential values.
 
 ### Upgrade notes
 
