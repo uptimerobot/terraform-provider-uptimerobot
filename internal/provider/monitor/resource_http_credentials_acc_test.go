@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,11 +56,7 @@ http_password = ""`
 						// A matching read from one process does not expire another process's
 						// 60-second response cache. Keep the strict import checks after expiry.
 						PreConfig: func() {
-							select {
-							case <-t.Context().Done():
-								t.Fatal(t.Context().Err())
-							case <-time.After(65 * time.Second):
-							}
+							waitForMonitorResponseCacheExpiry(t)
 						},
 						ImportStateCheck: func(states []*terraform.InstanceState) error {
 							for _, state := range states {
@@ -97,6 +94,10 @@ func TestAccMonitorResource_HTTPCredentialsDrift(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// A matching GET from one API process does not expire another
+			// process's response cache. Terraform must refresh after expiry
+			// so it can observe and, when configured, correct this external drift.
+			waitForMonitorResponseCacheExpiry(t)
 			if err := waitHTTPCredentials(t.Context(), monitorID, username, password, "HTTP_BASIC"); err != nil {
 				t.Fatal(err)
 			}
@@ -224,17 +225,48 @@ func checkHTTPCredentials(t *testing.T, id *string, username, password, auth str
 	}
 }
 
+func waitForMonitorResponseCacheExpiry(t *testing.T) {
+	t.Helper()
+	timer := time.NewTimer(65 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-t.Context().Done():
+		t.Fatal(t.Context().Err())
+	case <-timer.C:
+	}
+}
+
 func waitHTTPCredentials(ctx context.Context, id int64, username, password, auth string) error {
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	// Leave room for a full 60-second API response-cache lifetime and a retry.
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
+	lastObservation := "no completed API read"
 	for {
 		monitor, err := provideracctest.APIClient().GetMonitor(ctx, id)
-		if err == nil && monitor.HTTPUsername == username && monitor.HTTPPassword == password && monitor.AuthType == auth {
-			return nil
+		if err != nil {
+			if ctx.Err() == nil {
+				lastObservation = "API read failed"
+			}
+		} else {
+			var mismatchedFields []string
+			if monitor.HTTPUsername != username {
+				mismatchedFields = append(mismatchedFields, "http_username")
+			}
+			if monitor.HTTPPassword != password {
+				mismatchedFields = append(mismatchedFields, "http_password")
+			}
+			if monitor.AuthType != auth {
+				mismatchedFields = append(mismatchedFields, "auth_type")
+			}
+			if len(mismatchedFields) == 0 {
+				return nil
+			}
+			// Identify the stale fields without logging credential values.
+			lastObservation = "mismatched fields: " + strings.Join(mismatchedFields, ", ")
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("API credentials did not match: %w", ctx.Err())
+			return fmt.Errorf("API credentials did not match (%s): %w", lastObservation, ctx.Err())
 		case <-time.After(time.Second):
 		}
 	}
