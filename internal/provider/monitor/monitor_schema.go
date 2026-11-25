@@ -93,6 +93,8 @@ func (r *monitorResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 	resp.Schema = monitorSchema(7, true, true)
 }
 
+// monitorSchema builds the resource schema. includePortAlertCondition is false for the prior schemas (v6 and older),
+// which predate port_alert_condition and also the response_time_threshold_mode and auto_thresholds attributes.
 func monitorSchema(version int64, includeApplicationErrorRetries bool, includePortAlertCondition bool) schema.Schema {
 	s := schema.Schema{
 		Version:     version,
@@ -455,6 +457,46 @@ Alert contacts and integrations assigned to this monitor.
 					int64validator.Between(0, 60000),
 				},
 			},
+			// No UseStateForUnknown on purpose: the server derives the mode, so planning the old value would be
+			// contradicted after apply as soon as a threshold changes. It shows as "known after apply" on any update.
+			"response_time_threshold_mode": schema.StringAttribute{
+				Description: "How the response time threshold is set: off, manual or auto. In auto, UptimeRobot derives a threshold for each region from that region's own response time history, so response_time_threshold and region_data.thresholds must not be set. When omitted, the mode is unmanaged: the monitor keeps its mode, except that a positive response_time_threshold or region_data.thresholds value switches a monitor in auto to manual.",
+				MarkdownDescription: "How the response time threshold is set: `off`, `manual` or `auto`.\n\n" +
+					"- `auto` lets UptimeRobot derive a threshold for each region from that region's own response time history and keep it up to date. It requires slow response alert access and automatic thresholds enabled for the account; otherwise the API rejects the apply. Upgrading the provider does not enable this account feature. `response_time_threshold` and `region_data.thresholds` must not be set, and the computed `auto_thresholds` shows the state of each region. A region without enough history yet is still learning and sends no slow response alerts.\n" +
+					"- `manual` uses the thresholds you set in `response_time_threshold` or `region_data.thresholds`, and needs at least one positive value. When you switch a monitor from `auto` to `manual`, set a threshold for every selected region: regions without one get a default. For automatically selected regions, omit `region_data.thresholds` and use `response_time_threshold`; an explicitly empty map would conflict with the thresholds the API fills.\n" +
+					"- `off` disables slow response alerts. `region_data.thresholds` must then be empty or unset, and zero values are refused too.\n\n" +
+					"`auto` and `manual` are not available for HEARTBEAT, DNS and VISUAL_COMPARISON monitors, which have no slow response alert. With `auto`, `region_data.thresholds` must not be set at all, not even as an empty map. When omitted, the mode is unmanaged: the monitor keeps its mode, except that a positive `response_time_threshold` or `region_data.thresholds` value switches a monitor in `auto` to `manual`, so a configuration that sets `response_time_threshold` on a monitor that was switched to `auto` outside Terraform changes it back to `manual` on the next apply.",
+				Optional: true,
+				Computed: true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(responseTimeThresholdModeOff, responseTimeThresholdModeManual, responseTimeThresholdModeAuto),
+				},
+			},
+			"auto_thresholds": schema.MapNestedAttribute{
+				Description:         "The state of each region's automatic threshold, keyed by region code. Empty unless response_time_threshold_mode is auto.",
+				MarkdownDescription: "The state of each region's automatic threshold, keyed by region code. Empty unless `response_time_threshold_mode` is `auto`.",
+				Computed:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"status": schema.StringAttribute{
+							Description: "learning (not enough history yet, no slow response alerts from this region), ready, or stale (the last threshold is kept because no recent data came in).",
+							Computed:    true,
+						},
+						"threshold_ms": schema.Int64Attribute{
+							Description: "The threshold in effect in milliseconds. Null while the region is learning.",
+							Computed:    true,
+						},
+						"usual_ms": schema.Int64Attribute{
+							Description: "The usual response time of the region in milliseconds. Null while the region is learning.",
+							Computed:    true,
+						},
+						"days_collected": schema.Int64Attribute{
+							Description: "Days of response time history collected so far, up to the seven needed.",
+							Computed:    true,
+						},
+					},
+				},
+			},
 			"regional_data": schema.StringAttribute{
 				Description:        "Legacy single region for monitoring: na (North America), eu (Europe), as (Asia), oc (Oceania). Use region_data for new multi-region monitor settings.",
 				DeprecationMessage: "Use region_data instead. regional_data only supports the legacy single-region API shape.",
@@ -468,7 +510,7 @@ Alert contacts and integrations assigned to this monitor.
 				MarkdownDescription: "Multi-region monitor settings. Uses the API v3 `regionData` object.\n\n" +
 					"- `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`. Required unless `auto_select` is `true`.\n" +
 					"- `auto_select` lets UptimeRobot choose the monitoring region automatically. When `true`, `regions` can be omitted and the provider sends the API-required carrier region without managing it. When omitted or `false`, configured `regions` are used as manually selected regions.\n" +
-					"- `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must be selected regions and values must be between `0` and `60000`.",
+					"- `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must use the exact lowercase codes `na`, `eu`, `as`, or `oc`, without whitespace, and must be selected regions. Values must be between `0` and `60000`.",
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
 					"regions": schema.SetAttribute{
@@ -488,7 +530,7 @@ Alert contacts and integrations assigned to this monitor.
 						Optional:    true,
 					},
 					"thresholds": schema.MapAttribute{
-						Description: "Optional per-region response-time thresholds in milliseconds. Keys must be selected regions.",
+						Description: "Optional per-region response-time thresholds in milliseconds. Keys must be exactly na, eu, as, or oc (lowercase, without whitespace) and must be selected regions.",
 						Optional:    true,
 						ElementType: types.Int64Type,
 					},
@@ -700,6 +742,10 @@ Advanced monitor configuration.
 
 	if !includePortAlertCondition {
 		delete(s.Attributes, "port_alert_condition")
+		// Prior schemas (v6 and older) predate the threshold mode attributes too. Those were added without a version
+		// bump: state written before them simply lacks them and reads back as null.
+		delete(s.Attributes, "response_time_threshold_mode")
+		delete(s.Attributes, "auto_thresholds")
 	}
 
 	return s
@@ -709,6 +755,7 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	if req.Plan.Raw.IsNull() {
 		return
 	}
+	defer keepThresholdModeStateWhenNothingChanges(ctx, req, resp)
 
 	// Retrieve values from plan and state
 	var plan monitorResourceModel
@@ -732,7 +779,34 @@ func (r *monitorResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	}
 	warnMonitorURLCase(configURL, &resp.Diagnostics)
 
+	var configMode types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("response_time_threshold_mode"), &configMode)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	planType := strings.ToUpper(firstNonEmpty(stringOrEmpty(plan.Type), stringOrEmpty(state.Type)))
+
+	if missing, d := missingRegionThresholds(ctx, state.ResponseTimeThresholdMode, configMode, plan.ResponseTimeThreshold, plan.RegionData); d.HasError() {
+		resp.Diagnostics.Append(d...)
+		return
+	} else if len(missing) > 0 {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("region_data").AtName("thresholds"),
+			"Set a threshold for every selected region",
+			fmt.Sprintf("Switching response_time_threshold_mode from auto to manual, which a positive threshold also does when the mode is omitted, needs a threshold for every selected region; none is set for %s. UptimeRobot would fill them with a default that this configuration does not describe.", strings.Join(missing, ", ")),
+		)
+		return
+	}
+
+	if zeroThresholdKeptInAuto(ctx, state.ResponseTimeThresholdMode, configMode, plan.ResponseTimeThreshold, plan.RegionData) {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("response_time_threshold"),
+			"Response time threshold cannot be zero while the monitor stays in auto",
+			"The monitor is in auto and no positive threshold switches it to manual, so UptimeRobot keeps deriving every region's threshold and does not report response_time_threshold. Remove response_time_threshold, set a positive value to switch to manual, or set response_time_threshold_mode to \"off\" to disable slow response alerts.",
+		)
+		return
+	}
 
 	if !plan.AssignedAlertContacts.IsNull() && !plan.AssignedAlertContacts.IsUnknown() {
 		var acs []alertContactTF

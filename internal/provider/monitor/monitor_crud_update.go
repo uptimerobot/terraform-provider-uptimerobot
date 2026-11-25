@@ -158,6 +158,11 @@ func (r *monitorResource) Update(ctx context.Context, req resource.UpdateRequest
 		resp.Diagnostics.Append(diags...)
 		return
 	}
+	addModeNotReportedWarning(&resp.Diagnostics, plan.Name.ValueString(), thresholdModeForRequest(plan.ResponseTimeThresholdMode), updated)
+	// Only when the monitor just entered auto: an unrelated edit during the learning week must not warn again.
+	if state.ResponseTimeThresholdMode.ValueString() != responseTimeThresholdModeAuto {
+		addLearningRegionsWarning(&resp.Diagnostics, plan.Name.ValueString(), updated)
+	}
 }
 
 // Helpers
@@ -415,6 +420,9 @@ func buildUpdateRequest(
 	if !plan.ResponseTimeThreshold.IsNull() && !plan.ResponseTimeThreshold.IsUnknown() {
 		v := int(plan.ResponseTimeThreshold.ValueInt64())
 		req.ResponseTimeThreshold = &v
+	}
+	if mode := thresholdModeForRequest(plan.ResponseTimeThresholdMode); mode != "" {
+		req.ResponseTimeThresholdMode = &mode
 	}
 	fallbackRegions, _, d := regionDataRegionsValue(ctx, state.RegionData)
 	resp.Diagnostics.Append(d...)
@@ -769,6 +777,10 @@ func applyUpdatedMonitorToState(
 	out.Name = types.StringValue(unescapeHTML(m.Name))
 	out.URL = monitorURLForState(plan.Type.ValueString(), plan.URL, m.URL)
 	out.Status = prev.Status
+	out.ResponseTimeThresholdMode = thresholdModeToState(plan.ResponseTimeThresholdMode, m)
+	autoThresholds, autoDiags := autoThresholdsToState(m)
+	resp.Diagnostics.Append(autoDiags...)
+	out.AutoThresholds = autoThresholds
 	if !plan.IsPaused.IsNull() && !plan.IsPaused.IsUnknown() {
 		out.IsPaused = types.BoolValue(isMonitorPausedStatus(m.Status))
 	} else {

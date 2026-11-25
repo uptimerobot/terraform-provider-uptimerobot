@@ -3,6 +3,8 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -166,7 +168,7 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 		return
 	}
 
-	if regionData.Regions.IsUnknown() {
+	if regionData.Regions.IsUnknown() || anyUnknown(regionData.Regions.Elements()) {
 		return
 	}
 
@@ -199,14 +201,10 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 		return
 	}
 
-	var thresholds map[string]int64
-	resp.Diagnostics.Append(regionData.Thresholds.ElementsAs(ctx, &thresholds, false)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
+	// Keys are known even while a value is not, so they are checked now and only the values wait for apply time.
+	elements := regionData.Thresholds.Elements()
 	if !regionsManaged {
-		if len(thresholds) > 0 {
+		if len(elements) > 0 {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("region_data").AtName("regions"),
 				"Missing regions",
@@ -224,13 +222,14 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 		}
 	}
 
-	for raw, v := range thresholds {
+	// Configured keys must match API/state keys exactly; normalizing them would change a known map during apply.
+	for raw := range elements {
 		region, ok := normalizeRegionCode(raw)
-		if !ok {
+		if !ok || raw != region {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("region_data").AtName("thresholds"),
 				"Invalid threshold region",
-				fmt.Sprintf("Threshold key %q must be one of: na, eu, as, oc.", raw),
+				fmt.Sprintf("Threshold key %q must be exactly one of: na, eu, as, oc (lowercase, without whitespace).", raw),
 			)
 			continue
 		}
@@ -241,6 +240,31 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 				fmt.Sprintf("Threshold key %q must also be present in region_data.regions.", region),
 			)
 		}
+	}
+
+	if len(elements) > 0 &&
+		!data.ResponseTimeThreshold.IsNull() && !data.ResponseTimeThreshold.IsUnknown() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("response_time_threshold"),
+			"Conflicting response-time threshold settings",
+			"Use either response_time_threshold with region_data.regions for one threshold across all selected regions, or region_data.thresholds for per-region thresholds.",
+		)
+	}
+
+	if anyUnknown(slices.Collect(maps.Values(elements))) {
+		return
+	}
+	var thresholds map[string]int64
+	resp.Diagnostics.Append(regionData.Thresholds.ElementsAs(ctx, &thresholds, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	for raw, v := range thresholds {
+		region, ok := normalizeRegionCode(raw)
+		if !ok {
+			continue
+		}
 		if v < 0 || v > 60000 {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("region_data").AtName("thresholds"),
@@ -248,15 +272,6 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 				fmt.Sprintf("Threshold for %q must be between 0 and 60000 milliseconds.", region),
 			)
 		}
-	}
-
-	if len(thresholds) > 0 &&
-		!data.ResponseTimeThreshold.IsNull() && !data.ResponseTimeThreshold.IsUnknown() {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("response_time_threshold"),
-			"Conflicting response-time threshold settings",
-			"Use either response_time_threshold with region_data.regions for one threshold across all selected regions, or region_data.thresholds for per-region thresholds.",
-		)
 	}
 }
 
