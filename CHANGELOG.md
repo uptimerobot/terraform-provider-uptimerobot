@@ -20,6 +20,7 @@
 ### Tests/CI
 
 - Wait for API response caches to expire before acceptance tests refresh monitors with externally changed HTTP credentials. Keep strict drift checks and report mismatched field names without exposing credential values.
+- Allow 90 minutes for each acceptance job so all serial test packages can finish; retain the 60-minute Go timeout per package.
 
 ### Upgrade notes
 
