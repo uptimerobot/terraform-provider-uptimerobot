@@ -222,13 +222,14 @@ func validateRegionData(ctx context.Context, data *monitorResourceModel, resp *r
 		}
 	}
 
+	// Configured keys must match API/state keys exactly; normalizing them would change a known map during apply.
 	for raw := range elements {
 		region, ok := normalizeRegionCode(raw)
-		if !ok {
+		if !ok || raw != region {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("region_data").AtName("thresholds"),
 				"Invalid threshold region",
-				fmt.Sprintf("Threshold key %q must be one of: na, eu, as, oc.", raw),
+				fmt.Sprintf("Threshold key %q must be exactly one of: na, eu, as, oc (lowercase, without whitespace).", raw),
 			)
 			continue
 		}

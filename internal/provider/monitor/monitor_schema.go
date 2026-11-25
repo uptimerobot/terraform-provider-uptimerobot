@@ -510,7 +510,7 @@ Alert contacts and integrations assigned to this monitor.
 				MarkdownDescription: "Multi-region monitor settings. Uses the API v3 `regionData` object.\n\n" +
 					"- `regions` selects the active monitoring regions: `na`, `eu`, `as`, `oc`. Required unless `auto_select` is `true`.\n" +
 					"- `auto_select` lets UptimeRobot choose the monitoring region automatically. When `true`, `regions` can be omitted and the provider sends the API-required carrier region without managing it. When omitted or `false`, configured `regions` are used as manually selected regions.\n" +
-					"- `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must be selected regions and values must be between `0` and `60000`.",
+					"- `thresholds` optionally sets per-region response-time thresholds in milliseconds. Keys must use the exact lowercase codes `na`, `eu`, `as`, or `oc`, without whitespace, and must be selected regions. Values must be between `0` and `60000`.",
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
 					"regions": schema.SetAttribute{
@@ -530,7 +530,7 @@ Alert contacts and integrations assigned to this monitor.
 						Optional:    true,
 					},
 					"thresholds": schema.MapAttribute{
-						Description: "Optional per-region response-time thresholds in milliseconds. Keys must be selected regions.",
+						Description: "Optional per-region response-time thresholds in milliseconds. Keys must be exactly na, eu, as, or oc (lowercase, without whitespace) and must be selected regions.",
 						Optional:    true,
 						ElementType: types.Int64Type,
 					},

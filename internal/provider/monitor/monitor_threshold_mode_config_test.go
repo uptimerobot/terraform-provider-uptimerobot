@@ -245,8 +245,10 @@ func TestValidateConfigChecksThresholdKeysWhileTheirValuesAreUnknown(t *testing.
 	t.Parallel()
 
 	for key, summary := range map[string]string{
-		"eu": "Threshold region is not selected",
-		"xx": "Invalid threshold region",
+		"eu":   "Threshold region is not selected",
+		"xx":   "Invalid threshold region",
+		"NA":   "Invalid threshold region",
+		" na ": "Invalid threshold region",
 	} {
 		resp := validateConfigOf(t, httpMonitorConfig(map[string]tftypes.Value{
 			"response_time_threshold_mode": tftypes.NewValue(tftypes.String, "manual"),
@@ -259,6 +261,25 @@ func TestValidateConfigChecksThresholdKeysWhileTheirValuesAreUnknown(t *testing.
 		}
 		if !found {
 			t.Fatalf("key %q is known at plan time, so %q is reported now, got: %v", key, summary, resp.Diagnostics)
+		}
+	}
+}
+
+func TestValidateConfigRequiresCanonicalThresholdKeys(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []interface{}{"manual", nil} {
+		for _, key := range []string{"na", "NA", " na ", " NA "} {
+			thresholds := tftypes.NewValue(tftypes.Map{ElementType: tftypes.Number}, map[string]tftypes.Value{
+				key: tftypes.NewValue(tftypes.Number, 800),
+			})
+			resp := validateConfigOf(t, httpMonitorConfig(map[string]tftypes.Value{
+				"response_time_threshold_mode": tftypes.NewValue(tftypes.String, mode),
+				"region_data":                  regionDataConfig(t, knownRegions("na"), thresholds),
+			}))
+			wantError := key != "na"
+			if resp.Diagnostics.HasError() != wantError {
+				t.Fatalf("mode %v, key %q: expected error %t, got %v", mode, key, wantError, resp.Diagnostics)
+			}
 		}
 	}
 }

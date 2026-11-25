@@ -8,6 +8,10 @@
 - Added the computed `uptimerobot_monitor.auto_thresholds`, keyed by region, with each region's `status` (`learning`, `ready` or `stale`), `threshold_ms`, `usual_ms` and `days_collected`.
 - Apply warns when a monitor enters `auto` while a region is still learning, because no slow response alerts are sent from that region yet.
 
+### Fixed
+
+- Reject regional threshold keys with uppercase letters or surrounding whitespace during configuration validation. Use the exact region codes `na`, `eu`, `as`, and `oc`; API normalization of other spellings would otherwise produce state that differs from the configured keys.
+
 ### Changed
 
 - Configuration validation now refuses `response_time_threshold_mode = "auto"` together with `response_time_threshold` or `region_data.thresholds`, `"off"` together with a positive threshold, `"manual"` without a positive threshold, `"auto"` or `"manual"` on HEARTBEAT, DNS and VISUAL_COMPARISON monitors, and a switch from `"auto"` to `"manual"` that leaves a selected region without a threshold in `region_data.thresholds`. Configurations that omit the attribute are affected only for a monitor that is in `auto`: an implicit switch to `manual` must also cover every selected region, and a `response_time_threshold` of `0` or a `region_data.thresholds` map without a positive value, including an empty one, is refused because the monitor would stay in `auto`.
